@@ -61,9 +61,31 @@ Found by bundling and running a real application.
   JavaScript, so a bundle built from 0.81 tests 0.81 whatever the host was built
   against.
 
-  Two left: a Hermes whose CMake names its target `hermes` rather than
-  `hermesvm`, and Expo's native runtime. Still a decision rather than a bug, but
-  the one that blocked everything else has gone.
+  **"three separate things" was wrong, and so was the list.** The authoritative
+  account is `supported-versions.json`, under `known-unsupported`, and it counts
+  six differences rather than three. The Hermes naming is not one of the
+  remaining ones: `ThirdParty.cmake` already takes either library name and
+  defines both `hermes-engine::hermesvm` and `hermes-engine::libhermes`, with a
+  comment saying it is for 0.81. Checked rather than assumed, after this entry
+  named it as outstanding twice.
+
+  Three of the six are handled -- the module proxy above, the Hermes naming, and
+  0.81's codegen. The three that remain are the structural ones, and they are
+  why that file's verdict is what it is:
+
+  - **`ReactHost`'s constructor differs**: eleven parameters rather than twelve,
+    `TurboModuleManagerDelegates` rather than `TurboModuleProviders`, and no
+    choreographer. A second host construction path, permanently.
+  - **There is no websocket client.** 0.81 ships `IWebSocketClient` with nothing
+    behind it, so no packager connection, no Fast Refresh, and no websockets for
+    the app. The largest piece.
+  - `GtkAnimationChoreographer` has to be compiled out: 0.81 has
+    `react/renderer/animations` and not `react/renderer/animationbackend`.
+
+  So the 0.81-versus-upgrade decision leans harder towards upgrading than this
+  entry has been implying, and `supported-versions.json` already said as much:
+  *"worth doing only for a specific app that needs it, and kino would still stop
+  at Expo afterwards."*
 - **CI checks one React Native per run.** It pins 0.87.1, and `main` moved to
   the weekly drift job, which does not block. So a regression that only affects
   `main` can wait up to a week. Building both on every run would be the fix and

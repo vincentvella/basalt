@@ -52,7 +52,7 @@
       "reactNative": "0.82 and older",
       "why": "Attempted for 0.81.6 and stopped deliberately. Six differences, of which the last three are structural.",
       "what-it-would-take": [
-        "RN$TurboInterop set before the bundle evaluates, or no native module resolves at all.",
+        "~~RN$TurboInterop set before the bundle evaluates, or no native module resolves at all.~~ Done: core/TurboModuleProxy.h installs globalThis.__turboModuleProxy as an alias for nativeModuleProxy[name], so TurboModuleRegistry's first question succeeds and the gated fallback is never reached. Verified against 0.81's own JavaScript -- kino's unmodified bundle reaches Running \"main\" with no flag prepended.",
         "Its Hermes builds `libhermes` rather than `hermesvm`, and React Native links `hermes-engine::libhermes`. Both handled already.",
         "Its codegen has no -f flag, writes core artifacts inside the package, and exits non-zero after printing Done. Handled already.",
         "Our own sources need version guards: TextAlignment has no Start or End, TextMeasureCacheKey has no pointScaleFactor, BaseTouch has no timeStamp. The first two are done.",
@@ -60,7 +60,7 @@
         "ReactHost takes eleven parameters rather than twelve, takes TurboModuleManagerDelegates rather than TurboModuleProviders, and has no choreographer parameter. A second host construction path.",
         "There is no websocket client. 0.81 ships IWebSocketClient with no implementation behind it, so no packager connection, no Fast Refresh, and no websockets for the app. Writing one is the largest piece."
       ],
-      "verdict": "A permanent second code path through the host, for the version that would also be the most degraded. Worth doing only for a specific app that needs it, and kino would still stop at Expo afterwards."
+      "verdict": "A permanent second code path through the host, for the version that would also be the most degraded. Three of the six are now handled, and the three that remain are the structural ones: ReactHost's constructor, the missing websocket client, and the choreographer. Worth doing only for a specific app that needs it, and kino would still stop at Expo afterwards."
     }
   ]
 }
