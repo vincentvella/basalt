@@ -237,6 +237,9 @@ if(DEFINED RN_DIR)
     core/TestQuitFile.cpp
     # What a <Canvas> from @shopify/react-native-skia mounts; see the header.
     core/SkiaPictureViewComponent.cpp
+    # globalThis.__turboModuleProxy, which a bridgeless runtime does not get; see
+    # the header.
+    core/TurboModuleProxy.cpp
     core/StatusBarModule.cpp
     core/ReanimatedModule.cpp
     core/UIManagerAccess.cpp

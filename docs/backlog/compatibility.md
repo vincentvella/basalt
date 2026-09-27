@@ -51,10 +51,19 @@ Found by bundling and running a real application.
 - React Native 0.83 through 0.86 are refused rather than untested-but-allowed.
   Each would need building against and both suites run; see
   `docs/PORTING.md` and `supported-versions.json`.
-- Supporting React Native 0.81, which is what kino pins, needs three separate
-  things: `RN$TurboInterop` so any native module resolves, a Hermes whose CMake
-  names its target `hermes` rather than `hermesvm`, and then Expo's native
-  runtime before kino itself would start. It is a decision, not a bug.
+- Supporting React Native 0.81, which is what kino pins, needed three separate
+  things. **The first is done.** `core/TurboModuleProxy.h` installs
+  `globalThis.__turboModuleProxy` as an alias for `nativeModuleProxy[name]`, so
+  `TurboModuleRegistry`'s first question is answerable and the gated fallback is
+  never reached. Verified against 0.81's own JavaScript rather than by reading
+  it: kino's unmodified bundle, with no flag prepended, no longer fails at
+  `getEnforcing('Networking')` and reaches `Running "main"`. The gate is in the
+  JavaScript, so a bundle built from 0.81 tests 0.81 whatever the host was built
+  against.
+
+  Two left: a Hermes whose CMake names its target `hermes` rather than
+  `hermesvm`, and Expo's native runtime. Still a decision rather than a bug, but
+  the one that blocked everything else has gone.
 - **CI checks one React Native per run.** It pins 0.87.1, and `main` moved to
   the weekly drift job, which does not block. So a regression that only affects
   `main` can wait up to a week. Building both on every run would be the fix and

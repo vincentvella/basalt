@@ -3301,6 +3301,64 @@ def test_drop_target(bundle: Path) -> None:
         raise Failure("the inner target was told about a drop outside it")
 
 
+def test_turbomodule_proxy(bundle: Path) -> None:
+    """That `globalThis.__turboModuleProxy` exists and answers for both sides.
+
+    A bridgeless runtime does not get one: `TurboModuleBinding::install` gives
+    `__turboModuleProxy` to a non-bridgeless runtime and `nativeModuleProxy` to
+    this one, so every lookup arrives by `TurboModuleRegistry`'s second question.
+    That is fine on the React Native this is built against, where the fallback is
+    unconditional, and fatal on 0.82 and earlier, where it is gated behind three
+    flags that are all false here -- every `getEnforcing` fails, starting with
+    `PlatformConstants`, and an app cannot start without prepending a flag to its
+    own bundle. See core/TurboModuleProxy.h.
+
+    **The assertion that matters is `PlatformConstants`, not `BasaltWindows`.**
+    The proxy is an alias for `nativeModuleProxy[name]` rather than a provider of
+    this platform's own making, and the difference only shows on a name React
+    Native provides: a provider of our own would answer null for that, and on the
+    versions this exists for a null from the proxy does not fall through. So it
+    would have failed exactly where it was needed while passing any test that only
+    asked about our modules.
+
+    And an unknown name must come back empty rather than throw, because
+    `TurboModuleRegistry.get` is allowed to return null and callers rely on it --
+    every optional module is found that way.
+    """
+    app = bundle_app(bundle.parent, "turbomodules")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "4000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
+        env.pop(name, None)
+
+    result = subprocess.run(
+        [str(HOST), str(app), "BasaltTurboModules"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    logged = result.stdout + result.stderr
+
+    for needle, why in (
+        ("turbo proxy: function",
+         "__turboModuleProxy was not installed, so TurboModuleRegistry's first "
+         "question is unanswerable and every lookup depends on the fallback"),
+        ("turbo proxy BasaltWindows: found",
+         "the proxy did not answer for a module this platform provides"),
+        ("turbo proxy PlatformConstants: found",
+         "the proxy did not answer for a module React Native provides, which is "
+         "what an alias for nativeModuleProxy is for -- a provider of our own "
+         "would fail here, and this is the half that matters on 0.82 and earlier"),
+        ("turbo proxy unknown name: null",
+         "an unknown name did not come back empty; TurboModuleRegistry.get is "
+         "allowed to return null and every optional module is found that way"),
+    ):
+        if needle not in logged:
+            raise Failure(f"{why}.\nexpected {needle!r} in:\n{tail_text(logged)}")
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -3598,6 +3656,8 @@ SCENARIOS = [
      test_windows),
     ("a window can refuse to close, and say so", test_window_close_request),
     ("a dropped file reaches the view under it", test_drop_target),
+    ("__turboModuleProxy answers for this platform and for React Native",
+     test_turbomodule_proxy),
     ("the desktop says what displays it has", test_displays),
     ("an application can refuse to quit, and then agree", test_quit_request),
     ("DevTools' overlay draws a highlight, and a trace update takes itself down",

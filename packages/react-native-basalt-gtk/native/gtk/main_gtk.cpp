@@ -73,6 +73,7 @@
 #include "UIManagerAccess.h"
 #include "WorkletsModule.h"
 #include "ExpoRuntime.h"
+#include "TurboModuleProxy.h"
 #include "PlatformConstantsModule.h"
 #include "SourceCodeModule.h"
 #include "StatusBarModule.h"
@@ -906,6 +907,10 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
 // Runs against the JavaScript runtime before the bundle is evaluated, which is
 // the only moment early enough for what goes in here.
 void installBindings(facebook::jsi::Runtime &runtime) {
+  // Before Expo's, and before anything else that might look a module up: this is
+  // what makes TurboModuleRegistry's first question answerable on a bridgeless
+  // runtime. See core/TurboModuleProxy.h.
+  basalt::installTurboModuleProxy(runtime);
   basalt::installExpoRuntime(runtime);
 }
 
