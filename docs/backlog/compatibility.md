@@ -27,16 +27,27 @@ Found by bundling and running a real application.
   is verified; installing `__turboModuleProxy` is the better answer and belongs
   upstream in ReactCxxPlatform.
 
-  **"0.87.1 works without any of this" is wrong, and the flag is needed on
-  `main` too.** Measured 2026-09-26 against React Native `main`, bundling
-  `js/skia.js`: without the flag, `getEnforcing('RNSkiaModule')` fails exactly as
-  it does on 0.81; with it, the module resolves and Skia installs. So this is not
-  an old-version curiosity -- **every third-party TurboModule reached through
-  `getEnforcing` needs it**, on every version this supports. React Native's own
-  modules are unaffected because they are asked for differently, which is why
-  nothing noticed. That makes `__turboModuleProxy` the load-bearing upstream item
-  rather than a tidiness one, and it is the single largest gap between this
-  platform and "install the package and it works".
+  0.87.1 works without any of this, so the supported range starts there; see
+  `docs/PORTING.md`. Extending it downwards means testing each version, not just
+  setting the flag.
+
+  This entry briefly claimed the flag was needed on `main` too, on the strength
+  of `getEnforcing('RNSkiaModule')` failing without it and succeeding with it
+  while bundling `js/skia.js`. That was wrong and the reasoning was bad: the two
+  runs differed in another way as well -- React was not yet pinned, so Skia had
+  its own copy -- and once it was pinned the bundle works **with or without the
+  flag**. `TurboInterop` does not appear anywhere in this React Native, so the
+  flag had no referent and could not have been what changed. Two variables, one
+  conclusion, and the wrong one.
+
+  Why it works here without any of it: `TurboModuleBinding::install` installs
+  `__turboModuleProxy` only when `RN$Bridgeless` is absent, and installs
+  `nativeModuleProxy` otherwise. This platform is bridgeless, so it gets the
+  second, and `TurboModuleRegistry` reaches it through the ungated
+  `NativeModules[name]` fallback. That is upstream's design rather than a gap.
+  What 0.82 and earlier gate is that fallback, which is what the paragraph above
+  is about and why installing `__turboModuleProxy` ourselves would help *there*
+  -- path one would succeed and the gate would never be reached.
 - React Native 0.83 through 0.86 are refused rather than untested-but-allowed.
   Each would need building against and both suites run; see
   `docs/PORTING.md` and `supported-versions.json`.
