@@ -1421,6 +1421,15 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
 }
 
 - (void)keyDown:(NSEvent *)event {
+  // An app's own declared shortcuts first, before activation and before Tab.
+  //
+  // Deliberately first: an app that binds Enter or Tab means it, and a platform
+  // default that won over an explicit declaration would be impossible to
+  // override. The cost is that binding Tab breaks focus movement inside that
+  // view, which is the app's business and is what a browser does too.
+  if ([[self rnFocusHandlerForTree] rnView:self handlesKey:event]) {
+    return;
+  }
   // Return, enter and space, which are the two keys that activate a control on
   // every desktop and in the browser. Anything else goes on, so a view with
   // focus does not swallow the window's own shortcuts.

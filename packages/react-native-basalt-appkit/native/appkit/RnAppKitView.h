@@ -70,6 +70,13 @@ NS_ASSUME_NONNULL_BEGIN
 // Tab and Shift-Tab. AppKit's own key-view loop cannot do this for a window
 // built without a nib; see AppKitFocus.h.
 - (BOOL)rnMoveFocusForward:(BOOL)forward;
+// A key a view declared through `<KeyHandler>`. Returns YES if some view in the
+// focus path claimed it, in which case the key is consumed; NO passes it on, and
+// passing it on is what keeps the menu, a focused text field and a scrolling
+// ancestor working. Asked through this protocol and not answered here because the
+// registry is in core, which the view library does not link. See
+// core/KeyEvents.h.
+- (BOOL)rnView:(RnAppKitView *)view handlesKey:(NSEvent *)event;
 @end
 
 // Where a scrolling view sends the wheel.

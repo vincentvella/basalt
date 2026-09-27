@@ -2,6 +2,11 @@
 
 #import "AppKitTextPeer.h"
 
+#import "AppKitKeyEvents.h"
+
+#include <optional>
+#include <vector>
+
 #include <folly/dynamic.h>
 
 #include <react/renderer/components/view/ViewEventEmitter.h>
@@ -29,6 +34,10 @@
 
 - (BOOL)rnMoveFocusForward:(BOOL)forward {
   return _manager != nullptr && _manager->moveFocus(forward) ? YES : NO;
+}
+
+- (BOOL)rnView:(RnAppKitView *)view handlesKey:(NSEvent *)event {
+  return _manager != nullptr && _manager->handleKey(view, event) ? YES : NO;
 }
 
 @end
@@ -94,6 +103,41 @@ void AppKitFocusManager::emitFocus(Tag tag, bool focused) {
 
 bool AppKitFocusManager::activate(RnAppKitView *view) {
   return dispatchClick(static_cast<Tag>(view.rnTag));
+}
+
+bool AppKitFocusManager::handleKey(RnAppKitView *view, NSEvent *event) {
+  // Cheap first: almost every app declares no keys at all, and every one of them
+  // presses some. Without this the walk below runs on every keystroke in every
+  // text field in every app that never asked for a shortcut.
+  if (handledKeyViewCount() == 0) {
+    return false;
+  }
+
+  const std::optional<KeyCombination> pressed = keyCombinationFrom(event);
+  if (!pressed.has_value()) {
+    // A bare modifier or a dead key. Nothing to match and nothing to consume.
+    return false;
+  }
+
+  // From the first responder outwards, so the innermost claim wins -- the order
+  // core/KeyEvents.h's `handledBy` expects. Only RnAppKitViews, because only they
+  // have a React tag; a scroll view's clip view in between is not a step in the
+  // React tree.
+  std::vector<Tag> path;
+  for (NSView *current = view; current != nil; current = current.superview) {
+    if ([current isKindOfClass:[RnAppKitView class]]) {
+      path.push_back(static_cast<Tag>(((RnAppKitView *)current).rnTag));
+    }
+  }
+
+  const std::optional<Tag> handler = handledBy(path, *pressed);
+  if (!handler.has_value()) {
+    return false;
+  }
+  // Decided. Reporting is asynchronous from here -- it crosses to the JavaScript
+  // thread -- which is why the answer could not have come from there.
+  reportKey(*handler, *pressed);
+  return true;
 }
 
 bool AppKitFocusManager::activateFocused() {

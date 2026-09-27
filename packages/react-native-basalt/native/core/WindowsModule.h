@@ -53,6 +53,14 @@ class DesktopWindowsModule : public facebook::react::TurboModule {
                                              facebook::react::TurboModule &module,
                                              const facebook::jsi::Value *args,
                                              size_t count);
+  static facebook::jsi::Value setHandledKeys(facebook::jsi::Runtime &runtime,
+                                             facebook::react::TurboModule &module,
+                                             const facebook::jsi::Value *args,
+                                             size_t count);
+  static facebook::jsi::Value clearHandledKeys(facebook::jsi::Runtime &runtime,
+                                               facebook::react::TurboModule &module,
+                                               const facebook::jsi::Value *args,
+                                               size_t count);
 
   // `getDisplays()` -- every display, primary first. Synchronous, off the
   // cache the host keeps up to date; see core/WindowControl.h.
@@ -111,5 +119,11 @@ inline constexpr const char *kDisplaysChangedEvent = "basaltDisplaysChanged";
 // target. Carries the tag, the phase, the position and -- on a drop only --
 // what was dropped. See core/DragAndDrop.h.
 inline constexpr const char *kDropEvent = "basaltDrop";
+
+// A key combination a view declared through `<KeyHandler>`. Carries the tag and
+// the combination, and arrives only for combinations some view claimed -- the
+// host has already decided that, synchronously, because it had to consume the key
+// or pass it on before this could be sent. See core/KeyEvents.h.
+inline constexpr const char *kKeyEvent = "basaltKey";
 
 } // namespace basalt

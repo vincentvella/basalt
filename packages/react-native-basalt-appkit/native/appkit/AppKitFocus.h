@@ -65,6 +65,13 @@ class AppKitFocusManager {
   // Activates whatever has focus, as Enter or space does.
   bool activateFocused();
 
+  // A key press arriving at `view`, which is the first responder. Answers whether
+  // some view from there outwards declared this combination -- and reports it to
+  // JavaScript when one did. The answer has to come back in this call stack,
+  // because the caller consumes the key or passes it on by it; see
+  // core/KeyEvents.h.
+  bool handleKey(RnAppKitView *view, NSEvent *event);
+
   // The tag of the focused view, or 0. For tests and for automation.
   facebook::react::Tag focusedTag() const {
     return focusedTag_;

@@ -1,5 +1,7 @@
 #include "WindowsModule.h"
 
+#include "KeyEvents.h"
+
 #include "PlatformServices.h"
 #include "DragAndDrop.h"
 #include "WindowControl.h"
@@ -18,6 +20,7 @@ namespace {
 
 using facebook::jsi::Array;
 using facebook::jsi::Object;
+using facebook::react::Tag;
 using facebook::jsi::Runtime;
 using facebook::jsi::String;
 using facebook::jsi::Value;
@@ -45,6 +48,12 @@ DesktopWindowsModule::DesktopWindowsModule(std::shared_ptr<facebook::react::Call
   methodMap_["quit"] = MethodMetadata{0, quit};
   methodMap_["getDisplays"] = MethodMetadata{0, getDisplays};
   methodMap_["getPointerPosition"] = MethodMetadata{0, getPointerPosition};
+  // Which keys a view handles. Two arguments rather than a props diff, because a
+  // <View> has nowhere in its C++ props for a list of combinations and a
+  // callback; see src/KeyHandler.tsx for why that rules out the nativeID idiom
+  // <DropTarget> uses.
+  methodMap_["setHandledKeys"] = MethodMetadata{2, setHandledKeys};
+  methodMap_["clearHandledKeys"] = MethodMetadata{1, clearHandledKeys};
   // What a NativeEventEmitter over this module calls; the event goes out as a
   // device event either way.
   methodMap_["addListener"] = MethodMetadata{1, noop};
@@ -80,6 +89,19 @@ DesktopWindowsModule::DesktopWindowsModule(std::shared_ptr<facebook::react::Call
   });
 
   // Something dragged onto a view that said it would take one.
+  setKeyListener([this](Tag tag, const KeyCombination &pressed) {
+    emitDeviceEvent(kKeyEvent, [tag, pressed](Runtime &runtime, std::vector<Value> &args) {
+      Object payload(runtime);
+      payload.setProperty(runtime, "tag", Value(static_cast<int>(tag)));
+      payload.setProperty(runtime, "key",
+                          String::createFromUtf8(runtime, pressed.key));
+      payload.setProperty(runtime, "altKey", Value(pressed.modifiers.alt));
+      payload.setProperty(runtime, "ctrlKey", Value(pressed.modifiers.ctrl));
+      payload.setProperty(runtime, "metaKey", Value(pressed.modifiers.meta));
+      payload.setProperty(runtime, "shiftKey", Value(pressed.modifiers.shift));
+      args.emplace_back(runtime, payload);
+    });
+  });
   setDropListener([this](const DropEvent &drop) {
     emitDeviceEvent(kDropEvent, [drop](Runtime &runtime, std::vector<Value> &args) {
       Object payload(runtime);
@@ -122,6 +144,7 @@ DesktopWindowsModule::~DesktopWindowsModule() {
   setHostWindowCloseRequestListener(nullptr);
   setHostQuitRequestListener(nullptr);
   setDisplaysListener(nullptr);
+  setKeyListener(nullptr);
   setDropListener(nullptr);
 }
 
@@ -176,6 +199,62 @@ Value DesktopWindowsModule::close(Runtime & /*runtime*/,
   if (count >= 1 && args[0].isNumber()) {
     const auto surfaceId = static_cast<facebook::react::SurfaceId>(args[0].asNumber());
     postToUiThread([surfaceId] { closeHostWindow(surfaceId); });
+  }
+  return Value::undefined();
+}
+
+Value DesktopWindowsModule::setHandledKeys(Runtime &runtime,
+                                           TurboModule & /*module*/,
+                                           const Value *args,
+                                           size_t count) {
+  if (count < 2 || !args[0].isNumber() || !args[1].isObject()) {
+    return Value::undefined();
+  }
+  const auto tag = static_cast<Tag>(args[0].asNumber());
+  Object list = args[1].getObject(runtime);
+  if (!list.isArray(runtime)) {
+    return Value::undefined();
+  }
+  Array combinations = list.getArray(runtime);
+  const size_t length = combinations.length(runtime);
+
+  std::vector<KeyCombination> claimed;
+  claimed.reserve(length);
+  for (size_t i = 0; i < length; i++) {
+    Value entry = combinations.getValueAtIndex(runtime, i);
+    if (!entry.isObject()) {
+      continue;
+    }
+    Object combination = entry.getObject(runtime);
+    Value key = combination.getProperty(runtime, "key");
+    if (!key.isString()) {
+      // A combination with no key is not one. Skipped rather than refused: an
+      // app rebuilding its list should not lose the rest of it to one bad entry.
+      continue;
+    }
+    const auto flag = [&](const char *name) {
+      Value value = combination.getProperty(runtime, name);
+      return value.isBool() && value.getBool();
+    };
+    claimed.push_back(KeyCombination{
+        key.getString(runtime).utf8(runtime),
+        KeyModifiers{flag("altKey"), flag("ctrlKey"), flag("metaKey"), flag("shiftKey")}});
+  }
+
+  // No hop, for the reason interceptClose gives: this is read on the UI thread
+  // inside a key handler that cannot wait for the JavaScript thread, and it is a
+  // vector behind a mutex rather than a toolkit call. Setting it late costs one
+  // keystroke that was not claimed.
+  basalt::setHandledKeys(tag, std::move(claimed));
+  return Value::undefined();
+}
+
+Value DesktopWindowsModule::clearHandledKeys(Runtime & /*runtime*/,
+                                             TurboModule & /*module*/,
+                                             const Value *args,
+                                             size_t count) {
+  if (count >= 1 && args[0].isNumber()) {
+    basalt::clearHandledKeys(static_cast<Tag>(args[0].asNumber()));
   }
   return Value::undefined();
 }
