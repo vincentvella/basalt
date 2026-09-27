@@ -2,11 +2,14 @@
 
 ## 1. The shared decision
 
-- [ ] `core/KeyEvents.h`: W3C key names, a modifier set, and a combination
-- [ ] A registry keyed by tag: which view claims which combinations
-- [ ] `handles(tag, event)` -- the synchronous question every host asks
-- [ ] Unit tests: name mapping, modifier equality, a claim that does not match,
-      a registry entry replaced rather than duplicated
+- [x] `core/KeyEvents.h`: W3C key names, a modifier set, and a combination
+- [x] A registry keyed by tag: which view claims which combinations
+- [x] `handlesKey(tag, event)` and `handledBy(path, event)` -- the synchronous
+      question every host asks, and the innermost-wins walk that answers it
+- [x] Unit tests: nine, including a claim that does not match on a modifier the
+      app did not ask for (Shift+Cmd+Z must not fire Cmd+Z), the innermost claim
+      winning, a view outside the focus path not being asked, and a declaration
+      replacing rather than merging. Verified to fail by merging instead
 
 ## 2. The hosts
 

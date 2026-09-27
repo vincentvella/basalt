@@ -54,6 +54,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_drag_and_drop.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quit_file.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settle.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_key_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_bounds.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_indicator.cpp
@@ -240,6 +241,8 @@ if(DEFINED RN_DIR)
     # globalThis.__turboModuleProxy, which a bridgeless runtime does not get; see
     # the header.
     core/TurboModuleProxy.cpp
+    # Which view claims which key; see the header.
+    core/KeyEvents.cpp
     core/StatusBarModule.cpp
     core/ReanimatedModule.cpp
     core/UIManagerAccess.cpp
