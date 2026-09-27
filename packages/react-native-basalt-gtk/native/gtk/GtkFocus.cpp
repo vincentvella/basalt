@@ -1,5 +1,10 @@
 #include "GtkFocus.h"
 
+#include "GtkKeyEvents.h"
+
+#include <optional>
+#include <vector>
+
 #include <folly/dynamic.h>
 
 #include <react/renderer/core/EventEmitter.h>
@@ -146,9 +151,16 @@ Tag GtkFocusManager::focusedTag() const {
 gboolean GtkFocusManager::onKeyPressed(GtkEventControllerKey * /*controller*/,
                                        guint keyval,
                                        guint /*keycode*/,
-                                       GdkModifierType /*state*/,
+                                       GdkModifierType state,
                                        gpointer userData) {
   auto *self = static_cast<GtkFocusManager *>(userData);
+
+  // An app's own declared shortcuts first, before Escape and before activation,
+  // for the reason the AppKit host gives: an app that binds Escape means it, and
+  // a platform default that beat an explicit declaration could not be overridden.
+  if (self->handleKey(keyval, state)) {
+    return GDK_EVENT_STOP;
+  }
 
   // Escape closes the topmost <Modal> -- or rather, asks the app to. React
   // Native's `onRequestClose` is documented as the hardware back button on
@@ -165,6 +177,36 @@ gboolean GtkFocusManager::onKeyPressed(GtkEventControllerKey * /*controller*/,
     return GDK_EVENT_PROPAGATE;
   }
   return self->activateFocused() ? GDK_EVENT_STOP : GDK_EVENT_PROPAGATE;
+}
+
+bool GtkFocusManager::handleKey(guint keyval, GdkModifierType state) {
+  // Almost every app claims nothing and presses plenty; without this the walk
+  // below would run on every keystroke in every text field.
+  if (handledKeyViewCount() == 0) {
+    return false;
+  }
+  const std::optional<KeyCombination> pressed = keyCombinationFrom(keyval, state);
+  if (!pressed.has_value()) {
+    return false;
+  }
+
+  // From the focused widget outwards, so the innermost claim wins. Only RnViews,
+  // because only they carry a React tag -- the box a scrolled window puts in
+  // between is not a step in the React tree.
+  std::vector<Tag> path;
+  for (GtkWidget *widget = gtk_window_get_focus(window_); widget != nullptr;
+       widget = gtk_widget_get_parent(widget)) {
+    if (RN_IS_VIEW(widget)) {
+      path.push_back(static_cast<Tag>(rn_view_get_tag(RN_VIEW(widget))));
+    }
+  }
+
+  const std::optional<Tag> handler = handledBy(path, *pressed);
+  if (!handler.has_value()) {
+    return false;
+  }
+  reportKey(*handler, *pressed);
+  return true;
 }
 
 bool GtkFocusManager::activateFocused() {

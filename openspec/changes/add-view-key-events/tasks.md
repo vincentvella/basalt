@@ -22,7 +22,11 @@
       than `charactersIgnoringModifiers` so Shift+A is "A", the letter rather
       than the control character for Ctrl+A, the private-use arrows, back-tab as
       Tab plus shift, and a bare modifier as no combination at all
-- [ ] GTK: the `key-pressed` handler returns whether it claimed the key
+- [x] GTK: the `key-pressed` handler asks first and returns `GDK_EVENT_STOP` when
+      a view claimed the key. `GtkKeyEvents`, ten tests mirroring AppKit's,
+      because the two must agree -- an app binding "ArrowLeft" or metaKey has to
+      get the same key on both. Super is meta, not GDK_META_MASK, which is a
+      different key on X11 that almost no keyboard has
 - [ ] Win32: `WM_KEYDOWN`, and `DefWindowProc` for anything unclaimed
 - [ ] The focus path: a claim is honoured for the focused view and its ancestors,
       and a focused `<TextInput>` keeps its keys

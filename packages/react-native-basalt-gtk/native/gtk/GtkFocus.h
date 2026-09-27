@@ -69,6 +69,12 @@ class GtkFocusManager {
   // The tag of the focused view, or 0. For tests and for the tree dump.
   facebook::react::Tag focusedTag() const;
 
+  // A key press. Answers whether some view from the focused one outwards declared
+  // this combination, and reports it when one did. The answer comes back in this
+  // call stack because `key-pressed` consumes or propagates by it; see
+  // core/KeyEvents.h.
+  bool handleKey(guint keyval, GdkModifierType state);
+
  private:
   static gboolean onKeyPressed(GtkEventControllerKey *controller,
                                guint keyval,
