@@ -33,35 +33,15 @@
  * mode that trade brings -- silently stopping after a re-render -- is what
  * `keys` being in the effect's dependencies is for, and what a scenario asserts.
  */
-import React, {useEffect, useRef} from 'react';
-import {
-  DeviceEventEmitter,
-  TurboModuleRegistry,
-  View,
-  type ViewProps,
-} from 'react-native';
+import React, {useRef} from 'react';
+import {View, type ViewProps} from 'react-native';
 
-const KEY_EVENT = 'basaltKey';
+// The registering and the listening are in a hook, because the `View` override
+// does the same thing for `keyDownEvents` and two copies would drift.
+import type {HandledKey, PressedKey} from './useHandledKeys';
+import {useHandledKeys} from './useHandledKeys';
 
-// Constructed at import, not called at import. Its constructor is what registers
-// the host-side listener, and without that no key ever reaches JavaScript --
-// which is the same trap `<DropTarget>` documents and hit first.
-const windows = TurboModuleRegistry.get('BasaltWindows') as unknown as {
-  setHandledKeys(tag: number, keys: ReadonlyArray<HandledKey>): void;
-  clearHandledKeys(tag: number): void;
-} | null;
-
-/** A combination a view claims. Modifiers left out are required to be absent. */
-export interface HandledKey {
-  key: string;
-  altKey?: boolean;
-  ctrlKey?: boolean;
-  metaKey?: boolean;
-  shiftKey?: boolean;
-}
-
-/** What a press reports. The same shape, which is why they compare directly. */
-export type PressedKey = HandledKey;
+export type {HandledKey, PressedKey} from './useHandledKeys';
 
 export type KeyHandlerProps = ViewProps & {
   /** The combinations this view handles. Anything else passes through. */
@@ -88,51 +68,7 @@ export function KeyHandler({
   ...viewProps
 }: KeyHandlerProps): React.ReactElement {
   const ref = useRef<React.ComponentRef<typeof View> | null>(null);
-  // The handler in a ref, so changing it does not re-register the keys: the
-  // native side only needs the list, and re-registering on every render that
-  // makes a new closure would be churn for nothing.
-  const handler = useRef(onKeyDown);
-  handler.current = onKeyDown;
-
-  useEffect(() => {
-    // `__nativeTag`, with two underscores: that is the new renderer's name for
-    // it, and `_nativeTag` is undefined there. `<DropTarget>` learned the same.
-    const tag = (ref.current as unknown as {__nativeTag?: number} | null)
-      ?.__nativeTag;
-    if (tag == null || windows == null) {
-      return;
-    }
-    windows.setHandledKeys(tag, keys);
-    return () => windows.clearHandledKeys(tag);
-    // `keys` by identity: an app that rebuilds its list every render will
-    // re-register every render, which is correct and cheap. One that memoises
-    // will not.
-  }, [keys]);
-
-  useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener(
-      KEY_EVENT,
-      (event: PressedKey & {tag?: number}) => {
-        const tag = (ref.current as unknown as {__nativeTag?: number} | null)
-          ?.__nativeTag;
-        // By tag, because every `<KeyHandler>` in the app hears every event: the
-        // emitter is one channel and the host has already chosen which view the
-        // key belongs to.
-        if (tag == null || event.tag !== tag) {
-          return;
-        }
-        handler.current?.({
-          key: event.key,
-          altKey: event.altKey,
-          ctrlKey: event.ctrlKey,
-          metaKey: event.metaKey,
-          shiftKey: event.shiftKey,
-        });
-      },
-    );
-    return () => subscription.remove();
-  }, []);
-
+  useHandledKeys(ref, keys, onKeyDown);
   return (
     <View ref={ref} focusable={focusOnMount} {...viewProps}>
       {children}

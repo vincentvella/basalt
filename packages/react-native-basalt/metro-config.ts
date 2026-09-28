@@ -269,6 +269,15 @@ export const PLATFORM_OVERRIDES: ReadonlyArray<OverrideEntry> = [
     path.join(OVERRIDE_DIR, 'ScrollView.js'),
   ],
   [
+    // Not a shim either: React Native's own View, with the keyboard props
+    // react-native-macos has. An app that declares a shortcut the way that
+    // platform does has them dropped in JavaScript otherwise, silently. See the
+    // override's header, including why a view without them renders upstream's
+    // directly rather than paying for hooks it does not use.
+    path.join('Libraries', 'Components', 'View', 'View.js'),
+    path.join(OVERRIDE_DIR, 'View.js'),
+  ],
+  [
     // Also not a shim. `fetch` is broken on this platform without it: every
     // request asks for a blob response, which ReactCxxPlatform's
     // NetworkingModule cannot produce, so the response getter throws before

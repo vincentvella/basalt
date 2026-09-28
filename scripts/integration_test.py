@@ -2059,6 +2059,68 @@ def test_notifications(bundle: Path) -> None:
         raise Failure("an unimplemented method neither answered nor reported itself")
 
 
+def test_macos_key_props(bundle: Path) -> None:
+    """An app declares a shortcut the way react-native-macos does, and it fires.
+
+    `keyDownEvents`, `onKeyDown` and `focusable` spread onto a plain <View>, with
+    nothing from this package in the app -- which is the point. react-native-macos
+    is what a desktop React Native app is most likely already written against,
+    and an app that has to be rewritten to run here is an app this platform did
+    not replace.
+
+    The other spelling, `<KeyHandler>`, has its own scenario. Both go through one
+    implementation; see src/useHandledKeys.ts.
+
+    The callback is asserted to receive `{nativeEvent}`, which is that platform's
+    shape: an app reading `event.nativeEvent.key` would see undefined otherwise,
+    and undefined is exactly what a dropped prop looks like from the app's side.
+    """
+    app = bundle_app(bundle.parent, "macoskeys")
+    host = packaged_host(bundle.parent)
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "9000"
+    # A letter, a space and a combination: the three shapes a binding takes, and
+    # the space is the one a naive parser loses.
+    env["BASALT_TEST_KEY"] = "j; ;z+meta"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = subprocess.run(
+            [str(host), str(app), "BasaltMacosKeys"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
+        )
+        tree = dump.read_text() if dump.exists() else ""
+
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    both = result.stdout + result.stderr
+
+    pressed = [line.split("macoskeys: down ", 1)[1].strip()
+               for line in both.splitlines() if "macoskeys: down " in line]
+    if not pressed:
+        raise Failure(
+            "no key reached the app, so `keyDownEvents` on a plain <View> did "
+            f"nothing -- which is the failure this scenario exists for.\n{tail_text(both, 30)}"
+        )
+    if not any(entry.startswith('"j"') for entry in pressed):
+        raise Failure(f"a letter binding did not fire: {pressed}")
+    if not any(entry.startswith('" "') for entry in pressed):
+        raise Failure(f"a space binding did not fire: {pressed}")
+    if not any("meta=true" in entry for entry in pressed):
+        raise Failure(f"a combination did not fire with its modifier: {pressed}")
+
+    # And that the app's own state moved, not only that a callback ran: the
+    # handler reads `event.nativeEvent.key`, so a wrong payload shape shows up
+    # here as the word "undefined".
+    if 'pressed: j, ,z' not in tree and 'pressed: j,' not in tree:
+        raise Failure(f"the app did not record the presses it was given:\n{tail_text(tree, 20)}")
+
+
 def test_subprocess(bundle: Path) -> None:
     """A capability package's TurboModule runs a command and reports it.
 
@@ -3875,6 +3937,7 @@ SCENARIOS = [
     ("Alert.alert shows a dialog and says which button was pressed", test_alert),
     ("Share.share reaches the platform and settles both ways", test_share),
     ("expo-notifications imports and answers on every desktop", test_notifications),
+    ("react-native-macos's keyboard props work on a plain View", test_macos_key_props),
     ("a command runs, and its output and exit reach JavaScript", test_subprocess),
     ("an Expo app's fetch works rather than naming a module it has not got", test_expo_fetch),
     ("ActivityIndicator, Switch, Modal and RefreshControl mount and answer",
