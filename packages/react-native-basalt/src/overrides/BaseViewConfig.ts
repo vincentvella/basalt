@@ -43,7 +43,16 @@
 // accessibility role and whose fields cannot be focused -- which is how it was
 // found.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const upstream: any = require('react-native/Libraries/NativeComponent/BaseViewConfig.android');
+//
+// Through this package's own upstream prefix rather than by React Native's
+// package path. Both reach the same file -- metro-config.ts turns the prefix
+// into an absolute path -- but the literal specifier is a deep import into
+// another package's internals, and React Native warns about those by name. That
+// warning opened LogBox in front of every app on start-up, for a file the app
+// did not write and cannot change, which is the whole of the reason the prefix
+// exists. The other overrides in this directory already use it; this one was
+// missed.
+const upstream: any = require('react-native-basalt/upstream/Libraries/NativeComponent/BaseViewConfig.android');
 const BaseViewConfig = upstream.default ?? upstream;
 
 export default {

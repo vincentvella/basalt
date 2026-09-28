@@ -57,18 +57,27 @@ const readResponseBody = createResponseBodyReader();
 let warnedAboutUnencodedBodies = false;
 
 /**
- * Said once, because it is a property of the build rather than of a request.
+ * Said once, in the log, because it is a property of the build rather than of a
+ * request.
  *
- * A text body is still correct -- that is the common case and why this is a
- * warning rather than an error -- but a binary one crossed into JavaScript as a
- * string and cannot be recovered here.
+ * **Not `console.warn`**, which is what this was: a warning opens LogBox, and
+ * LogBox is for something the person can do something about. Every app on a
+ * React Native at or below 0.86 hits this on its first blob response -- which is
+ * every `fetch(...).json()` -- so it appeared on start-up, in front of the app,
+ * for a fact about ReactCxxPlatform that no app can change. That is the thing
+ * core/BlobModule.cpp declines to do two files away: "a warning every app sees
+ * and nobody can act on is noise."
+ *
+ * Still said, because it is not nothing: a developer whose downloaded image is
+ * corrupt needs this sentence, and the log is where they will be looking. A text
+ * body -- the common case -- is unaffected either way.
  */
 function warnOnceAboutUnencodedBodies(): void {
   if (warnedAboutUnencodedBodies) {
     return;
   }
   warnedAboutUnencodedBodies = true;
-  console.warn(
+  console.log(
     "basalt: this React Native's ReactCxxPlatform delivers response bodies " +
       'unencoded even when base64 was asked for, so a binary body read through ' +
       '`.blob()` or `.arrayBuffer()` will be damaged. Text bodies, including ' +
