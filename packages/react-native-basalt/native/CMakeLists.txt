@@ -55,6 +55,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quit_file.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settle.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_key_events.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_js_runtime_access.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_bounds.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_indicator.cpp
@@ -219,6 +220,9 @@ if(DEFINED RN_DIR)
     core/LogBoxSurface.cpp
     core/ExpoModules.cpp
     core/ExpoRuntime.cpp
+    # The JavaScript thread, for native code that is not a TurboModule and so
+    # was handed no call invoker; see the header.
+    core/JsRuntimeAccess.cpp
     core/HttpClient.cpp
     # The bytes behind an <Image>, which is the half of image loading that is
     # the same on every desktop.

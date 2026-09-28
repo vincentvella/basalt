@@ -328,6 +328,51 @@ export function capabilityPackages(projectRoot: string): string[] {
   return found;
 }
 
+/**
+ * The app's own native modules: `<projectRoot>/modules/*` with a
+ * `native/CMakeLists.txt` in it.
+ *
+ * Expo's autolinking looks in exactly this directory for an app's local modules
+ * -- `expo-module.config.json` there is how `requireNativeModule('KinoProcess')`
+ * finds native code that was never published -- and an app that has written an
+ * iOS half and an Android half of one has nowhere to put the desktop half. A
+ * package would be the alternative, and publishing a package to yourself, so
+ * that one binary can compile a file already sitting in the repo, is not a
+ * reasonable thing to ask.
+ *
+ * **Presence is the declaration**, unlike a capability package, which says so in
+ * its manifest. A local module has no manifest to say it in: `create-expo-module
+ * --local` writes a config, an index and a platform directory, and no
+ * package.json. So the desktop half is declared the way the Apple half is --
+ * by being there -- and `native/CMakeLists.txt` is the name, because that is
+ * already what a host's package loop looks for.
+ *
+ * The rule capabilityPackages exists to keep is kept here for free: this is the
+ * app's own source tree, so nothing gets compiled into the binary that the app
+ * did not write.
+ */
+export function localNativeModules(projectRoot: string): string[] {
+  const modulesDir = path.join(projectRoot, 'modules');
+  let entries;
+  try {
+    entries = fs.readdirSync(modulesDir, {withFileTypes: true});
+  } catch {
+    // No modules directory, which is every app that has not made one.
+    return [];
+  }
+  const found = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+      continue;
+    }
+    const dir = path.join(modulesDir, entry.name);
+    if (fs.existsSync(path.join(dir, 'native', 'CMakeLists.txt'))) {
+      found.push(dir);
+    }
+  }
+  return found;
+}
+
 export function optionalNativeModules(projectRoot: string): ContributedArgs {
   const args = [];
   const notes = [];
@@ -376,10 +421,13 @@ export function optionalNativeModules(projectRoot: string): ContributedArgs {
     );
   }
 
-  // And anything that declares native code in its own manifest. One -D holding
-  // a list, because CMake reads a semicolon-separated value as a list and the
-  // root CMakeLists iterates it.
-  const packages = capabilityPackages(projectRoot);
+  // And anything that declares native code: a dependency that says so in its own
+  // manifest, and a module the app wrote under `modules/`. One -D holding a list,
+  // because CMake reads a semicolon-separated value as a list and the root
+  // CMakeLists iterates it.
+  // And anything the app wrote itself under `modules/`, which is where Expo's
+  // autolinking looks for an app's own native modules.
+  const packages = [...capabilityPackages(projectRoot), ...localNativeModules(projectRoot)];
   if (packages.length > 0) {
     const dirs = packages.map(dir => dir.split(path.sep).join('/'));
     args.push(`-DBASALT_PACKAGES=${dirs.join(';')}`);
@@ -609,10 +657,11 @@ export function monorepoRoot(reactNativePath: string): string | null {
 /**
  * A build failure, with what was in the build.
  *
- * A capability package compiles into the same binary as the platform, so its
- * compiler errors arrive looking exactly like the platform's own -- a path, in
- * a node_modules directory nobody was thinking about. Naming what contributed
- * is the part that cannot be read off the error.
+ * A capability package -- or one of the app's own modules -- compiles into the
+ * same binary as the platform, so its compiler errors arrive looking exactly
+ * like the platform's own: a path, in a node_modules directory nobody was
+ * thinking about. Naming what contributed is the part that cannot be read off
+ * the error.
  *
  * Which package broke it is deliberately not claimed. The build output is
  * streamed rather than captured, because a person watching a twenty-minute
@@ -623,7 +672,7 @@ export function monorepoRoot(reactNativePath: string): string | null {
 export function explainContributedFailure(projectRoot: string, error: Error): Error {
   let contributors: string[] = [];
   try {
-    contributors = capabilityPackages(projectRoot);
+    contributors = [...capabilityPackages(projectRoot), ...localNativeModules(projectRoot)];
   } catch {
     // The packages could not even be listed, which is its own error and not
     // one to raise from inside the handler for a different one.
@@ -636,8 +685,8 @@ export function explainContributedFailure(projectRoot: string, error: Error): Er
   return new Error(
     `${error.message}\n\n` +
       `This host was built with native code from ${contributors.length} ` +
-      `capability package${contributors.length === 1 ? '' : 's'}: ${names}. ` +
-      `A compiler error naming a path inside one of those is that package's ` +
+      `contributor${contributors.length === 1 ? '' : 's'}: ${names}. ` +
+      `A compiler error naming a path inside one of those is that contributor's ` +
       `rather than the platform's.`,
   );
 }

@@ -226,6 +226,59 @@ Object makeFontLoader(Runtime &runtime) {
   return loader;
 }
 
+// `expo/fetch`, which this platform does not have, routed back to the one it
+// does.
+//
+// Expo replaces `globalThis.fetch` with its own WinterCG implementation, built
+// on a native module called `ExpoFetchModule` -- a pair of SharedObject classes
+// with a streaming body between them. There is no port of it here, so the
+// replacement is a lazy getter that throws `Cannot find native module
+// 'ExpoFetchModule'` the first time anything in the app calls `fetch`. That is
+// most apps, immediately, and it is not a failure an app can catch: it happens
+// inside the global it was calling.
+//
+// Expo's own way out is `EXPO_PUBLIC_USE_RN_FETCH`, which leaves React Native's
+// fetch in place -- and React Native's fetch works here, over the same curl
+// client core/HttpClient.cpp gives the rest of the networking stack. So the
+// default is set here rather than asked of every app, because "install basalt
+// and the desktop works" stops being true if each app has to discover this
+// variable from a crash inside `fetch`.
+//
+// **Before the bundle, so that everything downstream agrees.** Metro's prelude
+// opens with `process = globalThis.process || {}` and React Native's
+// setUpGlobals with `global.process = global.process || {}`, both of which keep
+// what is already there. Expo's CLI then defines the app's own `EXPO_PUBLIC_`
+// variables over the top in development, which is the right precedence: a
+// developer who sets this explicitly beats the default. Plain assignment rather
+// than defineProperty for that reason -- a non-configurable property here would
+// make their `Object.defineProperties` throw.
+//
+// What is lost is what `expo/fetch` adds: a streamed response body. React
+// Native's fetch buffers, and an app importing `expo/fetch` directly still gets
+// the error naming the module, which is the honest answer until someone ports
+// it.
+void useReactNativeFetch(facebook::jsi::Runtime &runtime) {
+  namespace jsi = facebook::jsi;
+  static constexpr const char *kVariable = "EXPO_PUBLIC_USE_RN_FETCH";
+
+  jsi::Object global = runtime.global();
+  const jsi::Value processValue = global.getProperty(runtime, "process");
+  jsi::Object process =
+      processValue.isObject() ? processValue.asObject(runtime) : jsi::Object(runtime);
+
+  const jsi::Value envValue = process.getProperty(runtime, "env");
+  jsi::Object env = envValue.isObject() ? envValue.asObject(runtime) : jsi::Object(runtime);
+
+  // Only as a default. Nothing sets this before the bundle today, but something
+  // that did would have meant it.
+  if (env.getProperty(runtime, kVariable).isUndefined()) {
+    env.setProperty(runtime, kVariable, jsi::String::createFromAscii(runtime, "1"));
+  }
+
+  process.setProperty(runtime, "env", std::move(env));
+  global.setProperty(runtime, "process", std::move(process));
+}
+
 } // namespace
 
 void installExpoRuntime(facebook::jsi::Runtime &runtime) {
@@ -277,6 +330,10 @@ void installExpoRuntime(facebook::jsi::Runtime &runtime) {
   jsi::Object core = runtime.global().getPropertyAsObject(runtime, "expo");
   core.setProperty(runtime, "modules", std::move(modules));
   installExpoViewConfigs(runtime, core);
+
+  // Before the bundle evaluates, which is the only moment early enough; see the
+  // function.
+  useReactNativeFetch(runtime);
 
   // `expo.uuidv4`, which expo-modules-core's own `uuid.v4()` calls and throws
   // without: "Native UUID version 4 generator implementation wasn't found in

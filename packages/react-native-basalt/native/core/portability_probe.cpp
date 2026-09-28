@@ -84,6 +84,24 @@ bool openUrl(const std::string &) {
   return false;
 }
 void showAlert(const AlertRequest &, AlertCallback) {}
+// A file dialog and a share sheet, stubbed the same way. Both answer "the person
+// cancelled", which is what a platform that cannot ask them should say.
+//
+// Missing here until a capability package called one. The probe only ever sees
+// the symbols something in core's link closure *references*, and nothing in core
+// reached these two -- the dialog module and the share module are both only
+// reachable from a host. So the seam was one a new port owed and the probe did
+// not say so, which is the one thing this file exists to prevent.
+void showFileDialog(const FileDialogRequest &, FileDialogCallback onDone) {
+  if (onDone) {
+    onDone(true, {});
+  }
+}
+void shareContent(const ShareRequest &, ShareCallback onDone) {
+  if (onDone) {
+    onDone(ShareOutcome::Dismissed, {});
+  }
+}
 // A popup menu, stubbed the same way. Answering -1 is the seam's "dismissed",
 // which is the honest reply from a platform that cannot show one.
 void showMenu(const MenuRequest &, MenuCallback onChosen) {

@@ -1,10 +1,12 @@
 #include "ExpoModules.h"
 
+#include "JsRuntimeAccess.h"
 #include "JsiPromise.h"
 #include "PackageModules.h"
 #include "PlatformServices.h"
 
 #ifdef BASALT_HAS_EXPO
+#include <EventEmitter.h>
 #include <NativeModule.h>
 #endif
 
@@ -314,6 +316,49 @@ void addExpoFunction(Runtime &runtime,
   addFunction(runtime, module, name, argumentCount, std::move(function));
 }
 
+bool emitExpoEvent(const std::string &moduleName,
+                   const std::string &eventName,
+                   std::function<void(Runtime &, std::vector<Value> &)> arguments) {
+  return runOnJsRuntime([moduleName, eventName, arguments = std::move(arguments)](
+                            Runtime &runtime) {
+    // Found by name each time; see the header for why nothing is held.
+    const Value expo = runtime.global().getProperty(runtime, "expo");
+    if (!expo.isObject()) {
+      return;
+    }
+    const Value modules = expo.asObject(runtime).getProperty(runtime, "modules");
+    if (!modules.isObject()) {
+      return;
+    }
+    const Value module =
+        modules.asObject(runtime).getProperty(runtime, moduleName.c_str());
+    if (!module.isObject()) {
+      // Installed later, or never. Not an error: see the header.
+      return;
+    }
+    try {
+      std::vector<Value> args;
+      arguments(runtime, args);
+      // A named lvalue: expo's emitEvent takes `jsi::Object &` in some versions
+      // and `const jsi::Object &` in others, and only an lvalue binds to both.
+      Object emitter = module.asObject(runtime);
+      expo::EventEmitter::emitEvent(runtime, emitter, eventName, args);
+    } catch (const facebook::jsi::JSIException &error) {
+      // A listener that throws is Expo's business -- its emitEvent swallows
+      // those deliberately. This is the payload itself failing to build, or the
+      // module turning out not to be an emitter, and the thread that asked for
+      // the emit is long gone and cannot be told.
+      //
+      // Caught at all because this runs as a scheduler task: an exception let
+      // out here unwinds through the runtime's own loop rather than through
+      // anything that could report it. JSIException rather than JSError, which
+      // is only one of its two halves.
+      LOG(ERROR) << "basalt: emitting " << moduleName << "." << eventName
+                 << " failed: " << error.what();
+    }
+  });
+}
+
 void installExpoModules(Runtime &runtime, Object &modules) {
   modules.setProperty(runtime, "ExpoClipboard", makeClipboardModule(runtime));
   modules.setProperty(runtime, "ExpoImage", makeImageModule(runtime));
@@ -351,6 +396,19 @@ void installExpoModules(facebook::jsi::Runtime & /*runtime*/,
 
 void installExpoViewConfigs(facebook::jsi::Runtime & /*runtime*/,
                             facebook::jsi::Object & /*expo*/) {}
+
+// Unlike expoModule and addExpoFunction above, this one has a no-op: a package's
+// Expo module is compiled only when there is an Expo, but the native half that
+// *reports* -- a subprocess reader, a device watcher -- is portable code with no
+// reason to know whether Expo exists. It emits, and without an Expo nothing is
+// listening, which is already the ordinary case.
+bool emitExpoEvent(
+    const std::string & /*moduleName*/,
+    const std::string & /*eventName*/,
+    std::function<void(facebook::jsi::Runtime &, std::vector<facebook::jsi::Value> &)>
+    /*arguments*/) {
+  return false;
+}
 
 #endif
 

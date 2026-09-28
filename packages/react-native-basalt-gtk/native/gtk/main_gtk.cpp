@@ -71,6 +71,7 @@
 #include "ExpoModules.h"
 #include "GestureHandlerModule.h"
 #include "ReanimatedModule.h"
+#include "JsRuntimeAccess.h"
 #include "UIManagerAccess.h"
 #include "WorkletsModule.h"
 #include "ExpoRuntime.h"
@@ -1358,6 +1359,17 @@ void onActivate(GtkApplication *app, gpointer data) {
             });
       });
 
+  // And how anything in the core reaches the JavaScript thread. An Expo
+  // module is given no call invoker, so this is the only way one can emit an
+  // event or settle a promise later; see core/JsRuntimeAccess.h.
+  basalt::setRuntimeRunner(
+      [host](std::function<void(facebook::jsi::Runtime &)> work) {
+        if (host->reactHost == nullptr) {
+          return;
+        }
+        host->reactHost->runOnRuntimeScheduler(std::move(work));
+      });
+
   // `loadScript` falls back to the on-disk bundle whenever the Metro fetch
   // fails, which is right when nothing is listening and wrong when Metro
   // answered with an error: running the last bundle that built, while the
@@ -1666,6 +1678,8 @@ void onShutdown(GApplication * /*app*/, gpointer data) {
     window->focusManager.reset();
     window->touchDispatcher.reset();
   }
+  // Before the host goes: work posted to a host on its way out must not run.
+  basalt::setRuntimeRunner(nullptr);
   if (host->reactHost != nullptr) {
     // Surfaces must stop before the host goes away, or teardown asserts.
     host->reactHost->stopAllSurfaces();

@@ -2059,6 +2059,95 @@ def test_notifications(bundle: Path) -> None:
         raise Failure("an unimplemented method neither answered nor reported itself")
 
 
+def test_expo_fetch(bundle: Path) -> None:
+    """An Expo app calls `fetch` and gets one that works.
+
+    Expo replaces `globalThis.fetch` with its own WinterCG implementation, on a
+    native module -- `ExpoFetchModule` -- that this platform has no port of. It
+    installs the replacement as a lazy getter, so an app fails at its first call
+    rather than at import, inside the global it was calling and where it cannot
+    catch it. That is what killed kino: the error naming the module, and then a
+    TypeError from the component whose data never arrived.
+
+    So the platform sets expo's own `EXPO_PUBLIC_USE_RN_FETCH` before the bundle
+    runs, which leaves React Native's fetch in place -- and React Native's fetch
+    works here. See native/core/ExpoRuntime.cpp.
+
+    **What this covers is the arrival**, which is the fragile half: the value is
+    written from native before the bundle, and both Metro's prelude and React
+    Native's setUpGlobals keep an existing `process.env` only because they say
+    `|| {}`. A change to either would drop it silently, and this is what would
+    notice.
+
+    It does not cover expo honouring the variable. This app does not import
+    `expo`, and importing it does not help -- this repository's own bundler does
+    not pull expo's winter runtime into a js/ app, so the replacement never runs
+    here. That half was checked by running kino against a real Expo bundle: with
+    the default it boots clean, and without it the first `fetch` dies naming the
+    module.
+
+    Skipped unless BASALT_EXPO_APP names an app, because the behaviour only
+    exists when the host was built against an expo-modules-core; without one
+    there is no Expo runtime and nothing sets the default.
+    """
+    expo_app = os.environ.get("BASALT_EXPO_APP")
+    if not expo_app or not (Path(expo_app) / "node_modules" / "expo").exists():
+        raise Skipped("needs BASALT_EXPO_APP naming an app with expo installed")
+
+    app = bundle_app(bundle.parent, "expofetch")
+    host = packaged_host(bundle.parent)
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "8000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
+        env.pop(name, None)
+
+    result = subprocess.run(
+        [str(host), str(app), "BasaltExpoFetch"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    both = result.stdout + result.stderr
+
+    said = {}
+    for line in both.splitlines():
+        if "fetch: " in line:
+            rest = line.split("fetch: ", 1)[1].strip()
+            key, _, value = rest.partition(" ")
+            said[key] = value
+
+    if said.get("useRnFetch") != "1":
+        raise Failure(
+            "the platform's default for expo's own fetch switch did not reach the "
+            f"bundle: EXPO_PUBLIC_USE_RN_FETCH was {said.get('useRnFetch')!r}. "
+            "Metro's prelude and React Native's setUpGlobals both keep an existing "
+            f"process.env; something replaced it.\n{tail_text(both, 30)}"
+        )
+    if "global" not in said:
+        raise Failure(
+            "reading globalThis.fetch threw, which is the failure this scenario "
+            f"exists for.\n{tail_text(both, 30)}"
+        )
+    if said["global"] != "function":
+        raise Failure(f"globalThis.fetch was {said['global']!r} rather than a function")
+    # Expo brands what it installs. False means React Native's own is what the
+    # app would call. Weak evidence in this bundle, where expo's runtime never
+    # ran anyway -- it is here so that the day the harness does bundle it, this
+    # is already the assertion that catches the regression.
+    if said.get("expo") != "false":
+        raise Failure(
+            f"fetch is expo's ({said.get('expo')!r}), and ExpoFetchModule is not ported"
+        )
+    # And that the call reached something. Connection refused arrives as a
+    # rejected promise; anything else means fetch is present and inert.
+    if "rejected" not in said and "status" not in said:
+        raise Failure(
+            f"fetch neither answered nor rejected, so nothing ran.\n{tail_text(both, 30)}"
+        )
+
+
 def test_controls(bundle: Path) -> None:
     """The four components that are a control rather than a box.
 
@@ -3726,6 +3815,7 @@ SCENARIOS = [
     ("Alert.alert shows a dialog and says which button was pressed", test_alert),
     ("Share.share reaches the platform and settles both ways", test_share),
     ("expo-notifications imports and answers on every desktop", test_notifications),
+    ("an Expo app's fetch works rather than naming a module it has not got", test_expo_fetch),
     ("ActivityIndicator, Switch, Modal and RefreshControl mount and answer",
      test_controls),
     ("the native file dialogs answer with a path, or with a cancel",

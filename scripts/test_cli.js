@@ -672,7 +672,7 @@ test('a failed build names the packages that contributed native code', () => {
   const explained = desktop.explainContributedFailure(root, new Error('cmake --build failed'));
   assert.match(explained.message, /cmake --build failed/, 'the original error survives');
   assert.match(explained.message, /react-native-basalt-notifications/);
-  assert.match(explained.message, /1 capability package:/, 'singular for one');
+  assert.match(explained.message, /1 contributor:/, 'singular for one');
 });
 
 test('a failed build with no contributing packages says nothing extra', () => {
@@ -715,6 +715,81 @@ test('a transitive dependency does not contribute native code on its own', () =>
     },
   );
   assert.deepEqual(desktop.capabilityPackages(root), []);
+});
+
+// --- The app's own native modules -------------------------------------------
+//
+// `<projectRoot>/modules/*` is where Expo's autolinking looks for a module the
+// app wrote and never published. A desktop half there is declared by being
+// there, because a local module has no manifest to declare it in.
+
+function appWithLocalModules(modules) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'basalt-local-modules-'));
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({name: 'an-app'}));
+  for (const [name, files] of Object.entries(modules)) {
+    for (const file of files) {
+      const target = path.join(root, 'modules', name, file);
+      fs.mkdirSync(path.dirname(target), {recursive: true});
+      fs.writeFileSync(target, '# native\n');
+    }
+  }
+  return root;
+}
+
+test("a local module with a native/CMakeLists.txt is the app's own capability", () => {
+  const root = appWithLocalModules({
+    'kino-process': ['expo-module.config.json', 'native/CMakeLists.txt'],
+  });
+  assert.deepEqual(desktop.localNativeModules(root), [
+    path.join(root, 'modules', 'kino-process'),
+  ]);
+});
+
+test('a local module with no desktop half contributes nothing', () => {
+  // The shape every Expo local module starts as: an iOS half, an Android half,
+  // and nothing for a desktop. It must not break the build, and it must not be
+  // claimed as contributing either.
+  const root = appWithLocalModules({
+    'kino-audio': ['expo-module.config.json', 'ios/KinoAudioModule.swift'],
+  });
+  assert.deepEqual(desktop.localNativeModules(root), []);
+});
+
+test('an app with no modules directory is not an error', () => {
+  const root = appWithLocalModules({});
+  assert.deepEqual(desktop.localNativeModules(root), []);
+});
+
+test("the app's own modules are configured alongside its packages", () => {
+  // Both lists reach CMake through the one -D, because the host's loop over
+  // BASALT_PACKAGES does not care which of the two a directory came from.
+  const root = appWithLocalModules({
+    'kino-process': ['native/CMakeLists.txt'],
+    'kino-audio': ['native/CMakeLists.txt'],
+  });
+  const packages = desktop.optionalNativeModules(root).args.filter(arg =>
+    arg.startsWith('-DBASALT_PACKAGES='),
+  );
+  assert.equal(packages.length, 1);
+  // Sorted, so that two machines configure the same build: readdir order is the
+  // filesystem's and CMake compiles in the order it is given.
+  assert.equal(
+    packages[0],
+    `-DBASALT_PACKAGES=${[
+      path.join(root, 'modules', 'kino-audio'),
+      path.join(root, 'modules', 'kino-process'),
+    ]
+      .map(dir => dir.split(path.sep).join('/'))
+      .join(';')}`,
+  );
+});
+
+test("a compiler error names the app's own module as a contributor", () => {
+  // The whole point of the note: an error with `modules/kino-process` in the
+  // path reads exactly like one from the platform itself.
+  const root = appWithLocalModules({'kino-process': ['native/CMakeLists.txt']});
+  const explained = desktop.explainContributedFailure(root, new Error('cmake --build failed'));
+  assert.match(explained.message, /kino-process/);
 });
 
 // --------------------------------------------------------------------------

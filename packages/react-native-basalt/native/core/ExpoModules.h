@@ -29,7 +29,9 @@
 
 #include <jsi/jsi.h>
 
+#include <functional>
 #include <string>
+#include <vector>
 
 namespace basalt {
 
@@ -55,6 +57,35 @@ void addExpoFunction(facebook::jsi::Runtime &runtime,
                      facebook::jsi::HostFunctionType function);
 
 void installExpoModules(facebook::jsi::Runtime &runtime, facebook::jsi::Object &modules);
+
+// Emits an event on an already-installed Expo module, from any thread.
+//
+// This is the other half of `addExpoFunction`: a function is how JavaScript
+// reaches native, and an event is how native reaches JavaScript later. Expo's
+// own `NativeModule` is an `EventEmitter`, so `module.addListener('onOutput', f)`
+// already works from JavaScript the moment the module is installed -- there was
+// simply nothing here that ever emitted.
+//
+// **Named rather than captured.** The module is looked up as
+// `globalThis.expo.modules[moduleName]` at the moment of the emit, rather than
+// the caller holding the `jsi::Object` it built at install time. A held object
+// outlives its runtime across a Fast Refresh reload and destroying it then
+// touches a runtime that is gone; a name survives, and finds the new module
+// installed into the new runtime. So a background thread can hold nothing but
+// two strings, which is all a reader thread should have to be careful about.
+//
+// `arguments` builds the event payload and runs on the JavaScript thread, so it
+// may use `runtime` freely. Everything it needs from the emitting thread it must
+// capture by value.
+//
+// False when there is nothing to emit into: no host left a runtime runner (see
+// JsRuntimeAccess.h), which is the tests and the probe. A module that is not
+// installed, or is installed and has no listeners, is not a failure -- an event
+// nobody is listening to is the normal case, and Expo's emitEvent does nothing.
+bool emitExpoEvent(
+    const std::string &moduleName,
+    const std::string &eventName,
+    std::function<void(facebook::jsi::Runtime &, std::vector<facebook::jsi::Value> &)> arguments);
 
 // Adds `expo.getViewConfig`, which is how expo-modules-core turns an Expo view
 // into a React Native component. Separate from the modules because it goes on

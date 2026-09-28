@@ -628,3 +628,47 @@ is a support problem nobody here wants yet.
 and the CLI scans the app's dependencies for it. Expo, worklets and Reanimated
 keep their hardcoded special cases because they are third-party packages that
 will never carry the key. See `openspec/changes/split-optional-capabilities-into-packages`.
+
+**An app's own module declares itself by being there.** The same mechanism, with
+the declaration dropped: a directory under the app's `modules/` with a
+`native/CMakeLists.txt` is compiled into the host, on the same contract as a
+package. It has no manifest to put a `basalt` key in — `create-expo-module
+--local` writes a config, an index and a platform directory and no package.json —
+so presence is the declaration, the way `ios/` is how the Apple half declares
+itself. `modules/` rather than a name of our own because that is where Expo's
+autolinking already looks, which means an app that has written the Apple half of
+a module has already put the desktop half's home in the right place. The rule the
+dependency scan exists to keep is kept for free: this is the app's own source
+tree, so nothing reaches the binary that the app did not write. See
+`openspec/changes/add-app-native-modules`.
+
+**An Expo app gets React Native's fetch, by default.** Expo replaces
+`globalThis.fetch` with its own WinterCG implementation over a native module,
+`ExpoFetchModule`, which is a pair of SharedObject classes with a streamed body
+between them and is not ported here. The replacement goes in as a lazy getter,
+so an app does not fail at import — it fails at its first call, inside the global
+it was calling, where it cannot catch it. kino died exactly there, and then a
+second time in the component whose data never arrived.
+
+So `installExpoRuntime` sets expo's own `EXPO_PUBLIC_USE_RN_FETCH` before the
+bundle evaluates, and React Native's fetch — which works here, over the same
+curl client as the rest of the networking — stays. The variable rather than a
+patch because it is expo's own documented way out, and the platform rather than
+each app because "install basalt and the desktop works" stops being true if
+every app has to discover this from a crash inside `fetch`. It survives because
+Metro's prelude and React Native's `setUpGlobals` both keep an existing
+`process.env`, and a developer who sets it themselves still wins, which is why it
+is a plain assignment and not a `defineProperty`. What is given up is a streamed
+response body, and an app importing `expo/fetch` directly still gets the error
+naming the module — which is the honest answer until someone ports it.
+
+**An Expo module can emit.** A TurboModule is constructed with a `CallInvoker`
+and an Expo module is not — it is built by a function given a runtime and nothing
+else — so until a module needed to report something after its call returned, there
+was no way for one to reach JavaScript later at all. The seam is
+`core/JsRuntimeAccess.h`: each host leaves behind its
+`ReactHost::runOnRuntimeScheduler`, and `emitExpoEvent` finds the module by name
+at the moment of the emit rather than holding a `jsi::Object` that a reload would
+outlive. Posting only, never waiting: the `CallInvoker` over it throws on
+`invokeSync`, because a synchronous call from another thread into a busy runtime
+is a deadlock and an invoker offering it would be lying about the door it has.
