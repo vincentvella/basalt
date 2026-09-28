@@ -13,6 +13,7 @@
 #include "TestHarness.h"
 
 #include "ExpoModules.h"
+#include "ExpoRuntime.h"
 #include "JsRuntimeAccess.h"
 
 #include <sstream>
@@ -73,6 +74,17 @@ TEST(clearing_the_runner_stops_the_posting) {
 TEST(an_expo_event_goes_through_the_same_door) {
   // Which is the whole reason the door exists: an Expo module is handed no call
   // invoker, so this is the only way it can emit.
+  //
+  // **Both builds, asked at runtime.** A build not pointed at an
+  // expo-modules-core has no Expo modules to emit on, and `emitExpoEvent` is
+  // then the documented no-op that answers false rather than a missing symbol.
+  // Asked through `hasExpoRuntime()` rather than `#ifdef BASALT_HAS_EXPO`
+  // because the define is added with `add_compile_definitions` in the core
+  // package's directory and a host's test target is a sibling, so the ifdef
+  // would read false in a suite where Expo is compiled in -- which is the wrong
+  // answer twice over. The first version of this test assumed the Expo build and
+  // passed on a machine with an app installed; CI, which has none, is where it
+  // failed.
   RunnerFixture fixture;
   basalt::setRuntimeRunner(nullptr);
   EXPECT(!basalt::emitExpoEvent("KinoProcess", "onOutput", [](facebook::jsi::Runtime &,
@@ -81,10 +93,16 @@ TEST(an_expo_event_goes_through_the_same_door) {
 
   int posted = 0;
   basalt::setRuntimeRunner([&posted](std::function<void(facebook::jsi::Runtime &)>) { posted++; });
-  EXPECT(basalt::emitExpoEvent("KinoProcess", "onOutput", [](facebook::jsi::Runtime &,
-                                                            std::vector<facebook::jsi::Value> &) {
-  }));
-  EXPECT_EQ(posted, 1);
+  const bool emitted =
+      basalt::emitExpoEvent("KinoProcess", "onOutput", [](facebook::jsi::Runtime &,
+                                                          std::vector<facebook::jsi::Value> &) {});
+  if (basalt::hasExpoRuntime()) {
+    EXPECT(emitted);
+    EXPECT_EQ(posted, 1);
+  } else {
+    EXPECT(!emitted);
+    EXPECT_EQ(posted, 0);
+  }
 }
 
 TEST(the_call_invoker_over_the_runner_posts_and_says_it_cannot_wait) {

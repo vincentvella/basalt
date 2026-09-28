@@ -311,6 +311,8 @@ if(TARGET basalt_core)
 
   list(APPEND BASALT_WIN32_TEST_SOURCES
     ${BASALT_CORE_TESTS}
+    # A package's own tests; see the AppKit package for why they sit with core's.
+    ${BASALT_PACKAGE_TESTS}
     # Deliberately the same nine questions tests/test_mounting.cpp asks of GTK
     # and tests/test_appkit_mounting.mm asks of AppKit, in the same order with
     # the same tags. Most of what they test is whether the sharing still holds.
@@ -348,7 +350,6 @@ endif()
 # needs onScroll and scroll state, and <TextInput>, which needs an EDIT peer.
 # ---------------------------------------------------------------------------
 
-list(APPEND BASALT_WIN32_TEST_SOURCES ${BASALT_PACKAGE_TESTS})
 add_executable(basalt_win32_tests ${BASALT_WIN32_TEST_SOURCES})
 target_compile_options(basalt_win32_tests PRIVATE ${BASALT_WIN32_WARNINGS})
 target_include_directories(basalt_win32_tests PRIVATE ${BASALT_TEST_INCLUDE})

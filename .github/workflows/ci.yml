@@ -341,7 +341,22 @@ jobs:
 
       - name: Save the widget tree on failure
         if: failure()
+        # Two minutes, and only when there is something to run.
+        #
+        # This starts the host against the demo bundle, and "Bundle the demo" is
+        # a *later* step -- so a failure before it, such as a unit test, leaves
+        # no bundle for this to load. The host then waits rather than quitting,
+        # `|| true` never gets its turn, and BASALT_QUIT_AFTER_MS never arms,
+        # because none of that is reached until a bundle has loaded. Three jobs
+        # sat in this step for fifty minutes after a one-line test failure, which
+        # is how it was found: a diagnostic that only runs when something is
+        # already wrong is a diagnostic nobody watches.
+        timeout-minutes: 2
         run: |
+          if [ ! -f build/main.jsbundle.js ]; then
+            echo "no demo bundle, so nothing to dump: the run failed before it was built"
+            exit 0
+          fi
           BASALT_DUMP_TREE="$PWD/widget-tree.txt" BASALT_QUIT_AFTER_MS=6000 \
             ./build/basalt_gtk build/main.jsbundle.js BasaltDemo || true
 

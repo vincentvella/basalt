@@ -263,6 +263,11 @@ if(TARGET basalt_core)
 
   list(APPEND BASALT_APPKIT_TEST_SOURCES
     ${BASALT_CORE_TESTS}
+    # A package's own tests, beside core's and for the same reason: both need
+    # basalt_core, which only this branch of the build has. A view-only build --
+    # no React Native, so no core -- compiles neither, rather than failing on a
+    # package header it was never given the include path for.
+    ${BASALT_PACKAGE_TESTS}
     tests/test_appkit_mounting.mm
     # Hit testing lives with the touch dispatcher, which the host builds; the
     # tests need it too, and it pulls in nothing else.
@@ -277,7 +282,6 @@ if(TARGET basalt_core)
     tests/test_appkit_textinput.mm)
 endif()
 
-list(APPEND BASALT_APPKIT_TEST_SOURCES ${BASALT_PACKAGE_TESTS})
 add_executable(basalt_appkit_tests ${BASALT_APPKIT_TEST_SOURCES})
 target_compile_options(basalt_appkit_tests PRIVATE -Wall -Wextra -fobjc-arc)
 target_include_directories(basalt_appkit_tests PRIVATE ${BASALT_TEST_INCLUDE})
