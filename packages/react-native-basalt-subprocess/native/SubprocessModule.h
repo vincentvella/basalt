@@ -20,7 +20,11 @@
 
 namespace basalt {
 
-class SubprocessModule : public facebook::react::TurboModule {
+// Held by shared_ptr -- which is how a TurboModule is always held -- so that the
+// listeners can take a weak reference to it rather than a bare `this`. See
+// `attach` and the destructor.
+class SubprocessModule : public facebook::react::TurboModule,
+                         public std::enable_shared_from_this<SubprocessModule> {
  public:
   static constexpr auto kModuleName = "BasaltSubprocess";
 
@@ -31,6 +35,11 @@ class SubprocessModule : public facebook::react::TurboModule {
 
   explicit SubprocessModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker);
   ~SubprocessModule() override;
+
+  // Subscribes this module to the subprocess seam. Separate from the
+  // constructor because it needs `weak_from_this`, which is not usable until a
+  // shared_ptr owns the object; `makeSubprocessTurboModule` does both.
+  void attach();
 
  private:
   static facebook::jsi::Value spawn(

@@ -4,6 +4,8 @@
 
 #include "JsiPromise.h"
 
+#include <atomic>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,18 +49,53 @@ EnvironmentOverrides environmentFrom(Runtime &runtime, const Object &options) {
 
 } // namespace
 
+namespace {
+
+// Which module the seam is currently reporting to, for identity only -- never
+// dereferenced, and compared in a destructor where dereferencing would be
+// wrong anyway.
+//
+// A reload builds the replacement before releasing the one it replaces, so an
+// unconditional `setSubprocessListeners(nullptr, nullptr)` in the destructor
+// clears the *new* module's listeners moments after it installed them. Nothing
+// fails: spawning still works and output simply stops arriving, which is the
+// kind of bug that is found much later and blamed on something else.
+std::atomic<const SubprocessModule *> &listeningModule() {
+  static std::atomic<const SubprocessModule *> current{nullptr};
+  return current;
+}
+
+} // namespace
+
 SubprocessModule::SubprocessModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
     : TurboModule(kModuleName, std::move(jsInvoker)) {
   methodMap_["spawn"] = MethodMetadata{1, spawn};
   methodMap_["kill"] = MethodMetadata{1, kill};
   methodMap_["isRunning"] = MethodMetadata{1, isRunning};
+}
+
+void SubprocessModule::attach() {
+  listeningModule().store(this);
 
   // Output and exit arrive on whatever thread is watching the child, and
   // emitDeviceEvent marshals to the JavaScript one -- the same path the window
   // and key listeners in core take.
+  //
+  // **A weak reference, not `this`.** Those two listeners are the only ones in
+  // this project that can fire from a thread the module knows nothing about: a
+  // child writes when it writes. Every other listener -- keys, drops, window
+  // state -- is called on the thread that also destroys the module, so a bare
+  // `this` is safe there and is not here. `lock()` either fails, because the
+  // module has gone, or yields a reference that keeps it alive for the call.
+  const std::weak_ptr<SubprocessModule> weak = weak_from_this();
+
   setSubprocessListeners(
-      [this](int pid, const std::string &data, bool isStandardError) {
-        emitDeviceEvent(kOutputEvent, [pid, data, isStandardError](
+      [weak](int pid, const std::string &data, bool isStandardError) {
+        const std::shared_ptr<SubprocessModule> self = weak.lock();
+        if (!self) {
+          return;
+        }
+        self->emitDeviceEvent(kOutputEvent, [pid, data, isStandardError](
                                           Runtime &runtime, std::vector<Value> &args) {
           Object payload(runtime);
           payload.setProperty(runtime, "pid", Value(pid));
@@ -69,8 +106,12 @@ SubprocessModule::SubprocessModule(std::shared_ptr<facebook::react::CallInvoker>
           args.emplace_back(runtime, payload);
         });
       },
-      [this](int pid, int code) {
-        emitDeviceEvent(kExitEvent, [pid, code](Runtime &runtime, std::vector<Value> &args) {
+      [weak](int pid, int code) {
+        const std::shared_ptr<SubprocessModule> self = weak.lock();
+        if (!self) {
+          return;
+        }
+        self->emitDeviceEvent(kExitEvent, [pid, code](Runtime &runtime, std::vector<Value> &args) {
           Object payload(runtime);
           payload.setProperty(runtime, "pid", Value(pid));
           payload.setProperty(runtime, "code", Value(code));
@@ -80,9 +121,13 @@ SubprocessModule::SubprocessModule(std::shared_ptr<facebook::react::CallInvoker>
 }
 
 SubprocessModule::~SubprocessModule() {
-  // A listener holding `this` must not outlive it: a child is still running and
-  // still has something to say when a reload replaces the runtime.
-  setSubprocessListeners(nullptr, nullptr);
+  // Only if nobody has taken over. A reload constructs the replacement first,
+  // so an unconditional clear here would silence the module that is now live;
+  // see listeningModule().
+  const SubprocessModule *self = this;
+  if (listeningModule().compare_exchange_strong(self, nullptr)) {
+    setSubprocessListeners(nullptr, nullptr);
+  }
 }
 
 Value SubprocessModule::spawn(Runtime &runtime,
@@ -145,7 +190,10 @@ std::shared_ptr<facebook::react::TurboModule> makeSubprocessTurboModule(
   if (!subprocessSupported()) {
     return nullptr;
   }
-  return std::make_shared<SubprocessModule>(jsInvoker);
+  // Built, then subscribed: `attach` needs a shared_ptr to already own it.
+  const std::shared_ptr<SubprocessModule> module = std::make_shared<SubprocessModule>(jsInvoker);
+  module->attach();
+  return module;
 }
 
 } // namespace basalt
