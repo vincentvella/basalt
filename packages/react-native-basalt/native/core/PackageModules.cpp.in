@@ -13,4 +13,13 @@ void installPackageExpoModules(facebook::jsi::Runtime &runtime, facebook::jsi::O
   (void)modules;
 @basalt_package_calls@}
 
+@basalt_package_turbo_declarations@
+std::shared_ptr<facebook::react::TurboModule> packageTurboModule(
+    const std::string &name,
+    const std::shared_ptr<facebook::react::CallInvoker> &jsInvoker) {
+  (void)name;
+  (void)jsInvoker;
+@basalt_package_turbo_calls@  return nullptr;
+}
+
 } // namespace basalt

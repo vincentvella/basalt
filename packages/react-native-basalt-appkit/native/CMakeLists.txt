@@ -84,6 +84,10 @@ get_property(BASALT_PACKAGE_APPKIT_SOURCES GLOBAL PROPERTY BASALT_PACKAGE_APPKIT
 # package is ours. An app's own module is not, and basalt naming its frameworks
 # would be basalt knowing about it.
 get_property(BASALT_PACKAGE_APPKIT_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES)
+# And a package's own unit tests, which run in this host's suite. A capability
+# with a platform half has nowhere else to be tested: it is compiled into the
+# host binary, so the host's suite is the only binary that has it.
+get_property(BASALT_PACKAGE_TESTS GLOBAL PROPERTY BASALT_PACKAGE_TESTS)
 
 if(NOT APPLE)
   # Not an error. A checkout builds every package it finds, and on anything but
@@ -273,6 +277,7 @@ if(TARGET basalt_core)
     tests/test_appkit_textinput.mm)
 endif()
 
+list(APPEND BASALT_APPKIT_TEST_SOURCES ${BASALT_PACKAGE_TESTS})
 add_executable(basalt_appkit_tests ${BASALT_APPKIT_TEST_SOURCES})
 target_compile_options(basalt_appkit_tests PRIVATE -Wall -Wextra -fobjc-arc)
 target_include_directories(basalt_appkit_tests PRIVATE ${BASALT_TEST_INCLUDE})

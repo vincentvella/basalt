@@ -2059,6 +2059,66 @@ def test_notifications(bundle: Path) -> None:
         raise Failure("an unimplemented method neither answered nor reported itself")
 
 
+def test_subprocess(bundle: Path) -> None:
+    """A capability package's TurboModule runs a command and reports it.
+
+    Two things at once, and both are only testable from here. That a package can
+    contribute a *TurboModule* -- the chain core/PackageModules.h generates is
+    built by CMake and nothing else in this repository reaches it. And that the
+    subprocess capability works through JavaScript rather than only through the
+    unit tests beside it, which call the seam directly.
+
+    The command is written for both shells, and the variable is passed rather
+    than written into it, which is the thing that makes one command string run on
+    all three desktops; see react-native-basalt-subprocess/native/Subprocess.h.
+    """
+    app = bundle_app(bundle.parent, "subprocess")
+    host = packaged_host(bundle.parent)
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "9000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
+        env.pop(name, None)
+
+    result = subprocess.run(
+        [str(host), str(app), "BasaltSubprocess"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    both = result.stdout + result.stderr
+
+    said = {}
+    for line in both.splitlines():
+        if "subprocess: " in line:
+            rest = line.split("subprocess: ", 1)[1].strip()
+            key, _, value = rest.partition(" ")
+            said[key] = value
+
+    if said.get("supported") != "true":
+        raise Failure(
+            "the subprocess package's TurboModule was not reachable from "
+            f"JavaScript, so the generated provider chain did not offer it.\n{tail_text(both, 30)}"
+        )
+    if said.get("spawned") != "true":
+        raise Failure(f"spawn did not answer a process id.\n{tail_text(both, 30)}")
+    if said.get("runningBefore") != "true":
+        raise Failure("a process that had just started was not reported as running")
+    if said.get("exitPid") != "true":
+        raise Failure("the exit was reported for a process id that was not the one spawned")
+    if said.get("code") != "0":
+        raise Failure(f"the command exited {said.get('code')!r} rather than 0")
+    # The whole point of `env`: the variable reached the command without being
+    # part of the command string, which is what lets one string run everywhere.
+    if "hello-from-a-subprocess" not in said.get("output", ""):
+        raise Failure(
+            f"the command's output did not arrive: {said.get('output')!r}\n{tail_text(both, 30)}"
+        )
+    if said.get("runningAfter") != "false":
+        raise Failure("a process that had exited was still reported as running")
+
+
 def test_expo_fetch(bundle: Path) -> None:
     """An Expo app calls `fetch` and gets one that works.
 
@@ -3815,6 +3875,7 @@ SCENARIOS = [
     ("Alert.alert shows a dialog and says which button was pressed", test_alert),
     ("Share.share reaches the platform and settles both ways", test_share),
     ("expo-notifications imports and answers on every desktop", test_notifications),
+    ("a command runs, and its output and exit reach JavaScript", test_subprocess),
     ("an Expo app's fetch works rather than naming a module it has not got", test_expo_fetch),
     ("ActivityIndicator, Switch, Modal and RefreshControl mount and answer",
      test_controls),

@@ -20,7 +20,13 @@
 
 #pragma once
 
+#include <ReactCommon/CallInvoker.h>
+#include <ReactCommon/TurboModule.h>
+
 #include <jsi/jsi.h>
+
+#include <memory>
+#include <string>
 
 namespace basalt {
 
@@ -28,5 +34,17 @@ namespace basalt {
 // `globalThis.expo.modules`. Defined by the generated translation unit; see
 // cmake/BasaltPackages.cmake.
 void installPackageExpoModules(facebook::jsi::Runtime &runtime, facebook::jsi::Object &modules);
+
+// A discovered package's TurboModule, or nullptr when no package supplies one by
+// that name. Defined by the same generated translation unit.
+//
+// The signature is React Native's own `TurboModuleProvider`, so a host adds this
+// to its list of providers directly rather than wrapping it -- which is the
+// whole of the wiring, and why a package contributing a TurboModule costs a host
+// nothing. A package that wants one names a factory of this shape in its
+// CMakeLists; see react-native-basalt-subprocess.
+std::shared_ptr<facebook::react::TurboModule> packageTurboModule(
+    const std::string &name,
+    const std::shared_ptr<facebook::react::CallInvoker> &jsInvoker);
 
 } // namespace basalt

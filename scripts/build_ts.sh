@@ -118,7 +118,10 @@ cat > "$PATHS_FILE" <<JSON
 }
 JSON
 
-PACKAGES=("$REPO_ROOT/packages/react-native-basalt")
+PACKAGES=(
+  "$REPO_ROOT/packages/react-native-basalt"
+  "$REPO_ROOT/packages/react-native-basalt-subprocess"
+)
 
 # Checked but not built. Everything in these is in react-native.config.js's
 # load path, which React Native's CLI reads as plain CommonJS out of

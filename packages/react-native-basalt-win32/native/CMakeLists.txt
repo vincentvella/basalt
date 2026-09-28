@@ -92,6 +92,10 @@ get_property(BASALT_PACKAGE_WIN32_SOURCES GLOBAL PROPERTY BASALT_PACKAGE_WIN32_S
 # that reaches for a library had no way to say so; see the same property in the
 # AppKit package for what went missing.
 get_property(BASALT_PACKAGE_WIN32_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_WIN32_LINK_LIBRARIES)
+# And a package's own unit tests, which run in this host's suite. A capability
+# with a platform half has nowhere else to be tested: it is compiled into the
+# host binary, so the host's suite is the only binary that has it.
+get_property(BASALT_PACKAGE_TESTS GLOBAL PROPERTY BASALT_PACKAGE_TESTS)
 
 if(NOT WIN32)
   # Not an error. A checkout builds every package it finds, and on anything but
@@ -344,6 +348,7 @@ endif()
 # needs onScroll and scroll state, and <TextInput>, which needs an EDIT peer.
 # ---------------------------------------------------------------------------
 
+list(APPEND BASALT_WIN32_TEST_SOURCES ${BASALT_PACKAGE_TESTS})
 add_executable(basalt_win32_tests ${BASALT_WIN32_TEST_SOURCES})
 target_compile_options(basalt_win32_tests PRIVATE ${BASALT_WIN32_WARNINGS})
 target_include_directories(basalt_win32_tests PRIVATE ${BASALT_TEST_INCLUDE})

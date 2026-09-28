@@ -171,6 +171,19 @@ if(DEFINED RN_DIR)
     string(APPEND basalt_package_calls
       "  ${installer}(runtime, modules)${basalt_semicolon}\n")
   endforeach()
+
+  # And the same for a package's TurboModules. The factory has React Native's
+  # own provider signature, so the generated function tries each in turn and
+  # answers with the first that recognises the name.
+  get_property(basalt_package_turbo GLOBAL PROPERTY BASALT_PACKAGE_TURBO_MODULES)
+  set(basalt_package_turbo_declarations "")
+  set(basalt_package_turbo_calls "")
+  foreach(factory ${basalt_package_turbo})
+    string(APPEND basalt_package_turbo_declarations
+      "std::shared_ptr<facebook::react::TurboModule> ${factory}(const std::string &, const std::shared_ptr<facebook::react::CallInvoker> &)${basalt_semicolon}\n")
+    string(APPEND basalt_package_turbo_calls
+      "  if (auto module = ${factory}(name, jsInvoker)) {\n    return module${basalt_semicolon}\n  }\n")
+  endforeach()
   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/core/PackageModules.cpp.in
                  ${CMAKE_CURRENT_BINARY_DIR}/BasaltPackageModules.cpp @ONLY)
 

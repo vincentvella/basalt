@@ -122,6 +122,10 @@ module.exports = withDesktopPlatforms(mergeConfig(getDefaultConfig(__dirname), {
       react: path.join(rnDir, 'node_modules', 'react'),
       'react-native': path.join(rnDir, 'node_modules', 'react-native'),
       'react-native-basalt': path.resolve(__dirname, '..', 'packages', 'react-native-basalt'),
+      // The capability packages with JavaScript of their own, so a demo app can
+      // import one the way an app that installed it would.
+      'react-native-basalt-subprocess': path.resolve(
+        __dirname, '..', 'packages', 'react-native-basalt-subprocess'),
       // Expo, borrowed from an app that has it installed.
       //
       // This directory is not an npm package and nothing is installed into it,

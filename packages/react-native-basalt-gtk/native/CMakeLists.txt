@@ -80,6 +80,10 @@ get_property(BASALT_PACKAGE_GTK_SOURCES GLOBAL PROPERTY BASALT_PACKAGE_GTK_SOURC
 # that reaches for a library had no way to say so; see the same property in the
 # AppKit package for what went missing.
 get_property(BASALT_PACKAGE_GTK_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_GTK_LINK_LIBRARIES)
+# And a package's own unit tests, which run in this host's suite. A capability
+# with a platform half has nowhere else to be tested: it is compiled into the
+# host binary, so the host's suite is the only binary that has it.
+get_property(BASALT_PACKAGE_TESTS GLOBAL PROPERTY BASALT_PACKAGE_TESTS)
 
 # Found here rather than inherited from the shared half. find_package sets
 # PKG_CONFIG_VERSION as an ordinary variable, which is scoped to the directory
@@ -288,6 +292,7 @@ if(TARGET basalt_core)
   add_executable(basalt_gtk_tests
     ${BASALT_TEST_HARNESS}
     ${BASALT_CORE_TESTS}
+    ${BASALT_PACKAGE_TESTS}
     tests/TestMainGtk.cpp
     tests/test_mounting.cpp
     tests/test_view.cpp

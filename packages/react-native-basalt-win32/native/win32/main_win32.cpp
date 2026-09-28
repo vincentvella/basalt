@@ -84,6 +84,7 @@
 #include "SourceCodeModule.h"
 #include "StatusBarModule.h"
 #include "JsRuntimeAccess.h"
+#include "PackageModules.h"
 #include "UIManagerAccess.h"
 #include "WorkletsModule.h"
 
@@ -459,6 +460,12 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
     bool devMode,
     std::weak_ptr<basalt::win32::Win32ImageLoader> imageLoader) {
   facebook::react::TurboModuleProviders providers;
+  // Whatever the discovered capability packages supply, first: a package naming
+  // a module this host also provides is replacing it deliberately, and the same
+  // rule already applies to this list against ReactCxxPlatform's own. Answers
+  // nullptr for every name when no package supplies one, which is most builds.
+  // See core/PackageModules.h.
+  providers.emplace_back(basalt::packageTurboModule);
   providers.emplace_back(
       [scriptURL = std::move(scriptURL), devMode, imageLoader = std::move(imageLoader)](
           const std::string &name,

@@ -56,7 +56,13 @@ endif()
 # one. See packages/react-native-basalt-notifications/native/CMakeLists.txt for
 # what a package contributes.
 if(NOT DEFINED BASALT_PACKAGES)
-  file(GLOB BASALT_PACKAGES ${CMAKE_CURRENT_SOURCE_DIR}/packages/react-native-basalt-notifications)
+  # Named rather than globbed: the host packages and the core one live beside
+  # these and are added explicitly below, so a glob over `packages/*` would add
+  # them twice. A list is also the place to read what an in-repository build
+  # carries.
+  set(BASALT_PACKAGES
+    ${CMAKE_CURRENT_SOURCE_DIR}/packages/react-native-basalt-notifications
+    ${CMAKE_CURRENT_SOURCE_DIR}/packages/react-native-basalt-subprocess)
 endif()
 #
 # The same loop is in each host package's CMakeLists, because that is the entry
