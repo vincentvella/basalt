@@ -27,7 +27,12 @@
       because the two must agree -- an app binding "ArrowLeft" or metaKey has to
       get the same key on both. Super is meta, not GDK_META_MASK, which is a
       different key on X11 that almost no keyboard has
-- [ ] Win32: `WM_KEYDOWN`, and `DefWindowProc` for anything unclaimed
+- [x] Win32: `WM_KEYDOWN` asks after Ctrl+D and before Escape, and returns 0 when
+      a view claimed the key. `Win32KeyEvents`, seven tests covering the name
+      table and the bare modifiers -- the modifier half is not covered because
+      `GetKeyState` means asserting it would need a key physically held
+- [x] Written blind: nothing here can compile this host, so CI is the check. The
+      mapping file is in the test target for that reason
 - [ ] The focus path: a claim is honoured for the focused view and its ancestors,
       and a focused `<TextInput>` keeps its keys
 

@@ -1408,6 +1408,14 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
         basalt::showDevMenu(gHost.reactHost.get());
         return 0;
       }
+      // An app's own declared shortcuts, before Escape and before Tab: an app
+      // that binds Escape means it. After Ctrl+D above, deliberately -- the
+      // developer menu is not an app's to take, and an app that bound Ctrl+D
+      // would otherwise make its own host undebuggable.
+      if (gHost.main().focusManager != nullptr &&
+          gHost.main().focusManager->handleDeclaredKey(static_cast<unsigned int>(wparam))) {
+        return 0;
+      }
       // Escape closes the topmost <Modal> -- or rather, asks the app to. React
       // Native's `onRequestClose` is the hardware back button on Android and
       // the swipe-down on iOS; on a desktop it is Escape, and a modal the app

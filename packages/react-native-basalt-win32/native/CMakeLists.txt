@@ -182,6 +182,10 @@ target_link_libraries(demo_layout_win32 PRIVATE basalt_win32_view)
 set(BASALT_WIN32_TEST_SOURCES
   ${BASALT_TEST_HARNESS}
   tests/test_win32_view.cpp
+  tests/test_win32_key_events.cpp
+  # The mapping under test; this host is the one nobody can compile on a Mac, so
+  # CI is the only thing that checks its table.
+  win32/Win32KeyEvents.cpp
   # What actually reached the pixels. Needs no display and no window, which is
   # why this platform can assert it and the other two cannot; see the file.
   tests/test_win32_paint.cpp
@@ -215,6 +219,7 @@ if(TARGET basalt_core)
     # host so that tests can drive it, which is the only way the touch state
     # machine is provable without a cursor.
     win32/Win32Focus.cpp
+    win32/Win32KeyEvents.cpp
     # Why Windows cannot show a notification; see the file.
     ${BASALT_PACKAGE_WIN32_SOURCES}
     # The AppUserModelID and the Start Menu shortcut behind it, which is what

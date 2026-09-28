@@ -1,5 +1,11 @@
 #include "Win32Focus.h"
 
+#include "Win32KeyEvents.h"
+
+#include <algorithm>
+#include <optional>
+#include <vector>
+
 #include <folly/dynamic.h>
 
 #include <react/renderer/components/view/ViewEventEmitter.h>
@@ -166,6 +172,67 @@ bool Win32FocusManager::activateFocused() {
   // ignores a click with a `pointerType` on it so that a real click does not
   // fire onPress twice. See the header.
   emitter->dispatchEvent("click", folly::dynamic::object(), RawEvent::Category::Discrete);
+  return true;
+}
+
+namespace {
+
+// The ancestors of `target`, innermost first.
+//
+// Downwards from the root, because a RnWin32View has no parent pointer -- the
+// same reason win32/Win32DropTarget.cpp walks down to find a drop target's
+// ancestry. Two near-identical walks in two files is a smell; they stay apart
+// because that one collects views from a view and this one collects tags from a
+// tag, and merging them would mean a shared header for seventeen lines. A third
+// caller should merge all three.
+bool tagPathTo(win32::RnWin32View *view,
+               facebook::react::Tag target,
+               std::vector<facebook::react::Tag> &path) {
+  if (view == nullptr) {
+    return false;
+  }
+  path.push_back(static_cast<facebook::react::Tag>(view->tag()));
+  if (static_cast<facebook::react::Tag>(view->tag()) == target) {
+    return true;
+  }
+  for (win32::RnWin32View *child : view->children()) {
+    if (tagPathTo(child, target, path)) {
+      return true;
+    }
+  }
+  path.pop_back();
+  return false;
+}
+
+} // namespace
+
+bool Win32FocusManager::handleDeclaredKey(unsigned int virtualKey) {
+  // Almost every app claims nothing and presses plenty.
+  if (handledKeyViewCount() == 0) {
+    return false;
+  }
+  const std::optional<KeyCombination> pressed = keyCombinationFrom(virtualKey);
+  if (!pressed.has_value()) {
+    return false;
+  }
+
+  // Root-first from the walk, so reversed to put the focused view first and let
+  // the innermost claim win -- the order core/KeyEvents.h expects.
+  std::vector<facebook::react::Tag> path;
+  if (focusedTag_ != 0) {
+    tagPathTo(surfaceRoot_, focusedTag_, path);
+    std::reverse(path.begin(), path.end());
+  } else if (surfaceRoot_ != nullptr) {
+    // Nothing focused. The root is still a candidate: a window-level shortcut
+    // holder is the common case and would otherwise never be asked.
+    path.push_back(static_cast<facebook::react::Tag>(surfaceRoot_->tag()));
+  }
+
+  const std::optional<facebook::react::Tag> handler = handledBy(path, *pressed);
+  if (!handler.has_value()) {
+    return false;
+  }
+  reportKey(*handler, *pressed);
   return true;
 }
 

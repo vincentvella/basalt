@@ -71,6 +71,11 @@ class Win32FocusManager {
   // which is what keeps Tab from also reaching whatever else might want it.
   bool handleKeyDown(unsigned int virtualKey);
 
+  // An app's own declared shortcuts, asked before the platform's own keys. True
+  // when a view from the focused one outwards claimed this combination, in which
+  // case it has already been reported; see core/KeyEvents.h.
+  bool handleDeclaredKey(unsigned int virtualKey);
+
   // Called when a <TextInput>'s peer takes Win32 focus, so that a view holding
   // the ring gives it up. The two kinds of focus are different mechanisms and
   // only one of them can be true at a time.
