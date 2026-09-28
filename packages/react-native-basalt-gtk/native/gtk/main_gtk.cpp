@@ -19,6 +19,7 @@
 
 #include "GtkAnimationChoreographer.h"
 #include "AppIdentity.h"
+#include "AppPaths.h"
 #include "DevMenu.h"
 #include "WindowControl.h"
 #include "WindowHost.h"
@@ -827,6 +828,9 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         // something on screen costs nothing. See docs/backlog/upstream.md.
         if (name == facebook::react::ImageLoaderModule::kModuleName) {
           return std::make_shared<facebook::react::ImageLoaderModule>(jsInvoker, imageLoader);
+        }
+        if (name == basalt::DesktopAppModule::kModuleName) {
+          return std::make_shared<basalt::DesktopAppModule>(jsInvoker);
         }
         if (name == basalt::DesktopAppearanceModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppearanceModule>(jsInvoker);

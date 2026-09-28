@@ -38,6 +38,7 @@
 
 #include "Win32AnimationChoreographer.h"
 #include "AppIdentity.h"
+#include "AppPaths.h"
 #include "DevMenu.h"
 #include "DialogModule.h"
 #include "MenuModel.h"
@@ -481,6 +482,9 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         }
         if (name == facebook::react::PlatformConstantsModule::kModuleName) {
           return std::make_shared<basalt::DesktopPlatformConstantsModule>(jsInvoker);
+        }
+        if (name == basalt::DesktopAppModule::kModuleName) {
+          return std::make_shared<basalt::DesktopAppModule>(jsInvoker);
         }
         if (name == basalt::DesktopAppearanceModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppearanceModule>(jsInvoker);

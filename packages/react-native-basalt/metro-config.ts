@@ -459,6 +459,28 @@ function correctBundlePlatform(
  *   platformFallbacks  which platforms to retry a failed resolution as, in
  *                      order. See PLATFORM_FALLBACKS. `[]` disables it.
  */
+/** This package, by the name an app imports it as. */
+const PACKAGE_NAME = 'react-native-basalt';
+
+/**
+ * The capability packages, which an app installs only if it wants them.
+ *
+ * Named rather than discovered: a list is something a person can read, and the
+ * alternative -- scanning the app's dependencies for a prefix -- would also pick
+ * up the host packages, which are not imported from JavaScript at all.
+ */
+const CAPABILITY_PACKAGES = ['react-native-basalt-subprocess'];
+
+/** Our own package a request names, or null. Matches `name` and `name/subpath`. */
+function ownedPackage(request: string): string | null {
+  for (const name of [PACKAGE_NAME, ...CAPABILITY_PACKAGES]) {
+    if (request === name || request.startsWith(`${name}/`)) {
+      return name;
+    }
+  }
+  return null;
+}
+
 export function withDesktopPlatforms(
   config: MetroConfig = {},
   options: DesktopPlatformOptions = {},
@@ -489,7 +511,7 @@ export function withDesktopPlatforms(
   // the cause. Found by bundling a real app from another tree.
   const watchFolders = config.watchFolders ?? [];
   const withOverrides = watchFolders.some(folder => contains(folder, __dirname))
-    ? watchFolders
+    ? [...watchFolders]
     : [...watchFolders, __dirname];
 
   // Metro resolves this package's files by their real path and then looks for
@@ -500,12 +522,68 @@ export function withDesktopPlatforms(
   // package's own compiled output needs, rather than naming the link.
   //
   // Naming the project's node_modules explicitly covers both.
+  //
+  // Every one from the project root upwards, not only the project's own, which
+  // is what Node's own resolution walks. A workspace hoists its dependencies to
+  // the repository root, so an app at `apps/desktop` has this package two
+  // directories above its own node_modules -- and Metro, unlike Node, only
+  // looks where it is told. The symptom is a module that resolves from
+  // `src/App.tsx` and not from `modules/something/index.ts`, because the
+  // relative walk from the deeper file runs out first. Found in kino, whose
+  // local Expo modules sit one directory deeper than its source.
   const projectRoot = config.projectRoot ?? process.cwd();
-  const projectModules = path.join(projectRoot, 'node_modules');
   const nodeModulesPaths = resolver.nodeModulesPaths ?? [];
-  const withProject = nodeModulesPaths.includes(projectModules)
-    ? nodeModulesPaths
-    : [...nodeModulesPaths, projectModules];
+  const withProject = [...nodeModulesPaths];
+  for (let directory = projectRoot; ; ) {
+    const candidate = path.join(directory, 'node_modules');
+    // Only ones that exist: Metro tolerates the rest, and a list of every
+    // directory up to `/` is harder to read when something does go wrong.
+    if (!withProject.includes(candidate) && fs.existsSync(candidate)) {
+      withProject.push(candidate);
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) {
+      break;
+    }
+    directory = parent;
+  }
+
+  // And a direct answer for this package and its capability packages, as a
+  // fallback rather than an override.
+  //
+  // `nodeModulesPaths` above is the general fix and it is not enough on its own:
+  // Metro walks up from the *importing file*, and a file nested deeper than the
+  // app's source -- `modules/something/index.ts` next to `src/` -- runs out of
+  // parents before it reaches a workspace root. `extraNodeModules` is consulted
+  // only when the ordinary walk has already failed, so naming these cannot
+  // shadow an app's own copy of anything; it rescues the case where there was no
+  // answer at all.
+  //
+  // Resolved from the project root with Node's own algorithm, which follows the
+  // symlink a linked checkout leaves and finds nothing when the package is not
+  // installed -- in which case it is not named, and the failure stays the one
+  // about a missing dependency.
+  const linked: Record<string, string> = {};
+  for (const name of [PACKAGE_NAME, ...CAPABILITY_PACKAGES]) {
+    try {
+      const manifest = require.resolve(`${name}/package.json`, {paths: [projectRoot]});
+      linked[name] = path.dirname(manifest);
+    } catch {
+      // Not installed. A capability package usually is not.
+    }
+  }
+  const extraNodeModules = {...linked, ...(resolver.extraNodeModules ?? {})};
+
+  // And watched, for the same reason this package's own directory is: Metro
+  // refuses to read a file outside `projectRoot` and `watchFolders`, with
+  // "Failed to get the SHA-1 for" the file rather than anything naming the
+  // cause. A capability package installed normally is inside the app's
+  // node_modules and already covered; one resolved through a link is not.
+  for (const directory of Object.values(linked)) {
+    if (!withOverrides.some(folder => contains(folder, directory))) {
+      withOverrides.push(directory);
+    }
+  }
 
   return {
     ...config,
@@ -523,6 +601,7 @@ export function withDesktopPlatforms(
       ...resolver,
       platforms: withDesktop,
       nodeModulesPaths: withProject,
+      extraNodeModules,
       resolveRequest: (
         context: ResolutionContext,
         moduleName: string,
@@ -561,6 +640,35 @@ export function withDesktopPlatforms(
             fallback != null && !fs.existsSync(`${absolute}.js`) && !fs.existsSync(absolute)
               ? fallback
               : absolute;
+        }
+
+        // This package and its capability packages, answered here rather than
+        // left to whatever resolver the app has.
+        //
+        // `nodeModulesPaths` and `extraNodeModules` above are the polite way to
+        // say where these are, and an app is free to have a resolver that does
+        // not read either -- @rnx-kit's does not, and kino uses it. The result
+        // was an import of `react-native-basalt` from a file one directory
+        // deeper than the app's source resolving nowhere, with a message about
+        // node_modules directories that named neither this package nor the link
+        // it was installed through.
+        //
+        // Answered by Node's own algorithm from the project root, which follows
+        // a linked checkout's symlink. Only for *our* names, and only when Node
+        // finds them: anything else, including an app that shadows one on
+        // purpose, falls through to the resolution it would have had.
+        const owned = ownedPackage(request);
+        if (owned != null) {
+          try {
+            return {
+              type: 'sourceFile',
+              filePath: require.resolve(request, {paths: [projectRoot]}),
+            };
+          } catch {
+            // Not installed, or a subpath its exports map does not offer. The
+            // app's resolver gets to produce the error, which will name the
+            // import rather than this.
+          }
         }
 
         const resolveAs = (target: string | null): Resolution => resolveName(request, target);
