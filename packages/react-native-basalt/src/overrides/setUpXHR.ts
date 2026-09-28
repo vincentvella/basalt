@@ -47,6 +47,34 @@
 
 const {polyfillGlobal} = require('react-native-basalt/upstream/Libraries/Utilities/PolyfillFunctions');
 const base64 = require('base64-js');
+const {createResponseBodyReader} = require('../responseBody');
+
+// One reader for the process: what it learns about this platform on the first
+// decisive body applies to every response after it.
+const readResponseBody = createResponseBodyReader();
+
+let warnedAboutUnencodedBodies = false;
+
+/**
+ * Said once, because it is a property of the build rather than of a request.
+ *
+ * A text body is still correct -- that is the common case and why this is a
+ * warning rather than an error -- but a binary one crossed into JavaScript as a
+ * string and cannot be recovered here.
+ */
+function warnOnceAboutUnencodedBodies(): void {
+  if (warnedAboutUnencodedBodies) {
+    return;
+  }
+  warnedAboutUnencodedBodies = true;
+  console.warn(
+    "basalt: this React Native's ReactCxxPlatform delivers response bodies " +
+      'unencoded even when base64 was asked for, so a binary body read through ' +
+      '`.blob()` or `.arrayBuffer()` will be damaged. Text bodies, including ' +
+      'every `.json()`, are unaffected. Fixed upstream after 0.86 by ' +
+      "NetworkingModule's encodeResponseBody; see src/responseBody.ts.",
+  );
+}
 
 const BaseXMLHttpRequest = require('react-native-basalt/upstream/Libraries/Network/XMLHttpRequest').default;
 const BlobManager = require('react-native-basalt/upstream/Libraries/Blob/BlobManager').default;
@@ -145,14 +173,21 @@ Object.defineProperty(proto, 'response', {
       return this.__rnbBlob;
     }
 
+    // Whether that string is base64 is not something to assume: the encoding
+    // this asked for is only applied by ReactCxxPlatform after 0.86, and the
+    // version in use is the app's. See src/responseBody.ts, and the failure it
+    // was written for.
+    const {part, size, encoded: wasEncoded} = readResponseBody(encoded);
+    if (!wasEncoded) {
+      warnOnceAboutUnencodedBodies();
+    }
+
     const blobId = uuidv4();
-    NativeBlobModule.createFromParts([{data: encoded, type: 'base64'}], blobId);
+    NativeBlobModule.createFromParts([part], blobId);
     this.__rnbBlob = BlobManager.createFromOptions({
       blobId,
       offset: 0,
-      // The decoded length, which is what a Blob's size means. Every four
-      // base64 characters are three bytes, less one per '=' of padding.
-      size: Math.max(0, (encoded.length / 4) * 3 - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0)),
+      size,
       type: this.getResponseHeader('content-type') ?? '',
     });
     return this.__rnbBlob;

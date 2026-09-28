@@ -76,6 +76,98 @@ test('two requests for the same thing are the same request', () => {
 });
 
 // --------------------------------------------------------------------------
+// --- What a blob response actually contains ---------------------------------
+//
+// The override asks for base64 because that is the only response encoding that
+// carries bytes through a JavaScript string intact. ReactCxxPlatform only
+// applies it after 0.86, and the copy in use is the app's, so both behaviours
+// are live. Handing a raw body to the base64 decoder is what turned every one of
+// kino's daemon responses into "JSON Parse error: Unexpected character: v".
+
+const responseBody = require(path.join(
+  __dirname,
+  '..',
+  'packages/react-native-basalt/dist/src/responseBody.js',
+));
+
+test('a base64 body is decoded as base64', () => {
+  const encoded = Buffer.from('{"durationInFrames":36}').toString('base64');
+  const {part, size, encoded: wasEncoded} = responseBody.createResponseBodyReader()(encoded);
+
+  assert.strictEqual(wasEncoded, true);
+  assert.strictEqual(part.type, 'base64');
+  assert.strictEqual(part.data, encoded);
+  assert.strictEqual(size, '{"durationInFrames":36}'.length, 'the decoded length');
+});
+
+test('a raw JSON body is taken as the text it is', () => {
+  // The failure this exists for. Decoded as base64 it loses almost everything,
+  // because `{`, `"` and `:` are not in the alphabet.
+  const raw = '{"durationInFrames":36,"durationSeconds":1.2,"fps":30}';
+  const {part, size, encoded} = responseBody.createResponseBodyReader()(raw);
+
+  assert.strictEqual(encoded, false, 'the platform did not encode it');
+  assert.strictEqual(part.type, 'string');
+  assert.strictEqual(part.data, raw);
+  assert.strictEqual(size, raw.length);
+});
+
+test('one undecodable body settles it for the ones that are ambiguous', () => {
+  // `null` is four characters from the base64 alphabet, so it cannot be told
+  // apart on its own -- and a daemon answering `null` for something it does not
+  // have is ordinary. What separates them is that the platform's behaviour does
+  // not change between responses.
+  const read = responseBody.createResponseBodyReader();
+
+  assert.strictEqual(read('null').encoded, true, 'ambiguous, and nothing known yet');
+  read('{"a":1}'); // decisive: a platform that encodes could not produce this
+  assert.strictEqual(read('null').part.type, 'string', 'now known not to encode');
+  assert.strictEqual(read('true').part.type, 'string');
+  assert.strictEqual(read('1234').part.type, 'string');
+});
+
+test('a platform that does encode is never talked out of it', () => {
+  // Every body it produces is canonical base64, so nothing decisive can arrive.
+  const read = responseBody.createResponseBodyReader();
+  for (const body of ['{}', 'null', '{"a":1}', 'hello, world', '\u00e9\u00e9']) {
+    const encoded = Buffer.from(body).toString('base64');
+    assert.strictEqual(read(encoded).encoded, true, body);
+  }
+});
+
+test('a JSON object or array is always decisive', () => {
+  // Which is why the window above is narrow: these are what an app fetches.
+  for (const body of ['{}', '{"a":1}', '[1,2,3]', '{"v":"vvvv"}']) {
+    assert.strictEqual(responseBody.looksLikeBase64(body), false, body);
+  }
+});
+
+test('base64 is recognised only when it is canonical', () => {
+  assert.strictEqual(responseBody.looksLikeBase64('aGVsbG8='), true);
+  assert.strictEqual(responseBody.looksLikeBase64('aGVsbG8'), false, 'not a multiple of four');
+  assert.strictEqual(responseBody.looksLikeBase64('aGVs bG8='), false, 'a space is not base64');
+  assert.strictEqual(responseBody.looksLikeBase64('aGV=sbG8='), false, 'padding only at the end');
+  assert.strictEqual(responseBody.looksLikeBase64(''), false, 'nothing is not base64');
+});
+
+test('a size is bytes rather than characters', () => {
+  // A Blob's size is a byte count, and the raw branch is handed a JavaScript
+  // string. One is not the other the moment anything is not ASCII.
+  assert.strictEqual(responseBody.utf8Length('abc'), 3);
+  assert.strictEqual(responseBody.utf8Length('\u00e9'), 2, 'e-acute is two bytes');
+  assert.strictEqual(responseBody.utf8Length('\u20ac'), 3, 'a euro sign is three');
+  assert.strictEqual(responseBody.utf8Length('\ud83d\ude80'), 4, 'a rocket is four');
+  const body = '{"name":"caf\u00e9"}';
+  assert.strictEqual(responseBody.createResponseBodyReader()(body).size, body.length + 1);
+});
+
+test('an empty body is text rather than base64', () => {
+  const {part, size, encoded} = responseBody.createResponseBodyReader()('');
+  assert.strictEqual(encoded, false);
+  assert.strictEqual(part.type, 'string');
+  assert.strictEqual(size, 0);
+});
+
 // The package's require()-able surface
 // --------------------------------------------------------------------------
 //
