@@ -642,6 +642,15 @@ dependency scan exists to keep is kept for free: this is the app's own source
 tree, so nothing reaches the binary that the app did not write. See
 `openspec/changes/add-app-native-modules`.
 
+**And it names what it links.** A module contributing a platform implementation
+usually needs a library for it, and until kino's audio module there was no way to
+say so: this project's host CMakeLists named `-framework UserNotifications` for
+the notifications package, which works only for as long as every package is ours.
+So each host reads a `BASALT_PACKAGE_<HOST>_LINK_LIBRARIES` property alongside
+the sources, and the notifications package now names its own framework — moved
+there rather than left alone, so that the property is exercised by this
+repository's CI and not only by an app outside it.
+
 **An Expo app gets React Native's fetch, by default.** Expo replaces
 `globalThis.fetch` with its own WinterCG implementation over a native module,
 `ExpoFetchModule`, which is a pair of SharedObject classes with a streamed body

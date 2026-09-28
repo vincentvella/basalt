@@ -28,6 +28,25 @@ exactly like the platform's own.
 - **WHEN** an app has a local module with an Apple half and no desktop one
 - **THEN** the build succeeds and contributes nothing for that module
 
+### Requirement: A contributing module names what it links
+
+The system SHALL let a capability package or an app's own module declare the
+libraries its platform implementation needs, so that a module reaching for a
+framework does not require the host to know it exists.
+
+#### Scenario: A module's framework is linked into the host
+
+- **WHEN** a module contributes a platform implementation and declares a library
+  it needs
+- **THEN** the host and its test binary link that library, and the module's
+  implementation resolves
+
+#### Scenario: A host names no module's libraries
+
+- **WHEN** a capability ships as a package
+- **THEN** the libraries it needs are declared by that package rather than by the
+  host package it is built into
+
 ### Requirement: An Expo module can reach JavaScript later
 
 The system SHALL let an Expo module emit an event after the call that started the

@@ -88,6 +88,10 @@ endif()
 # and silently contributed nothing for an app, where this file is the entry
 # point. The symptom was a link error naming every notification seam.
 get_property(BASALT_PACKAGE_WIN32_SOURCES GLOBAL PROPERTY BASALT_PACKAGE_WIN32_SOURCES)
+# And what those sources need linked. A package contributing an implementation
+# that reaches for a library had no way to say so; see the same property in the
+# AppKit package for what went missing.
+get_property(BASALT_PACKAGE_WIN32_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_WIN32_LINK_LIBRARIES)
 
 if(NOT WIN32)
   # Not an error. A checkout builds every package it finds, and on anything but
@@ -289,6 +293,9 @@ if(TARGET basalt_core)
     win32/Win32AnimationChoreographer.cpp)
   target_compile_options(basalt_win32 PRIVATE ${BASALT_WIN32_WARNINGS})
   target_link_libraries(basalt_win32 PRIVATE basalt_win32_mounting)
+  if(BASALT_PACKAGE_WIN32_LINK_LIBRARIES)
+    target_link_libraries(basalt_win32 PRIVATE ${BASALT_PACKAGE_WIN32_LINK_LIBRARIES})
+  endif()
 
   # Real mutations into real views, with no JavaScript anywhere. The checkpoint
   # between "the mounting manager compiles" and "React Native runs": a mistake
@@ -344,6 +351,9 @@ target_include_directories(basalt_win32_tests PRIVATE ${BASALT_TEST_INCLUDE})
 # linker warn about a duplicate library rather than doing anything useful.
 if(TARGET basalt_win32_mounting)
   target_link_libraries(basalt_win32_tests PRIVATE basalt_win32_mounting)
+  if(BASALT_PACKAGE_WIN32_LINK_LIBRARIES)
+    target_link_libraries(basalt_win32_tests PRIVATE ${BASALT_PACKAGE_WIN32_LINK_LIBRARIES})
+  endif()
 else()
   target_link_libraries(basalt_win32_tests PRIVATE basalt_win32_view)
 endif()

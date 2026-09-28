@@ -78,6 +78,12 @@ endif()
 # and silently contributed nothing for an app, where this file is the entry
 # point. The symptom was a link error naming every notification seam.
 get_property(BASALT_PACKAGE_APPKIT_SOURCES GLOBAL PROPERTY BASALT_PACKAGE_APPKIT_SOURCES)
+# And what those sources need linked. A package contributing an implementation
+# that reaches for a framework had no way to say so: this file named
+# UserNotifications for the notifications package, which works only because that
+# package is ours. An app's own module is not, and basalt naming its frameworks
+# would be basalt knowing about it.
+get_property(BASALT_PACKAGE_APPKIT_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES)
 
 if(NOT APPLE)
   # Not an error. A checkout builds every package it finds, and on anything but
@@ -221,11 +227,6 @@ if(TARGET basalt_core)
     # it is compiled only when there is a Skia to render with.
     list(APPEND BASALT_APPKIT_TEST_SOURCES tests/test_appkit_skia.mm)
   endif()
-  # UserNotifications, for AppKitNotifications.mm. Safe to link into every
-  # build: the framework is present since 10.14 and the code behind it refuses
-  # to run at all without a bundle identifier, which is the thing that actually
-  # decides whether notifications work. See that file.
-  target_link_libraries(basalt_appkit_mounting PUBLIC "-framework UserNotifications")
   # UniformTypeIdentifiers, for the file panel's filters: `allowedFileTypes`
   # took bare extensions and is deprecated, and its replacement takes UTTypes.
   target_link_libraries(basalt_appkit_mounting PUBLIC "-framework UniformTypeIdentifiers")
@@ -244,6 +245,9 @@ if(TARGET basalt_core)
     appkit/AppKitTouchDispatcher.mm)
   target_compile_options(basalt_appkit PRIVATE -Wall -Wextra -fobjc-arc)
   target_link_libraries(basalt_appkit PRIVATE basalt_appkit_mounting)
+  if(BASALT_PACKAGE_APPKIT_LINK_LIBRARIES)
+    target_link_libraries(basalt_appkit PRIVATE ${BASALT_PACKAGE_APPKIT_LINK_LIBRARIES})
+  endif()
 
   # Real mutations into real views, with no JavaScript anywhere. The checkpoint
   # between "the mounting manager compiles" and "React Native runs": a mistake
@@ -278,4 +282,8 @@ if(TARGET basalt_appkit_mounting)
   target_link_libraries(basalt_appkit_tests PRIVATE basalt_appkit_mounting)
 else()
   target_link_libraries(basalt_appkit_tests PRIVATE basalt_appkit_view)
+endif()
+# The tests compile the package sources too, so they need the same libraries.
+if(BASALT_PACKAGE_APPKIT_LINK_LIBRARIES)
+  target_link_libraries(basalt_appkit_tests PRIVATE ${BASALT_PACKAGE_APPKIT_LINK_LIBRARIES})
 endif()

@@ -76,6 +76,10 @@ endif()
 # and silently contributed nothing for an app, where this file is the entry
 # point. The symptom was a link error naming every notification seam.
 get_property(BASALT_PACKAGE_GTK_SOURCES GLOBAL PROPERTY BASALT_PACKAGE_GTK_SOURCES)
+# And what those sources need linked. A package contributing an implementation
+# that reaches for a library had no way to say so; see the same property in the
+# AppKit package for what went missing.
+get_property(BASALT_PACKAGE_GTK_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_GTK_LINK_LIBRARIES)
 
 # Found here rather than inherited from the shared half. find_package sets
 # PKG_CONFIG_VERSION as an ordinary variable, which is scoped to the directory
@@ -269,6 +273,9 @@ if(TARGET basalt_core)
     ${BASALT_PACKAGE_GTK_SOURCES}
     gtk/GtkTouchDispatcher.cpp)
   target_link_libraries(basalt_gtk PRIVATE basalt_gtk_mounting)
+  if(BASALT_PACKAGE_GTK_LINK_LIBRARIES)
+    target_link_libraries(basalt_gtk PRIVATE ${BASALT_PACKAGE_GTK_LINK_LIBRARIES})
+  endif()
   target_compile_options(basalt_gtk PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
 
   # ---------------------------------------------------------------------------
@@ -306,6 +313,9 @@ if(TARGET basalt_core)
     ${BASALT_PACKAGE_GTK_SOURCES}
     gtk/GtkTouchDispatcher.cpp)
   target_link_libraries(basalt_gtk_tests PRIVATE basalt_gtk_mounting)
+  if(BASALT_PACKAGE_GTK_LINK_LIBRARIES)
+    target_link_libraries(basalt_gtk_tests PRIVATE ${BASALT_PACKAGE_GTK_LINK_LIBRARIES})
+  endif()
   target_include_directories(basalt_gtk_tests PRIVATE tests ${BASALT_TEST_INCLUDE})
   target_compile_options(basalt_gtk_tests PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
 

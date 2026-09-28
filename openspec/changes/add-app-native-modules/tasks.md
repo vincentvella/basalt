@@ -31,6 +31,15 @@
       app with no `modules` directory, both lists reaching one -D, and the
       failure note.
 
+## 3b. What a contributing module links
+
+- [x] 3b.1 `BASALT_PACKAGE_{APPKIT,GTK,WIN32}_LINK_LIBRARIES`, read by each host
+      and applied to the host and its tests.
+- [x] 3b.2 The notifications package declares its own `-framework
+      UserNotifications`, which the AppKit package used to name for it. Moved so
+      that the property is exercised by this repository's own CI rather than only
+      by an app outside it.
+
 ## 4. `fetch`
 
 - [x] 4.1 `useReactNativeFetch`: set `EXPO_PUBLIC_USE_RN_FETCH` before the
@@ -56,3 +65,10 @@
 - [x] 6.2 The parts running the app does not reach -- exit codes, kill, the
       working directory, output ordering -- covered by a test in kino beside the
       module.
+- [x] 6.3 kino's `KinoAudio` as a second local module, which is what needed the
+      link-libraries property. Its test plays a real file and measures that the
+      reported position tracks real time, because preview.ts uses it as a clock.
+- [ ] 6.4 Audio on Linux and Windows. Each file says what it would take --
+      GStreamer's `playbin`, Media Foundation's `IMFPMediaPlayer` -- and why it
+      is not written blind: neither this machine nor CI can tell a working
+      implementation from one reporting plausible numbers to nobody.

@@ -32,5 +32,14 @@ set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_GTK_SOURCES
   ${BASALT_NOTIFICATIONS_DIR}/gtk/GtkNotifications.cpp)
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
   ${BASALT_NOTIFICATIONS_DIR}/appkit/AppKitNotifications.mm)
+
+# UserNotifications, which AppKitNotifications.mm reaches for. Named here rather
+# than by the AppKit package, which is where it used to be: a host naming a
+# package's framework works only for as long as every package is ours, and an
+# app's own module under `modules/` is not. The framework is present since 10.14
+# and the code behind it refuses to run without a bundle identifier anyway, which
+# is the thing that actually decides whether notifications work.
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
+  "-framework UserNotifications")
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_SOURCES
   ${BASALT_NOTIFICATIONS_DIR}/win32/Win32Notifications.cpp)
