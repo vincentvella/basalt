@@ -571,7 +571,17 @@ jobs:
 
   windows-full:
     name: the whole Windows stack (shard ${{ matrix.shard }})
-    runs-on: windows-2022
+    # GitHub's image unless a repository variable names something else.
+    #
+    # `WINDOWS_RUNNER` set to a self-hosted runner's label sends this job to that
+    # machine; unset, it goes back to GitHub's with no other change. A variable
+    # rather than hard-coding a label, because a self-hosted runner that is
+    # switched off does not fail a job -- it queues it, for six hours, and the
+    # run that never reports looks exactly like the run that is still going.
+    # Unsetting one variable is a fix anyone can make from a phone.
+    #
+    # See docs/TESTING.md for what such a machine needs and how to enrol one.
+    runs-on: ${{ vars.WINDOWS_RUNNER || 'windows-2022' }}
     timeout-minutes: 150
     strategy:
       # The end-to-end suite is nine of this job's thirteen minutes, and every

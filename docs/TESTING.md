@@ -524,6 +524,47 @@ branches still free their runners. `scripts/test_ci_status.py` checks the logic
 against that five-run history, because a bug in a tool like this points the same
 comfortable way as the problem it was written for.
 
+## Windows, on a machine you own
+
+The Windows job is the one nothing here can check. No development machine in this
+project runs Windows, so a Windows-only file is written, pushed, and answered
+fifteen minutes later — and if it is wrong, that is fifteen minutes per attempt.
+It is also the least of the problem: the Windows implementation of the subprocess
+capability passed on its first run, and the two things that failed around it were
+a test that assumed my machine and a missing include.
+
+So this is worth setting up when there is Windows work in flight, and not
+otherwise.
+
+`scripts/setup_windows_runner.ps1`, run as administrator **on the Windows
+machine**, enrols it under the label `basalt-windows` and installs the runner as
+a service. It checks first and installs nothing: Visual Studio with the C++
+workload *and* `C++ Clang tools for Windows` (the core is built with clang-cl,
+not cl — see docs/PORTING.md), vcpkg with `VCPKG_INSTALLATION_ROOT` pointing at
+it, Git for Windows for the bash that runs `bootstrap.sh`, cmake, ninja and node.
+A machine missing any of them is told all of them at once.
+
+Enrolling a machine does not move the job to it. That is a separate step:
+
+```
+gh variable set WINDOWS_RUNNER --body basalt-windows   # use it
+gh variable delete WINDOWS_RUNNER                      # go back to GitHub's image
+```
+
+Two decisions rather than one, because **a self-hosted runner that is switched
+off does not fail a job — it queues it**, for the job's six-hour timeout, and a
+run that never reports looks exactly like a run that is still going. Deleting one
+variable is a fix that can be made from a phone; taking a label out of a workflow
+and pushing it is not.
+
+What it buys is that ccache, vcpkg's binaries and the vendored `third_party`
+survive on local disk between runs rather than being restored from a cache, so a
+warm run is minutes rather than a quarter of an hour. What it costs is that the
+machine's state is now part of the build: a green run on a machine with something
+left over from last month is not the same evidence as a green run on a fresh
+image. When a Windows failure looks impossible, unset the variable and let
+GitHub's image answer.
+
 ## Sharding
 
 `--shard I/N` runs the Ith of N shards of the end-to-end suite, and
