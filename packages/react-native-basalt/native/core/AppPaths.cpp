@@ -1,5 +1,6 @@
 #include "AppPaths.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <utility>
