@@ -33,14 +33,19 @@
  * does encode never produces such a body, so the verdict can only ever be
  * reached correctly.
  *
- * **The window where it can still be wrong, stated.** Until something decisive
- * arrives, a body that looks like canonical base64 is taken as base64. Most
- * bodies are decisive: any JSON object or array contains `{`, `"` or `,`. A few
- * are not -- `null`, `true` and `1234` are all four characters from the alphabet
- * -- so a non-encoding platform whose *first* blob response is one of those is
- * read wrongly, once. Nothing in the delivered string can separate those two
- * cases; the response headers could, and this platform does not surface them
- * yet.
+ * **Content-Length settles it outright, when there is one.** The delivered
+ * string is either the body or its base64, and those have different lengths, so
+ * a byte count from the server picks one. That is exact and needs nothing
+ * learned. It is not always available -- a chunked response has no
+ * Content-Length, and kino's daemon sends every response chunked -- which is why
+ * it is a shortcut rather than the whole answer.
+ *
+ * **The window where it can still be wrong, stated.** With no Content-Length and
+ * nothing yet learned, a body that looks like canonical base64 is taken as
+ * base64. Most bodies are decisive: any JSON object or array contains `{`, `"`
+ * or `,`. A few are not -- `null`, `true` and `1234` are all four characters
+ * from the alphabet -- so a non-encoding platform whose *first* blob response is
+ * chunked *and* one of those is read wrongly, once.
  *
 /** One part for `BlobModule.createFromParts`, with the size the Blob should claim. */
 export interface ResponseBlobPart {
@@ -93,15 +98,34 @@ export function base64Length(encoded: string): number {
  * One per process in the override; a factory rather than module state so that a
  * test can start from not knowing.
  */
-export function createResponseBodyReader(): (delivered: string) => ResponseBlobPart {
+export function createResponseBodyReader(): (
+  delivered: string,
+  contentLength?: number | null,
+) => ResponseBlobPart {
   // null while nothing decisive has been seen.
   let platformEncodes: boolean | null = null;
 
-  return function read(delivered: string): ResponseBlobPart {
+  return function read(delivered: string, contentLength?: number | null): ResponseBlobPart {
     const couldBeBase64 = looksLikeBase64(delivered);
     if (!couldBeBase64 && delivered.length > 0) {
       // Decisive: a platform that encodes could not have produced this.
       platformEncodes = false;
+    }
+
+    // A byte count from the server, where there is one, decides it outright --
+    // and teaches the same lesson for the responses that arrive without one.
+    //
+    // Never from an empty body: base64 of no bytes is the empty string, so the
+    // two possibilities are identical and there is nothing to learn. Worth
+    // stating because `looksLikeBase64('')` is false, which would otherwise read
+    // as "this platform does not encode".
+    if (typeof contentLength === 'number' && contentLength >= 0 && delivered.length > 0) {
+      const rawFits = utf8Length(delivered) === contentLength;
+      const base64Fits = couldBeBase64 && base64Length(delivered) === contentLength;
+      // Only when exactly one fits. An empty body fits both, and says nothing.
+      if (rawFits !== base64Fits) {
+        platformEncodes = base64Fits;
+      }
     }
 
     // Unknown counts as encoding, because on a platform that does, every body

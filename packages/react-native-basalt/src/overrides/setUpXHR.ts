@@ -48,6 +48,7 @@
 const {polyfillGlobal} = require('react-native-basalt/upstream/Libraries/Utilities/PolyfillFunctions');
 const base64 = require('base64-js');
 const {createResponseBodyReader} = require('../responseBody');
+const {headersToObject} = require('../responseHeaders');
 
 // One reader for the process: what it learns about this platform on the first
 // decisive body applies to every response after it.
@@ -177,7 +178,14 @@ Object.defineProperty(proto, 'response', {
     // this asked for is only applied by ReactCxxPlatform after 0.86, and the
     // version in use is the app's. See src/responseBody.ts, and the failure it
     // was written for.
-    const {part, size, encoded: wasEncoded} = readResponseBody(encoded);
+    // The server's own byte count, now that response headers survive the bridge
+    // (see src/responseHeaders.ts). Absent on a chunked response, which is why
+    // the reader still has to be able to work it out without one.
+    const declared = Number.parseInt(this.getResponseHeader('content-length') ?? '', 10);
+    const {part, size, encoded: wasEncoded} = readResponseBody(
+      encoded,
+      Number.isNaN(declared) ? null : declared,
+    );
     if (!wasEncoded) {
       warnOnceAboutUnencodedBodies();
     }
@@ -193,6 +201,32 @@ Object.defineProperty(proto, 'response', {
     return this.__rnbBlob;
   },
 });
+
+/**
+ * The response headers, reshaped on the way in.
+ *
+ * `setResponseHeaders` is the one funnel: `__didReceiveResponse` calls it with
+ * whatever the platform sent, and it both stores the value and builds the
+ * lower-cased lookup that `getResponseHeader` and `Response.headers` read. So
+ * converting here fixes every reader at once, including `fetch`'s, which never
+ * touches the XHR itself.
+ *
+ * A method rather than an accessor, so it is wrapped by assignment; the
+ * accessors above need defineProperty because that is what they are.
+ */
+const baseSetResponseHeaders = proto.setResponseHeaders;
+if (typeof baseSetResponseHeaders !== 'function') {
+  // The same argument the accessor check above makes: a missing one means this
+  // override no longer matches the React Native it is shadowing, and finding
+  // that out here beats finding it out from a header lookup that returns null.
+  throw new Error(
+    'react-native-basalt: XMLHttpRequest.prototype.setResponseHeaders is missing, ' +
+      'so response headers cannot be reshaped. See src/responseHeaders.ts.',
+  );
+}
+proto.setResponseHeaders = function setResponseHeaders(responseHeaders: unknown) {
+  baseSetResponseHeaders.call(this, headersToObject(responseHeaders));
+};
 
 polyfillGlobal('XMLHttpRequest', () => BaseXMLHttpRequest);
 polyfillGlobal('FormData', () => require('react-native-basalt/upstream/Libraries/Network/FormData').default);

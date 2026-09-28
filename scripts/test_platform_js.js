@@ -168,6 +168,96 @@ test('an empty body is text rather than base64', () => {
   assert.strictEqual(size, 0);
 });
 
+test('a byte count from the server settles it with nothing learned', () => {
+  // Exact rather than inferred, and it works on the very first response --
+  // including the ambiguous ones the learned verdict cannot help with yet.
+  const read = responseBody.createResponseBodyReader();
+  assert.strictEqual(read('null', 4).part.type, 'string', 'four bytes means the body itself');
+
+  const read2 = responseBody.createResponseBodyReader();
+  const encoded = Buffer.from('null').toString('base64'); // "bnVsbA==", 8 chars
+  assert.strictEqual(read2(encoded, 4).encoded, true, 'four bytes means this is its base64');
+});
+
+test('a byte count teaches the responses that arrive without one', () => {
+  // A chunked response has no Content-Length, and kino's daemon sends every
+  // response chunked -- so what one sized response settles has to carry over.
+  const read = responseBody.createResponseBodyReader();
+  read('{"a":1}', 7); // decisive: raw
+  assert.strictEqual(read('true').part.type, 'string', 'now known, with no length given');
+});
+
+test('a byte count that fits both ways decides nothing', () => {
+  const read = responseBody.createResponseBodyReader();
+  // An empty body is zero bytes either way, and must not teach anything.
+  assert.strictEqual(read('', 0).part.type, 'string');
+  assert.strictEqual(read('bnVsbA==').encoded, true, 'still unknown, so still base64');
+});
+
+// --- Response headers -------------------------------------------------------
+//
+// ReactCxxPlatform sends an array of [name, value] pairs and React Native's XHR
+// does Object.keys on it, so every lookup missed while every header was present.
+
+const responseHeaders = require(path.join(
+  __dirname,
+  '..',
+  'packages/react-native-basalt/dist/src/responseHeaders.js',
+));
+
+test('pairs from the platform become an object', () => {
+  const headers = responseHeaders.headersToObject([
+    ['Content-Type', 'application/json'],
+    ['Content-Length', '580'],
+  ]);
+  assert.deepStrictEqual(headers, {
+    'Content-Type': 'application/json',
+    'Content-Length': '580',
+  });
+});
+
+test('an object is passed through untouched', () => {
+  // So that a ReactCxxPlatform which starts sending one needs no change here.
+  const given = {'content-type': 'text/plain'};
+  assert.strictEqual(responseHeaders.headersToObject(given), given);
+});
+
+test('nothing stays nothing', () => {
+  assert.strictEqual(responseHeaders.headersToObject(null), null);
+  assert.strictEqual(responseHeaders.headersToObject(undefined), null);
+  assert.deepStrictEqual(responseHeaders.headersToObject([]), {});
+});
+
+test('a header sent twice is joined, the way XHR reports one', () => {
+  assert.deepStrictEqual(
+    responseHeaders.headersToObject([
+      ['Vary', 'Accept'],
+      ['Vary', 'Origin'],
+    ]),
+    {Vary: 'Accept, Origin'},
+  );
+});
+
+test('the same header in two casings is one header', () => {
+  const headers = responseHeaders.headersToObject([
+    ['Vary', 'Accept'],
+    ['vary', 'Origin'],
+  ]);
+  assert.deepStrictEqual(headers, {Vary: 'Accept, Origin'});
+});
+
+test('a malformed pair is skipped rather than stringified', () => {
+  // This is parsing something that crossed a bridge.
+  const headers = responseHeaders.headersToObject([
+    ['Content-Type', 'application/json'],
+    ['Oops'],
+    [],
+    ['Bad', 7],
+    [null, 'x'],
+  ]);
+  assert.deepStrictEqual(headers, {'Content-Type': 'application/json'});
+});
+
 // The package's require()-able surface
 // --------------------------------------------------------------------------
 //
