@@ -41,6 +41,7 @@
 #include "MenuModel.h"
 #include "MenuModule.h"
 #include "WindowsModule.h"
+#include "TestKeys.h"
 #include "TestQuitFile.h"
 #ifdef BASALT_HAS_SKIA
 #include "AppKitSkiaModule.h"
@@ -1434,6 +1435,22 @@ int main(int argc, const char *argv[]) {
     // run does not reliably have. This enters at AppKitFocusManager, so it
     // exercises AppKit's own key-view loop, the focus and blur events and the
     // click dispatch, and skips only the delivery of the keystroke itself.
+    // BASALT_TEST_KEY: a declared shortcut, pressed. Enters after the NSEvent
+    // translation rather than before it -- see core/TestKeys.h for what that
+    // does and does not prove.
+    for (const basalt::KeyCombination &pressed : basalt::scriptedKeyPresses()) {
+      const basalt::KeyCombination combination = pressed;
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, scriptedDelayMs * NSEC_PER_MSEC),
+                     dispatch_get_main_queue(),
+                     ^{
+                       NSLog(@"BASALT_TEST_KEY: %s", combination.key.c_str());
+                       if (gHost.main().focusManager != nullptr) {
+                         gHost.main().focusManager->deliverTestKey(combination);
+                       }
+                     });
+      scriptedDelayMs += 400;
+    }
+
     if (const char *focus = getenv("BASALT_TEST_FOCUS")) {
       NSString *spec = [NSString stringWithUTF8String:focus];
       int64_t delayMs = scriptedDelayMs;

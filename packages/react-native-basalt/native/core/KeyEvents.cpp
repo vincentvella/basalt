@@ -73,6 +73,19 @@ std::optional<facebook::react::Tag> handledBy(
   return std::nullopt;
 }
 
+std::optional<facebook::react::Tag> handledByAny(const KeyCombination &pressed) {
+  Registry &state = registry();
+  const std::lock_guard<std::mutex> lock(state.mutex);
+  for (const auto &[tag, combinations] : state.claims) {
+    for (const KeyCombination &claimed : combinations) {
+      if (claimed == pressed) {
+        return tag;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::size_t handledKeyViewCount() {
   Registry &state = registry();
   const std::lock_guard<std::mutex> lock(state.mutex);

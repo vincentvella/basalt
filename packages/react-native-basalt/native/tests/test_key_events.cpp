@@ -9,6 +9,7 @@
 #include "TestHarness.h"
 
 #include "KeyEvents.h"
+#include "TestKeys.h"
 
 #include <sstream>
 #include <string>
@@ -174,4 +175,61 @@ TEST(keys_the_special_names_are_the_ones_a_browser_uses) {
   EXPECT_EQ(std::string(basalt::kKeyPageDown), std::string("PageDown"));
   // The one that looks like a mistake and is not: a space is a character.
   EXPECT_EQ(std::string(basalt::kKeySpace), std::string(" "));
+}
+
+
+// --- BASALT_TEST_KEY's syntax ----------------------------------------------
+//
+// Parsed in core rather than in three hosts, because three parsers is three
+// chances to disagree about what "z+meta" means -- and to disagree quietly: the
+// wrong answer is a combination that matches nothing, which a scenario reports as
+// a shortcut that did not fire rather than as a bad instrument.
+
+TEST(keys_the_instrument_reads_a_bare_key) {
+  const KeyCombination pressed = basalt::parseKeyPress("m");
+  EXPECT_EQ(pressed.key, std::string("m"));
+  EXPECT(pressed.modifiers == KeyModifiers{});
+}
+
+TEST(keys_the_instrument_reads_modifiers) {
+  const KeyCombination undo = basalt::parseKeyPress("z+meta");
+  EXPECT_EQ(undo.key, std::string("z"));
+  EXPECT(undo.modifiers.meta);
+  EXPECT(!undo.modifiers.shift);
+
+  const KeyCombination redo = basalt::parseKeyPress("z+meta+shift");
+  EXPECT(redo.modifiers.meta);
+  EXPECT(redo.modifiers.shift);
+  // The pair that must differ, or a test for redo would pass on undo.
+  EXPECT(!(undo == redo));
+}
+
+TEST(keys_the_instrument_reads_a_named_key) {
+  EXPECT_EQ(basalt::parseKeyPress("ArrowLeft").key, std::string("ArrowLeft"));
+  // A space is a key named " ", and writing it in an environment variable means
+  // the parser must not trim.
+  EXPECT_EQ(basalt::parseKeyPress(" ").key, std::string(" "));
+}
+
+TEST(keys_the_instrument_reads_a_literal_plus) {
+  // "+" is both the separator and a key an editor binds -- zoom in. Spelt by
+  // being first, which is the one case where an empty piece means something.
+  EXPECT_EQ(basalt::parseKeyPress("+").key, std::string("+"));
+  const KeyCombination zoom = basalt::parseKeyPress("++meta");
+  EXPECT_EQ(zoom.key, std::string("+"));
+  EXPECT(zoom.modifiers.meta);
+}
+
+TEST(keys_the_instrument_ignores_a_modifier_it_does_not_know) {
+  // A typo gives a combination that matches nothing rather than an error, and the
+  // scenario then reports a shortcut that did not fire -- the honest symptom.
+  const KeyCombination pressed = basalt::parseKeyPress("z+command");
+  EXPECT_EQ(pressed.key, std::string("z"));
+  EXPECT(pressed.modifiers == KeyModifiers{});
+}
+
+TEST(keys_the_instrument_is_empty_when_unset) {
+  // Every scenario that does not press a key relies on this, which is all but
+  // one of them.
+  EXPECT(basalt::scriptedKeyPresses().empty());
 }

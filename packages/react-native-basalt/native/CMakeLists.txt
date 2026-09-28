@@ -243,6 +243,8 @@ if(DEFINED RN_DIR)
     core/TurboModuleProxy.cpp
     # Which view claims which key; see the header.
     core/KeyEvents.cpp
+    # BASALT_TEST_KEY, parsed once rather than in three hosts; see the header.
+    core/TestKeys.cpp
     core/StatusBarModule.cpp
     core/ReanimatedModule.cpp
     core/UIManagerAccess.cpp

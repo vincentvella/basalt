@@ -3301,6 +3301,99 @@ def test_drop_target(bundle: Path) -> None:
         raise Failure("the inner target was told about a drop outside it")
 
 
+def test_view_key_events(bundle: Path) -> None:
+    """A view's declared keyboard shortcuts, pressed.
+
+    `onKeyPress` existed on a `<TextInput>` and a `<View>` had nothing, so an app
+    could not bind a shortcut to anything it draws -- which on a desktop is most
+    of the interface. This is the scenario that says the whole path works, because
+    thirty-six unit tests say the three key tables, the registry and the matching
+    are right and none of them presses anything.
+
+    Four assertions, because four things fail independently:
+
+    - a declared combination fires
+    - an undeclared one does not, which is what keeps the menu and a focused text
+      field working
+    - a modifier is part of the match, so Cmd+Z is not Z
+    - a list that *changes* takes effect
+
+    The last is the reason this scenario exists more than the others. A
+    `<KeyHandler>` registers through a module rather than by `nativeID`, and the
+    failure that invites -- silently going quiet after a re-render -- is the one
+    `<DropTarget>` warns about in so many words. `js/keys.js` declares `m` and
+    adds `j` only once `m` has arrived, so `j` firing is proof the re-registration
+    happened. If the list were captured once, the log would stop after one line
+    and everything else here would still pass.
+    """
+    app = bundle_app(bundle.parent, "keys")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "9000"
+    # m is declared. j becomes declared once m has been handled. q is never
+    # declared. z+meta is declared with its modifier.
+    env["BASALT_TEST_KEY"] = "m;j;q;z+meta"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = subprocess.run(
+            [str(HOST), str(app), "BasaltKeys"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        logged = result.stdout + result.stderr
+        tree = dump.read_text() if dump.exists() else ""
+
+    # The instrument ran at all. Without this a scenario that pressed nothing
+    # would pass every assertion below by pressing nothing.
+    if "BASALT_TEST_KEY" not in logged:
+        raise Failure(
+            "the host never pressed a key; BASALT_TEST_KEY did not reach it.\n"
+            f"{tail_text(logged)}")
+
+    pressed = [
+        line.split("[js] key ", 1)[1].strip()
+        for line in logged.splitlines()
+        if "[js] key " in line
+    ]
+
+    if "m" not in pressed:
+        raise Failure(
+            "a declared combination did not reach JavaScript, so no shortcut "
+            f"works at all.\ngot: {pressed}\n{tail_text(logged)}")
+
+    if "j" not in pressed:
+        raise Failure(
+            "the second combination never fired, so a changed list is not "
+            "honoured -- `j` is declared only after `m` arrives. This is the "
+            "failure registering by tag rather than by nativeID invites: a "
+            "handler that silently goes quiet after a re-render.\n"
+            f"got: {pressed}")
+
+    if "z+meta" not in pressed:
+        raise Failure(
+            "a combination with a modifier did not fire, so Cmd+Z and Z are not "
+            f"being told apart.\ngot: {pressed}")
+
+    if any(entry == "q" for entry in pressed):
+        raise Failure(
+            "an undeclared key was delivered. A view that takes keys it never "
+            "declared swallows them from the application menu, from a focused "
+            f"<TextInput> and from a scrolling ancestor.\ngot: {pressed}")
+
+    # From the tree as well as the log, which says React re-rendered rather than
+    # only that a handler ran.
+    if 'text="pressed 3: m j z+meta"' not in tree:
+        raise Failure(
+            "the presses did not reach React's own state, so a handler ran and "
+            f"the app did not see it.\n{tree[-1200:]}")
+
+
 def test_turbomodule_proxy(bundle: Path) -> None:
     """That `globalThis.__turboModuleProxy` exists and answers for both sides.
 
@@ -3656,6 +3749,8 @@ SCENARIOS = [
      test_windows),
     ("a window can refuse to close, and say so", test_window_close_request),
     ("a dropped file reaches the view under it", test_drop_target),
+    ("a view's declared keyboard shortcuts fire, and only those",
+     test_view_key_events),
     ("__turboModuleProxy answers for this platform and for React Native",
      test_turbomodule_proxy),
     ("the desktop says what displays it has", test_displays),

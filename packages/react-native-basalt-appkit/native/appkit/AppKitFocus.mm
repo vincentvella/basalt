@@ -118,7 +118,10 @@ bool AppKitFocusManager::handleKey(RnAppKitView *view, NSEvent *event) {
     // A bare modifier or a dead key. Nothing to match and nothing to consume.
     return false;
   }
+  return deliverKeyFrom(view, *pressed);
+}
 
+bool AppKitFocusManager::deliverKeyFrom(RnAppKitView *view, const KeyCombination &pressed) {
   // From the first responder outwards, so the innermost claim wins -- the order
   // core/KeyEvents.h's `handledBy` expects. Only RnAppKitViews, because only they
   // have a React tag; a scroll view's clip view in between is not a step in the
@@ -130,14 +133,37 @@ bool AppKitFocusManager::handleKey(RnAppKitView *view, NSEvent *event) {
     }
   }
 
-  const std::optional<Tag> handler = handledBy(path, *pressed);
+  std::optional<Tag> handler = handledBy(path, pressed);
+  if (!handler.has_value() && focusedTag_ == 0) {
+    // Nothing focused, so there is no path to be outside of and no text field
+    // taking keys. A window-level shortcut holder is a child of the root rather
+    // than the root itself, so the walk above cannot reach it -- and that is
+    // every app that declares its shortcuts once at the top. See
+    // core/KeyEvents.h on why this is only safe unfocused.
+    handler = handledByAny(pressed);
+  }
   if (!handler.has_value()) {
     return false;
   }
   // Decided. Reporting is asynchronous from here -- it crosses to the JavaScript
   // thread -- which is why the answer could not have come from there.
-  reportKey(*handler, *pressed);
+  reportKey(*handler, pressed);
   return true;
+}
+
+bool AppKitFocusManager::deliverTestKey(const KeyCombination &pressed) {
+  // From whatever has focus, or from the root when nothing does -- which is the
+  // ordinary case for a window-level shortcut holder and the one a scenario
+  // exercises. A real press reaches the first responder, and with nothing
+  // focusable focused that is the root too.
+  RnAppKitView *from = nil;
+  if (focusedTag_ != 0 && mountingManager_ != nullptr) {
+    from = mountingManager_->viewForTag(focusedTag_);
+  }
+  if (from == nil) {
+    from = surfaceRoot_;
+  }
+  return deliverKeyFrom(from, pressed);
 }
 
 bool AppKitFocusManager::activateFocused() {

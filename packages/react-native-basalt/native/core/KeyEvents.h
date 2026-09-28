@@ -112,6 +112,25 @@ bool handlesKey(facebook::react::Tag tag, const KeyCombination &pressed);
 std::optional<facebook::react::Tag> handledBy(
     const std::vector<facebook::react::Tag> &path, const KeyCombination &pressed);
 
+// Any view that claims it, focus ignored. For the case where nothing has focus
+// at all, which is the ordinary state of a window whose app has declared
+// window-level shortcuts and focused nothing.
+//
+// **Only when nothing is focused.** A host with a focused view must use
+// `handledBy`, because a claim outside the focus path is exactly how a background
+// pane would steal a keystroke from a text field. With nothing focused there is no
+// text field taking keys and no path to be outside of, so the choice is between a
+// window-level shortcut working and it never firing -- and never firing is what a
+// `<KeyHandler>` below the root got before this existed, which is every app that
+// declares shortcuts once at the top.
+//
+// Ambiguous by construction when two views claim the same combination and neither
+// is focused. The first found answers, and which that is depends on the registry's
+// order -- so an app with two window-level handlers for one combination gets one
+// of them and no promise which. Worth knowing rather than worth preventing: the
+// alternative is refusing to fire at all.
+std::optional<facebook::react::Tag> handledByAny(const KeyCombination &pressed);
+
 // How many views currently claim anything. For tests, and for a host that wants
 // to skip the walk entirely when nothing is listening.
 std::size_t handledKeyViewCount();

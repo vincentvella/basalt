@@ -228,7 +228,11 @@ bool Win32FocusManager::handleDeclaredKey(unsigned int virtualKey) {
     path.push_back(static_cast<facebook::react::Tag>(surfaceRoot_->tag()));
   }
 
-  const std::optional<facebook::react::Tag> handler = handledBy(path, *pressed);
+  std::optional<facebook::react::Tag> handler = handledBy(path, *pressed);
+  if (!handler.has_value() && focusedTag_ == 0) {
+    // See the AppKit host and core/KeyEvents.h.
+    handler = handledByAny(*pressed);
+  }
   if (!handler.has_value()) {
     return false;
   }

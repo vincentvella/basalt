@@ -124,6 +124,7 @@ inline const char *const *scriptedInputVars(std::size_t &count) {
       "BASALT_TEST_HOVER",
       "BASALT_TEST_SCROLL",
       "BASALT_TEST_FOCUS",
+      "BASALT_TEST_KEY",
       "BASALT_TEST_TYPE",
       "BASALT_TEST_DRAG",
       "BASALT_TEST_DROP",

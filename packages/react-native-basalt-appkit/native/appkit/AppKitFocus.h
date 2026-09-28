@@ -39,6 +39,8 @@
 
 #pragma once
 
+#include "KeyEvents.h"
+
 #import "RnAppKitView.h"
 
 #include "AppKitMountingManager.h"
@@ -72,6 +74,11 @@ class AppKitFocusManager {
   // core/KeyEvents.h.
   bool handleKey(RnAppKitView *view, NSEvent *event);
 
+  // BASALT_TEST_KEY. The same delivery a real press gets, minus the NSEvent
+  // translation -- which is the half this cannot exercise and which
+  // tests/test_appkit_key_events.mm covers instead. See core/TestKeys.h.
+  bool deliverTestKey(const KeyCombination &pressed);
+
   // The tag of the focused view, or 0. For tests and for automation.
   facebook::react::Tag focusedTag() const {
     return focusedTag_;
@@ -84,6 +91,10 @@ class AppKitFocusManager {
  private:
   void emitFocus(facebook::react::Tag tag, bool focused);
   bool dispatchClick(facebook::react::Tag tag);
+
+  // The path walk and the decision, shared by a real press and by the
+  // instrument. Only the translation above them differs.
+  bool deliverKeyFrom(RnAppKitView *view, const KeyCombination &pressed);
 
   AppKitMountingManager *mountingManager_;
   RnAppKitView *surfaceRoot_;

@@ -139,6 +139,15 @@ def main() -> int:
     read_by_hosts = set()
     for host in hosts:
         read_by_hosts |= set(re.findall(r'"(BASALT_TEST_[A-Z_]+)"', (repo / host).read_text()))
+    # And core, because an instrument's name does not have to live in a host to
+    # be scheduled by one. BASALT_TEST_KEY is spelt once in core/TestKeys.h and
+    # the hosts call scriptedKeyPresses(), which is the arrangement this file
+    # keeps asking for everywhere else -- and which this check did not allow for
+    # until it flagged it.
+    for source in sorted((repo / "packages/react-native-basalt/native/core").glob("*.h")):
+        if source.name == "TestSettle.h":
+            continue  # the list itself
+        read_by_hosts |= set(re.findall(r'"(BASALT_TEST_[A-Z_]+)"', source.read_text()))
 
     # Not scripted input, and deliberately not in the list. Each is here with a
     # reason rather than silently skipped.

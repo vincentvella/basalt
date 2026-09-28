@@ -33,8 +33,10 @@
       `GetKeyState` means asserting it would need a key physically held
 - [x] Written blind: nothing here can compile this host, so CI is the check. The
       mapping file is in the test target for that reason
-- [ ] The focus path: a claim is honoured for the focused view and its ancestors,
-      and a focused `<TextInput>` keeps its keys
+- [x] The focus path: innermost first from the focused view outwards. With
+      *nothing* focused a claim fires wherever it is -- a window-level handler is a
+      child of the root and so on no path, and without that fallback no app's
+      shortcuts fired at all. Found by the scenario, not by reading
 
 ## 3. The API
 
@@ -47,14 +49,14 @@
 
 ## 4. Tests
 
-- [ ] An instrument to press a key, on all three hosts -- or the scenario skips
-      where it is missing, which is the rule docs/TESTING.md records
-- [ ] A scenario: a declared combination fires, an undeclared one does not, and a
-      re-render that changes the list is honoured
+- [x] `BASALT_TEST_KEY`, on all three hosts. Parsed once in core; six tests for
+      the syntax, including a literal `+` as a key, which an editor binds for zoom
+- [x] A scenario asserting all four, verified to fail by registering the list
+      once: `got: ['m', 'z+meta']`, no `j`. Green on AppKit and on GTK
 - [ ] A scenario: a focused `<TextInput>` keeps its keys
 
 ## 5. Records
 
-- [ ] `docs/backlog/input.md`: no longer a decision
-- [ ] `docs/TESTING.md`: the new instrument
+- [x] `docs/backlog/input.md`: no longer a decision
+- [x] `docs/TESTING.md`: the new instrument, and what it does not cover
 - [ ] Whether kino's `hotkeyViewProps()` can keep its shape, recorded either way

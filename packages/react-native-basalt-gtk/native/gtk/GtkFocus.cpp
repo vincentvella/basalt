@@ -189,10 +189,15 @@ bool GtkFocusManager::handleKey(guint keyval, GdkModifierType state) {
   if (!pressed.has_value()) {
     return false;
   }
+  return deliverTestKey(*pressed);
+}
 
+bool GtkFocusManager::deliverTestKey(const KeyCombination &pressed) {
   // From the focused widget outwards, so the innermost claim wins. Only RnViews,
   // because only they carry a React tag -- the box a scrolled window puts in
-  // between is not a step in the React tree.
+  // between is not a step in the React tree. With nothing focused this walks from
+  // nothing and the root's own claim is added below, which is the ordinary case
+  // for a window-level shortcut holder.
   std::vector<Tag> path;
   for (GtkWidget *widget = gtk_window_get_focus(window_); widget != nullptr;
        widget = gtk_widget_get_parent(widget)) {
@@ -200,12 +205,24 @@ bool GtkFocusManager::handleKey(guint keyval, GdkModifierType state) {
       path.push_back(static_cast<Tag>(rn_view_get_tag(RN_VIEW(widget))));
     }
   }
+  if (path.empty() && mountingManager_ != nullptr) {
+    // Surface 1, which is the app's own -- the same constant main_gtk.cpp uses
+    // for it. A second window's surface has its own focus manager.
+    if (RnView *root = mountingManager_->getSurfaceRoot(1); root != nullptr) {
+      path.push_back(static_cast<Tag>(rn_view_get_tag(root)));
+    }
+  }
 
-  const std::optional<Tag> handler = handledBy(path, *pressed);
+  std::optional<Tag> handler = handledBy(path, pressed);
+  if (!handler.has_value() && focusedTag_ == 0) {
+    // See the AppKit host and core/KeyEvents.h: unfocused, a window-level
+    // shortcut holder is not on any path and would otherwise never fire.
+    handler = handledByAny(pressed);
+  }
   if (!handler.has_value()) {
     return false;
   }
-  reportKey(*handler, *pressed);
+  reportKey(*handler, pressed);
   return true;
 }
 

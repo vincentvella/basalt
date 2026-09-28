@@ -770,6 +770,21 @@ The suite also prints each scenario's duration now. Its cost is the thing most
 often being worked on here and was only ever visible as a total, which is why
 every estimate in this area had been a guess.
 
+`BASALT_TEST_KEY` presses a key -- `"m;j;q;z+meta"`, presses separated by `;` and
+modifiers by `+`. Parsed once in `core/TestKeys.h` rather than in three hosts,
+because three parsers is three chances to disagree quietly about what `z+meta`
+means: the wrong answer is a combination that matches nothing, which reads as a
+shortcut that did not fire rather than as a bad instrument.
+
+**It enters after the platform translation**, not before it, so what it does not
+exercise is the `NSEvent`, keyval and `WM_KEYDOWN` mapping -- which is the half
+most likely to be wrong, and is unit-tested per host instead (twenty-seven tests
+across the three). A scenario passing here says the registry, the focus path and
+the round trip to JavaScript work. It says nothing about whether pressing the left
+arrow produces `"ArrowLeft"`.
+
+On all three hosts, which is the rule below rather than a coincidence.
+
 `BASALT_TEST_QUIT_FILE` is how the harness ends a run at a moment it picks,
 rather than on a budget fixed before launch. The host polls for the path and
 shuts down as soon as it exists, through exactly the path `BASALT_QUIT_AFTER_MS`

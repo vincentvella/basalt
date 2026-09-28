@@ -90,10 +90,23 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   order is walked in tree order there. Win32 has no focus to speak of, because a
   React Native view is not a window, so all of it is this project's.
 
-  What is still missing is **key events**: `onKeyPress` on a `<TextInput>`
-  exists, and there is nothing for a `<View>`. React Native has no
-  cross-platform key event API to be compatible with, so that is still a
-  decision as well as an implementation.
+  ~~What is still missing is **key events**~~: a `<View>` has them now. React
+  Native has no cross-platform key event API, which is what made this a decision
+  -- but it has two *platform* ones and they agree, so `<KeyHandler>` follows
+  react-native-macos and react-native-windows: `keyDownEvents` declaring
+  combinations, `onKeyDown` reporting them, W3C key names. See
+  `core/KeyEvents.h`, and `openspec/changes/add-view-key-events` for why the list
+  is declarative and why it departs from the `nativeID` idiom.
+
+  Two things about it worth knowing before building on it. With nothing focused,
+  a declared combination fires wherever it was declared -- a window-level handler
+  is a child of the root and so on no focus path, and the alternative was every
+  app's shortcuts never firing. And `<KeyHandler>` sets `focusable`, so binding
+  Tab inside one breaks focus movement there, which is the app's choice and is
+  what a browser does too.
+
+  Still absent: `onKeyUp`. The declaration and the plumbing are in place for it
+  and no host raises it yet.
 - `PanResponder` works, verified with real pointer motion through an X server
   against a probe that drags a view. Worth stating because it was never
   deliberately built, and a real app uses it for every drag it has.

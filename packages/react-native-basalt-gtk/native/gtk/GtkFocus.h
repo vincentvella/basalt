@@ -41,6 +41,8 @@
 
 #pragma once
 
+#include "KeyEvents.h"
+
 #include "GtkMountingManager.h"
 #include "RnView.h"
 
@@ -74,6 +76,11 @@ class GtkFocusManager {
   // call stack because `key-pressed` consumes or propagates by it; see
   // core/KeyEvents.h.
   bool handleKey(guint keyval, GdkModifierType state);
+
+  // BASALT_TEST_KEY. The same delivery a real press gets, minus the keyval
+  // translation, which tests/test_key_events_gtk.cpp covers instead. See
+  // core/TestKeys.h.
+  bool deliverTestKey(const KeyCombination &pressed);
 
  private:
   static gboolean onKeyPressed(GtkEventControllerKey *controller,

@@ -26,6 +26,7 @@
 #include "MenuModel.h"
 #include "MenuModule.h"
 #include "WindowsModule.h"
+#include "TestKeys.h"
 #include "TestQuitFile.h"
 #include "TestSettle.h"
 #include "GtkMountingManager.h"
@@ -619,6 +620,23 @@ struct PendingType {
   Host *host;
   std::string text;
 };
+
+// BASALT_TEST_KEY's, for the same reason: a timeout carries one pointer and this
+// needs the host as well as the press.
+struct PendingKey {
+  Host *host;
+  basalt::KeyCombination pressed;
+};
+
+gboolean fireTestKey(gpointer data) {
+  auto *pending = static_cast<PendingKey *>(data);
+  g_message("BASALT_TEST_KEY: %s", pending->pressed.key.c_str());
+  if (pending->host->main().focusManager != nullptr) {
+    pending->host->main().focusManager->deliverTestKey(pending->pressed);
+  }
+  delete pending;
+  return G_SOURCE_REMOVE;
+}
 
 gboolean fireTestType(gpointer data) {
   std::unique_ptr<PendingType> pending{static_cast<PendingType *>(data)};
@@ -1516,6 +1534,13 @@ void onActivate(GtkApplication *app, gpointer data) {
       scriptedDelayMs += 1000;
     }
   }
+  // BASALT_TEST_KEY: a declared shortcut, pressed. Enters after the keyval
+  // translation; see core/TestKeys.h for what that does and does not prove.
+  for (const basalt::KeyCombination &pressed : basalt::scriptedKeyPresses()) {
+    g_timeout_add(scriptedDelayMs, fireTestKey, new PendingKey{host, pressed});
+    scriptedDelayMs += 400;
+  }
+
   if (const char *focus = g_getenv("BASALT_TEST_FOCUS")) {
     scriptedDelayMs = scheduleTestFocus(host, focus, scriptedDelayMs);
   }
