@@ -40,6 +40,8 @@
 
 #pragma once
 
+#include "KeyEvents.h"
+
 #include "RnWin32View.h"
 #include "Win32MountingManager.h"
 
@@ -75,6 +77,11 @@ class Win32FocusManager {
   // when a view from the focused one outwards claimed this combination, in which
   // case it has already been reported; see core/KeyEvents.h.
   bool handleDeclaredKey(unsigned int virtualKey);
+
+  // BASALT_TEST_KEY. The same delivery a real press gets, minus the virtual-key
+  // translation, which tests/test_win32_key_events.cpp covers instead. Named as
+  // the other two hosts name it, so the three read alike. See core/TestKeys.h.
+  bool deliverTestKey(const KeyCombination &pressed);
 
   // Called when a <TextInput>'s peer takes Win32 focus, so that a view holding
   // the ring gives it up. The two kinds of focus are different mechanisms and

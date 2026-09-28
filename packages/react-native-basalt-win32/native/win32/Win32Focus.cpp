@@ -215,7 +215,10 @@ bool Win32FocusManager::handleDeclaredKey(unsigned int virtualKey) {
   if (!pressed.has_value()) {
     return false;
   }
+  return deliverTestKey(*pressed);
+}
 
+bool Win32FocusManager::deliverTestKey(const KeyCombination &pressed) {
   // Root-first from the walk, so reversed to put the focused view first and let
   // the innermost claim win -- the order core/KeyEvents.h expects.
   std::vector<facebook::react::Tag> path;
@@ -228,15 +231,15 @@ bool Win32FocusManager::handleDeclaredKey(unsigned int virtualKey) {
     path.push_back(static_cast<facebook::react::Tag>(surfaceRoot_->tag()));
   }
 
-  std::optional<facebook::react::Tag> handler = handledBy(path, *pressed);
+  std::optional<facebook::react::Tag> handler = handledBy(path, pressed);
   if (!handler.has_value() && focusedTag_ == 0) {
     // See the AppKit host and core/KeyEvents.h.
-    handler = handledByAny(*pressed);
+    handler = handledByAny(pressed);
   }
   if (!handler.has_value()) {
     return false;
   }
-  reportKey(*handler, *pressed);
+  reportKey(*handler, pressed);
   return true;
 }
 

@@ -43,6 +43,7 @@
 #include "MenuModel.h"
 #include "MenuModule.h"
 #include "WindowsModule.h"
+#include "TestKeys.h"
 #include "TestQuitFile.h"
 #include "TestSettle.h"
 #include "Win32MountingManager.h"
@@ -694,7 +695,7 @@ void snapshotIfRequested() {
 // `hostProc` at all. A person clicking the window is still the only check on
 // that half, on all three platforms.
 struct ScriptedInput {
-  enum class Kind { Tap, Hover, Drag, Wheel, Type, Focus, Close, Quit, Drop };
+  enum class Kind { Tap, Hover, Drag, Wheel, Type, Focus, Close, Quit, Drop, Key };
 
   Kind kind{Kind::Tap};
   double fromX{0};
@@ -718,6 +719,8 @@ struct ScriptedInput {
   // Type only. Default-initialised explicitly, so that the three kinds that do
   // not carry text can leave it out of a designated initialiser.
   std::string text{};
+  // Key only: the combination to press. See core/TestKeys.h.
+  basalt::KeyCombination pressed{};
 };
 
 // Fired from timers keyed by index, so the vector has to outlive the loop.
@@ -851,6 +854,14 @@ void CALLBACK fireScriptedInput(HWND hwnd, UINT, UINT_PTR id, DWORD) {
                   WM_MOUSEWHEEL,
                   MAKEWPARAM(0, delta),
                   MAKELPARAM(static_cast<WORD>(screen.x), static_cast<WORD>(screen.y)));
+      break;
+    }
+
+    case ScriptedInput::Kind::Key: {
+      std::fprintf(stderr, "BASALT_TEST_KEY: %s\n", action.pressed.key.c_str());
+      if (gHost.main().focusManager != nullptr) {
+        gHost.main().focusManager->deliverTestKey(action.pressed);
+      }
       break;
     }
 
@@ -2294,6 +2305,15 @@ int main(int argc, char **argv) {
   // `activate`, `escape` and `devmenu`. The same reason the other instruments exist: a
   // real Tab needs a window the system considers focused, which an automated
   // run does not reliably have.
+  // BASALT_TEST_KEY: a declared shortcut, pressed. The step this host was missing
+  // -- the delivery and the WM_KEYDOWN hook were here and nothing scheduled
+  // anything, so the scenario's own "did the instrument run at all" guard failed
+  // rather than an assertion about keys. Which is what that guard is for.
+  for (const basalt::KeyCombination &pressed : basalt::scriptedKeyPresses()) {
+    scriptedDelayMs = scheduleScriptedInput(
+        ScriptedInput{.kind = ScriptedInput::Kind::Key, .pressed = pressed}, scriptedDelayMs);
+  }
+
   if (const char *focus = std::getenv("BASALT_TEST_FOCUS")) {
     const std::string all(focus);
     size_t start = 0;
