@@ -83,6 +83,23 @@ void recordDevBundleError(long status, const std::string &url, const std::string
   lastError() = DevBundleError{.status = status, .message = message};
 }
 
+namespace {
+
+std::optional<std::string> &fetched() {
+  static std::optional<std::string> url;
+  return url;
+}
+
+} // namespace
+
+void recordDevBundleFetched(const std::string &url) {
+  fetched() = url;
+}
+
+std::optional<std::string> devBundleFetched() {
+  return fetched();
+}
+
 std::optional<DevBundleError> devBundleError() {
   const std::lock_guard<std::mutex> lock(stateMutex());
   return lastError();

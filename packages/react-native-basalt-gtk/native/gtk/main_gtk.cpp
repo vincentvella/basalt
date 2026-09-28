@@ -41,6 +41,7 @@
 #include "GtkTouchDispatcher.h"
 #include "RnView.h"
 
+#include <glog/logging.h>
 #include <jsi/jsi.h>
 #include <logger/react_native_log.h>
 #include <react/http/IHttpClient.h>
@@ -1403,7 +1404,12 @@ void onActivate(GtkApplication *app, gpointer data) {
     gtk_window_present(host->main().window);
     return;
   }
-  g_message("loaded script: %s", host->bundlePath.c_str());
+  // Where it came from, not where it might have. See core/DevBundle.h.
+  if (const auto from = basalt::devBundleFetched()) {
+    g_message("loaded script from the packager: %s", from->c_str());
+  } else {
+    g_message("loaded script: %s", host->bundlePath.c_str());
+  }
 
   // The module name decides who drives the surface.
   //
@@ -1847,6 +1853,17 @@ std::vector<facebook::react::SurfaceId> hostWindows() {
 } // namespace basalt
 
 int main(int argc, char **argv) {
+  // glog, before anything logs through it.
+  //
+  // Without this every run opens with "WARNING: Logging before
+  // InitGoogleLogging() is written to STDERR" -- glog saying it has not been
+  // told where to write, in a line that reads like something went wrong on
+  // start-up. It goes to stderr either way; this only stops it apologising for
+  // it. React Native's C++ logs through glog throughout, so the first message
+  // arrives before anything this project writes.
+  FLAGS_logtostderr = true;
+  google::InitGoogleLogging(argv[0]);
+
   Host host;
   host.bundlePath = argc > 1 ? argv[1] : "build/main.jsbundle.js";
   host.moduleName = argc > 2 ? argv[2] : "BasaltDemo";

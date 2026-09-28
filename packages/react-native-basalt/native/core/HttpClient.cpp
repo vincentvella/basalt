@@ -182,6 +182,11 @@ void performRequest(http::NetworkCallbacks callbacks,
       callbacks.onResponseComplete("Metro answered " + std::to_string(statusCode), false);
     }
   } else if (result == CURLE_OK) {
+    // The other half of the same question: a bundle that *did* come from Metro,
+    // so the host can say so rather than naming the file it would have used.
+    if (statusCode >= 200 && statusCode < 300 && basalt::isDevBundleRequest(method, url)) {
+      basalt::recordDevBundleFetched(url);
+    }
     if (callbacks.onResponse) {
       callbacks.onResponse(static_cast<uint16_t>(statusCode), responseHeaders);
     }

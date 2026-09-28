@@ -56,4 +56,14 @@ void recordDevBundleError(long status, const std::string &url, const std::string
 // main thread after loadScript has joined it.
 std::optional<DevBundleError> devBundleError();
 
+// That the bundle came from Metro, with the URL it came from.
+//
+// Recorded for one reason: the host's "loaded script" line named the on-disk
+// path either way, because that is the argument `loadScript` was given -- and
+// `ReactHost` does not say which of the two it used. So a dev run against Metro
+// reported the path of a bundle it had not executed, and a stale file on disk
+// looked like the thing that was running. That cost an afternoon, twice.
+void recordDevBundleFetched(const std::string &url);
+std::optional<std::string> devBundleFetched();
+
 } // namespace basalt

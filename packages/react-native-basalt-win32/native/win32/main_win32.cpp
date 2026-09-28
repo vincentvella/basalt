@@ -89,6 +89,7 @@
 #include "UIManagerAccess.h"
 #include "WorkletsModule.h"
 
+#include <glog/logging.h>
 #include <jsi/jsi.h>
 #include <logger/react_native_log.h>
 #include <react/featureflags/ReactNativeFeatureFlags.h>
@@ -1980,6 +1981,17 @@ std::vector<facebook::react::SurfaceId> hostWindows() {
 } // namespace basalt
 
 int main(int argc, char **argv) {
+  // glog, before anything logs through it.
+  //
+  // Without this every run opens with "WARNING: Logging before
+  // InitGoogleLogging() is written to STDERR" -- glog saying it has not been
+  // told where to write, in a line that reads like something went wrong on
+  // start-up. It goes to stderr either way; this only stops it apologising for
+  // it. React Native's C++ logs through glog throughout, so the first message
+  // arrives before anything this project writes.
+  FLAGS_logtostderr = true;
+  google::InitGoogleLogging(argv[0]);
+
   gHost.bundlePath = argc > 1 ? argv[1] : "build/main.jsbundle.js";
   // Defaults to the raw-Fabric script, because a React screen needs
   // <ScrollView> and <TextInput> that Windows does not mount yet and would
@@ -2235,7 +2247,12 @@ int main(int argc, char **argv) {
     shutdown();
     return 1;
   }
-  std::fprintf(stderr, "loaded script: %s\n", gHost.bundlePath.c_str());
+  // Where it came from, not where it might have. See core/DevBundle.h.
+  if (const auto from = basalt::devBundleFetched()) {
+    std::fprintf(stderr, "loaded script from the packager: %s\n", from->c_str());
+  } else {
+    std::fprintf(stderr, "loaded script: %s\n", gHost.bundlePath.c_str());
+  }
 
   // The module name decides who drives the surface. Non-empty:
   // SurfaceHandler::start calls AppRegistry.runApplication. Empty: the surface
