@@ -136,6 +136,17 @@ set(SKIA_APPLE_SRC
         ${SKIA_APPLE_DIR}/RNSkMetalCanvasProvider.mm
         ${SKIA_APPLE_DIR}/SkiaCVPixelBufferUtils.mm)
 
+# Objective-C++, because six of the sources below are .mm. Asked for here rather
+# than assumed: this file is included from the *core* package, which is otherwise
+# plain C++, and the AppKit package that enables OBJCXX for its own sources is a
+# sibling that configures later. In this repository's own build something had
+# already enabled it and this was invisible; configuring from an app -- which is
+# a different top-level CMakeLists -- failed with `Missing variable is:
+# CMAKE_OBJCXX_COMPILE_OBJECT`, which names the language and not the file.
+#
+# Idempotent, so the AppKit package asking again costs nothing.
+enable_language(OBJCXX)
+
 add_library(skia_core OBJECT ${SKIA_PORTABLE_SRC} ${SKIA_APPLE_SRC})
 # SYSTEM, and warnings off: somebody else's sources held to somebody else's
 # warning set. This project's -Wall -Wextra -Werror is about its own code.
