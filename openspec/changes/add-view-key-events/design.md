@@ -2,9 +2,14 @@
 
 ## Which API
 
-**react-native-macos's**, near enough to be a drop-in: `keyDownEvents` and
-`keyUpEvents` declare combinations, `onKeyDown` and `onKeyUp` report them, and
-the key names are W3C's.
+**react-native-macos's**, near enough to be a drop-in: `keyDownEvents` declares
+combinations, `onKeyDown` reports them, and the key names are W3C's.
+
+`keyUpEvents` and `onKeyUp` are that API's other half and are **not built**. The
+registry and the reporting are indifferent to which it was, so adding them is a
+second signal in each host rather than a second design -- but until a host raises
+one, an app that binds a key-up gets silence, and that is worth saying here rather
+than leaving a reader to infer it from the absence.
 
 The backlog called this "a decision as well as an implementation" because React
 Native has no cross-platform key event API to be compatible with. It has two

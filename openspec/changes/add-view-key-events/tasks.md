@@ -53,7 +53,17 @@
       the syntax, including a literal `+` as a key, which an editor binds for zoom
 - [x] A scenario asserting all four, verified to fail by registering the list
       once: `got: ['m', 'z+meta']`, no `j`. Green on AppKit and on GTK
-- [ ] A scenario: a focused `<TextInput>` keeps its keys
+- [x] A focused `<TextInput>` keeps its keys -- *not* a scenario, and the spec
+      delta says why: a field's peer consumes the key where it sits, so the
+      ancestor's handler is never reached and nothing asks about its claim.
+      BASALT_TEST_KEY enters after the translation and walks the path itself, so
+      it would find a claim a real press never offers -- an assertion with it
+      would lie in one direction or the other
+
+## 5. Not built
+
+- [ ] `onKeyUp` and `keyUpEvents`. Same registry, same reporting, a second signal
+      per host. An app that binds a key-up gets silence today
 
 ## 5. Records
 
