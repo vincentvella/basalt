@@ -6,7 +6,7 @@
 // `GetExitCodeProcess` in place of waitpid.
 //
 // **cmd.exe, and what that means for the command.** The command is given to
-// `cmd.exe /c`, which is this desktop's shell the way `$SHELL -l -c` is the
+// `cmd.exe /d /s /c`, which is this desktop's shell the way `$SHELL -l -c` is
 // other's. It is not the same language: `FOO=bar prog` sets nothing here and
 // `exec` does not exist. That is why the environment is a parameter of
 // SpawnRequest rather than part of the command string -- with it out of the
@@ -399,10 +399,25 @@ int spawnSubprocess(const SpawnRequest &request, std::string &error) {
   startup.hStdError = childErr;
   startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
 
-  // `cmd.exe /c`, this desktop's shell. /c takes the rest of the line as the
-  // command, which is why the command is appended unquoted: quoting it would
-  // make cmd.exe treat the whole thing as one program name.
-  std::wstring commandLine = L"cmd.exe /c " + widen(request.command);
+  // `cmd.exe /d /s /c "<command>"`, this desktop's shell, with the two flags
+  // and the outer quotes that make the quoting predictable.
+  //
+  // Left to itself, cmd.exe strips the first and last quote of what follows
+  // /c when the line begins and ends with one -- and a command like
+  //
+  //     "C:/.../node.exe" "C:/.../daemon.cjs" --default-project "C:/.../hello"
+  //
+  // does begin and end with one. Removing those two leaves the quote after
+  // node.exe and the quote before the project unbalanced, and cmd fails with
+  // "The filename, directory name, or volume label syntax is incorrect."
+  // before anything runs. Quoting the whole command gives that rule a pair of
+  // quotes of its own to consume, so what survives it is the command as
+  // written. /s makes the stripping unconditional rather than contingent on
+  // how many quotes the command happens to contain, and /d skips the AutoRun
+  // commands a machine may keep in its registry, which a child of this host
+  // has no reason to inherit. It is the line Node's own child_process uses.
+  std::wstring commandLine =
+      L"cmd.exe /d /s /c \"" + widen(request.command) + L"\"";
   std::wstring environment = environmentBlockWith(request.env);
   const std::wstring cwd = widen(request.cwd);
 

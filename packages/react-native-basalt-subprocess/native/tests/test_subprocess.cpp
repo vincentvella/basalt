@@ -165,6 +165,29 @@ TEST(a_variable_reaches_the_command_without_being_in_it) {
   EXPECT(sawOutput("arrived"));
 }
 
+TEST(a_command_that_both_begins_and_ends_with_a_quote_reaches_the_program) {
+  // The shape that broke the first real command this ran: an absolute program
+  // path in quotes, and a final argument in quotes too. cmd.exe removes the
+  // first and last quote of the line it is handed, so without the outer pair
+  // this host adds, those two disappear and every quote after them pairs with
+  // the wrong partner -- the command dies in the shell, before the program.
+  listen();
+  reset();
+
+  std::string error;
+  basalt::SpawnRequest request;
+#ifdef _WIN32
+  request.command = "\"cmd.exe\" /d /s /c echo \"quoted tail\"";
+#else
+  request.command = "\"/bin/echo\" \"quoted tail\"";
+#endif
+  EXPECT(basalt::spawnSubprocess(request, error) > 0);
+  EXPECT(waitForExit());
+
+  EXPECT(sawOutput("quoted tail"));
+  EXPECT_EQ(gExited.load(), 0);
+}
+
 TEST(a_command_runs_where_it_was_told_to) {
   listen();
   reset();
