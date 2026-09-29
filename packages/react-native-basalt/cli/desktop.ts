@@ -146,7 +146,10 @@ export function candidates(projectRoot: string, options: RunOptions, target: Tar
   if (process.env.BASALT_HOST) {
     found.push(path.resolve(process.env.BASALT_HOST));
   }
-  // Where `--build` puts one.
+  // Where `--build` puts one, per target; see buildHost.
+  found.push(path.join(projectRoot, '.basalt', 'build', target.platform, target.binary));
+  // And where it used to, before the directory was split by target. Kept so
+  // that a checkout built before that change still runs without rebuilding.
   found.push(path.join(projectRoot, '.basalt', 'build', target.binary));
   found.push(path.join(projectRoot, target.platform, 'build', target.binary));
   found.push(path.join(projectRoot, 'build', target.binary));
@@ -373,7 +376,10 @@ export function localNativeModules(projectRoot: string): string[] {
   return found;
 }
 
-export function optionalNativeModules(projectRoot: string): ContributedArgs {
+export function optionalNativeModules(
+  projectRoot: string,
+  platform: PackagePlatform,
+): ContributedArgs {
   const args = [];
   const notes = [];
   // Forward slashes: CMake reads a backslash in a -D value as an escape.
@@ -399,14 +405,24 @@ export function optionalNativeModules(projectRoot: string): ContributedArgs {
   // silently doing nothing: the published Skia binaries are Apple's, and an app
   // that draws with Skia will start on Linux or Windows and then fail at
   // `getEnforcing('RNSkiaModule')`, which is a long way from the cause.
+  //
+  // The question is about the *target*, not the machine doing the building.
+  // This read `process.platform === 'darwin'` and so a GTK host cross-built on
+  // a Mac was configured with Apple's Skia, linked nothing, and produced a
+  // binary with no RNSkiaModule in it -- the exact start-up failure the note
+  // exists to pre-empt, reported as if all was well. Found by building kino
+  // for Linux.
   const skia = findPackage('@shopify/react-native-skia', projectRoot);
-  if (skia != null && process.platform === 'darwin') {
+  if (skia != null && platform === 'macos') {
     define('BASALT_SKIA', skia);
     notes.push(`Skia, from ${skia}`);
   } else if (skia != null) {
     notes.push(
       `not building @shopify/react-native-skia (${skia}): the published binaries ` +
-        'are Apple\'s, and Linux and Windows need Skia built from source first',
+        `are Apple's, and ${platform} needs Skia built from source first. This ` +
+        'host will have no RNSkiaModule, and importing the package at all -- not ' +
+        'rendering with it, importing it -- ends the app at ' +
+        "getEnforcing('RNSkiaModule'). Import it behind a check if this target matters.",
     );
   }
 
@@ -691,16 +707,57 @@ export function explainContributedFailure(projectRoot: string, error: Error): Er
   );
 }
 
+/**
+ * Clears a build directory from before it was split by target.
+ *
+ * `.basalt/build` used to be the build directory itself; it is now a directory
+ * of them, one per target. The old one cannot become the new one: a CMake build
+ * directory records its own path, and moving it produces "The current
+ * CMakeCache.txt directory ... is different than the directory ..." -- which was
+ * this function's first shape, and it did not work.
+ *
+ * So it is moved aside rather than salvaged, and the target is built once more.
+ * That costs less than it sounds: the expensive vendoring -- Hermes, folly,
+ * ReactCxxPlatform -- lives in `.basalt/third_party`, which is untouched, and
+ * ccache carries most of the rest.
+ *
+ * Kept rather than deleted, because it is hundreds of megabytes of someone
+ * else's disk and the CLI is not the right thing to decide that. The line it
+ * prints says where it went.
+ */
+export function migrateBuildDirectory(workDir: string, log: (line: string) => void): void {
+  const build = path.join(workDir, 'build');
+  if (!fs.existsSync(path.join(build, 'CMakeCache.txt'))) {
+    return;
+  }
+
+  const parked = path.join(workDir, 'build.before-split');
+  fs.rmSync(parked, {recursive: true, force: true});
+  fs.renameSync(build, parked);
+  fs.mkdirSync(build, {recursive: true});
+  log(
+    `builds are per target now, and a CMake build directory cannot be moved. ` +
+      `The previous one is at ${parked} -- this target builds once more, then ` +
+      `incrementally. Delete it when you are happy.`,
+  );
+}
+
 export function buildHost(context: CliContext, options: RunOptions, target: Target): string {
   const projectRoot = context.root;
   const workDir = path.join(projectRoot, '.basalt');
-  const buildDir = path.join(workDir, 'build');
+  // One per target, because a build directory belongs to the host it was
+  // configured for. CMake refuses to reuse one whose source directory has
+  // changed -- it says the two paths do not match and explains neither -- so a
+  // single `.basalt/build` meant that building for a second desktop from one
+  // checkout destroyed the first. Found by building a macOS app for Linux.
+  const buildDir = path.join(workDir, 'build', target.platform);
   const thirdParty = path.join(workDir, 'third_party');
 
   const sources = reactNativeSources(context.reactNativePath);
-  const nativeModules = optionalNativeModules(projectRoot);
+  const nativeModules = optionalNativeModules(projectRoot, target.platform);
 
   fs.mkdirSync(workDir, {recursive: true});
+  migrateBuildDirectory(workDir, line => console.log(`    ${line}`));
 
   console.log(`==> React Native from ${sources.layout === 'installed' ? 'the installed package' : 'a checkout'}: ${sources.rnDir}`);
   for (const note of nativeModules.notes) {

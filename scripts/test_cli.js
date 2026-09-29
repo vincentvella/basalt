@@ -141,6 +141,74 @@ test('the host is looked for in the explicit places first', () => {
   fs.rmSync(project, {recursive: true, force: true});
 });
 
+test('the per-target build directory is looked in first, and the old one still counts', () => {
+  // `.basalt/build` was the build directory; it is now a directory of them, one
+  // per target, because CMake refuses to reuse one configured for a different
+  // host -- so building a macOS app for Linux used to destroy the macOS build.
+  const project = scratch();
+  const looked = desktop.candidates(project, {}, target('linux'));
+
+  const perTarget = path.join(project, '.basalt', 'build', 'linux', 'basalt_gtk');
+  const old = path.join(project, '.basalt', 'build', 'basalt_gtk');
+  assert.ok(looked.includes(perTarget), 'the per-target path is looked in');
+  assert.ok(looked.includes(old), 'and the old one, so an existing build still runs');
+  assert.ok(
+    looked.indexOf(perTarget) < looked.indexOf(old),
+    'the per-target one first: a fresh build must beat one from before the split',
+  );
+
+  fs.rmSync(project, {recursive: true, force: true});
+});
+
+test('two targets do not share a build directory', () => {
+  const project = scratch();
+  const forLinux = desktop.candidates(project, {}, target('linux'))[0];
+  const forWindows = desktop.candidates(project, {}, target('windows'))[0];
+
+  assert.notEqual(path.dirname(forLinux), path.dirname(forWindows));
+
+  fs.rmSync(project, {recursive: true, force: true});
+});
+
+test('a build from before the split is moved aside, not salvaged', () => {
+  // It cannot be salvaged: a CMake build directory records its own path and
+  // refuses to run from anywhere else. Moving it under its target was the first
+  // attempt and produced "The current CMakeCache.txt directory ... is different
+  // than the directory ..." on the very next configure.
+  const work = scratch();
+  const build = path.join(work, 'build');
+  fs.mkdirSync(build, {recursive: true});
+  fs.writeFileSync(path.join(build, 'CMakeCache.txt'), 'CMAKE_HOME_DIRECTORY:INTERNAL=/x-appkit/native\n');
+  fs.writeFileSync(path.join(build, 'basalt_appkit'), '');
+
+  const said = [];
+  desktop.migrateBuildDirectory(work, line => said.push(line));
+
+  assert.ok(fs.existsSync(path.join(work, 'build.before-split', 'basalt_appkit')), 'kept');
+  assert.ok(!fs.existsSync(path.join(build, 'CMakeCache.txt')), 'and out of the way');
+  assert.ok(fs.existsSync(build), 'leaving a directory for the per-target ones');
+  assert.ok(said.some(line => line.includes('build.before-split')), 'and said where it went');
+
+  fs.rmSync(work, {recursive: true, force: true});
+});
+
+test('the new layout is left alone', () => {
+  // It runs on every build, so doing nothing when there is nothing to do is the
+  // case that matters most.
+  const work = scratch();
+  const linux = path.join(work, 'build', 'linux');
+  fs.mkdirSync(linux, {recursive: true});
+  fs.writeFileSync(path.join(linux, 'CMakeCache.txt'), 'CMAKE_HOME_DIRECTORY:INTERNAL=/x-gtk/native\n');
+
+  const said = [];
+  desktop.migrateBuildDirectory(work, line => said.push(line));
+
+  assert.ok(fs.existsSync(path.join(linux, 'CMakeCache.txt')), 'untouched');
+  assert.equal(said.length, 0, 'and silent');
+
+  fs.rmSync(work, {recursive: true, force: true});
+});
+
 test('a missing host explains how to make one rather than printing a path', () => {
   const project = scratch();
   // The package's native directory is a scratch one too. The last place the
@@ -278,40 +346,52 @@ test('the native halves an app has installed are the ones built', () => {
   const cmakePath = dir => dir.split(path.sep).join('/');
 
   // A plain React Native app builds none of them.
-  assert.deepEqual(desktop.optionalNativeModules(project).args, []);
+  assert.deepEqual(desktop.optionalNativeModules(project, 'macos').args, []);
 
   // expo-modules-core beneath expo, where a package manager that does not
   // hoist leaves it -- found all the same.
   const expo = install(project, 'expo');
   const expoCore = install(expo, 'expo-modules-core');
-  assert.deepEqual(desktop.optionalNativeModules(project).args, [
+  assert.deepEqual(desktop.optionalNativeModules(project, 'macos').args, [
     `-DBASALT_EXPO_MODULES_CORE=${cmakePath(expoCore)}`,
   ]);
 
   // Reanimated without worklets is skipped with a note, not passed to a
   // configure that would refuse it.
   const reanimated = install(project, 'react-native-reanimated');
-  let found = desktop.optionalNativeModules(project);
+  let found = desktop.optionalNativeModules(project, 'macos');
   assert.ok(!found.args.some(arg => arg.startsWith('-DBASALT_REANIMATED')));
   assert.ok(found.notes.some(note => note.includes('react-native-worklets')));
 
   const worklets = install(project, 'react-native-worklets');
-  found = desktop.optionalNativeModules(project);
+  found = desktop.optionalNativeModules(project, 'macos');
   assert.ok(found.args.includes(`-DBASALT_WORKLETS=${cmakePath(worklets)}`));
   assert.ok(found.args.includes(`-DBASALT_REANIMATED=${cmakePath(reanimated)}`));
 
-  // Skia, found under its scope. On a Mac it is passed to the configure; on the
-  // other two it is reported as skipped rather than dropped, because the failure
-  // it would otherwise cause -- getEnforcing('RNSkiaModule') at start-up -- is a
-  // long way from the cause, and "nothing happened" is the worst possible
-  // explanation for an app that draws with Skia not starting.
+  // Skia, found under its scope. For a macOS host it is passed to the
+  // configure; for the other two it is reported as skipped rather than
+  // dropped, because the failure it would otherwise cause --
+  // getEnforcing('RNSkiaModule') at start-up -- is a long way from the cause,
+  // and "nothing happened" is the worst possible explanation for an app that
+  // draws with Skia not starting.
+  //
+  // Asked of every target from the one machine, which is the point. This test
+  // used to branch on `process.platform` exactly as the code did, so on a Mac
+  // it only ever checked the macOS answer -- and the bug it was there to catch
+  // was that a Linux or Windows build on a Mac got the macOS answer too.
   const skia = install(project, '@shopify/react-native-skia');
-  found = desktop.optionalNativeModules(project);
-  if (process.platform === 'darwin') {
-    assert.ok(found.args.includes(`-DBASALT_SKIA=${cmakePath(skia)}`));
-  } else {
-    assert.ok(!found.args.some(arg => arg.startsWith('-DBASALT_SKIA')));
-    assert.ok(found.notes.some(note => note.includes('react-native-skia')));
+  found = desktop.optionalNativeModules(project, 'macos');
+  assert.ok(found.args.includes(`-DBASALT_SKIA=${cmakePath(skia)}`));
+  for (const platform of ['linux', 'windows']) {
+    found = desktop.optionalNativeModules(project, platform);
+    assert.ok(
+      !found.args.some(arg => arg.startsWith('-DBASALT_SKIA')),
+      `${platform} was configured with Apple's Skia`,
+    );
+    const note = found.notes.find(n => n.includes('react-native-skia'));
+    assert.ok(note, `${platform} dropped Skia without saying so`);
+    assert.ok(note.includes(platform), 'the note does not name the target');
+    assert.ok(note.includes('RNSkiaModule'), 'the note does not name the failure');
   }
 
   fs.rmSync(project, {recursive: true, force: true});
@@ -767,7 +847,7 @@ test("the app's own modules are configured alongside its packages", () => {
     'kino-process': ['native/CMakeLists.txt'],
     'kino-audio': ['native/CMakeLists.txt'],
   });
-  const packages = desktop.optionalNativeModules(root).args.filter(arg =>
+  const packages = desktop.optionalNativeModules(root, 'macos').args.filter(arg =>
     arg.startsWith('-DBASALT_PACKAGES='),
   );
   assert.equal(packages.length, 1);
