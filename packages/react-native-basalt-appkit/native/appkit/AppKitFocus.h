@@ -79,6 +79,19 @@ class AppKitFocusManager {
   // tests/test_appkit_key_events.mm covers instead. See core/TestKeys.h.
   bool deliverTestKey(const KeyCombination &pressed);
 
+  // A real key press that the responder chain was never going to bring here.
+  //
+  // `handleKey` above is reached from `RnAppKitView keyDown:`, which AppKit only
+  // calls on the first responder. An app whose shortcut holder is the root view
+  // has no first responder inside the React tree at all -- nothing focuses it,
+  // `focusable` only makes a view eligible -- so the press goes to the window
+  // and is gone. Every shortcut in such an app is dead, which is what kino was.
+  //
+  // Called from the window's key monitor for exactly that case, and only that
+  // case: with a text field or any other view focused, the responder chain does
+  // reach `handleKey` and this must not run as well.
+  bool deliverWindowKey(NSEvent *event);
+
   // The tag of the focused view, or 0. For tests and for automation.
   facebook::react::Tag focusedTag() const {
     return focusedTag_;

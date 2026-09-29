@@ -151,6 +151,23 @@ bool AppKitFocusManager::deliverKeyFrom(RnAppKitView *view, const KeyCombination
   return true;
 }
 
+bool AppKitFocusManager::deliverWindowKey(NSEvent *event) {
+  // Cheap first, for the same reason handleKey checks: most apps declare no
+  // keys, and this runs on every press that reaches the window.
+  if (handledKeyViewCount() == 0) {
+    return false;
+  }
+  const std::optional<KeyCombination> pressed = keyCombinationFrom(event);
+  if (!pressed.has_value()) {
+    return false;
+  }
+  // The same walk the scripted path takes: from whatever has focus, or the root
+  // when nothing does. That the two now share it is the point -- the instrument
+  // could reach a claim a real press could not, which is how this stayed hidden
+  // while a scenario passed.
+  return deliverTestKey(*pressed);
+}
+
 bool AppKitFocusManager::deliverTestKey(const KeyCombination &pressed) {
   // From whatever has focus, or from the root when nothing does -- which is the
   // ordinary case for a window-level shortcut holder and the one a scenario

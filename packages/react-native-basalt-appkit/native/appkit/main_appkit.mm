@@ -74,6 +74,7 @@
 #include "GestureHandlerModule.h"
 #include "ReanimatedModule.h"
 #include "JsRuntimeAccess.h"
+#include "KeyEvents.h"
 #include "PackageModules.h"
 #include "UIManagerAccess.h"
 #include "WorkletsModule.h"
@@ -438,6 +439,26 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         return nullptr;
       });
   return providers;
+}
+
+// Whether the window's first responder is one of this project's views, or sits
+// inside one.
+//
+// Inside one matters: a focused `<TextInput>` is an NSTextField the mounting
+// manager put *inside* an RnAppKitView, so asking only whether the responder is
+// an RnAppKitView would answer no for every text field and let a window-level
+// shortcut eat what the field was typing.
+static BOOL basaltViewInResponderChain(NSWindow *window) {
+  NSResponder *responder = window.firstResponder;
+  if (![responder isKindOfClass:[NSView class]]) {
+    return NO;
+  }
+  for (NSView *view = (NSView *)responder; view != nil; view = view.superview) {
+    if ([view isKindOfClass:[RnAppKitView class]]) {
+      return YES;
+    }
+  }
+  return NO;
 }
 
 // Runs against the JavaScript runtime before the bundle is evaluated, which is
@@ -1263,12 +1284,37 @@ int main(int argc, const char *argv[]) {
                                               basalt::showDevMenu(gHost.reactHost.get());
                                               return nil;
                                             }
-                                            if (first != 0x1B || gHost.mountingManager == nullptr) {
+                                            if (first == 0x1B &&
+                                                gHost.mountingManager != nullptr &&
+                                                gHost.mountingManager->requestCloseTopModal()) {
+                                              return nil;
+                                            }
+
+                                            // An app's declared shortcut, when
+                                            // the responder chain will not
+                                            // deliver it.
+                                            //
+                                            // `RnAppKitView keyDown:` is only
+                                            // called on the first responder, so
+                                            // an app whose shortcut holder is
+                                            // the root -- nothing focuses it,
+                                            // `focusable` only makes it
+                                            // eligible -- never sees a press at
+                                            // all. Only when nothing of ours is
+                                            // in the chain: with a view focused
+                                            // the ordinary path runs and this
+                                            // must not run again, or a text
+                                            // field would lose keys to a
+                                            // window-level claim.
+                                            if (basaltViewInResponderChain(event.window)) {
                                               return event;
                                             }
-                                            return gHost.mountingManager->requestCloseTopModal()
-                                                ? nil
-                                                : event;
+                                            if (gHost.main().focusManager != nullptr &&
+                                                gHost.main().focusManager->deliverWindowKey(
+                                                    event)) {
+                                              return nil;
+                                            }
+                                            return event;
                                           }];
 
     // The display link needs a window, which the root now has.
