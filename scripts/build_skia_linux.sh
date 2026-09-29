@@ -72,12 +72,18 @@ set -euo pipefail
 SKIA_COMMIT=2a9b593bab4b2fd019fa494c8d401ff1fab0b883
 SKIA_BRANCH=chrome/m152
 SKIA_REPO=https://chromium.googlesource.com/skia
-DEPOT_TOOLS_REPO=https://chromium.googlesource.com/chromium/tools/depot_tools.git
 
 # Embedded ICU data by default; see the note above.
 SKIA_RUNTIME_ICU=${SKIA_RUNTIME_ICU:-0}
 
-WORK=${SKIA_BUILD_DIR:-$HOME/skia-linux-build}
+# Not $HOME directly: the invocation this script's own header recommends --
+# `wsl -d Ubuntu-24.04 -u root -e bash scripts/build_skia_linux.sh` -- runs a
+# non-login shell with HOME unset, and $HOME/skia-linux-build is then
+# /skia-linux-build at the root of the filesystem. The passwd entry is the
+# answer the shell would have given had it been a login one.
+HOME_DIR=${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}
+[ -n "$HOME_DIR" ] || HOME_DIR=/tmp
+WORK=${SKIA_BUILD_DIR:-$HOME_DIR/skia-linux-build}
 OUT_NAME=linux-x64
 DEST=${SKIA_OUT_DIR:-$WORK/libs/linux/x86_64}
 
@@ -168,16 +174,6 @@ note "jobs:       $(nproc)"
 
 mkdir -p "$WORK"
 
-# ------------------------------------------------------------- depot_tools --
-
-if [ ! -d "$WORK/depot_tools" ]; then
-  say "fetching depot_tools"
-  git clone --depth 1 "$DEPOT_TOOLS_REPO" "$WORK/depot_tools"
-else
-  note "depot_tools already present"
-fi
-export PATH="$WORK/depot_tools:$PATH"
-
 # ------------------------------------------------------------------- skia ---
 
 if [ ! -d "$WORK/skia/.git" ]; then
@@ -209,6 +205,34 @@ note "Skia at $SKIA_COMMIT"
 say "syncing Skia's third-party dependencies"
 note "First time through this pulls a few GB."
 ( cd "$WORK/skia" && python3 tools/git-sync-deps )
+
+# --------------------------------------------------------------------- gn --
+#
+# Skia's own bin/fetch-gn, rather than depot_tools.
+#
+# depot_tools was here first and does not work from a plain clone: its `gn` is
+# a wrapper that fetches the real binary through cipd on first use, and nothing
+# short of `gclient` triggers that. Cloned and put on PATH it answers every
+# invocation with
+#
+#   python3_bin_reldir.txt not found. need to initialize depot_tools by
+#   running gclient, update_depot_tools or ensure_bootstrap
+#
+# and configure died there the first time this script was run end to end.
+# Bootstrapping it is another moving part for the one tool it was providing:
+# ninja here is the system's, so gn was all depot_tools was for. Skia ships a
+# downloader for exactly that, it needs no initialisation, and it lands the
+# binary in the checkout this script already pins.
+#
+# After git-sync-deps, because fetch-gn lives in the Skia tree.
+if [ ! -x "$WORK/skia/bin/gn" ]; then
+  say "fetching gn"
+  ( cd "$WORK/skia" && python3 bin/fetch-gn )
+else
+  note "gn already fetched"
+fi
+GN="$WORK/skia/bin/gn"
+[ -x "$GN" ] || die "no gn at $GN, after bin/fetch-gn said it had fetched one"
 
 # --------------------------------------------------------------- configure --
 
@@ -263,7 +287,7 @@ extra_cflags_cc=[\"-fexceptions\",\"-frtti\"]
 "
 
 say "configuring"
-( cd "$WORK/skia" && gn gen "out/$OUT_NAME" --args="$(echo "$GN_ARGS" | tr '\n' ' ')" )
+( cd "$WORK/skia" && "$GN" gen "out/$OUT_NAME" --args="$(echo "$GN_ARGS" | tr '\n' ' ')" )
 
 # ------------------------------------------------------------------ build ---
 
