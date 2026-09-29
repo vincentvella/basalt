@@ -515,6 +515,21 @@ export function compilerArgs(
   if (!named) {
     args.push('-DCMAKE_C_COMPILER=clang-cl', '-DCMAKE_CXX_COMPILER=clang-cl');
   }
+  // And the linker by name, which naming the compiler does not settle.
+  //
+  // CMake picks a linker by searching PATH, and a machine with MSYS2, MinGW or
+  // Git's own toolchain installed has a GNU `ld` on it -- which it will
+  // happily choose for a clang-cl build and then fail on the first MSVC flag
+  // it is handed:
+  //
+  //     ld.exe: cannot find /nologo: No such file or directory
+  //
+  // A confusing error, because nothing is wrong with the project and the
+  // compiler it names is correct. lld-link ships beside clang-cl in the same
+  // Visual Studio component, so if one was found the other is there too.
+  if (!env.LD) {
+    args.push('-DCMAKE_LINKER=lld-link');
+  }
   args.push('-DCMAKE_BUILD_TYPE=RelWithDebInfo');
 
   const home = env.USERPROFILE || env.HOME || '';
