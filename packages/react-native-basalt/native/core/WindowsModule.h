@@ -23,6 +23,10 @@ class DesktopWindowsModule : public facebook::react::TurboModule {
   static constexpr const char *kModuleName = "BasaltWindows";
 
   explicit DesktopWindowsModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker);
+
+  // Points every seam at this module. Called by the constructor, and by another
+  // module's destructor when it hands over; see the .cpp's liveModules().
+  void installListeners();
   ~DesktopWindowsModule() override;
 
  private:

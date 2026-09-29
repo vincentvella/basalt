@@ -4,7 +4,7 @@
 
 #include "JsiPromise.h"
 
-#include <atomic>
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -51,18 +51,27 @@ EnvironmentOverrides environmentFrom(Runtime &runtime, const Object &options) {
 
 namespace {
 
-// Which module the seam is currently reporting to, for identity only -- never
-// dereferenced, and compared in a destructor where dereferencing would be
-// wrong anyway.
+// Every live module, newest last.
 //
-// A reload builds the replacement before releasing the one it replaces, so an
-// unconditional `setSubprocessListeners(nullptr, nullptr)` in the destructor
-// clears the *new* module's listeners moments after it installed them. Nothing
-// fails: spawning still works and output simply stops arriving, which is the
-// kind of bug that is found much later and blamed on something else.
-std::atomic<const SubprocessModule *> &listeningModule() {
-  static std::atomic<const SubprocessModule *> current{nullptr};
-  return current;
+// ReactCxxPlatform builds a *new* module for each lookup rather than caching
+// one -- an app's start-up can make half a dozen, and they come and go while it
+// runs. So "the module that installed the listeners" is not a thing, and a
+// destructor that clears them takes them away from the ones still serving.
+//
+// This was first written as an ownership guard, on the assumption that one
+// module is live at a time. That assumption is wrong, and it cost an evening in
+// core/WindowsModule.cpp, where the same shape left every keyboard shortcut in
+// an app silently dead. The listeners belong to the set: installed when the
+// first module appears, handed on when one goes, cleared only when the last
+// does.
+std::mutex &liveMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<SubprocessModule *> &liveModules() {
+  static std::vector<SubprocessModule *> modules;
+  return modules;
 }
 
 } // namespace
@@ -75,7 +84,10 @@ SubprocessModule::SubprocessModule(std::shared_ptr<facebook::react::CallInvoker>
 }
 
 void SubprocessModule::attach() {
-  listeningModule().store(this);
+  {
+    const std::lock_guard<std::mutex> lock(liveMutex());
+    liveModules().push_back(this);
+  }
 
   // Output and exit arrive on whatever thread is watching the child, and
   // emitDeviceEvent marshals to the JavaScript one -- the same path the window
@@ -121,13 +133,23 @@ void SubprocessModule::attach() {
 }
 
 SubprocessModule::~SubprocessModule() {
-  // Only if nobody has taken over. A reload constructs the replacement first,
-  // so an unconditional clear here would silence the module that is now live;
-  // see listeningModule().
-  const SubprocessModule *self = this;
-  if (listeningModule().compare_exchange_strong(self, nullptr)) {
-    setSubprocessListeners(nullptr, nullptr);
+  SubprocessModule *successor = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(liveMutex());
+    std::vector<SubprocessModule *> &live = liveModules();
+    live.erase(std::remove(live.begin(), live.end(), this), live.end());
+    if (!live.empty()) {
+      successor = live.back();
+    }
   }
+  if (successor != nullptr) {
+    // Handed over, not cleared; see liveModules(). A child is still running and
+    // still has output to report, and the module it reports through must be one
+    // that is still here.
+    successor->attach();
+    return;
+  }
+  setSubprocessListeners(nullptr, nullptr);
 }
 
 Value SubprocessModule::spawn(Runtime &runtime,

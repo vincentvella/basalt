@@ -10,6 +10,7 @@
 #include <react/bridging/Bridging.h>
 #include <react/bridging/Promise.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <utility>
@@ -38,6 +39,34 @@ double numberProperty(Runtime &runtime, const Object &options, const char *name,
 
 } // namespace
 
+namespace {
+
+// Every live module, newest last.
+//
+// ReactCxxPlatform builds a *new* module for each lookup rather than caching
+// one: kino's start-up makes six, and they come and go while the app runs. So
+// "the module that installed the listener" is not a thing -- the one that
+// installed it is routinely destroyed while others are still serving, and an
+// unconditional clear in its destructor took the listeners with it. Keys were
+// claimed, presses were matched, and `reportKey` then found no listener and
+// dropped the answer. Nothing failed and nothing was logged; every declared
+// shortcut in the app was simply dead.
+//
+// So the listeners belong to the *set*, not to an instance: installed when the
+// first module appears, dispatched to whichever is live, and cleared only when
+// the last one goes.
+std::mutex &liveMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<DesktopWindowsModule *> &liveModules() {
+  static std::vector<DesktopWindowsModule *> modules;
+  return modules;
+}
+
+} // namespace
+
 DesktopWindowsModule::DesktopWindowsModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
     : TurboModule(kModuleName, std::move(jsInvoker)) {
   methodMap_["open"] = MethodMetadata{1, open};
@@ -59,6 +88,22 @@ DesktopWindowsModule::DesktopWindowsModule(std::shared_ptr<facebook::react::Call
   methodMap_["addListener"] = MethodMetadata{1, noop};
   methodMap_["removeListeners"] = MethodMetadata{1, noop};
 
+  {
+    const std::lock_guard<std::mutex> lock(liveMutex());
+    liveModules().push_back(this);
+  }
+  installListeners();
+}
+
+/**
+ * Points every seam at this module.
+ *
+ * Called from the constructor, and again from another module's destructor when
+ * that one was the one the seams pointed at -- see liveModules(). Each of these
+ * captures `this`, which is safe only for as long as this module is live, and
+ * keeping that true is the whole job of the live set.
+ */
+void DesktopWindowsModule::installListeners() {
   // A window closed by the person rather than by the app. Without this the
   // `<Window>` that opened it would go on believing it is open; see
   // core/WindowHost.h.
@@ -89,6 +134,7 @@ DesktopWindowsModule::DesktopWindowsModule(std::shared_ptr<facebook::react::Call
   });
 
   // Something dragged onto a view that said it would take one.
+
   setKeyListener([this](Tag tag, const KeyCombination &pressed) {
     emitDeviceEvent(kKeyEvent, [tag, pressed](Runtime &runtime, std::vector<Value> &args) {
       Object payload(runtime);
@@ -137,9 +183,30 @@ DesktopWindowsModule::DesktopWindowsModule(std::shared_ptr<facebook::react::Call
   });
 }
 
+
 DesktopWindowsModule::~DesktopWindowsModule() {
-  // The listener holds this module's emitter. Cleared on the way out, the same
-  // arrangement the title bar has with its metrics listener.
+  DesktopWindowsModule *successor = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(liveMutex());
+    std::vector<DesktopWindowsModule *> &live = liveModules();
+    live.erase(std::remove(live.begin(), live.end(), this), live.end());
+    if (!live.empty()) {
+      // Newest, arbitrarily but consistently: any live one can emit, and the
+      // newest is the one a fresh lookup would have produced anyway.
+      successor = live.back();
+    }
+  }
+
+  if (successor != nullptr) {
+    // Handed over rather than cleared. The listeners capture a module, and this
+    // one is going; clearing them would silence a platform that still has five
+    // other modules serving, which is what happened to every keyboard shortcut
+    // in an app until this was found.
+    successor->installListeners();
+    return;
+  }
+
+  // The last one out. Now they can go.
   setHostWindowClosedListener(nullptr);
   setHostWindowCloseRequestListener(nullptr);
   setHostQuitRequestListener(nullptr);
