@@ -51,6 +51,9 @@
 
 #include <react/io/ImageLoaderModule.h>
 #include "Win32MenuBar.h"
+#ifdef BASALT_HAS_SKIA
+#include "Win32SkiaModule.h"
+#endif
 #include "Win32Packaging.h"
 #include "PointerButtons.h"
 #include "WindowControl.h"
@@ -490,6 +493,15 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         if (name == basalt::DesktopAppearanceModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppearanceModule>(jsInvoker);
         }
+#ifdef BASALT_HAS_SKIA
+        // @shopify/react-native-skia, when the build was pointed at an app that
+        // has it. Its `install` is what puts Skia's whole JavaScript API on the
+        // global object, and an app that imports Skia does not start without
+        // it; see win32/Win32SkiaModule.h.
+        if (name == basalt::Win32SkiaModule::kModuleName) {
+          return std::make_shared<basalt::Win32SkiaModule>(jsInvoker);
+        }
+#endif
         if (name == basalt::DesktopBlobModule::kModuleName) {
           return std::make_shared<basalt::DesktopBlobModule>(jsInvoker);
         }

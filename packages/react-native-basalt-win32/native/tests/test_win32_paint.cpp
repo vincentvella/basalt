@@ -17,6 +17,9 @@
 #include "RnWin32View.h"
 #include "Win32Snapshot.h"
 
+#include <d2d1.h>
+#include <wrl/client.h>
+
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -51,6 +54,40 @@ class Tree {
 
  private:
   std::vector<std::unique_ptr<RnWin32View>> views_;
+};
+
+// Stands in for the Skia surface behind a `<Canvas>`: fills the box it is
+// handed, and remembers what it was handed.
+//
+// A fake rather than the real thing because the seam is what these tests are
+// about. Whether Skia drew the right picture is Skia's business; whether this
+// host puts what it drew in the right place, inside the clip and under the
+// opacity, is the part that is this host's and the part that has been wrong on
+// every platform at least once.
+class FillPainter final : public basalt::win32::RnWin32Painter {
+ public:
+  FillPainter(float red, float green, float blue) : red_(red), green_(green), blue_(blue) {}
+
+  void draw(ID2D1RenderTarget *target, float boxWidth, float boxHeight) override {
+    calls++;
+    lastWidth = boxWidth;
+    lastHeight = boxHeight;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush;
+    if (FAILED(target->CreateSolidColorBrush(D2D1::ColorF(red_, green_, blue_, 1.0f),
+                                             brush.GetAddressOf()))) {
+      return;
+    }
+    target->FillRectangle(D2D1::RectF(0.0f, 0.0f, boxWidth, boxHeight), brush.Get());
+  }
+
+  int calls = 0;
+  float lastWidth = 0.0f;
+  float lastHeight = 0.0f;
+
+ private:
+  float red_;
+  float green_;
+  float blue_;
 };
 
 } // namespace
@@ -380,4 +417,89 @@ TEST(win32_describe_prints_radii_and_borders_as_gtk_does) {
   const float clear[16] = {};
   view.setBorders(widths, clear);
   EXPECT(view.describeTree().find("borderw=") == std::string::npos);
+}
+
+TEST(win32_paint_gives_a_painter_its_views_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *canvas = tree.box(2, 20, 30, 40, 10);
+  auto painter = std::make_shared<FillPainter>(1.0f, 0.0f, 0.0f);
+  canvas->setPainter(painter);
+  root->insertChild(canvas, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+
+  // Once, with the frame Yoga resolved -- not the root's, and not in pixels.
+  EXPECT_EQ(painter->calls, 1);
+  EXPECT_NEAR(painter->lastWidth, 40.0, 0.01);
+  EXPECT_NEAR(painter->lastHeight, 10.0, 0.01);
+
+  // And at the view's origin, so what it drew at 0,0 lands at 20,30.
+  EXPECT_PIXEL(pixels, 25, 35, 255, 0, 0, 255);
+  EXPECT_TRANSPARENT(pixels, 5, 5);
+  EXPECT_TRANSPARENT(pixels, 65, 35);
+}
+
+TEST(win32_paint_clips_and_fades_a_painter_with_the_views_above_it) {
+  // The whole argument for drawing a <Canvas> in the walk instead of giving it
+  // a surface of its own: it is clipped and faded by its ancestors without
+  // knowing that any of them exist. A sibling layer would need every one of
+  // these reimplemented, which is where the other toolkits' bugs live.
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *clip = tree.box(2, 0, 0, 50, 50);
+  clip->setClipsChildren(true);
+  clip->setOpacity(0.4f);
+  RnWin32View *canvas = tree.box(3, 0, 0, 100, 100);
+  canvas->setPainter(std::make_shared<FillPainter>(0.0f, 1.0f, 0.0f));
+  clip->insertChild(canvas, 0);
+  root->insertChild(clip, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+
+  // Inside the clip: green at 40%.
+  EXPECT_PIXEL(pixels, 25, 25, 0, 255, 0, 102);
+  // Outside it: nothing, though the painter filled all hundred points.
+  EXPECT_TRANSPARENT(pixels, 75, 25);
+}
+
+TEST(win32_paint_scrolls_a_painter_with_the_content_around_it) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *scroller = tree.box(2, 0, 0, 100, 100);
+  RnWin32View *canvas = tree.box(3, 0, 40, 100, 20);
+  canvas->setPainter(std::make_shared<FillPainter>(0.0f, 0.0f, 1.0f));
+  scroller->insertChild(canvas, 0);
+  root->insertChild(scroller, 0);
+
+  const RnPixels still = basalt::win32::renderToPixels(*root);
+  EXPECT(!still.empty());
+  EXPECT_PIXEL(still, 50, 45, 0, 0, 255, 255);
+
+  scroller->setScrollOffset(0, 30);
+  const RnPixels scrolled = basalt::win32::renderToPixels(*root);
+  EXPECT(!scrolled.empty());
+  // Up by thirty: the painter is not told, and does not need to be.
+  EXPECT_PIXEL(scrolled, 50, 15, 0, 0, 255, 255);
+  EXPECT_TRANSPARENT(scrolled, 50, 45);
+}
+
+TEST(win32_paint_skips_a_painter_on_a_hidden_view) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *canvas = tree.box(2, 0, 0, 100, 100);
+  auto painter = std::make_shared<FillPainter>(1.0f, 1.0f, 0.0f);
+  canvas->setPainter(painter);
+  canvas->setHidden(true);
+  root->insertChild(canvas, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+
+  // `display: none` reaches the painter as not being called at all, which for a
+  // canvas is the difference between idle and rendering a frame nobody sees.
+  EXPECT_EQ(painter->calls, 0);
+  EXPECT_TRANSPARENT(pixels, 50, 50);
 }

@@ -68,6 +68,31 @@ struct RnRect {
   float height = 0.0f;
 };
 
+// Content this view layer cannot draw itself, drawn by whoever can.
+//
+// One implementor today: the Skia surface behind a `<Canvas>`. It exists
+// because of the split this directory is built around -- `basalt_win32_view`
+// knows Direct2D and nothing else, and Skia lives a layer up in
+// `basalt_win32_mounting`, which is the target that may or may not have been
+// built with it. A `sk_sp<SkSurface>` member here would drag Skia's headers
+// into the demo, the layout tool and every test that builds a view tree, and
+// would make a host without Skia fail to compile rather than fail to draw.
+//
+// So the view holds an interface and calls it in the paint walk, at the point
+// where it would draw an image. What that buys beyond the include: a canvas is
+// clipped, transformed, faded and scrolled by exactly the code that does those
+// things to everything else, and it appears in the offscreen snapshot the
+// tests compare, because the snapshot is the same walk.
+class RnWin32Painter {
+ public:
+  virtual ~RnWin32Painter() = default;
+
+  // Draw into a box `boxWidth` by `boxHeight` at the target's current origin
+  // -- the same contract as RnWin32Image::draw, and the same units, which are
+  // the view's own points.
+  virtual void draw(ID2D1RenderTarget *target, float boxWidth, float boxHeight) = 0;
+};
+
 class RnWin32View {
  public:
   explicit RnWin32View(int32_t tag);
@@ -242,6 +267,16 @@ class RnWin32View {
   void setImageTint(bool hasTint, const float components[4]);
   const std::shared_ptr<RnWin32Image> &image() const { return image_; }
   RnImageFit imageFit() const { return imageFit_; }
+
+  // The painter for this view, or null. Drawn just above where an image would
+  // be: a `<Canvas>` carries neither an image nor a paragraph, so the two
+  // never meet and the order is a decision rather than a conflict.
+  //
+  // Shared rather than owned because the thing on the other end outlives a
+  // single mutation -- it holds the surface the last frame was rendered into,
+  // and rebuilding it per transaction would throw that frame away.
+  void setPainter(std::shared_ptr<RnWin32Painter> painter);
+  const std::shared_ptr<RnWin32Painter> &painter() const { return painter_; }
 
   // --- Controls ----------------------------------------------------------------
   //
@@ -439,6 +474,7 @@ class RnWin32View {
   std::string controlDescription_;
   std::shared_ptr<RnWin32TextLayout> textLayout_;
   std::shared_ptr<RnWin32Image> image_;
+  std::shared_ptr<RnWin32Painter> painter_;
   RnImageFit imageFit_ = RnImageFit::Cover;
   bool hasImageTint_ = false;
   float imageTint_[4] = {0.0f, 0.0f, 0.0f, 0.0f};

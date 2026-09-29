@@ -276,6 +276,32 @@ if(TARGET basalt_core)
   target_compile_options(basalt_win32_mounting PRIVATE ${BASALT_WIN32_WARNINGS})
   target_include_directories(basalt_win32_mounting PUBLIC win32)
   target_link_libraries(basalt_win32_mounting PUBLIC basalt_win32_view basalt_core)
+
+  # @shopify/react-native-skia, when the build was pointed at an app that has
+  # it. See ../../react-native-basalt/native/cmake/Skia.cmake.
+  #
+  # Here rather than on basalt_core, for the reason the AppKit package gives:
+  # a platform context is a host's dependency. The Windows one reaches
+  # DirectWrite and the Win32 DPI call, and core/portability_probe.cpp links
+  # the core with no toolkit on purpose.
+  if(TARGET skia_core)
+    target_link_libraries(basalt_win32_mounting PUBLIC skia_core)
+    target_sources(basalt_win32_mounting PUBLIC $<TARGET_OBJECTS:skia_core>)
+    target_compile_definitions(basalt_win32_mounting PUBLIC BASALT_HAS_SKIA=1)
+    # This host's half: the TurboModule the package asks for by name, the
+    # platform context it hands to Skia, and the peer behind a `<Canvas>`.
+    # See win32/Win32SkiaModule.h and win32/Win32SkiaPeer.h.
+    target_sources(basalt_win32_mounting PRIVATE
+      win32/Win32SkiaModule.cpp
+      win32/Win32SkiaContext.cpp
+      # AppKitSkiaPeer.mm's opposite number. Where that one hands the package a
+      # Metal layer, this renders into memory and lets the Direct2D walk draw
+      # the result -- this host has no layer tree to hang a canvas in.
+      win32/Win32SkiaPeer.cpp
+      # The unicode factory the package asks for by name on anything that is
+      # not Apple, answered with the backend that is actually linked here.
+      win32/Win32SkiaUnicode.cpp)
+  endif()
   # shell32 for ShellExecute; comctl32 for SetWindowSubclass, which is how a
   # <TextInput>'s EDIT peer is subclassed without breaking anything else that
   # subclasses it later.

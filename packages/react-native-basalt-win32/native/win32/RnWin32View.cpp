@@ -319,6 +319,10 @@ void RnWin32View::setImage(std::shared_ptr<RnWin32Image> image, RnImageFit fit) 
   imageFit_ = fit;
 }
 
+void RnWin32View::setPainter(std::shared_ptr<RnWin32Painter> painter) {
+  painter_ = std::move(painter);
+}
+
 // --- Accessibility ----------------------------------------------------------
 
 void RnWin32View::setAccessibleInfo(const RnAccessibleInfo &info) {
@@ -495,6 +499,14 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
                    frame_.height,
                    imageFit_,
                    hasImageTint_ ? imageTint_ : nullptr);
+    }
+
+    // Then anything this layer cannot draw itself -- the Skia surface behind a
+    // `<Canvas>`, and nothing else so far. Here rather than in its own pass so
+    // that it is inside the clip, the transform and the opacity this view has
+    // already applied, which is the whole point of drawing it in the walk.
+    if (painter_ != nullptr) {
+      painter_->draw(target, frame_.width, frame_.height);
     }
 
     // Text sits above the background and below any children, which is the

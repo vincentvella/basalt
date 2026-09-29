@@ -5,6 +5,10 @@
 #include "PlatformServices.h"
 #include "UIManagerAccess.h"
 
+#ifdef BASALT_HAS_SKIA
+#include "Win32SkiaPeer.h"
+#endif
+
 #include <react/renderer/components/image/ImageProps.h>
 #include <react/renderer/components/text/ParagraphProps.h>
 #include <react/renderer/components/text/ParagraphState.h>
@@ -219,6 +223,12 @@ void Win32MountingManager::forgetTag(Tag tag) {
   textInputs_.remove(tag);
   imageUris_.erase(tag);
   switchValues_.erase(tag);
+#ifdef BASALT_HAS_SKIA
+  // Unregisters the canvas. This is the one moment a view is known to be
+  // finished with, and a canvas left registered is a surface the package will
+  // keep rendering into for a tag nothing will ever draw again.
+  forgetSkiaCanvas(tag);
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +240,18 @@ void Win32MountingManager::updateView(RnWin32View *view, const ShadowView &shado
   applyText(view, shadowView);
   applyImage(view, shadowView);
   applyAccessibility(view, shadowView);
+#ifdef BASALT_HAS_SKIA
+  // After applyProps, which is what puts nativeID on the view -- a canvas
+  // registers itself by that id and cannot attach before it is there. The size
+  // it reads comes from the shadow view rather than from the frame
+  // applyLayoutMetrics is about to set, so being before that one is only
+  // incidental.
+  //
+  // onDidMount_ is handed over as the way to say "the screen is stale": a
+  // canvas renders between transactions, when nothing else will invalidate the
+  // window. See Win32SkiaPeer.h.
+  applySkiaCanvas(view, shadowView, onDidMount_);
+#endif
   applyLayoutMetrics(view, shadowView);
   // Last: the scroll manager clamps its offset against the frame that was just
   // applied, and forces the clip that applyProps may have read as `visible`.

@@ -421,17 +421,34 @@ export function optionalNativeModules(
   // because the module and the canvas are written for AppKit -- 0 Skia symbols
   // in basalt_gtk against 4998 in basalt_appkit, with skia_core compiled in
   // both. Compiling the portable half is not having the module.
+  // Which is now a question about the *archives*, not the platform. macOS has
+  // published ones; Linux and Windows have whatever scripts/build_skia_linux.sh
+  // and its Windows counterpart put in the package, laid out the way the
+  // package lays out Android's. Asking the filesystem is what lets a host that
+  // built them use them, and still says the useful thing to one that has not.
   const skia = findPackage('@shopify/react-native-skia', projectRoot);
-  if (skia != null && platform === 'macos') {
+  const skiaArchive: Record<string, string> = {
+    macos: path.join('libs', 'macos', 'libskia.xcframework'),
+    windows: path.join('libs', 'windows', 'x86_64', 'skia.lib'),
+    linux: path.join('libs', 'linux', 'x86_64', 'libskia.a'),
+  };
+  const archive = skia != null ? path.join(skia, skiaArchive[platform] ?? '') : null;
+  if (skia != null && archive != null && fs.existsSync(archive)) {
     define('BASALT_SKIA', skia);
     notes.push(`Skia, from ${skia}`);
   } else if (skia != null) {
+    const how =
+      platform === 'macos'
+        ? 'Run the app\'s pod install, or `yarn install-skia` inside the package.'
+        : `Nobody publishes any for ${platform}: the package ships Apple and ` +
+          'Android archives and nothing else. scripts/build_skia_linux.sh builds ' +
+          'them, and puts them where this looked.';
     notes.push(
-      `not building @shopify/react-native-skia (${skia}): the published binaries ` +
-        `are Apple's, and ${platform} needs Skia built from source first. This ` +
-        'host will have no RNSkiaModule, and importing the package at all -- not ' +
-        'rendering with it, importing it -- ends the app at ' +
-        "getEnforcing('RNSkiaModule'). Import it behind a check if this target matters.",
+      `not building @shopify/react-native-skia (${skia}): no archives at ` +
+        `${archive}. ${how} This host will have no RNSkiaModule, and importing ` +
+        'the package at all -- not rendering with it, importing it -- ends the ' +
+        "app at getEnforcing('RNSkiaModule'). Import it behind a check if this " +
+        'target matters.',
     );
   }
 
