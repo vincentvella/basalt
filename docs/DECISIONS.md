@@ -671,6 +671,23 @@ is a plain assignment and not a `defineProperty`. What is given up is a streamed
 response body, and an app importing `expo/fetch` directly still gets the error
 naming the module — which is the honest answer until someone ports it.
 
+**A TurboModule is not a singleton, and a listener must not assume it is.**
+ReactCxxPlatform builds a new module for every lookup rather than caching one: an
+app's start-up makes several, and they come and go while it runs. So a native
+seam whose listener is installed by a module's constructor and cleared by its
+destructor loses the listener the moment any one of them is released — including
+while others are still serving. That is not hypothetical: it left every keyboard
+shortcut in an app dead, with the keys claimed, the press matched, and the answer
+dropped on the way to JavaScript. Nothing failed and nothing was logged.
+
+A listener therefore belongs to the *set* of live modules, not to an instance:
+installed when the first appears, handed to one still alive when another goes,
+cleared only when the last does. `core/WindowsModule.cpp` is the worked example
+and `react-native-basalt-subprocess` follows it. The tempting middle answer — an
+ownership guard, where the destructor clears only if it is the one that installed
+— was tried first and is wrong for the same reason: the installer is routinely
+the one that dies first.
+
 **An Expo module can emit.** A TurboModule is constructed with a `CallInvoker`
 and an Expo module is not — it is built by a function given a runtime and nothing
 else — so until a module needed to report something after its call returned, there

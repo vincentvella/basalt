@@ -72,3 +72,13 @@
       GStreamer's `playbin`, Media Foundation's `IMFPMediaPlayer` -- and why it
       is not written blind: neither this machine nor CI can tell a working
       implementation from one reporting plausible numbers to nobody.
+
+## 7. What the migration turned up
+
+- [x] 7.1 `resourcePath`, from the platform rather than derived by the app.
+- [x] 7.2 Resolution from a nested directory: every `node_modules` up from the
+      project root, an `extraNodeModules` fallback, and -- because neither is
+      read by every resolver, and the app in question uses one that reads
+      neither -- answering for our own names directly in `resolveRequest`.
+- [x] 7.3 A linked capability package is watched as well as resolved, or the
+      bundler refuses to read it and says "Failed to get the SHA-1 for".

@@ -69,4 +69,26 @@
 
 - [x] `docs/backlog/input.md`: no longer a decision
 - [x] `docs/TESTING.md`: the new instrument, and what it does not cover
-- [ ] Whether kino's `hotkeyViewProps()` can keep its shape, recorded either way
+- [x] Whether kino's `hotkeyViewProps()` can keep its shape, recorded either way.
+      **It can.** `src/overrides/View.tsx` accepts react-native-macos's
+      `keyDownEvents`, `onKeyDown` and `focusable` on any view, so the app keeps
+      one spelling for both platforms. The two go through one implementation --
+      `src/useHandledKeys.ts` -- because two spellings that drifted would be
+      worse than either.
+
+## Found afterwards, by using it
+
+- [x] A real press reaches a view nothing focused. It did not: `keyDown:` is
+      only sent to the first responder, `focusable` makes a view eligible rather
+      than focused, and `handledByAny` -- written for exactly this -- sat behind
+      a call the press never reached. The window's key monitor now offers it to
+      the same walk, and only when nothing of ours is in the responder chain.
+- [x] The claim outlives the module carrying it. The reporting seam was cleared
+      by a destructor; the platform builds a module per lookup, so the one
+      holding it died while five others served. Every shortcut in an app went
+      quiet, with nothing failing anywhere.
+- [ ] A scenario that presses a *real* key. Everything here is driven by
+      `BASALT_TEST_KEY`, which enters below the window system -- which is why
+      both of the above passed every check this project had while no shortcut in
+      a real app worked. Until something drives the window server, the suite
+      cannot tell a working keyboard from a dead one.

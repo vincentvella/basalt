@@ -78,6 +78,41 @@ no audience is ordinary.
   to do, such as choosing a folder
 - **THEN** the promise settles when they have done it, rather than immediately
 
+### Requirement: The platform answers where a packaged app's files are
+
+The system SHALL tell an application where the files its build placed beside it
+are, because the system's own packager is what decides that layout.
+
+An application deriving it would be holding a copy of a rule it did not write,
+and one that changes the day the packager does.
+
+#### Scenario: A packaged app finds its resources
+
+- **WHEN** a packaged application asks for its resource path
+- **THEN** it is the directory its build put its files in
+
+#### Scenario: A development run says so
+
+- **WHEN** the host is run out of a build directory rather than a package
+- **THEN** the answer is that directory, rather than a packaged path that
+  nothing created
+
+### Requirement: This package resolves from anywhere in a project
+
+The system SHALL be importable from any file in an application, including one
+nested deeper than the application's own source, and including when it is
+installed through a link.
+
+A bundler walks up from the importing file, so a file one directory deeper than
+`src/` can run out of parents before reaching a workspace root -- and the failure
+names node_modules directories rather than this package or the link it came
+through.
+
+#### Scenario: An import from a nested directory
+
+- **WHEN** a file in the app's own module directory imports this package
+- **THEN** it resolves, whatever resolver the app's bundler uses
+
 ## MODIFIED Requirements
 
 ### Requirement: A capability package registers its own Expo modules
