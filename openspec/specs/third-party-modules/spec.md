@@ -85,3 +85,36 @@ unmounted, and SHALL never offer one to a handler attached to nothing.
 
 - **WHEN** a view carrying a handler is unmounted mid-gesture
 - **THEN** that handler receives nothing further
+
+### Requirement: A native dependency is decided per target, and a missing one is said out loud
+
+The system SHALL decide whether to build an optional native dependency from the
+platform being built for, never from the platform doing the building. Cross
+building is ordinary here -- a GTK host builds on a Mac -- so the two are
+routinely different, and asking the wrong one configures a dependency the host
+cannot link.
+
+Where a dependency cannot be built for a target, the system SHALL say so during
+the build, naming the target, the package, and the failure the app will hit
+instead. A native module that is absent is not absent quietly: the JavaScript
+side of these libraries calls `TurboModuleRegistry.getEnforcing`, which throws
+at import, so an app that merely imports the package -- without rendering
+anything from it -- does not start. That failure carries no trace of the build
+decision that caused it, so the build is the only place it can be explained.
+
+The system SHALL NOT register a placeholder in place of a missing dependency.
+A module that exists and refuses is not better than one that is absent: Skia's
+own setup throws unless `install()` returns exactly `true`, so the placeholder
+buys a different exception at the same line, and it costs the honest signal
+that the dependency is not there.
+
+#### Scenario: A host is built for a target the dependency has no binaries for
+
+- **WHEN** an app depending on @shopify/react-native-skia is built for Linux or Windows
+- **THEN** Skia is not passed to the configure, whatever platform the build runs on
+- **AND** the build says the target has no RNSkiaModule and that importing the package will end the app
+
+#### Scenario: The same app is built for the target the dependency supports
+
+- **WHEN** that app is built for macOS
+- **THEN** Skia is passed to the configure and reported as built
