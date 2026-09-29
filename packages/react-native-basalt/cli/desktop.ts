@@ -407,11 +407,20 @@ export function optionalNativeModules(
   // `getEnforcing('RNSkiaModule')`, which is a long way from the cause.
   //
   // The question is about the *target*, not the machine doing the building.
-  // This read `process.platform === 'darwin'` and so a GTK host cross-built on
-  // a Mac was configured with Apple's Skia, linked nothing, and produced a
-  // binary with no RNSkiaModule in it -- the exact start-up failure the note
-  // exists to pre-empt, reported as if all was well. Found by building kino
-  // for Linux.
+  // This read `process.platform === 'darwin'`, so building for GTK or Win32
+  // from a Mac passed Apple's Skia to a configure that should never have seen
+  // it, and said nothing.
+  //
+  // On a Mac that miss is invisible, which is worth knowing before trusting a
+  // green build: Skia.cmake gates on APPLE, a GTK host built on a Mac *is*
+  // Mach-O, so skia_core compiles and the mistake costs only build time. It
+  // bites when the target is a real Linux or Windows host, where those
+  // archives cannot be read at all.
+  //
+  // It is also not why kino failed on GTK. That host has no RNSkiaModule
+  // because the module and the canvas are written for AppKit -- 0 Skia symbols
+  // in basalt_gtk against 4998 in basalt_appkit, with skia_core compiled in
+  // both. Compiling the portable half is not having the module.
   const skia = findPackage('@shopify/react-native-skia', projectRoot);
   if (skia != null && platform === 'macos') {
     define('BASALT_SKIA', skia);

@@ -108,6 +108,18 @@ own setup throws unless `install()` returns exactly `true`, so the placeholder
 buys a different exception at the same line, and it costs the honest signal
 that the dependency is not there.
 
+A dependency's portable half compiling is not the same as a host having it.
+Where a library divides into portable C++ and a per-window-system half, the
+system SHALL treat the host half as the thing that decides whether the module
+exists. The portable half can compile for a host that never links it, and the
+app sees the same `getEnforcing` failure as if nothing had been built at all.
+
+#### Scenario: The portable half builds but no host half exists
+
+- **WHEN** a GTK host is built on macOS, where Skia's Apple binaries are usable
+- **THEN** skia_core compiles, and the host still has no RNSkiaModule
+- **AND** the reason is that the module and the canvas are written for AppKit only
+
 #### Scenario: A host is built for a target the dependency has no binaries for
 
 - **WHEN** an app depending on @shopify/react-native-skia is built for Linux or Windows
