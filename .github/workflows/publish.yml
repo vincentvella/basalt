@@ -103,7 +103,8 @@ jobs:
           #   oidc Failed token exchange request ... package not found
           # That endpoint is per package, and "package not found" means no
           # trusted publisher is configured for it, not that the package is
-          # missing.
+          # missing. trusted-publisher-check.yml asks it directly, for every
+          # package, without publishing anything.
           publish() {
             # The \n matters. `read` returns non-zero at EOF without a
             # trailing delimiter, and under `set -e` that ends the step before

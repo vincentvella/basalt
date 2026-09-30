@@ -1,6 +1,27 @@
-name: OIDC check
-# Temporary. Asks npm's per-package token-exchange endpoint whether a trusted
-# publisher is configured, without publishing anything. Delete once answered.
+name: Trusted publisher check
+
+# Asks npm whether a trusted publisher is configured, for each package,
+# without publishing anything.
+#
+# Worth keeping because the failure it diagnoses is otherwise almost mute.
+# `npm publish` reports ENEEDAUTH and nothing else, which looks identical to
+# a client too old to try, to a missing token, and to a registration that does
+# not match. Three release runs and two hand-run publishes went by before the
+# real answer turned up, and it was one line at --loglevel verbose.
+#
+# 200 means the registration matches this repository and workflow. 404
+# "package not found" means npm holds no registration it will accept -- not
+# that the package is missing; these are all published.
+#
+# The registration lives on npmjs.com, per package, under Settings ->
+# Trusted Publisher, and every field is case-sensitive:
+#
+#   Organization or user  vincentvella
+#   Repository            react-native-basalt
+#   Workflow filename     publish.yml        (the filename alone, no path)
+#   Environment name      (empty)
+#   Allowed actions       must permit `npm publish`; only `npm stage publish`
+#                         is allowed by default, and that alone is not enough
 on: workflow_dispatch
 
 jobs:
