@@ -9,8 +9,11 @@ name: Release
 # of this repository's scaffolding around it -- and whether everything still
 # builds from nothing, with no cache to hide a stale Hermes behind.
 #
-# Nothing here publishes. Every package is `private: true` today, so the last
-# job is the gate a publish step would hang off, and says what would ship.
+# The last job publishes, over trusted publishing: GitHub mints an OIDC token,
+# npm exchanges it for a short-lived one scoped to this workflow, and provenance
+# is attached automatically. There is no NPM_TOKEN in this repository and
+# nothing long-lived to leak. It runs for a tag and not for a hand-started run,
+# so the questions below can still be asked without publishing an answer.
 #
 # Run by pushing a tag (`git tag v0.1.0 && git push origin v0.1.0`), or by hand
 # from the Actions tab, which skips the version check and runs everything else.
@@ -279,8 +282,9 @@ jobs:
         # a real app and run, so the summary describes something that has been
         # tested rather than something packed again at the end.
         #
-        # Publishing is a step to add here -- with an npm token -- rather than
-        # something this workflow does by accident.
+        # This job stays a summary. Publishing is the job after it, which
+        # takes the same artifact, so what is reported here and what is
+        # uploaded are the same bytes rather than two packs that agree.
         run: |
           for tarball in tarballs/*.tgz; do
             echo "== $tarball"
@@ -290,4 +294,63 @@ jobs:
                 console.log(`   ${m.name} ${m.version}`);
               })'
             echo "   $(tar -tzf "$tarball" | wc -l) files, $(du -h "$tarball" | cut -f1)"
+          done
+
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-24.04
+    needs: [ready]
+    # Tags only. `ready` deliberately runs for a hand-started run too, so that
+    # the release questions can be asked without one; publishing must not
+    # inherit that. A workflow_dispatch run gets everything up to the summary
+    # and stops.
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      # The whole credential. Trusted publishing exchanges this OIDC token for
+      # a short-lived, workflow-scoped npm token, so there is no NPM_TOKEN in
+      # this repository's secrets and nothing long-lived to leak. npm attaches
+      # provenance automatically when published this way.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: An npm new enough to do this
+        # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14. Node 24
+        # ships past both today, so this is insurance rather than a fix: the
+        # bundled npm is whatever the runner image happens to carry, and the
+        # failure if it is too old is an auth error that reads like a
+        # misconfigured publisher rather than a stale client.
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Collect the tested tarballs
+        # The same artifact `ready` reports on: the exact bytes that were
+        # installed into a real Expo app and built against three desktops.
+        # Re-packing here would publish something nothing has run.
+        uses: actions/download-artifact@v8
+        with:
+          name: tarballs
+          path: tarballs
+
+      - name: Publish
+        # Core first, because the other five pin it by exact version and a
+        # registry that has the dependents before the dependency is briefly
+        # uninstallable. `npm publish <tarball>` skips prepack, which is the
+        # point -- prepack typechecks and needs a React Native checkout this
+        # job does not have, and re-running it would produce different bytes
+        # from the ones that were tested.
+        run: |
+          set -euo pipefail
+          core=$(ls tarballs/react-native-basalt-[0-9]*.tgz)
+          echo "== $core"
+          npm publish "$core" --access public
+          for tarball in tarballs/*.tgz; do
+            [ "$tarball" = "$core" ] && continue
+            echo "== $tarball"
+            npm publish "$tarball" --access public
           done

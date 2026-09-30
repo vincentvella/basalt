@@ -1,19 +1,27 @@
 {
   "name": "react-native-basalt-subprocess",
-  "version": "0.0.0-rc1",
+  "version": "0.0.0-rc2",
   "description": "Running a command and watching its output, for react-native-basalt. Arbitrary code execution, so it ships separately from the core platform.",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "basalt": {
     "native": "native/CMakeLists.txt"
-  },
-  "peerDependencies": {
-    "react-native-basalt": "*"
   },
   "files": [
     "dist",
     "native",
     "LICENSE"
-  ]
+  ],
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "react-native-basalt": "0.0.0-rc2"
+  }
 }

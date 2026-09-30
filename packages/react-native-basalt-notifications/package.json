@@ -1,6 +1,6 @@
 {
   "name": "react-native-basalt-notifications",
-  "version": "0.0.0-rc1",
+  "version": "0.0.0-rc2",
   "description": "Desktop notifications for react-native-basalt. Permission-gated, so it ships separately from the core platform.",
   "license": "MIT",
   "basalt": {
