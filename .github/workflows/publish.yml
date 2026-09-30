@@ -55,8 +55,9 @@ jobs:
       # name it presented was the probe's own. A check for whether a workflow
       # is trusted is only meaningful from inside that workflow.
       #
-      # 200 means the registration matches. 404 "package not found" means npm
-      # holds nothing it will accept -- not that the package is missing.
+      # 201 means the registration matches and npm issued a credential. 404
+      # "package not found" means npm holds nothing it will accept -- not that
+      # the package is missing.
       # Fields are case-sensitive, and Allowed actions must permit
       # `npm publish`; only `npm stage publish` is granted by default.
       - name: Is this workflow trusted?
@@ -78,7 +79,10 @@ jobs:
               -H 'Content-Type: application/json' \
               "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$p")
             code=$(printf '%s' "$out" | tail -1)
-            [ "$code" = "200" ] || bad=1
+            # 201, not 200: the endpoint mints a credential, so success is
+            # Created. Asserting 200 reported six working registrations as
+            # broken and sent me back to npmjs.com looking for a fault there.
+            case "$code" in 200|201) ;; *) bad=1 ;; esac
             printf '  %-34s %s\n' "$p" "$code"
           done
           exit $bad
