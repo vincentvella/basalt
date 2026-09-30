@@ -344,13 +344,43 @@ jobs:
         # point -- prepack typechecks and needs a React Native checkout this
         # job does not have, and re-running it would produce different bytes
         # from the ones that were tested.
+        #
+        # Every path is written `./tarballs/...` and the leading `./` is
+        # load-bearing. `npm publish` takes a package spec rather than a
+        # filename, and a bare `a/b` is GitHub shorthand -- so
+        # `npm publish tarballs/react-native-basalt-0.0.0-rc2.tgz` refused with
+        # EALLOWGIT and "Refusing to fetch
+        # github:tarballs/react-native-basalt-0.0.0-rc2.tgz", having never
+        # looked at the disk. `./` is what makes it a path.
         run: |
           set -euo pipefail
-          core=$(ls tarballs/react-native-basalt-[0-9]*.tgz)
-          echo "== $core"
-          npm publish "$core" --access public
-          for tarball in tarballs/*.tgz; do
+          publish() {
+            echo "== $1"
+            # --tag is required, not decorative: npm refuses to publish a
+            # prerelease without one rather than let 0.0.0-rc2 quietly become
+            # `latest`. `rc` is the tag 0.0.0-rc1 already carries.
+            npm publish "$1" --access public --tag rc
+          }
+          core=$(ls ./tarballs/react-native-basalt-[0-9]*.tgz)
+          publish "$core"
+          for tarball in ./tarballs/*.tgz; do
             [ "$tarball" = "$core" ] && continue
-            echo "== $tarball"
-            npm publish "$tarball" --access public
+            publish "$tarball"
+          done
+
+      - name: Point latest at it
+        # 0.0.0-rc1 holds both `rc` and `latest`, because npm sets `latest` on
+        # a package's first publish whatever tag it was given. Every release
+        # here is a release candidate, so leaving `latest` on rc1 would mean
+        # `npm install react-native-basalt` kept handing out the older one.
+        # Separate from the publish above so that a failure here is a wrong
+        # dist-tag to fix by hand rather than half a release.
+        run: |
+          set -euo pipefail
+          for tarball in ./tarballs/*.tgz; do
+            read -r name version < <(tar -xzOf "$tarball" package/package.json |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}`);})')
+            echo "== $name@$version -> latest"
+            npm dist-tag add "$name@$version" latest
           done
