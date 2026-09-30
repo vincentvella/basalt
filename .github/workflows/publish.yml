@@ -51,6 +51,19 @@ jobs:
       # Reading an artifact that belongs to another run.
       actions: read
     steps:
+      # Two registrations are needed on npmjs.com, per package, and this is
+      # why. npm matches the OIDC token's *calling* workflow, so a reusable
+      # workflow reached through `uses:` presents the caller's name, not its
+      # own. Measured, through the same probe on the same day:
+      #
+      #   dispatched directly              publish.yml   201 x 6
+      #   called from release.yml          release.yml   404 x 6
+      #
+      # So a package needs both publish.yml (the standalone retry) and
+      # release.yml (a tagged release) registered, or one of the two paths
+      # silently cannot authenticate -- and the check passing tells you
+      # nothing about the path you are not on.
+      #
       # Has to live here rather than in a workflow of its own, which is where
       # I first put it. The OIDC token carries a job_workflow_ref claim naming
       # the workflow that minted it, and npm matches that against the
