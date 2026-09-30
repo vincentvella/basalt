@@ -70,6 +70,10 @@
 // Which parts of an app-drawn header drag the window; see the gesture below.
 #include "GtkTitleBarLayout.h"
 #include "GtkWindowModule.h"
+
+#ifdef BASALT_HAS_SKIA
+#include "GtkSkiaModule.h"
+#endif
 #include "ExpoModules.h"
 #include "GestureHandlerModule.h"
 #include "ReanimatedModule.h"
@@ -836,6 +840,15 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         if (name == basalt::DesktopAppearanceModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppearanceModule>(jsInvoker);
         }
+#ifdef BASALT_HAS_SKIA
+        // Skia, when the build was pointed at an app that has it. Its
+        // `install` is what puts Skia's whole JavaScript API on the global
+        // object, and an app that imports Skia does not start without it;
+        // see gtk/GtkSkiaModule.h.
+        if (name == basalt::GtkSkiaModule::kModuleName) {
+          return std::make_shared<basalt::GtkSkiaModule>(jsInvoker);
+        }
+#endif
         if (name == basalt::DesktopBlobModule::kModuleName) {
           return std::make_shared<basalt::DesktopBlobModule>(jsInvoker);
         }

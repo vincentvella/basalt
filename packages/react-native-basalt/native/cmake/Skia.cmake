@@ -27,24 +27,20 @@
 # MakeWindow(CALayer *), which takes a layer rather than a React view. So a
 # `<Canvas>` needs to hand over its own layer and nothing more.
 #
-# ## macOS only, for now
+# ## Three platforms, two of which build their own Skia
 #
-# Skia's binaries are per platform and the ones published are Apple's. Linux and
-# Windows need Skia built from source; the package has scripts/build-skia.ts for
-# exactly that, and android/CMakeLists.txt is a complete non-Apple CMake build of
-# these same sources to follow. Neither is done here.
+# Skia's binaries are per platform and the ones published are Apple's and
+# Android's. macOS uses the published xcframeworks; Windows and Linux each
+# build archives from source, laid out the way the package lays out Android's,
+# by scripts/build_skia_windows.sh and scripts/build_skia_linux.sh.
+#
+# The three differ in more than a path, and each difference below says which
+# platform it belongs to and why.
 
 if(NOT DEFINED BASALT_SKIA)
   return()
 endif()
 
-if(NOT (APPLE OR WIN32))
-  message(STATUS
-          "not building @shopify/react-native-skia: the published binaries are "
-          "Apple's and Android's, and this platform needs Skia built from "
-          "source first -- see scripts/build_skia_linux.sh")
-  return()
-endif()
 
 get_filename_component(SKIA_DIR "${BASALT_SKIA}" ABSOLUTE)
 set(SKIA_CPP_DIR ${SKIA_DIR}/cpp)
@@ -53,13 +49,15 @@ set(SKIA_APPLE_DIR ${SKIA_DIR}/apple)
 # Where each platform's archives are.
 #
 # macos is the package's own layout, filled by its podspec or install-skia.
-# windows is ours, because nothing publishes Windows binaries: it mirrors the
-# package's android layout -- libs/<platform>/<arch> -- and is what
-# scripts/build_skia_windows.sh writes.
+# windows and linux are ours, because nothing publishes binaries for either:
+# both mirror the package's android layout -- libs/<platform>/<arch> -- and are
+# what scripts/build_skia_windows.sh and scripts/build_skia_linux.sh write.
 if(APPLE)
   set(SKIA_LIBS_DIR ${SKIA_DIR}/libs/macos)
-else()
+elseif(WIN32)
   set(SKIA_LIBS_DIR ${SKIA_DIR}/libs/windows/x86_64)
+else()
+  set(SKIA_LIBS_DIR ${SKIA_DIR}/libs/linux/x86_64)
 endif()
 
 if(NOT EXISTS ${SKIA_CPP_DIR}/rnskia/RNSkManager.cpp)
@@ -86,6 +84,13 @@ if(WIN32 AND NOT EXISTS ${SKIA_LIBS_DIR}/skia.lib)
           "Nobody publishes any for Windows: the package ships Apple and Android "
           "archives and nothing else. Build them with scripts/build_skia_windows.sh, "
           "which puts them here.")
+endif()
+if(NOT APPLE AND NOT WIN32 AND NOT EXISTS ${SKIA_LIBS_DIR}/libskia.a)
+  message(FATAL_ERROR
+          "no Skia binaries at ${SKIA_LIBS_DIR}.\n"
+          "Nobody publishes any for Linux either. Build them with "
+          "scripts/build_skia_linux.sh, in WSL2 or on a Linux machine, and copy "
+          "its libs/linux/x86_64 here.")
 endif()
 
 file(READ ${SKIA_DIR}/package.json SKIA_PACKAGE_JSON)
@@ -114,7 +119,7 @@ if(APPLE)
     list(GET slice 0 slice)
     list(APPEND SKIA_LINK_LIBRARIES ${slice})
   endforeach()
-else()
+elseif(WIN32)
   # The same order and the same reason -- dependents first, skia last -- and
   # two differences that are the platform's, not a preference. The unicode
   # backend is the first, and it is immediately below.
@@ -156,6 +161,35 @@ else()
         message(FATAL_ERROR "no ${archive}.lib under ${SKIA_LIBS_DIR}")
       endif()
       continue()
+    endif()
+    list(APPEND SKIA_LINK_LIBRARIES ${lib})
+  endforeach()
+else()
+  # Linux: the same nine the package's android/CMakeLists.txt imports, and no
+  # more. Dependents first and skia last, as everywhere else here.
+  #
+  # **ICU, and why this is the opposite of the Windows choice above.** That
+  # one cannot use skunicode_icu because basalt links the operating system's
+  # ICU through icu.lib and the two export the same unsuffixed names. Here
+  # nothing does: ThirdParty.cmake names icu only under `if(WIN32)`, because
+  # on Linux Hermes is a shared libhermesvm.so that records its own ICU
+  # dependency and resolves it at load time. So the collision has no second
+  # party, and Linux gets the fuller backend -- ICU's line breaking and bidi
+  # rather than libgrapheme's grapheme clusters alone.
+  #
+  # **And no third-party archives.** The Windows build emits libpng, libjpeg,
+  # harfbuzz and the rest beside libskia and they have to be named; this one
+  # folds them into libskia.a, so naming them would be naming files that do
+  # not exist. Not a configuration difference anybody chose -- it is what the
+  # two builds happen to emit -- so it is checked rather than assumed: every
+  # name below is required, and a missing one is fatal.
+  set(SKIA_ARCHIVES
+          skottie svg skparagraph sksg skshaper
+          skunicode_icu skunicode_core jsonreader skia)
+  foreach(archive ${SKIA_ARCHIVES})
+    set(lib ${SKIA_LIBS_DIR}/lib${archive}.a)
+    if(NOT EXISTS ${lib})
+      message(FATAL_ERROR "no lib${archive}.a under ${SKIA_LIBS_DIR}")
     endif()
     list(APPEND SKIA_LINK_LIBRARIES ${lib})
   endforeach()
@@ -209,11 +243,11 @@ if(APPLE)
           ${SKIA_APPLE_DIR}/RNSkMetalCanvasProvider.mm
           ${SKIA_APPLE_DIR}/SkiaCVPixelBufferUtils.mm)
 else()
-  # Nothing of the package's own on Windows. Its non-portable halves are the
-  # Apple one above and an Android one that is JNI throughout -- the platform
-  # context, the GL canvas provider and the window context all take jobjects.
-  # So the whole host half here is basalt's: win32/Win32SkiaModule.cpp and
-  # win32/Win32SkiaContext.cpp in the win32 package.
+  # Nothing of the package's own on Windows or Linux. Its non-portable halves
+  # are the Apple one above and an Android one that is JNI throughout -- the
+  # platform context, the GL canvas provider and the window context all take
+  # jobjects. So the whole host half on those two is basalt's: Win32Skia* in
+  # the win32 package, GtkSkia* in the gtk one.
   set(SKIA_APPLE_SRC "")
 endif()
 
@@ -268,7 +302,7 @@ if(APPLE)
           "-framework CoreMedia"
           "-framework AVFoundation"
           "-framework Foundation")
-else()
+elseif(WIN32)
   # /w rather than -w, and no ARC: the same "somebody else's warnings are not
   # this project's business" as above, spelled the way clang-cl takes it.
   target_compile_options(skia_core PRIVATE /w)
@@ -309,6 +343,34 @@ else()
   # here. LNK4006 in a build log is the thing to read if something linked and
   # then behaved as though it had two of something.
   target_link_options(skia_core INTERFACE /FORCE:MULTIPLE)
+else()
+  target_compile_options(skia_core PRIVATE -w)
+  # SK_GANESH alone, as on Windows: the archives are built skia_use_gl=true
+  # with Graphite and Dawn off, so this is Skia's CPU-and-GL configuration.
+  target_compile_definitions(skia_core PUBLIC
+          SK_GANESH=1
+          SKIA_VERSION=\"${SKIA_VERSION}\")
+  # What this Skia reaches outside its own archives.
+  #
+  # A short list, because the build bundles almost everything -- libpng,
+  # libjpeg, libwebp, zlib, expat, harfbuzz and ICU are all inside libskia.a
+  # and libskunicode_icu.a. What it deliberately does not bundle is freetype
+  # and fontconfig: skia_use_system_freetype2=true and skia_use_fontconfig=true,
+  # because a GTK host already links pango and cairo, which drag in freetype,
+  # and two freetypes in one process is a crash rather than a tidiness
+  # complaint. pkg-config rather than find_library so the include paths come
+  # with them, and so a machine with them somewhere unusual still works.
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SKIA_SYSTEM REQUIRED IMPORTED_TARGET fontconfig freetype2)
+  # GL and EGL for the Ganesh backend the archives carry; dl and pthread
+  # because a static Skia asks for both and nothing else on the line will.
+  target_link_libraries(skia_core ${SKIA_LINK_LIBRARIES}
+          PkgConfig::SKIA_SYSTEM
+          GL EGL dl pthread)
+  # No /FORCE:MULTIPLE counterpart, and none needed. The SkottieUtils overlap
+  # the Windows branch describes is lld-link's alone: GNU ld, like Apple's,
+  # pulls an archive member only while a symbol is still undefined, and by the
+  # time it reaches skottie the vendored object has defined those six.
 endif()
 
 message(STATUS "Skia ${SKIA_VERSION} from ${SKIA_DIR}")

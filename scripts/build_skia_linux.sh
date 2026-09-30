@@ -346,8 +346,26 @@ else
   note "warn no SkFontMgr_New_FontConfig -- createFontMgr will need another source"
 fi
 
-ELF=$(file -b "$DEST/libskia.a" | grep -c "x86-64\|x86_64" || true)
-[ "${ELF:-0}" -gt 0 ] || { note "warn libskia.a does not report as x86-64"; }
+# Asked of a member, not of the archive.
+#
+# `file` on an ar archive reports "current ar archive" and stops: whether it
+# goes on to describe what is inside depends on its version, and on 24.04 it
+# does not. So this warned that a perfectly good x86-64 build "does not report
+# as x86-64" -- a check that fires on correct output is worse than no check,
+# because the next person has to rule it out by hand. An object file has no
+# such ambiguity.
+FIRST=$(ar t "$DEST/libskia.a" 2>/dev/null | head -1)
+if [ -n "$FIRST" ] && ar p "$DEST/libskia.a" "$FIRST" > "$WORK/.arch-probe.o" 2>/dev/null; then
+  ELF=$(file -b "$WORK/.arch-probe.o" | grep -c "x86-64\|x86_64" || true)
+  rm -f "$WORK/.arch-probe.o"
+  if [ "${ELF:-0}" -gt 0 ]; then
+    note "ok   x86-64 objects"
+  else
+    note "warn $FIRST in libskia.a is not x86-64"
+  fi
+else
+  note "warn could not read an object out of libskia.a to check its architecture"
+fi
 
 # A manifest, so that archives found on disk in six months can be identified.
 cat > "$DEST/skia-build.json" <<JSON

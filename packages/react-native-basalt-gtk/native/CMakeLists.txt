@@ -236,6 +236,29 @@ if(TARGET basalt_core)
   target_link_libraries(basalt_gtk_mounting PUBLIC basalt_gtk_view rn_core)
   target_link_libraries(basalt_gtk_mounting PUBLIC hermes-engine::hermesvm)
 
+  # @shopify/react-native-skia, when the build was pointed at an app that has
+  # it. See ../../react-native-basalt/native/cmake/Skia.cmake.
+  #
+  # Here rather than on basalt_core, for the reason the other two packages
+  # give: a platform context is a host's dependency. This one reaches
+  # fontconfig and GDK, and core/portability_probe.cpp links the core with no
+  # toolkit on purpose.
+  if(TARGET skia_core)
+    target_link_libraries(basalt_gtk_mounting PUBLIC skia_core)
+    target_sources(basalt_gtk_mounting PUBLIC $<TARGET_OBJECTS:skia_core>)
+    target_compile_definitions(basalt_gtk_mounting PUBLIC BASALT_HAS_SKIA=1)
+    # This host's half: the TurboModule the package asks for by name, and the
+    # platform context it hands to Skia. See gtk/GtkSkiaModule.h.
+    #
+    # No unicode adapter beside them, where the win32 package has one: that
+    # host links the libgrapheme backend and has to answer for
+    # `SkUnicodes::ICU::Make` itself. This one links skunicode_icu, which
+    # defines it.
+    target_sources(basalt_gtk_mounting PRIVATE
+      gtk/GtkSkiaModule.cpp
+      gtk/GtkSkiaContext.cpp)
+  endif()
+
   # The seams point both ways, and GNU ld has to be told.
   #
   # `basalt_core` declares `core/PlatformServices.h`, `core/ColorScheme.h` and
