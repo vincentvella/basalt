@@ -1,6 +1,6 @@
 {
   "name": "react-native-basalt-subprocess",
-  "version": "0.0.0-rc2",
+  "version": "0.0.0-rc3",
   "description": "Running a command and watching its output, for react-native-basalt. Arbitrary code execution, so it ships separately from the core platform.",
   "license": "MIT",
   "main": "dist/index.js",
@@ -22,6 +22,6 @@
     "react-native": "*"
   },
   "dependencies": {
-    "react-native-basalt": "0.0.0-rc2"
+    "react-native-basalt": "0.0.0-rc3"
   }
 }
