@@ -382,7 +382,15 @@ test('the native halves an app has installed are the ones built', () => {
   const archives = {
     macos: ['libs', 'macos', 'libskia.xcframework'],
     windows: ['libs', 'windows', 'x86_64', 'skia.lib'],
-    linux: ['libs', 'linux', 'x86_64', 'libskia.a'],
+    // The same derivation the CLI makes: an ELF archive is per architecture,
+    // and a Linux host is built natively, so this machine's architecture is
+    // the one that matters.
+    linux: [
+      'libs',
+      'linux',
+      process.arch === 'arm64' ? 'aarch64' : 'x86_64',
+      'libskia.a',
+    ],
   };
 
   // The package is installed but nobody has built or downloaded anything, so

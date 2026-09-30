@@ -84,8 +84,16 @@ SKIA_RUNTIME_ICU=${SKIA_RUNTIME_ICU:-0}
 HOME_DIR=${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}
 [ -n "$HOME_DIR" ] || HOME_DIR=/tmp
 WORK=${SKIA_BUILD_DIR:-$HOME_DIR/skia-linux-build}
-OUT_NAME=linux-x64
-DEST=${SKIA_OUT_DIR:-$WORK/libs/linux/x86_64}
+# Named after `uname -m`, the way the package names Android's ABIs: the
+# archives are per architecture and nothing but the architecture's own name
+# tells two sets apart on disk.
+case "$(uname -m)" in
+  x86_64)  SKIA_CPU=x64;   SKIA_ARCH=x86_64 ;;
+  aarch64) SKIA_CPU=arm64; SKIA_ARCH=aarch64 ;;
+  *)       SKIA_CPU=$(uname -m); SKIA_ARCH=$(uname -m) ;;
+esac
+OUT_NAME=linux-$SKIA_ARCH
+DEST=${SKIA_OUT_DIR:-$WORK/libs/linux/$SKIA_ARCH}
 
 # The nine archives the package's non-Apple CMake build imports. Named rather
 # than globbed: a missing one is a link failure in somebody else's symbols much
@@ -264,7 +272,7 @@ skia_use_dawn=false
 skia_use_partition_alloc=false
 
 target_os=\"linux\"
-target_cpu=\"x64\"
+target_cpu=\"$SKIA_CPU\"
 cc=\"clang\"
 cxx=\"clang++\"
 
@@ -374,7 +382,7 @@ cat > "$DEST/skia-build.json" <<JSON
   "skia_branch": "$SKIA_BRANCH",
   "sk_milestone": 152,
   "for_react_native_skia": "2.11.1",
-  "target": "linux-x86_64",
+  "target": "linux-$SKIA_ARCH",
   "backend": "ganesh-gl",
   "runtime_icu": $([ "$SKIA_RUNTIME_ICU" = "1" ] && echo true || echo false),
   "built_on": "$(uname -sr)",

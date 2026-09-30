@@ -57,7 +57,10 @@ if(APPLE)
 elseif(WIN32)
   set(SKIA_LIBS_DIR ${SKIA_DIR}/libs/windows/x86_64)
 else()
-  set(SKIA_LIBS_DIR ${SKIA_DIR}/libs/linux/x86_64)
+  # CMAKE_SYSTEM_PROCESSOR rather than a fixed name: these are ELF archives
+  # and an aarch64 host cannot link an x86_64 one. It matches `uname -m`,
+  # which is what scripts/build_skia_linux.sh names its output after.
+  set(SKIA_LIBS_DIR ${SKIA_DIR}/libs/linux/${CMAKE_SYSTEM_PROCESSOR})
 endif()
 
 if(NOT EXISTS ${SKIA_CPP_DIR}/rnskia/RNSkManager.cpp)

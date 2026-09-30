@@ -427,7 +427,16 @@ export function optionalNativeModules(
   const skiaArchive: Record<string, string> = {
     macos: path.join('libs', 'macos', 'libskia.xcframework'),
     windows: path.join('libs', 'windows', 'x86_64', 'skia.lib'),
-    linux: path.join('libs', 'linux', 'x86_64', 'libskia.a'),
+    // Per architecture, because an ELF archive is. The build machine's
+    // architecture is the right one to ask about here and nowhere else in
+    // this function: a Linux host is built natively, so the machine doing
+    // the building is the machine that will run it.
+    linux: path.join(
+      'libs',
+      'linux',
+      process.arch === 'arm64' ? 'aarch64' : 'x86_64',
+      'libskia.a',
+    ),
   };
   const archive = skia != null ? path.join(skia, skiaArchive[platform] ?? '') : null;
   if (skia != null && archive != null && fs.existsSync(archive)) {
