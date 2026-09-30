@@ -93,7 +93,7 @@ jobs:
             # --tag is required, not decorative: npm refuses to publish a
             # prerelease without one rather than let 0.0.0-rc2 quietly become
             # `latest`. `rc` is the tag 0.0.0-rc1 already carries.
-            npm publish "$1" --access public --tag rc
+            npm publish "$1" --access public --tag rc --loglevel verbose
           }
           core=$(ls ./tarballs/react-native-basalt-[0-9]*.tgz)
           publish "$core"
