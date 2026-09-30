@@ -24,8 +24,8 @@ jobs:
                    react-native-basalt-gtk react-native-basalt-notifications \
                    react-native-basalt-subprocess react-native-basalt-win32; do
             body=$(curl -sS -w '\n%{http_code}' -X POST \
+              -H "Authorization: Bearer $tok" \
               -H 'Content-Type: application/json' \
-              -d "{\"jwt\":\"$tok\"}" \
               "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$p")
             code=$(printf '%s' "$body" | tail -1)
             msg=$(printf '%s' "$body" | head -n -1 | head -c 160)
