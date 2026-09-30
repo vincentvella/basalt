@@ -27,6 +27,11 @@ on:
         description: The Release run whose tarballs to publish
         type: string
         required: true
+      check-only:
+        description: Only check the trusted publisher, publish nothing
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   publish:
@@ -42,7 +47,44 @@ jobs:
       # Reading an artifact that belongs to another run.
       actions: read
     steps:
+      # Has to live here rather than in a workflow of its own, which is where
+      # I first put it. The OIDC token carries a job_workflow_ref claim naming
+      # the workflow that minted it, and npm matches that against the
+      # registration -- so a probe in trusted-publisher-check.yml reported
+      # "package not found" for six correctly configured packages, because the
+      # name it presented was the probe's own. A check for whether a workflow
+      # is trusted is only meaningful from inside that workflow.
+      #
+      # 200 means the registration matches. 404 "package not found" means npm
+      # holds nothing it will accept -- not that the package is missing.
+      # Fields are case-sensitive, and Allowed actions must permit
+      # `npm publish`; only `npm stage publish` is granted by default.
+      - name: Is this workflow trusted?
+        if: ${{ inputs.check-only }}
+        run: |
+          set -uo pipefail
+          tok=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org" |
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              process.stdout.write(JSON.parse(s).value||"")})')
+          [ -n "$tok" ] || { echo "no OIDC token"; exit 1; }
+          echo "token: ${#tok} chars"
+          bad=0
+          for p in react-native-basalt react-native-basalt-appkit \
+                   react-native-basalt-gtk react-native-basalt-notifications \
+                   react-native-basalt-subprocess react-native-basalt-win32; do
+            out=$(curl -sS -w '\n%{http_code}' -X POST \
+              -H "Authorization: Bearer $tok" \
+              -H 'Content-Type: application/json' \
+              "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$p")
+            code=$(printf '%s' "$out" | tail -1)
+            [ "$code" = "200" ] || bad=1
+            printf '  %-34s %s\n' "$p" "$code"
+          done
+          exit $bad
+
       - uses: actions/setup-node@v7
+        if: ${{ !inputs.check-only }}
         with:
           node-version: 24
           # Deliberately no registry-url. It writes an .npmrc containing
@@ -51,6 +93,7 @@ jobs:
           # of exchanging its OIDC token.
 
       - name: An npm new enough to do this
+        if: ${{ !inputs.check-only }}
         # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14. Node 24
         # ships past both, so this is insurance: the bundled npm is whatever
         # the runner image carries, and the failure if it is too old is an auth
@@ -62,6 +105,7 @@ jobs:
           npm --version
 
       - name: Collect the tested tarballs
+        if: ${{ !inputs.check-only }}
         # The artifact the Expo job produced: the exact bytes installed into a
         # real app and built against three desktops. Packing again here would
         # publish something nothing has run.
@@ -73,6 +117,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Publish
+        if: ${{ !inputs.check-only }}
         # Core first, because the other five pin it by exact version and a
         # registry holding dependents before the dependency is briefly
         # uninstallable. `npm publish <tarball>` skips prepack, which is the
@@ -133,6 +178,7 @@ jobs:
           done
 
       - name: Point latest at it
+        if: ${{ !inputs.check-only }}
         # 0.0.0-rc1 holds both `rc` and `latest`, because npm sets `latest` on
         # a package's first publish whatever tag it was given. Every release
         # here is a release candidate, so leaving `latest` behind would mean
