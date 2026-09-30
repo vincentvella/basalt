@@ -300,18 +300,57 @@ jobs:
 
   publish:
     name: publish to npm
+    runs-on: ubuntu-24.04
     needs: [ready]
     # Tags only. `ready` deliberately runs for a hand-started run too, so that
     # the release questions can be asked without one; publishing must not
-    # inherit that. A workflow_dispatch run gets everything up to the summary
-    # and stops.
+    # inherit that.
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      id-token: write
+      # To start publish.yml. No id-token here: this job does not publish, it
+      # asks the workflow that does.
+      actions: write
       contents: read
-      actions: read
-    # The same workflow that can be dispatched by hand against this run's id,
-    # so a publish that fails at the last step is a one-minute retry rather
-    # than another forty minutes of cold builds. One copy of the logic; the
-    # reasons live there.
-    uses: ./.github/workflows/publish.yml
+    steps:
+      # Handing off rather than calling, which is the whole point and is not
+      # obvious. npm matches the OIDC token's *calling* workflow, so
+      # `uses: ./.github/workflows/publish.yml` presents release.yml as the
+      # identity -- and a package may hold only one trusted publisher, which
+      # is publish.yml, because that is also the standalone retry. Measured:
+      # dispatched directly the exchange returns 201 for all six packages,
+      # reached through `uses:` it returns 404 for all six.
+      #
+      # Dispatching makes both paths the same path. npm always sees
+      # publish.yml, whether a tag started it or a human did.
+      - name: Hand off to publish.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run publish.yml -R "$GITHUB_REPOSITORY" \
+            -f run-id="$GITHUB_RUN_ID"
+          echo "started publish.yml against run $GITHUB_RUN_ID"
+
+      - name: Wait for it, and fail if it failed
+        # Otherwise a green release would mean "the tarballs are good and
+        # something was asked to publish them", which is not what a green
+        # release should mean.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            sleep 10
+            id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow=publish.yml \
+              --limit 1 --json databaseId,status,conclusion \
+              --jq '.[0].databaseId')
+            state=$(gh run view "$id" -R "$GITHUB_REPOSITORY" \
+              --json status,conclusion --jq '"\(.status) \(.conclusion // "")"')
+            echo "publish.yml $id: $state"
+            case "$state" in
+              "completed success") exit 0 ;;
+              "completed "*) echo "publish failed: $state"; exit 1 ;;
+            esac
+          done
+          echo "publish.yml did not finish within ten minutes"
+          exit 1

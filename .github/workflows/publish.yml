@@ -28,9 +28,10 @@ on:
   workflow_dispatch:
     inputs:
       run-id:
-        description: The Release run whose tarballs to publish
+        description: A Release run whose tarballs to publish. Leave empty to pack from this checkout and skip the gauntlet.
         type: string
-        required: true
+        required: false
+        default: ''
       check-only:
         description: Only check the trusted publisher, publish nothing
         type: boolean
@@ -104,6 +105,9 @@ jobs:
           done
           exit $bad
 
+      - uses: actions/checkout@v7
+        if: ${{ !inputs.check-only && !inputs.run-id }}
+
       - uses: actions/setup-node@v7
         if: ${{ !inputs.check-only }}
         with:
@@ -125,8 +129,59 @@ jobs:
           node --version
           npm --version
 
+      # Packing here rather than taking a release run's artifact, when no run
+      # is named. The gauntlet answers "does someone else's app get a working
+      # desktop from npm install", which is the right question for a release
+      # and the wrong one for "does the publish step work" -- and answering
+      # the second with the first cost half an hour a go.
+      #
+      # So: name a run and the tested bytes are published; name none and this
+      # packs the checkout and publishes that. The second is for fixing the
+      # publish path, and for a release whose contents a run has already
+      # verified.
+      - name: Read the React Native pin
+        if: ${{ !inputs.check-only && !inputs.run-id }}
+        id: pin
+        run: echo "ref=$(grep -v '^#' scripts/react-native.pin | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch React Native at the pinned release
+        # core's prepack typechecks, which needs React Native's own sources;
+        # npm pack runs prepack, so packing without this fails on the fifth
+        # package after the other five have already been written.
+        if: ${{ !inputs.check-only && !inputs.run-id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/react-native-src" && cd "$RUNNER_TEMP/react-native-src"
+          git init -q
+          git remote add origin https://github.com/react/react-native
+          git fetch -q --depth 1 origin refs/tags/${{ steps.pin.outputs.ref }}
+          git checkout -q FETCH_HEAD
+
+      - name: Restore React Native's node_modules
+        if: ${{ !inputs.check-only && !inputs.run-id }}
+        id: node-modules
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/react-native-src/node_modules
+          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+
+      - name: Install React Native's dependencies
+        if: ${{ !inputs.check-only && !inputs.run-id && steps.node-modules.outputs.cache-hit != 'true' }}
+        working-directory: ${{ runner.temp }}/react-native-src
+        run: yarn install --frozen-lockfile
+
+      - name: Pack
+        if: ${{ !inputs.check-only && !inputs.run-id }}
+        run: |
+          set -euo pipefail
+          mkdir -p tarballs
+          for package in packages/*/; do
+            RN_DIR="$RUNNER_TEMP/react-native-src" \
+              npm pack "$package" --pack-destination tarballs
+          done
+          ls -l tarballs
+
       - name: Collect the tested tarballs
-        if: ${{ !inputs.check-only }}
+        if: ${{ !inputs.check-only && inputs.run-id }}
         # The artifact the Expo job produced: the exact bytes installed into a
         # real app and built against three desktops. Packing again here would
         # publish something nothing has run.
@@ -215,3 +270,48 @@ jobs:
       # A consequence worth knowing: `rc` no longer follows a release. It sits
       # wherever it was last put by hand. Moving it needs a human credential,
       # for the same reason.
+
+      - name: Move the rc tag too
+        if: ${{ !inputs.check-only }}
+        # `npm publish --tag latest` above sets the tag that `npm install`
+        # resolves, and only that one. `rc` needs a second operation, which
+        # npm refused until this package granted `npm dist-tag` to its trusted
+        # publisher -- the 403 said "OIDC dist-tag operations are not yet
+        # enabled for this package", which reads like a missing feature and is
+        # a missing permission.
+        #
+        # Its own exchange, because `npm publish` performs one and any package
+        # already at this version is skipped, so a rerun fixing one package of
+        # six would have no credential for the other five.
+        #
+        # Not `set -e`: a tag that fails to move is a tag to fix by hand, and
+        # failing the job over one would report a release that did happen as a
+        # release that did not.
+        run: |
+          set -uo pipefail
+          oidc=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org" |
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              process.stdout.write(JSON.parse(s).value||"")})')
+          [ -n "$oidc" ] || { echo "no OIDC token"; exit 0; }
+          for tarball in ./tarballs/*.tgz; do
+            read -r name version < <(tar -xzOf "$tarball" package/package.json |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}\n`);})')
+            [ "$(npm view "$name" dist-tags.rc 2>/dev/null)" = "$version" ] && {
+              printf '  %-34s rc already %s\n' "$name" "$version"; continue; }
+            tok=$(curl -sS -X POST -H "Authorization: Bearer $oidc" \
+              -H 'Content-Type: application/json' \
+              "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$name" |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                try{process.stdout.write(JSON.parse(s).token||"")}catch{}})')
+            [ -n "$tok" ] || { printf '  %-34s no credential\n' "$name"; continue; }
+            echo "::add-mask::$tok"
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$tok" > "$HOME/.npmrc"
+            if npm dist-tag add "$name@$version" rc; then
+              printf '  %-34s rc -> %s\n' "$name" "$version"
+            else
+              printf '  %-34s rc dist-tag failed\n' "$name"
+            fi
+            rm -f "$HOME/.npmrc"
+          done
