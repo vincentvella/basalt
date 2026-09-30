@@ -79,6 +79,8 @@ jobs:
               -H 'Content-Type: application/json' \
               "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$p")
             code=$(printf '%s' "$out" | tail -1)
+            printf '%s' "$out" | head -n -1 | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              try{console.log("      fields: "+Object.keys(JSON.parse(s)).join(", "))}catch{}})'
             # 201, not 200: the endpoint mints a credential, so success is
             # Created. Asserting 200 reported six working registrations as
             # broken and sent me back to npmjs.com looking for a fault there.
