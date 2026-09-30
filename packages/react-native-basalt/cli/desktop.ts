@@ -401,31 +401,28 @@ export function optionalNativeModules(
     notes.push(`worklets, from ${worklets}`);
   }
 
-  // @shopify/react-native-skia. Only on macOS, and it says so rather than
-  // silently doing nothing: the published Skia binaries are Apple's, and an app
-  // that draws with Skia will start on Linux or Windows and then fail at
-  // `getEnforcing('RNSkiaModule')`, which is a long way from the cause.
+  // @shopify/react-native-skia, if the archives for this target are there.
   //
-  // The question is about the *target*, not the machine doing the building.
-  // This read `process.platform === 'darwin'`, so building for GTK or Win32
-  // from a Mac passed Apple's Skia to a configure that should never have seen
-  // it, and said nothing.
+  // A question about the *archives*, not the platform. macOS has published
+  // ones; Linux and Windows have whatever scripts/build_skia_linux.sh and its
+  // Windows counterpart put in the package, laid out the way the package lays
+  // out Android's. Asking the filesystem is what lets a host that built them
+  // use them, and still says the useful thing to one that has not.
   //
-  // On a Mac that miss is invisible, which is worth knowing before trusting a
-  // green build: Skia.cmake gates on APPLE, a GTK host built on a Mac *is*
-  // Mach-O, so skia_core compiles and the mistake costs only build time. It
-  // bites when the target is a real Linux or Windows host, where those
-  // archives cannot be read at all.
+  // It replaced a platform gate, which is worth remembering for the shape of
+  // the bug rather than the bug. That gate first asked `process.platform`,
+  // which is the machine doing the building and not the thing being built, so
+  // a GTK or Win32 build started from a Mac was handed Apple's archives and
+  // said nothing. Fixing it to ask about the target was right and was still
+  // only right until somebody built Skia for the other two, at which point
+  // "which platform is this" had become the wrong question entirely and
+  // "what is on disk" was the one underneath it all along.
   //
-  // It is also not why kino failed on GTK. That host has no RNSkiaModule
-  // because the module and the canvas are written for AppKit -- 0 Skia symbols
-  // in basalt_gtk against 4998 in basalt_appkit, with skia_core compiled in
-  // both. Compiling the portable half is not having the module.
-  // Which is now a question about the *archives*, not the platform. macOS has
-  // published ones; Linux and Windows have whatever scripts/build_skia_linux.sh
-  // and its Windows counterpart put in the package, laid out the way the
-  // package lays out Android's. Asking the filesystem is what lets a host that
-  // built them use them, and still says the useful thing to one that has not.
+  // The note matters as much as the define. A missing native module is not
+  // missing quietly here: the package reaches for
+  // TurboModuleRegistry.getEnforcing in its own JavaScript, so an app that
+  // merely imports it does not start, and that exception carries nothing about
+  // the build decision behind it. This is the only place it can be explained.
   const skia = findPackage('@shopify/react-native-skia', projectRoot);
   const skiaArchive: Record<string, string> = {
     macos: path.join('libs', 'macos', 'libskia.xcframework'),

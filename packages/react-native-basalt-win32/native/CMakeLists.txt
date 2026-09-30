@@ -190,10 +190,6 @@ target_link_libraries(demo_layout_win32 PRIVATE basalt_win32_view)
 set(BASALT_WIN32_TEST_SOURCES
   ${BASALT_TEST_HARNESS}
   tests/test_win32_view.cpp
-  tests/test_win32_key_events.cpp
-  # The mapping under test; this host is the one nobody can compile on a Mac, so
-  # CI is the only thing that checks its table.
-  win32/Win32KeyEvents.cpp
   # What actually reached the pixels. Needs no display and no window, which is
   # why this platform can assert it and the other two cannot; see the file.
   tests/test_win32_paint.cpp
@@ -337,6 +333,17 @@ if(TARGET basalt_core)
 
   list(APPEND BASALT_WIN32_TEST_SOURCES
     ${BASALT_CORE_TESTS}
+    # Key events, and the mapping under test. Here rather than in the
+    # unconditional set above, which is where they were: core/KeyEvents.h
+    # speaks in facebook::react::Tag and includes ReactPrimitives.h for it, so
+    # anything touching it needs a React Native to have been found. The view
+    # layer deliberately has not found one -- that is what lets it build on a
+    # Windows box with nothing but a compiler -- and the release workflow's
+    # MSBuild job is exactly that build, so it failed there and nowhere else.
+    # This host is still the only one that can check the table, and the
+    # Windows CI shards, which do have React Native, still do.
+    tests/test_win32_key_events.cpp
+    win32/Win32KeyEvents.cpp
     # A package's own tests; see the AppKit package for why they sit with core's.
     ${BASALT_PACKAGE_TESTS}
     # Deliberately the same nine questions tests/test_mounting.cpp asks of GTK

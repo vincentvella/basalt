@@ -368,30 +368,58 @@ test('the native halves an app has installed are the ones built', () => {
   assert.ok(found.args.includes(`-DBASALT_WORKLETS=${cmakePath(worklets)}`));
   assert.ok(found.args.includes(`-DBASALT_REANIMATED=${cmakePath(reanimated)}`));
 
-  // Skia, found under its scope. For a macOS host it is passed to the
-  // configure; for the other two it is reported as skipped rather than
-  // dropped, because the failure it would otherwise cause --
-  // getEnforcing('RNSkiaModule') at start-up -- is a long way from the cause,
-  // and "nothing happened" is the worst possible explanation for an app that
-  // draws with Skia not starting.
+  // Skia, found under its scope. Whether it is built is a question about the
+  // archives on disk, not about the platform: macOS has published ones, and
+  // Linux and Windows have whatever scripts/build_skia_linux.sh and its
+  // Windows counterpart left in the package. Asking the filesystem is what
+  // lets a host that built them use them.
   //
-  // Asked of every target from the one machine, which is the point. This test
-  // used to branch on `process.platform` exactly as the code did, so on a Mac
-  // it only ever checked the macOS answer -- and the bug it was there to catch
-  // was that a Linux or Windows build on a Mac got the macOS answer too.
+  // This test used to assert the opposite -- that Linux and Windows never get
+  // Skia -- which was true of the platform gate it was written against and
+  // became false the day those hosts got an RNSkiaModule. Asserting a rule
+  // rather than the behaviour behind it is how a test outlives its subject.
   const skia = install(project, '@shopify/react-native-skia');
-  found = desktop.optionalNativeModules(project, 'macos');
-  assert.ok(found.args.includes(`-DBASALT_SKIA=${cmakePath(skia)}`));
-  for (const platform of ['linux', 'windows']) {
+  const archives = {
+    macos: ['libs', 'macos', 'libskia.xcframework'],
+    windows: ['libs', 'windows', 'x86_64', 'skia.lib'],
+    linux: ['libs', 'linux', 'x86_64', 'libskia.a'],
+  };
+
+  // The package is installed but nobody has built or downloaded anything, so
+  // no target gets Skia and each says where it looked.
+  for (const platform of ['macos', 'linux', 'windows']) {
     found = desktop.optionalNativeModules(project, platform);
     assert.ok(
       !found.args.some(arg => arg.startsWith('-DBASALT_SKIA')),
-      `${platform} was configured with Apple's Skia`,
+      `${platform} was configured with Skia it does not have`,
     );
     const note = found.notes.find(n => n.includes('react-native-skia'));
     assert.ok(note, `${platform} dropped Skia without saying so`);
-    assert.ok(note.includes(platform), 'the note does not name the target');
+    assert.ok(
+      note.includes(archives[platform][archives[platform].length - 1]),
+      'the note does not say which archive was missing',
+    );
     assert.ok(note.includes('RNSkiaModule'), 'the note does not name the failure');
+  }
+
+  // Put the archive where each target looks, one at a time, and that target --
+  // and only that target -- builds Skia.
+  for (const platform of ['macos', 'linux', 'windows']) {
+    const archive = path.join(skia, ...archives[platform]);
+    fs.mkdirSync(path.dirname(archive), {recursive: true});
+    // macOS's is a directory and the other two are files; existsSync is happy
+    // with either, and so is the check it stands in for.
+    if (platform === 'macos') {
+      fs.mkdirSync(archive, {recursive: true});
+    } else {
+      fs.writeFileSync(archive, '');
+    }
+    found = desktop.optionalNativeModules(project, platform);
+    assert.ok(
+      found.args.includes(`-DBASALT_SKIA=${cmakePath(skia)}`),
+      `${platform} has its archive and still did not build Skia`,
+    );
+    fs.rmSync(archive, {recursive: true, force: true});
   }
 
   fs.rmSync(project, {recursive: true, force: true});
