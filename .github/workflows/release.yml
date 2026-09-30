@@ -316,7 +316,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+          # Deliberately no registry-url. It writes an .npmrc containing
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`, and with no
+          # such secret set that is an empty credential npm may present instead
+          # of exchanging its OIDC token. Trusted publishing wants nothing in
+          # .npmrc at all.
 
       - name: An npm new enough to do this
         # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14. Node 24
