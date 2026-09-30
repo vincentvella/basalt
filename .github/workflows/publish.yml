@@ -88,12 +88,22 @@ jobs:
         # looked at the disk.
         run: |
           set -euo pipefail
+          # When this fails with ENEEDAUTH, add --loglevel verbose. npm says
+          # nothing about OIDC at the default level, so a missing trusted
+          # publisher and a client too old to try look identical. Verbose
+          # prints the GitHub token fetch (audience=npm:registry.npmjs.org) and
+          # then the exchange:
+          #   POST /-/npm/v1/oidc/token/exchange/package/<name>
+          #   oidc Failed token exchange request ... package not found
+          # That endpoint is per package, and "package not found" means no
+          # trusted publisher is configured for it, not that the package is
+          # missing.
           publish() {
             echo "== $1"
             # --tag is required, not decorative: npm refuses to publish a
             # prerelease without one rather than let 0.0.0-rc2 quietly become
             # `latest`. `rc` is the tag 0.0.0-rc1 already carries.
-            npm publish "$1" --access public --tag rc --loglevel verbose
+            npm publish "$1" --access public --tag rc
           }
           core=$(ls ./tarballs/react-native-basalt-[0-9]*.tgz)
           publish "$core"
