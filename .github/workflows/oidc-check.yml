@@ -1,0 +1,33 @@
+name: OIDC check
+# Temporary. Asks npm's per-package token-exchange endpoint whether a trusted
+# publisher is configured, without publishing anything. Delete once answered.
+on: workflow_dispatch
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Exchange the OIDC token, per package
+        run: |
+          set -uo pipefail
+          tok=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org" |
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              process.stdout.write(JSON.parse(s).value||"")})')
+          if [ -z "$tok" ]; then echo "no OIDC token"; exit 1; fi
+          echo "got an OIDC token (${#tok} chars)"
+          echo
+          for p in react-native-basalt react-native-basalt-appkit \
+                   react-native-basalt-gtk react-native-basalt-notifications \
+                   react-native-basalt-subprocess react-native-basalt-win32; do
+            body=$(curl -sS -w '\n%{http_code}' -X POST \
+              -H 'Content-Type: application/json' \
+              -d "{\"jwt\":\"$tok\"}" \
+              "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$p")
+            code=$(printf '%s' "$body" | tail -1)
+            msg=$(printf '%s' "$body" | head -n -1 | head -c 160)
+            printf '  %-34s %s  %s\n' "$p" "$code" "$msg"
+          done
