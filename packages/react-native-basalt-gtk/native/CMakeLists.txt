@@ -256,7 +256,10 @@ if(TARGET basalt_core)
     # defines it.
     target_sources(basalt_gtk_mounting PRIVATE
       gtk/GtkSkiaModule.cpp
-      gtk/GtkSkiaContext.cpp)
+      gtk/GtkSkiaContext.cpp
+      # The `<Canvas>` peer. The shortest of the three, because an RnView
+      # already draws a GdkTexture -- see gtk/GtkSkiaPeer.h.
+      gtk/GtkSkiaPeer.cpp)
   endif()
 
   # The seams point both ways, and GNU ld has to be told.
@@ -340,6 +343,12 @@ if(TARGET basalt_core)
     # org.freedesktop.Notifications, over the session bus.
     ${BASALT_PACKAGE_GTK_SOURCES}
     gtk/GtkTouchDispatcher.cpp)
+  # The Skia/GDK pixel-format agreement, which only exists to test when Skia
+  # is in the build. See tests/test_skia_texture.cpp for why a comment was
+  # not enough.
+  if(TARGET skia_core)
+    target_sources(basalt_gtk_tests PRIVATE tests/test_skia_texture.cpp)
+  endif()
   target_link_libraries(basalt_gtk_tests PRIVATE basalt_gtk_mounting)
   if(BASALT_PACKAGE_GTK_LINK_LIBRARIES)
     target_link_libraries(basalt_gtk_tests PRIVATE ${BASALT_PACKAGE_GTK_LINK_LIBRARIES})

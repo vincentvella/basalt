@@ -1,5 +1,9 @@
 #include "GtkMountingManager.h"
 
+#ifdef BASALT_HAS_SKIA
+#include "GtkSkiaPeer.h"
+#endif
+
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
 #include "UIManagerAccess.h"
@@ -278,6 +282,12 @@ void GtkMountingManager::forgetTag(Tag tag) {
   textInputs_.remove(tag);
   switchValues_.erase(tag);
   controlClasses_.erase(tag);
+#ifdef BASALT_HAS_SKIA
+  // Unregisters the canvas. This is the one moment a view is known to be
+  // finished with, and a canvas left registered is a surface the package
+  // keeps rendering into for a widget nobody will draw again.
+  forgetSkiaCanvas(tag);
+#endif
 }
 
 void GtkMountingManager::dispatchCommand(const ShadowView &shadowView,
@@ -825,6 +835,16 @@ void GtkMountingManager::updateView(RnView *view, const ShadowView &shadowView) 
   applyProps(view, shadowView);
   applyText(view, shadowView);
   applyImage(view, shadowView);
+#ifdef BASALT_HAS_SKIA
+  // After applyProps, which is what puts nativeID on the view: a canvas
+  // registers itself by that id and cannot attach before it is there.
+  //
+  // Sharing rn_view_set_texture with applyImage is safe rather than lucky:
+  // applyImage returns on anything that is not <Image> or expo-image, so a
+  // SkiaPictureView never reaches its texture call. The two write the same
+  // field and can never both want it, because no component is both.
+  applySkiaCanvas(GTK_WIDGET(view), shadowView);
+#endif
   // The peer first, then accessibility. A <TextInput>'s label belongs on its
   // peer and applyAccessibility can only put it there if the peer exists --
   // and on the mount that creates it, in this order it does.
