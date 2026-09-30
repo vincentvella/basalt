@@ -21,6 +21,10 @@ on:
         type: string
         required: false
         default: ''
+      check-only:
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
     inputs:
       run-id:
