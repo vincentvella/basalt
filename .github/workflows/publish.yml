@@ -79,8 +79,6 @@ jobs:
               -H 'Content-Type: application/json' \
               "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$p")
             code=$(printf '%s' "$out" | tail -1)
-            printf '%s' "$out" | head -n -1 | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-              try{console.log("      fields: "+Object.keys(JSON.parse(s)).join(", "))}catch{}})'
             # 201, not 200: the endpoint mints a credential, so success is
             # Created. Asserting 200 reported six working registrations as
             # broken and sent me back to npmjs.com looking for a fault there.
@@ -189,17 +187,54 @@ jobs:
         # a package's first publish whatever tag it was given. Every release
         # here is a release candidate, so leaving `latest` behind would mean
         # `npm install react-native-basalt` went on handing out the older one.
-        # Separate from the publish above so that failing here is a wrong
-        # dist-tag to fix by hand rather than half a release.
+        #
+        # This does its own token exchange rather than relying on the publish
+        # above to have left a credential behind, because often it will not
+        # have: `npm publish` performs the exchange, and any package already at
+        # this version is skipped, so a rerun that fixes one package of six
+        # would find no credential for the other five and get a bare 401. That
+        # is exactly what happened the first time.
+        #
+        # The endpoint is per package and so is the credential it mints, hence
+        # an exchange each. They are masked: `token` is a real npm credential,
+        # short-lived but live.
+        #
+        # Not `set -e`: a tag that fails to move is a tag to fix by hand, and
+        # failing the job over one would report a release that did happen as a
+        # release that did not.
         run: |
-          # Not `set -e`: a dist-tag that fails is a tag to fix by hand, and
-          # failing the job over one would report a release that did happen as
-          # a release that did not.
           set -uo pipefail
+          oidc=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org" |
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              process.stdout.write(JSON.parse(s).value||"")})')
+          [ -n "$oidc" ] || { echo "no OIDC token"; exit 1; }
+
           for tarball in ./tarballs/*.tgz; do
             read -r name version < <(tar -xzOf "$tarball" package/package.json |
               node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
                 const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}\n`);})')
-            echo "== $name@$version -> latest"
-            npm dist-tag add "$name@$version" latest
+
+            if [ "$(npm view "$name" dist-tags.latest 2>/dev/null)" = "$version" ]; then
+              printf '  %-34s latest already %s\n' "$name" "$version"
+              continue
+            fi
+
+            tok=$(curl -sS -X POST -H "Authorization: Bearer $oidc" \
+              -H 'Content-Type: application/json' \
+              "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$name" |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                try{process.stdout.write(JSON.parse(s).token||"")}catch{}})')
+            if [ -z "$tok" ]; then
+              printf '  %-34s no credential from the exchange\n' "$name"
+              continue
+            fi
+            echo "::add-mask::$tok"
+
+            if NODE_AUTH_TOKEN="$tok" npm_config_//registry.npmjs.org/:_authToken="$tok" \
+               npm dist-tag add "$name@$version" latest; then
+              printf '  %-34s latest -> %s\n' "$name" "$version"
+            else
+              printf '  %-34s dist-tag failed (the publish itself is done)\n' "$name"
+            fi
           done
