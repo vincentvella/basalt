@@ -689,7 +689,17 @@ jobs:
 
       - name: Restore vcpkg's binaries
         id: vcpkg-cache
-        if: ${{ !inputs.cold }}
+        # Restored even for a cold run, unlike every other cache here. What
+        # `cold` is guarding against is a build artefact that is stale in a way
+        # no key can see -- a Hermes carrying last month's flags -- and this
+        # cache holds none of ours: glog, fmt, double-conversion, boost,
+        # openssl and curl, all third party and all built by vcpkg. It is also
+        # addressed by vcpkg's ABI hash, which includes the compiler, so a
+        # stale entry misses rather than applying quietly.
+        #
+        # Worth the exception because it was the single most expensive step in
+        # a release: 12.2 minutes of the Windows shard's 37.6, rebuilding
+        # boost and openssl to prove nothing about this project.
         uses: actions/cache/restore@v6
         with:
           # vcpkg's own binary cache rather than its `installed` tree. The tree

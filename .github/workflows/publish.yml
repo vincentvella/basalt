@@ -1,0 +1,120 @@
+name: Publish
+
+# Uploading the tarballs a release run built, over trusted publishing.
+#
+# Separate from release.yml, and callable on its own, because the publish step
+# is twelve seconds at the end of a forty-minute gauntlet and the two failure
+# rates are nothing alike. Three attempts in a row died here -- an npm spec
+# parsed as a GitHub shorthand, a missing --tag, a credential -- and each cost
+# a full cold rebuild of three platforms to reach. Re-running a job uses the
+# workflow file the original run had, so a fix to the publish step cannot be
+# tested that way either; it needed a new tag every time.
+#
+# Dispatched with the run id of a release, this takes about a minute. The
+# tarballs are kept for seven days, which is the window in which that is
+# possible.
+
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        type: string
+        required: false
+        default: ''
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: The Release run whose tarballs to publish
+        type: string
+        required: true
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-24.04
+    permissions:
+      # The whole credential. Trusted publishing exchanges this OIDC token for
+      # a short-lived, workflow-scoped npm token, so there is no NPM_TOKEN in
+      # this repository and nothing long-lived to leak. npm attaches provenance
+      # automatically when published this way.
+      id-token: write
+      contents: read
+      # Reading an artifact that belongs to another run.
+      actions: read
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          # Deliberately no registry-url. It writes an .npmrc containing
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`, and with no
+          # such secret set that is an empty credential npm may present instead
+          # of exchanging its OIDC token.
+
+      - name: An npm new enough to do this
+        # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14. Node 24
+        # ships past both, so this is insurance: the bundled npm is whatever
+        # the runner image carries, and the failure if it is too old is an auth
+        # error that reads like a misconfigured publisher rather than a stale
+        # client.
+        run: |
+          npm install -g npm@latest
+          node --version
+          npm --version
+
+      - name: Collect the tested tarballs
+        # The artifact the Expo job produced: the exact bytes installed into a
+        # real app and built against three desktops. Packing again here would
+        # publish something nothing has run.
+        uses: actions/download-artifact@v8
+        with:
+          name: tarballs
+          path: tarballs
+          run-id: ${{ inputs.run-id || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Publish
+        # Core first, because the other five pin it by exact version and a
+        # registry holding dependents before the dependency is briefly
+        # uninstallable. `npm publish <tarball>` skips prepack, which is the
+        # point: prepack typechecks and needs a React Native checkout this job
+        # does not have, and re-running it would upload different bytes from
+        # the ones that were tested.
+        #
+        # Every path is written `./tarballs/...` and the leading `./` is
+        # load-bearing. `npm publish` takes a package spec rather than a
+        # filename, and a bare `a/b` is GitHub shorthand -- so
+        # `npm publish tarballs/react-native-basalt-0.0.0-rc2.tgz` refused with
+        # EALLOWGIT and "Refusing to fetch github:tarballs/...", having never
+        # looked at the disk.
+        run: |
+          set -euo pipefail
+          publish() {
+            echo "== $1"
+            # --tag is required, not decorative: npm refuses to publish a
+            # prerelease without one rather than let 0.0.0-rc2 quietly become
+            # `latest`. `rc` is the tag 0.0.0-rc1 already carries.
+            npm publish "$1" --access public --tag rc
+          }
+          core=$(ls ./tarballs/react-native-basalt-[0-9]*.tgz)
+          publish "$core"
+          for tarball in ./tarballs/*.tgz; do
+            [ "$tarball" = "$core" ] && continue
+            publish "$tarball"
+          done
+
+      - name: Point latest at it
+        # 0.0.0-rc1 holds both `rc` and `latest`, because npm sets `latest` on
+        # a package's first publish whatever tag it was given. Every release
+        # here is a release candidate, so leaving `latest` behind would mean
+        # `npm install react-native-basalt` went on handing out the older one.
+        # Separate from the publish above so that failing here is a wrong
+        # dist-tag to fix by hand rather than half a release.
+        run: |
+          set -euo pipefail
+          for tarball in ./tarballs/*.tgz; do
+            read -r name version < <(tar -xzOf "$tarball" package/package.json |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}`);})')
+            echo "== $name@$version -> latest"
+            npm dist-tag add "$name@$version" latest
+          done

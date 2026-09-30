@@ -9,11 +9,13 @@ name: Release
 # of this repository's scaffolding around it -- and whether everything still
 # builds from nothing, with no cache to hide a stale Hermes behind.
 #
-# The last job publishes, over trusted publishing: GitHub mints an OIDC token,
-# npm exchanges it for a short-lived one scoped to this workflow, and provenance
-# is attached automatically. There is no NPM_TOKEN in this repository and
-# nothing long-lived to leak. It runs for a tag and not for a hand-started run,
-# so the questions below can still be asked without publishing an answer.
+# The last job publishes, by calling publish.yml, which is also dispatchable on
+# its own against a finished run's id. It publishes over trusted publishing:
+# GitHub mints an OIDC token, npm exchanges it for a short-lived one scoped to
+# the workflow, and provenance is attached automatically, so there is no
+# NPM_TOKEN in this repository and nothing long-lived to leak. It runs for a
+# tag and not for a hand-started run, so the questions below can still be
+# asked without publishing an answer.
 #
 # Run by pushing a tag (`git tag v0.1.0 && git push origin v0.1.0`), or by hand
 # from the Actions tab, which skips the version check and runs everything else.
@@ -298,7 +300,6 @@ jobs:
 
   publish:
     name: publish to npm
-    runs-on: ubuntu-24.04
     needs: [ready]
     # Tags only. `ready` deliberately runs for a hand-started run too, so that
     # the release questions can be asked without one; publishing must not
@@ -306,85 +307,11 @@ jobs:
     # and stops.
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      # The whole credential. Trusted publishing exchanges this OIDC token for
-      # a short-lived, workflow-scoped npm token, so there is no NPM_TOKEN in
-      # this repository's secrets and nothing long-lived to leak. npm attaches
-      # provenance automatically when published this way.
       id-token: write
       contents: read
-    steps:
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          # Deliberately no registry-url. It writes an .npmrc containing
-          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`, and with no
-          # such secret set that is an empty credential npm may present instead
-          # of exchanging its OIDC token. Trusted publishing wants nothing in
-          # .npmrc at all.
-
-      - name: An npm new enough to do this
-        # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14. Node 24
-        # ships past both today, so this is insurance rather than a fix: the
-        # bundled npm is whatever the runner image happens to carry, and the
-        # failure if it is too old is an auth error that reads like a
-        # misconfigured publisher rather than a stale client.
-        run: |
-          npm install -g npm@latest
-          npm --version
-
-      - name: Collect the tested tarballs
-        # The same artifact `ready` reports on: the exact bytes that were
-        # installed into a real Expo app and built against three desktops.
-        # Re-packing here would publish something nothing has run.
-        uses: actions/download-artifact@v8
-        with:
-          name: tarballs
-          path: tarballs
-
-      - name: Publish
-        # Core first, because the other five pin it by exact version and a
-        # registry that has the dependents before the dependency is briefly
-        # uninstallable. `npm publish <tarball>` skips prepack, which is the
-        # point -- prepack typechecks and needs a React Native checkout this
-        # job does not have, and re-running it would produce different bytes
-        # from the ones that were tested.
-        #
-        # Every path is written `./tarballs/...` and the leading `./` is
-        # load-bearing. `npm publish` takes a package spec rather than a
-        # filename, and a bare `a/b` is GitHub shorthand -- so
-        # `npm publish tarballs/react-native-basalt-0.0.0-rc2.tgz` refused with
-        # EALLOWGIT and "Refusing to fetch
-        # github:tarballs/react-native-basalt-0.0.0-rc2.tgz", having never
-        # looked at the disk. `./` is what makes it a path.
-        run: |
-          set -euo pipefail
-          publish() {
-            echo "== $1"
-            # --tag is required, not decorative: npm refuses to publish a
-            # prerelease without one rather than let 0.0.0-rc2 quietly become
-            # `latest`. `rc` is the tag 0.0.0-rc1 already carries.
-            npm publish "$1" --access public --tag rc
-          }
-          core=$(ls ./tarballs/react-native-basalt-[0-9]*.tgz)
-          publish "$core"
-          for tarball in ./tarballs/*.tgz; do
-            [ "$tarball" = "$core" ] && continue
-            publish "$tarball"
-          done
-
-      - name: Point latest at it
-        # 0.0.0-rc1 holds both `rc` and `latest`, because npm sets `latest` on
-        # a package's first publish whatever tag it was given. Every release
-        # here is a release candidate, so leaving `latest` on rc1 would mean
-        # `npm install react-native-basalt` kept handing out the older one.
-        # Separate from the publish above so that a failure here is a wrong
-        # dist-tag to fix by hand rather than half a release.
-        run: |
-          set -euo pipefail
-          for tarball in ./tarballs/*.tgz; do
-            read -r name version < <(tar -xzOf "$tarball" package/package.json |
-              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}`);})')
-            echo "== $name@$version -> latest"
-            npm dist-tag add "$name@$version" latest
-          done
+      actions: read
+    # The same workflow that can be dispatched by hand against this run's id,
+    # so a publish that fails at the last step is a one-minute retry rather
+    # than another forty minutes of cold builds. One copy of the logic; the
+    # reasons live there.
+    uses: ./.github/workflows/publish.yml
