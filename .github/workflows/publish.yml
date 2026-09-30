@@ -231,10 +231,16 @@ jobs:
             fi
             echo "::add-mask::$tok"
 
-            if NODE_AUTH_TOKEN="$tok" npm_config_//registry.npmjs.org/:_authToken="$tok" \
-               npm dist-tag add "$name@$version" latest; then
+            # Through .npmrc, because the config key npm wants here contains
+            # slashes and a colon and so cannot be a shell variable name at
+            # all: `npm_config_//registry.npmjs.org/:_authToken=$tok npm ...`
+            # is not an assignment, it is a command, and bash duly reported
+            # "No such file or directory" while the credential sat unused.
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$tok" > "$HOME/.npmrc"
+            if npm dist-tag add "$name@$version" latest; then
               printf '  %-34s latest -> %s\n' "$name" "$version"
             else
               printf '  %-34s dist-tag failed (the publish itself is done)\n' "$name"
             fi
+            rm -f "$HOME/.npmrc"
           done
