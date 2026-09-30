@@ -105,10 +105,15 @@ jobs:
           # trusted publisher is configured for it, not that the package is
           # missing.
           publish() {
+            # The \n matters. `read` returns non-zero at EOF without a
+            # trailing delimiter, and under `set -e` that ends the step before
+            # it prints anything at all -- which is what it did: a Publish step
+            # that failed with no output whatsoever and looked like an auth
+            # problem.
             local name version
             read -r name version < <(tar -xzOf "$1" package/package.json |
               node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}`);})')
+                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}\n`);})')
             if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
               echo "== $name@$version already published, skipping"
               return 0
@@ -141,7 +146,7 @@ jobs:
           for tarball in ./tarballs/*.tgz; do
             read -r name version < <(tar -xzOf "$tarball" package/package.json |
               node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}`);})')
+                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}\n`);})')
             echo "== $name@$version -> latest"
             npm dist-tag add "$name@$version" latest
           done
