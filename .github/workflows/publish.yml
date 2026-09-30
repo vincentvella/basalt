@@ -88,6 +88,12 @@ jobs:
         # looked at the disk.
         run: |
           set -euo pipefail
+          # Skipping what is already up, so a retry is a retry. npm answers a
+          # second publish of the same version with a 409, which would stop
+          # this at the first package and say nothing about the ones that
+          # actually still need doing -- exactly the wrong failure when the
+          # reason for running again is usually that one package of six did
+          # not make it.
           # When this fails with ENEEDAUTH, add --loglevel verbose. npm says
           # nothing about OIDC at the default level, so a missing trusted
           # publisher and a client too old to try look identical. Verbose
@@ -99,6 +105,14 @@ jobs:
           # trusted publisher is configured for it, not that the package is
           # missing.
           publish() {
+            local name version
+            read -r name version < <(tar -xzOf "$1" package/package.json |
+              node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const m=JSON.parse(s);process.stdout.write(`${m.name} ${m.version}`);})')
+            if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
+              echo "== $name@$version already published, skipping"
+              return 0
+            fi
             echo "== $1"
             # --tag is required, not decorative: npm refuses to publish a
             # prerelease without one rather than let 0.0.0-rc2 quietly become
@@ -120,7 +134,10 @@ jobs:
         # Separate from the publish above so that failing here is a wrong
         # dist-tag to fix by hand rather than half a release.
         run: |
-          set -euo pipefail
+          # Not `set -e`: a dist-tag that fails is a tag to fix by hand, and
+          # failing the job over one would report a release that did happen as
+          # a release that did not.
+          set -uo pipefail
           for tarball in ./tarballs/*.tgz; do
             read -r name version < <(tar -xzOf "$tarball" package/package.json |
               node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
