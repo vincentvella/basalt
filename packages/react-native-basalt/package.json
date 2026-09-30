@@ -3,6 +3,11 @@
   "version": "0.0.0-rc3",
   "description": "React Native on the desktop, over React Native's own C++ core rather than a fork. The shared half: the platform module, the Metro configuration that resolves it, the bundler, and the C++ that is not about a toolkit.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/react-native-basalt.git",
+    "directory": "packages/react-native-basalt"
+  },
   "main": "dist/src/index.js",
   "exports": {
     ".": "./dist/src/index.js",
