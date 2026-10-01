@@ -146,12 +146,24 @@ jobs:
 
       - name: Restore React Native's node_modules
         id: node-modules
+        # The repository name is in the key because this cache is not portable
+        # between workspaces on Windows. React Native's yarn workspace links
+        # node_modules/react-native at packages/react-native, and on Windows
+        # that link is a junction, which stores an absolute path. Restore the
+        # tar into a different workspace and the junction dangles --
+        # fs.existsSync follows links, so metro.config.js reported no React
+        # Native checkout while node_modules sat there at 1.1GB.
+        #
+        # Renaming the repository is what moved the workspace, from
+        # D:\a\react-native-basalt\react-native-basalt to D:\a\basalt\basalt.
+        # macOS and Linux were unaffected: their links are relative. Keying on
+        # the name means the next rename invalidates this by itself.
         if: ${{ !inputs.cold }}
         uses: actions/cache/restore@v6
         with:
           path: react-native-src/node_modules
           # Keyed on the commit alone: a fixed commit has a fixed yarn.lock.
-          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       - name: Restore third_party
         id: third-party
@@ -207,7 +219,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: react-native-src/node_modules
-          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       - name: Configure
         run: |
@@ -463,7 +475,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: react-native-src/node_modules
-          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       - name: Restore third_party
         id: third-party
@@ -500,7 +512,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: react-native-src/node_modules
-          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       - name: Configure and build
         # The two LAUNCHER flags are the point. This job installed ccache,
@@ -761,7 +773,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: react-native-src/node_modules
-          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       - name: Restore third_party
         id: third-party
@@ -808,7 +820,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: react-native-src/node_modules
-          key: rn-node-modules-${{ runner.os }}-${{ steps.pin.outputs.ref }}
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       - name: Configure
         # CMAKE_BUILD_TYPE is not optional here, unlike on the other two
