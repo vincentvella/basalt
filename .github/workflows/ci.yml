@@ -161,7 +161,7 @@ jobs:
           # Hermes is the expensive one -- 400 objects, sixteen minutes here --
           # and it changes only when React Native's Hermes pin does.
           path: third_party
-          key: third-party-${{ runner.os }}-${{ hashFiles('packages/react-native-basalt/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
+          key: third-party-${{ runner.os }}-${{ hashFiles('packages/basalt-core/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
           # The fallback is what stops an edit to bootstrap.sh costing a Hermes
           # rebuild, which it used to: the exact key still misses, the last
           # third_party comes back anyway, and bootstrap.sh decides what in it
@@ -200,7 +200,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: third_party
-          key: third-party-${{ runner.os }}-${{ hashFiles('packages/react-native-basalt/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
+          key: third-party-${{ runner.os }}-${{ hashFiles('packages/basalt-core/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
 
       - name: Save React Native's node_modules
         if: steps.bootstrap.outcome == 'success' && steps.node-modules.outputs.cache-hit != 'true'
@@ -247,7 +247,7 @@ jobs:
         run: ./build/basalt_gtk_tests
 
       - name: Build the JavaScript packages
-        # react-native-basalt is TypeScript and `main` points into its dist/,
+        # basalt-core is TypeScript and `main` points into its dist/,
         # so nothing below can require it until this has run. It is also the
         # type check: `noEmitOnError` is set, so a type that has stopped
         # describing the code fails here rather than misleading a reader.
@@ -269,7 +269,7 @@ jobs:
         # give the same answer three times over, and the CLI suite alone is a
         # minute and a half of the saving sharding just bought.
         if: matrix.shard == 1
-        # react-native-basalt's JavaScript that needs no React Native to run --
+        # basalt-core's JavaScript that needs no React Native to run --
         # today, the title bar's request stack. Plain Node, like the CLI tests,
         # and once: it cannot answer differently on another platform.
         run: node --test scripts/test_platform_js.js
@@ -473,7 +473,7 @@ jobs:
           # Hermes, as on Linux, and the same reasoning about the fallback key
           # applies -- see the Linux job above.
           path: third_party
-          key: third-party-${{ runner.os }}-${{ hashFiles('packages/react-native-basalt/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
+          key: third-party-${{ runner.os }}-${{ hashFiles('packages/basalt-core/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
           restore-keys: third-party-${{ runner.os }}-
 
       - name: Restore ccache
@@ -493,7 +493,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: third_party
-          key: third-party-${{ runner.os }}-${{ hashFiles('packages/react-native-basalt/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
+          key: third-party-${{ runner.os }}-${{ hashFiles('packages/basalt-core/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
 
       - name: Save React Native's node_modules
         if: steps.bootstrap.outcome == 'success' && steps.node-modules.outputs.cache-hit != 'true'
@@ -772,7 +772,7 @@ jobs:
           # with clang-cl is not Hermes built with clang, and a key that did not
           # say so would restore the wrong one. The fallback is explained there.
           path: third_party
-          key: third-party-${{ runner.os }}-${{ hashFiles('packages/react-native-basalt/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
+          key: third-party-${{ runner.os }}-${{ hashFiles('packages/basalt-core/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
           restore-keys: third-party-${{ runner.os }}-
 
       - name: Restore ccache
@@ -801,7 +801,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: third_party
-          key: third-party-${{ runner.os }}-${{ hashFiles('packages/react-native-basalt/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
+          key: third-party-${{ runner.os }}-${{ hashFiles('packages/basalt-core/native/bootstrap.sh') }}-${{ steps.pin.outputs.ref }}
 
       - name: Save React Native's node_modules
         if: steps.bootstrap.outcome == 'success' && steps.node-modules.outputs.cache-hit != 'true'

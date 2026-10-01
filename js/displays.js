@@ -16,7 +16,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, Text, View} from 'react-native';
-import {useDisplays} from 'react-native-basalt';
+import {useDisplays} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 

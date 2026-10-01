@@ -1,0 +1,339 @@
+// basalt-core — GTK4 view layer
+//
+// Deliberately free of React Native headers: this file only knows about
+// absolute frames and paint properties. The mounting manager translates
+// Fabric's ShadowViewMutation stream into calls on this API, so the widget
+// layer can be built and exercised without the RN C++ core present.
+
+#pragma once
+
+#include <gtk/gtk.h>
+#include <pango/pango.h>
+
+G_BEGIN_DECLS
+
+// ---------------------------------------------------------------------------
+// RnLayout — a GtkLayoutManager that does no layout of its own.
+//
+// Yoga has already computed absolute frames by the time a mutation reaches us,
+// so this places each child at the rect the shadow tree assigned it. Measuring
+// returns zero: RN is the sole source of truth for size.
+// ---------------------------------------------------------------------------
+
+#define RN_TYPE_LAYOUT (rn_layout_get_type())
+G_DECLARE_FINAL_TYPE(RnLayout, rn_layout, RN, LAYOUT, GtkLayoutManager)
+
+// ---------------------------------------------------------------------------
+// RnView — the GTK peer of a Fabric <View>.
+// ---------------------------------------------------------------------------
+
+#define RN_TYPE_VIEW (rn_view_get_type())
+G_DECLARE_FINAL_TYPE(RnView, rn_view, RN, VIEW, GtkWidget)
+
+RnView *rn_view_new(int tag);
+
+// As above, but with an accessible role.
+//
+// GTK4 has no per-instance role setter: a role is a construct-only property, or
+// is set once per widget class. RnView is one class for every React Native
+// view, so the role has to be chosen when the widget is made. That is possible
+// because Fabric delivers a view's props with the Create mutation that makes
+// it -- but it does mean accessibilityRole cannot change afterwards.
+RnView *rn_view_new_with_role(int tag, GtkAccessibleRole role);
+
+// Fabric tag, for debugging and hit-test attribution.
+int rn_view_get_tag(RnView *self);
+
+// Frame in parent coordinates, straight from LayoutMetrics::frame.
+void rn_view_set_frame(RnView *self, float x, float y, float width, float height);
+void rn_view_get_frame(RnView *self, graphene_rect_t *out);
+
+// BaseViewProps::backgroundColor. Passing has_color = FALSE paints nothing.
+void rn_view_set_background_color(RnView *self, gboolean has_color, const GdkRGBA *color);
+
+// BaseViewProps::opacity.
+void rn_view_set_opacity(RnView *self, double opacity);
+
+// Corner radii, in the order top-left, top-right, bottom-right, bottom-left.
+// Each is a width/height pair, because React Native's radii are elliptical.
+// Pass NULL for square corners.
+void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]);
+
+// Border widths and colours, in the order top, right, bottom, left -- which is
+// the order GTK's border node wants and the order CSS names them in.
+void rn_view_set_borders(RnView *self, const float widths[4], const GdkRGBA colors[4]);
+
+// BaseViewProps::transform, already resolved by React Native.
+//
+// Applied in the layout manager rather than at paint time, so that GTK's own
+// hit testing follows it: a transformed view is picked where it appears, not
+// where its frame says it is. Anchored on the view's centre, which is what
+// every other React Native platform does and what transformOrigin is measured
+// against. Pass NULL for identity.
+void rn_view_set_transform(RnView *self, const graphene_matrix_t *matrix);
+
+// `backfaceVisibility: 'hidden'`. A view whose transform has turned it away
+// from the viewer is not drawn, and nor are its children -- which is what a
+// card's back should do, and what takes it out of hit testing too, since
+// `gtk_widget_pick` skips a widget that is not visible.
+//
+// Whether it has turned away is `basalt::facesAway`; see core/Backface.h for
+// why the rule is shared rather than left to each toolkit.
+void rn_view_set_hides_back_face(RnView *self, gboolean hides);
+
+// `display: 'none'`. Separate from the back face above because the two are
+// independent reasons to hide the same widget, and Fabric applies them through
+// different calls -- props, then layout metrics.
+void rn_view_set_hidden(RnView *self, gboolean hidden);
+
+// BaseViewProps::zIndex. GTK paints in child order, so this reorders painting
+// without touching the child list that mutations index into.
+void rn_view_set_z_index(RnView *self, int z_index);
+
+// `pointerEvents`, which decides what a press can land on rather than what is
+// drawn. CSS's four values, and React Native's.
+//
+// GTK expresses exactly one of them. `none` is `can-target`, which makes
+// `gtk_widget_pick` skip the widget and everything inside it, so a press
+// reaches whatever is behind -- which is precisely the semantics. The other two
+// have no equivalent, so they are stored here and resolved by the hit test;
+// see GtkTouchDispatcher.cpp.
+typedef enum {
+  RN_POINTER_EVENTS_AUTO,
+  RN_POINTER_EVENTS_NONE,
+  RN_POINTER_EVENTS_BOX_NONE,
+  RN_POINTER_EVENTS_BOX_ONLY,
+} RnPointerEvents;
+
+void rn_view_set_pointer_events(RnView *self, RnPointerEvents mode);
+RnPointerEvents rn_view_get_pointer_events(RnView *self);
+
+// Whether this view takes keyboard focus, and therefore whether Tab stops on
+// it.
+//
+// React Native has a `focusable` prop and it does not reach this platform:
+// ReactCommon parses it only into Android's and tvOS's HostPlatformViewProps,
+// and the C++ host's is a bare alias of BaseViewProps. What does reach here is
+// `accessible`, which is what <Pressable> sets on everything it renders and
+// what an app sets on anything else it means as a control -- so that is the
+// signal, and it is also the one both desktops use for their own focus rings.
+// See GtkFocus.h.
+//
+// GTK owns the chain: a focusable widget joins the window's focus order, so Tab
+// and Shift+Tab work without this project deciding what "next" means.
+void rn_view_set_focusable(RnView *self, gboolean focusable);
+gboolean rn_view_get_focusable(RnView *self);
+
+// The text of a <Paragraph>, already laid out.
+//
+// A Paragraph is a View that also paints text, so it gets no separate widget
+// type: same box model, same frame, same children. The mounting manager builds
+// the layout from the shadow view's AttributedString -- Pango is part of the
+// GTK stack, so taking a PangoLayout here keeps this file free of React Native
+// types the way the rest of it is.
+//
+// Takes its own reference. Pass NULL to clear. `color` is the colour to paint
+// glyphs that carry no foreground attribute of their own.
+void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *color);
+
+// How an image fills its frame. Mirrors React Native's ImageResizeMode, minus
+// Repeat, which needs a repeating pattern node rather than one texture draw.
+typedef enum {
+  RN_IMAGE_FIT_COVER,
+  RN_IMAGE_FIT_CONTAIN,
+  RN_IMAGE_FIT_STRETCH,
+  RN_IMAGE_FIT_CENTER,
+  // Tiled from the top left at the image's own size, which is what CSS
+  // `repeat` and React Native's `resizeMode: 'repeat'` mean. Every toolkit
+  // here has a primitive for it; centring, which is what this used to fall
+  // back to, is a different picture rather than a rougher one.
+  RN_IMAGE_FIT_REPEAT,
+} RnImageFit;
+
+// The decoded pixels of an <Image>. Takes its own reference; pass NULL to clear.
+//
+// Like the text layout above, this is a GTK type rather than a React Native
+// one, so the widget layer stays free of RN headers. GtkImageLoader produces
+// the texture and GtkMountingManager chooses the fit.
+void rn_view_set_texture(RnView *self, GdkTexture *texture, RnImageFit fit);
+
+// `tintColor`: recolours the image, keeping its alpha. An icon drawn as a
+// silhouette is the usual reason -- one asset, any colour.
+//
+// Separate from the texture because it arrives from the props and the texture
+// arrives from a loader callback, and either can land first.
+void rn_view_set_image_tint(RnView *self, gboolean has_tint, const GdkRGBA *tint);
+
+// Called on the GTK main thread when this widget's own allocation changes.
+//
+// The host attaches one to a surface root to drive
+// ReactHost::setSurfaceConstraints. GTK4 removed GtkWidget::size-allocate, and
+// a layout manager's allocate is the supported replacement: it is the one
+// place a widget is told the size it actually got.
+typedef void (*RnViewResizeFunc)(RnView *self, int width, int height, gpointer user_data);
+void rn_view_set_resize_callback(RnView *self, RnViewResizeFunc callback, gpointer user_data);
+
+// Clip children to this view's bounds.
+//
+// Off by default, because React Native's default is overflow: visible. A
+// <ScrollView> needs it, and so does any view with overflow: 'hidden'.
+void rn_view_set_clips_children(RnView *self, gboolean clips);
+
+// Shift children by a scroll offset, in points.
+//
+// Applied in the layout manager rather than by moving frames, so the frames
+// Fabric assigned stay untouched and GTK's own hit testing follows the shift
+// for free: a child allocated at its scrolled position is picked there.
+void rn_view_set_scroll_offset(RnView *self, double offset_x, double offset_y);
+
+// The overlay scrollbars this view draws over its own content. Computed by the
+// scroll manager from core/ScrollIndicator.h, because the geometry is the same
+// on all three desktops and the drawing is not.
+//
+// Lengths of zero mean "no indicator on that axis", which is what content that
+// fits produces.
+void rn_view_set_scroll_indicators(RnView *self,
+                                   double vertical_offset,
+                                   double vertical_length,
+                                   double horizontal_offset,
+                                   double horizontal_length);
+void rn_view_get_scroll_offset(RnView *self, double *offset_x, double *offset_y);
+
+// A textual description of the widget tree rooted here, one indented line per
+// view.
+//
+// This is what makes the full stack testable rather than merely watchable.
+// Everything below GDK has unit tests, but the path from JavaScript through
+// React, Fabric and the mounting manager can only be exercised by running the
+// real host -- and until now the only way to check the result was to look at a
+// screenshot. A dump can be asserted on.
+//
+// Returns a newly allocated string; free with g_free.
+char *rn_view_describe_tree(RnView *self);
+
+// Turns this view into a text field, or back.
+//
+// The editable is a real GtkText -- the widget behind GtkEntry -- parented
+// inside this one and sized to its whole frame. Using GTK's own editable rather
+// than drawing a cursor on a PangoLayout is what brings input methods,
+// selection, the clipboard and every keybinding a Linux user expects, none of
+// which is worth reimplementing.
+//
+// Returns the editable, or NULL after clearing.
+GtkWidget *rn_view_set_editable(RnView *self, gboolean editable, gboolean multiline);
+
+// The border and padding to hold the native peer inside. Yoga has already
+// resolved these into React Native's content inset; without them a <TextInput>
+// renders its text flush against its own border, ignoring paddingHorizontal.
+void rn_view_set_peer_insets(RnView *self, const GtkBorder *insets);
+void rn_view_get_peer_insets(RnView *self, GtkBorder *out);
+GtkWidget *rn_view_get_editable(RnView *self);
+
+// --- Controls ----------------------------------------------------------------
+//
+// The three components that are a toolkit control rather than a box:
+// <ActivityIndicator> and <RefreshControl> are a GtkSpinner, <Switch> is a
+// GtkSwitch. Parented and sized exactly the way the <TextInput> peer above is
+// -- a non-RnView child fills the view's inner rect -- because it is the same
+// arrangement for the same reason: GTK's own widget brings the theme, the
+// animation and the accessibility with it, and none of that is worth drawing
+// by hand.
+typedef enum {
+  RN_CONTROL_NONE,
+  RN_CONTROL_SPINNER,
+  RN_CONTROL_SWITCH,
+} RnControlKind;
+
+// Installs the control this view stands for, replacing any other kind, or
+// removes it for RN_CONTROL_NONE. Returns the control widget, or NULL.
+GtkWidget *rn_view_set_control(RnView *self, RnControlKind kind);
+GtkWidget *rn_view_get_control(RnView *self);
+RnControlKind rn_view_get_control_kind(RnView *self);
+
+// What `describe_tree` prints for this control, which core/DesktopControls.h
+// writes so that three hosts cannot describe the same switch differently. NULL
+// or empty prints nothing.
+void rn_view_set_control_description(RnView *self, const char *description);
+
+// Whether this control is disabled. Kept on the view rather than read back off
+// the widget because `sensitive` is GTK's word for two different things, and
+// only React Native's `disabled` should stop a press.
+void rn_view_set_control_disabled(RnView *self, gboolean disabled);
+gboolean rn_view_get_control_disabled(RnView *self);
+
+// --- React DevTools' overlay --------------------------------------------------
+//
+// The rectangles a `DebuggingOverlay` draws: an inspected element's blue box,
+// or an outline around everything that just re-rendered. Set from
+// GtkMountingManager, which parses them; see core/DebuggingOverlay.h.
+//
+// Eight floats per rectangle -- x, y, width, height, then r, g, b, a -- and a
+// flag for whether to fill. A plain array rather than the core struct because
+// this file has no React Native in it and is not about to start.
+void rn_view_set_highlights(RnView *self,
+                            const float *rectangles,
+                            const gboolean *filled,
+                            int count);
+
+// Accessibility, as a screen reader sees it.
+//
+// `label` is the accessible name and `description` the hint; either may be NULL
+// or empty to leave it unset. GTK maps these onto AT-SPI, which is what Orca
+// reads.
+void rn_view_set_accessible_text(RnView *self, const char *label, const char *description);
+
+// React Native's own name for the role -- "button", "image", "text" -- kept
+// alongside the GtkAccessibleRole the widget was constructed with.
+//
+// Two vocabularies for one fact, and both are needed. GTK's is what a screen
+// reader reads; React Native's is what `rn_view_describe_tree` reports, so that
+// dump can be compared line by line with the AppKit one without either platform
+// speaking the other's language. That the GTK role was really applied is
+// asserted in tests/test_accessibility.cpp instead.
+//
+// Set from the same computation that picks the GtkAccessibleRole, so the two
+// cannot disagree. Pass NULL or "" for no role.
+void rn_view_set_role_name(RnView *self, const char *name);
+
+// The view's `nativeID`, verbatim.
+//
+// Only the hidden title bar reads it, to find the regions an app marked with
+// <TitleBar.DragRegion> and <TitleBar.NoDragRegion>; see
+// core/TitleBarRegions.h for the two names and the rule. Nothing about layout,
+// painting or accessibility looks at it.
+//
+// Kept as the app set it rather than parsed into a flag here, because a view
+// can carry a nativeID for reasons that have nothing to do with the title bar
+// -- an end-to-end test looking a view up by name, most of them -- and this
+// layer has no business deciding which of those meanings was intended.
+//
+// Pass NULL or "" for none.
+void rn_view_set_native_id(RnView *self, const char *native_id);
+// NULL when unset, never the empty string.
+const char *rn_view_get_native_id(RnView *self);
+
+// Accessible states. Each is a tri-state: unset leaves GTK's default alone,
+// which is not the same as setting it false.
+typedef enum {
+  RN_A11Y_UNSET,
+  RN_A11Y_FALSE,
+  RN_A11Y_TRUE,
+} RnAccessibleFlag;
+
+void rn_view_set_accessible_state(RnView *self,
+                                  RnAccessibleFlag disabled,
+                                  RnAccessibleFlag checked,
+                                  RnAccessibleFlag selected,
+                                  RnAccessibleFlag expanded,
+                                  RnAccessibleFlag busy);
+
+// Hidden from assistive technology, for accessible={false} and
+// accessibilityElementsHidden.
+void rn_view_set_accessible_hidden(RnView *self, gboolean hidden);
+
+// Child management. Mirrors Insert/Remove mutations; index is the position
+// within the parent's child list, as Fabric numbers it.
+void rn_view_insert_child(RnView *self, RnView *child, int index);
+void rn_view_remove_child(RnView *self, RnView *child);
+
+G_END_DECLS

@@ -25,7 +25,7 @@ set -euo pipefail
 log() { printf '==> %s\n' "$*"; }
 
 WIN_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO="${BASALT_COMPARE_WSL_REPO:-/root/react-native-basalt}"
+REPO="${BASALT_COMPARE_WSL_REPO:-/root/basalt-core}"
 NODE_VERSION=24.21.0
 
 # --- apt: the Linux CI job's list, and two more ------------------------------

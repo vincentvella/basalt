@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  react-native-basalt: React Native on the desktop (Linux/GTK4, macOS/AppKit,
+  basalt-core: React Native on the desktop (Linux/GTK4, macOS/AppKit,
   Windows/Win32) on React Native's own ReactCxxPlatform C++ core.
 
   Where things live. There is no plan/ directory; everything is a spec or an

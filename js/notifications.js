@@ -52,7 +52,7 @@ function App() {
 
       try {
         const identifier = await Notifications.scheduleNotificationAsync({
-          content: {title: 'react-native-basalt', body: 'A notification from a desktop'},
+          content: {title: 'basalt-core', body: 'A notification from a desktop'},
           // Null means deliver now, which is the modern spelling of what
           // `presentNotificationAsync` was deprecated in favour of.
           trigger: null,

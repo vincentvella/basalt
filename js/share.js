@@ -7,7 +7,7 @@
  * React Native's `Share.js` branches on `Platform.OS` being exactly `android`
  * or `ios` and rejects with "Unsupported platform" otherwise, so no desktop
  * module was ever reached. The replacement is in
- * packages/react-native-basalt/src/overrides/Share.js.
+ * packages/basalt-core/src/overrides/Share.js.
  *
  * Underneath, macOS shows `NSSharingServicePicker` and the other two show a
  * small picker built from a clipboard and a mail client, because Linux has no
@@ -56,9 +56,9 @@ const styles = StyleSheet.create({
 });
 
 const CONTENT = {
-  title: 'react-native-basalt',
+  title: 'basalt-core',
   message: 'React Native on the desktop',
-  url: 'https://github.com/vincentvella/react-native-basalt',
+  url: 'https://github.com/vincentvella/basalt-core',
 };
 
 // Everything that can be checked without a person in front of the screen.

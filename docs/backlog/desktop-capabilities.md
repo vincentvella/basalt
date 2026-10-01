@@ -45,7 +45,7 @@ is missing", and gains a pointer. Three entries have one today.
 
 React Native has no cross-platform API for any of this, because it was built for
 phones. That makes each one a design question before it is an implementation
-question: invent a `react-native-basalt` API, follow what react-native-macos or
+question: invent a `basalt-core` API, follow what react-native-macos or
 react-native-windows already chose, or leave it to userland modules. Nothing
 here has been decided, and none of it is needed for the demo, which is why it
 has gone unrecorded until now.

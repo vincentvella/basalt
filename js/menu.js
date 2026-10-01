@@ -31,7 +31,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {Menu, useContextMenu} from 'react-native-basalt';
+import {Menu, useContextMenu} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 console.log(`menu supported: ${Menu.isSupported}`);

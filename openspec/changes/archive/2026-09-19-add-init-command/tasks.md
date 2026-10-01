@@ -2,7 +2,7 @@
 
 ## 1. The command
 
-- [x] `cli/init.ts`, as the package's `react-native-basalt` bin -- not a React
+- [x] `cli/init.ts`, as the package's `basalt-core` bin -- not a React
       Native CLI command, because before it runs the package is not a
       dependency yet and the CLI has no config to read
 - [x] Detect the app: `package.json`, an Expo or React Native dependency, a Metro config

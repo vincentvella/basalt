@@ -40,7 +40,7 @@ param(
   # holds React Native's checkout and Windows still has a path length limit that
   # a deep node_modules reaches.
   [string] $Root = 'C:\actions-runner',
-  [string] $Repository = 'vincentvella/react-native-basalt'
+  [string] $Repository = 'vincentvella/basalt-core'
 )
 
 $ErrorActionPreference = 'Stop'

@@ -416,5 +416,5 @@ note "not make anything render on their own: basalt's Skia host half -- the"
 note "RNSkiaModule, the context and the canvas -- exists for AppKit only, so a"
 note "GTK host that links these still has no RNSkiaModule to find."
 echo
-note "Next: teach packages/react-native-basalt/native/cmake/Skia.cmake its"
+note "Next: teach packages/basalt-core/native/cmake/Skia.cmake its"
 note "non-Apple path, and confirm these link into basalt_gtk."

@@ -1,0 +1,17 @@
+{
+  "name": "basalt-notifications",
+  "version": "0.0.0-rc4",
+  "description": "Desktop notifications for basalt-core. Permission-gated, so it ships separately from the core platform.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt-core.git",
+    "directory": "packages/basalt-notifications"
+  },
+  "basalt": {
+    "native": "native/CMakeLists.txt"
+  },
+  "peerDependencies": {
+    "basalt-core": "*"
+  }
+}

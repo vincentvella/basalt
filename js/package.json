@@ -1,5 +1,5 @@
 {
-  "name": "react-native-basalt-demo",
+  "name": "basalt-core-demo",
   "version": "0.0.0",
   "private": true,
   "description": "The demo app this host renders. Deliberately has no node_modules of its own: react, react-native and metro all resolve out of the React Native checkout that scripts/bootstrap.sh already set up. See metro.config.js.",

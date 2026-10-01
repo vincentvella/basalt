@@ -23,7 +23,7 @@ wants fewer has nowhere to say so.
 
 ## What Changes
 
-- `npx react-native-basalt doctor`: the checks `init` makes, with writing off,
+- `npx basalt-core doctor`: the checks `init` makes, with writing off,
   plus the ones it cannot fix -- toolchain, system libraries, React Native
   version -- each reporting what is wrong and what to run.
 - `app.json`'s `basalt.desktops` narrows which host packages `init` adds. All
@@ -41,7 +41,7 @@ wants fewer has nowhere to say so.
 - `cli/init.ts`'s step machinery becomes shared, and `doctor` is its read-only
   caller. The states already exist; what is new is checks that have no fix.
 - A new `cli/doctor.ts`, and a second `bin` entry or a subcommand on the
-  existing one -- `init` is already a verb on `react-native-basalt`, so
+  existing one -- `init` is already a verb on `basalt-core`, so
   `doctor` is the second.
 - `docs/PORTING.md` lists what a build needs per platform; that list is what
   the toolchain checks encode, and the two must not drift.

@@ -3,7 +3,7 @@
 //
 // Metro's `build` command has no `--assets-dest`. React Native's own CLI does,
 // and reaching for it would mean bundling through a second tool with its own
-// idea of which platforms exist -- the thing packages/react-native-basalt's
+// idea of which platforms exist -- the thing packages/basalt-core's
 // Metro config is there to avoid. So the asset list is read back out of the
 // bundle that was just written, which is where Metro puts it anyway.
 //

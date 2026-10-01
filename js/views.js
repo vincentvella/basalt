@@ -4,7 +4,7 @@
  * This exists to test the JavaScript platform layer without needing the view
  * layer to be finished. It imports `react-native` properly, goes through
  * `AppRegistry`, renders with React and lays out with Yoga -- so every one of
- * the overrides in `packages/react-native-basalt/metro-config.js` has to work
+ * the overrides in `packages/basalt-core/metro-config.js` has to work
  * for it to run at all. What it deliberately avoids is `<Text>`, `<Image>`,
  * `<ScrollView>` and `<TextInput>`, none of which macOS can mount yet.
  *

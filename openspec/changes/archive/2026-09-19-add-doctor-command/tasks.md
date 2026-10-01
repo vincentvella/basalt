@@ -20,7 +20,7 @@
 
 ## 3. The command
 
-- [x] `cli/doctor.ts`, as a second verb on the `react-native-basalt` bin
+- [x] `cli/doctor.ts`, as a second verb on the `basalt-core` bin
 - [x] Non-zero exit when anything is wrong, so CI can run it
 - [x] Have `release.yml`'s Expo job run it after `init`, where it would have
       caught the host packages being missing

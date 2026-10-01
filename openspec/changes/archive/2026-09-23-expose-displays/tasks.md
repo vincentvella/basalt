@@ -35,7 +35,7 @@
 ## 3. JavaScript and tests
 
 - [x] `useDisplays()`, `displays()`, `primaryDisplay()` and
-      `pointerPosition()`, exported from `react-native-basalt`. The pointer is
+      `pointerPosition()`, exported from `basalt-core`. The pointer is
       the one promise: nothing reports it moving, so there is nothing to cache
 - [x] Demo in `js/displays.js`, scenario asserting at least one display,
       exactly one primary, and a scale factor that is a ratio rather than a

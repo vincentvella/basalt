@@ -1,5 +1,5 @@
 /**
- * Tests for react-native-basalt's JavaScript that does not need React Native to
+ * Tests for basalt-core's JavaScript that does not need React Native to
  * run: today, the title bar's request stack.
  *
  * Run with:  node --test scripts/test_platform_js.js
@@ -20,7 +20,7 @@ const {test} = require('node:test');
 const built = path.join(
   __dirname,
   '..',
-  'packages/react-native-basalt/dist/src/titleBarState.js',
+  'packages/basalt-core/dist/src/titleBarState.js',
 );
 if (!require('node:fs').existsSync(built)) {
   throw new Error(`${built} does not exist. Run scripts/build_ts.sh first.`);
@@ -87,7 +87,7 @@ test('two requests for the same thing are the same request', () => {
 const responseBody = require(path.join(
   __dirname,
   '..',
-  'packages/react-native-basalt/dist/src/responseBody.js',
+  'packages/basalt-core/dist/src/responseBody.js',
 ));
 
 test('a base64 body is decoded as base64', () => {
@@ -202,7 +202,7 @@ test('a byte count that fits both ways decides nothing', () => {
 const responseHeaders = require(path.join(
   __dirname,
   '..',
-  'packages/react-native-basalt/dist/src/responseHeaders.js',
+  'packages/basalt-core/dist/src/responseHeaders.js',
 ));
 
 test('pairs from the platform become an object', () => {
@@ -270,7 +270,7 @@ test('a malformed pair is skipped rather than stringified', () => {
 
 test('metro-config exports everything that requires it expects', () => {
   const metroConfig = require(
-    path.join(__dirname, '..', 'packages/react-native-basalt/dist/metro-config.js'),
+    path.join(__dirname, '..', 'packages/basalt-core/dist/metro-config.js'),
   );
   for (const name of [
     'withDesktopPlatforms',
@@ -291,7 +291,7 @@ test('react-native.config.js loads with nothing but Node', () => {
   // rather than through `exports`, so it has to resolve without a bundler,
   // without a transpiler, and without this repository's own layout.
   const config = require(
-    path.join(__dirname, '..', 'packages/react-native-basalt/react-native.config.js'),
+    path.join(__dirname, '..', 'packages/basalt-core/react-native.config.js'),
   );
   assert.deepEqual(Object.keys(config.platforms).sort(), ['linux', 'macos', 'windows']);
   for (const platform of Object.values(config.platforms)) {

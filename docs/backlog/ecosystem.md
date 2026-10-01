@@ -46,7 +46,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   move -- notifications -- is done. And a first `--build` that compiles Hermes
   and React Native's C++ from source, which is the part a user will notice.
 - ~~**Adding a desktop to an Expo app is manual.**~~ Done:
-  `npx react-native-basalt init` adds this package and the two dev dependencies
+  `npx basalt-core init` adds this package and the two dev dependencies
   an app needs -- `@react-native/metro-config`, which React Native's `start`
   requires whatever the app's Metro config says, and
   `@react-native-community/cli`, which provides `run-windows` -- wraps the
@@ -71,7 +71,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 - ~~**The package ships no types, and an Expo app is TypeScript by default.**~~
   Done: the package is TypeScript and publishes its declarations, so
-  `import {useWindow} from 'react-native-basalt'` in a `create-expo-app` project
+  `import {useWindow} from 'basalt-core'` in a `create-expo-app` project
   is typed. `docs/DECISIONS.md` records why that rather than JSDoc, and
   `docs/ARCHITECTURE.md` what the build step costs.
 

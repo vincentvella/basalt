@@ -44,8 +44,8 @@ a VM, which is where it should be checked before being believed.
 ## Setup
 
 ```bash
-git clone https://github.com/vincentvella/react-native-basalt
-cd react-native-basalt
+git clone https://github.com/vincentvella/basalt-core
+cd basalt-core
 git clone --depth 1 https://github.com/react/react-native ../react-native
 scripts/bootstrap.sh ../react-native
 ```

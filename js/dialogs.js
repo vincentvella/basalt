@@ -17,7 +17,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, Pressable, StyleSheet, Text, View} from 'react-native';
-import {useDialog} from 'react-native-basalt';
+import {useDialog} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 

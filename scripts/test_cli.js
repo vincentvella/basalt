@@ -2,7 +2,7 @@
  * Tests for the desktop CLI: `run-linux`, `run-macos` and `run-windows`.
  *
  * The three are one command with three names, and everything they share lives
- * in react-native-basalt's cli/desktop.js. That sharing is the thing worth
+ * in basalt-core's cli/desktop.js. That sharing is the thing worth
  * testing: a change made for one desktop lands on all three, and the failure
  * mode is an app that bundles for the wrong platform or looks for the wrong
  * binary -- neither of which any C++ test can see.
@@ -25,11 +25,11 @@ const {test} = require('node:test');
 
 const REPO = path.resolve(__dirname, '..');
 
-// The built package, not the source. react-native-basalt is TypeScript and
+// The built package, not the source. basalt-core is TypeScript and
 // `main` points into dist/; requiring the source would either miss a
 // conversion or fail on a .ts import. scripts/build_ts.sh runs before this in
 // both CI and test_all.sh.
-const DIST = path.join(REPO, 'packages/react-native-basalt/dist');
+const DIST = path.join(REPO, 'packages/basalt-core/dist');
 if (!fs.existsSync(DIST)) {
   throw new Error(`${DIST} does not exist. Run scripts/build_ts.sh first.`);
 }
@@ -40,9 +40,9 @@ const desktop = require(path.join(DIST, 'cli/desktop.js'));
 // all is half the test -- the shared half is reached by a two-step require that
 // only works in the two layouts described in cli/shared.js.
 const CONFIGS = {
-  linux: path.join(REPO, 'packages/react-native-basalt-gtk/react-native.config.js'),
-  macos: path.join(REPO, 'packages/react-native-basalt-appkit/react-native.config.js'),
-  windows: path.join(REPO, 'packages/react-native-basalt-win32/react-native.config.js'),
+  linux: path.join(REPO, 'packages/basalt-gtk/react-native.config.js'),
+  macos: path.join(REPO, 'packages/basalt-appkit/react-native.config.js'),
+  windows: path.join(REPO, 'packages/basalt-win32/react-native.config.js'),
 };
 
 const EXPECTED = {
@@ -74,7 +74,7 @@ function target(platform) {
     command: EXPECTED[platform].command,
     binary: EXPECTED[platform].binary,
     nativeDir: path.join(REPO, 'packages', 'somewhere', 'native'),
-    coreDir: path.join(REPO, 'packages/react-native-basalt/native'),
+    coreDir: path.join(REPO, 'packages/basalt-core/native'),
     toolchain: 'a compiler',
   };
 }
@@ -755,10 +755,10 @@ function appWith(dependencies, packages) {
 
 test('a package declaring native code is discovered by its manifest', () => {
   const root = appWith(
-    {'react-native-basalt-notifications': '*', 'left-pad': '*'},
+    {'basalt-notifications': '*', 'left-pad': '*'},
     {
-      'react-native-basalt-notifications': {
-        name: 'react-native-basalt-notifications',
+      'basalt-notifications': {
+        name: 'basalt-notifications',
         basalt: {native: 'native/CMakeLists.txt'},
       },
       'left-pad': {name: 'left-pad'},
@@ -766,7 +766,7 @@ test('a package declaring native code is discovered by its manifest', () => {
   );
   const found = desktop.capabilityPackages(root);
   assert.equal(found.length, 1, 'only the package declaring native code');
-  assert.ok(found[0].endsWith('react-native-basalt-notifications'));
+  assert.ok(found[0].endsWith('basalt-notifications'));
 });
 
 // A capability package compiles into the same binary, so its compiler errors
@@ -776,10 +776,10 @@ test('a package declaring native code is discovered by its manifest', () => {
 // say what was in it.
 test('a failed build names the packages that contributed native code', () => {
   const root = appWith(
-    {'react-native-basalt-notifications': '*'},
+    {'basalt-notifications': '*'},
     {
-      'react-native-basalt-notifications': {
-        name: 'react-native-basalt-notifications',
+      'basalt-notifications': {
+        name: 'basalt-notifications',
         basalt: {native: 'native/CMakeLists.txt'},
       },
     },
@@ -787,7 +787,7 @@ test('a failed build names the packages that contributed native code', () => {
 
   const explained = desktop.explainContributedFailure(root, new Error('cmake --build failed'));
   assert.match(explained.message, /cmake --build failed/, 'the original error survives');
-  assert.match(explained.message, /react-native-basalt-notifications/);
+  assert.match(explained.message, /basalt-notifications/);
   assert.match(explained.message, /1 contributor:/, 'singular for one');
 });
 
@@ -804,10 +804,10 @@ test('a package that declares native code and has none fails the build early', (
   // Rather than a host quietly built without the capability, which fails later
   // and further away -- at `requireNativeModule`, in JavaScript, at runtime.
   const root = appWith(
-    {'react-native-basalt-ghost': '*'},
+    {'basalt-core-ghost': '*'},
     {
-      'react-native-basalt-ghost': {
-        name: 'react-native-basalt-ghost',
+      'basalt-core-ghost': {
+        name: 'basalt-core-ghost',
         basalt: {native: 'native/CMakeLists.txt'},
         present: false,
       },
@@ -824,8 +824,8 @@ test('a transitive dependency does not contribute native code on its own', () =>
     {'left-pad': '*'},
     {
       'left-pad': {name: 'left-pad'},
-      'react-native-basalt-sneaky': {
-        name: 'react-native-basalt-sneaky',
+      'basalt-core-sneaky': {
+        name: 'basalt-core-sneaky',
         basalt: {native: 'native/CMakeLists.txt'},
       },
     },
@@ -949,7 +949,7 @@ test('init configures an app that has none', () => {
   assert.equal(result.ok, true);
 
   const manifest = manifestOf(dir);
-  assert.ok(manifest.dependencies['react-native-basalt'] != null);
+  assert.ok(manifest.dependencies['basalt-core'] != null);
   assert.ok(manifest.devDependencies['@react-native/metro-config'] != null);
   assert.ok(manifest.devDependencies['@react-native-community/cli'] != null);
   for (const platform of ['linux', 'macos', 'windows']) {
@@ -972,7 +972,7 @@ test('init pins itself to a real version, from either layout', () => {
   // Not '*'. It reads its own package.json by walking up, because this file
   // runs from dist/cli once built and cli/ in a checkout, and any fixed number
   // of `..` is wrong in one of the two.
-  assert.match(manifestOf(dir).dependencies['react-native-basalt'], /^\^\d/);
+  assert.match(manifestOf(dir).dependencies['basalt-core'], /^\^\d/);
 });
 
 test('init changes nothing the second time', () => {
@@ -1090,7 +1090,7 @@ test('init leaves the metro config it wrote alone', () => {
   assert.equal(fs.readFileSync(path.join(dir, 'metro.config.js'), 'utf8'), written);
 });
 
-// `npx react-native-basalt init` is how the README spells it, and `init` is
+// `npx basalt-core init` is how the README spells it, and `init` is
 // the verb rather than the directory to configure. The command used to
 // resolve ./init, find no package.json there, and refuse to configure the app
 // it was standing in -- which is every invocation the documentation gives.
@@ -1130,16 +1130,16 @@ test('init adds a host package per desktop', () => {
 
   const manifest = manifestOf(dir);
   for (const host of [
-    'react-native-basalt-gtk',
-    'react-native-basalt-appkit',
-    'react-native-basalt-win32',
+    'basalt-gtk',
+    'basalt-appkit',
+    'basalt-win32',
   ]) {
     assert.ok(manifest.dependencies[host] != null, `${host} is a dependency`);
   }
   // The same version as core: they share a C++ ABI with the host.
   assert.equal(
-    manifest.dependencies['react-native-basalt-gtk'],
-    manifest.dependencies['react-native-basalt'],
+    manifest.dependencies['basalt-gtk'],
+    manifest.dependencies['basalt-core'],
   );
 });
 
@@ -1154,9 +1154,9 @@ test('app.json narrows which desktops are installed', () => {
   init(dir);
 
   const manifest = manifestOf(dir);
-  assert.ok(manifest.dependencies['react-native-basalt-appkit'] != null);
-  assert.equal(manifest.dependencies['react-native-basalt-gtk'], undefined);
-  assert.equal(manifest.dependencies['react-native-basalt-win32'], undefined);
+  assert.ok(manifest.dependencies['basalt-appkit'] != null);
+  assert.equal(manifest.dependencies['basalt-gtk'], undefined);
+  assert.equal(manifest.dependencies['basalt-win32'], undefined);
 });
 
 // A typo would otherwise install one package fewer and fail much later, at the
@@ -1175,7 +1175,7 @@ test('a misspelled desktop is reported rather than ignored', () => {
 
   // And it fell back to all three rather than to none, so the app is still
   // configured while the person fixes the field.
-  assert.ok(manifestOf(dir).dependencies['react-native-basalt-gtk'] != null);
+  assert.ok(manifestOf(dir).dependencies['basalt-gtk'] != null);
 });
 
 // `doctor`
@@ -1192,7 +1192,7 @@ const VERSIONS = path.join(
   __dirname,
   '..',
   'packages',
-  'react-native-basalt',
+  'basalt-core',
   'supported-versions.json',
 );
 
@@ -1254,7 +1254,7 @@ test('doctor accepts a React Native that is supported', () => {
 test('doctor names a host package that is a dependency but not installed', () => {
   const dir = scratchApp(EXPO_APP);
   const steps = doctorCli.checkHostPackages(dir, ['macos']);
-  assert.equal(stateOf(steps, 'react-native-basalt-appkit'), 'blocked');
+  assert.equal(stateOf(steps, 'basalt-appkit'), 'blocked');
   const [, host] = steps[0];
   assert.match(host.message, /run-macos/, 'says what is missing, not just what');
 });

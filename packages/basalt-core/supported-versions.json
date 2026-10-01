@@ -1,0 +1,66 @@
+{
+  "$comment": [
+    "Which React Native this platform supports, and which Hermes to build for it.",
+    "",
+    "A pinned triple: basalt-core, React Native, and Hermes are chosen and",
+    "tested together, the way react-native-windows pins its own Hermes NuGet",
+    "version and one exact React Native in peerDependencies. The alternative --",
+    "deriving Hermes from whatever React Native an app happens to have -- was tried",
+    "and abandoned: React Native 0.81's Hermes wants a jsi header newer React",
+    "Native does not ship and names its build target differently, so following the",
+    "app leads three compile errors deep into a version nobody claimed to support.",
+    "",
+    "Hermes is pinned here rather than read from React Native because this platform",
+    "builds it from source. Windows, macOS, iOS and Android all consume a prebuilt",
+    "Hermes; Meta publishes one for each of them and none for Linux. That single",
+    "difference is where every version problem here comes from.",
+    "",
+    "To add a version: add an entry, bootstrap against it, and run both suites.",
+    "Untested is not supported -- saying so is the point of this file."
+  ],
+  "supported": [
+    {
+      "reactNative": "0.86",
+      "hermes": "250829098.0.0-stable",
+      "hermesTarget": "hermesvm",
+      "verified": "0.86.3",
+      "notes": "The React Native a current Expo app installs, which is why it is supported.",
+      "limitations": [
+        "No Fast Refresh. ReactHost::destroyReactInstance sets reactInstanceData_->mountingManager to null on teardown, so a reload recreates the instance without a mounting manager and the host collapses. Reproduced, root-caused, and fixed upstream in 0.87 by deleting those three lines. Four of five end-to-end scenarios pass; the fifth is this."
+      ]
+    },
+    {
+      "reactNative": "0.87",
+      "hermes": "250829098.0.0-stable",
+      "verified": "0.87.1",
+      "notes": "60/60 unit and 5/5 end-to-end, macOS and CI. What CI pins.",
+      "hermesTarget": "hermesvm"
+    }
+  ],
+  "development": {
+    "reactNative": "1000.0.0",
+    "hermes": "250829098.0.0-stable",
+    "notes": "React Native main, which calls itself 1000.0.0. Where development happens; the weekly drift job tracks it.",
+    "hermesTarget": "hermesvm"
+  },
+  "known-unsupported": [
+    {
+      "reactNative": "0.83 - 0.85",
+      "why": "Never built or tested. Nothing suggests they would not work; nothing has checked."
+    },
+    {
+      "reactNative": "0.82 and older",
+      "why": "Attempted for 0.81.6 and stopped deliberately. Six differences, of which the last three are structural.",
+      "what-it-would-take": [
+        "~~RN$TurboInterop set before the bundle evaluates, or no native module resolves at all.~~ Done: core/TurboModuleProxy.h installs globalThis.__turboModuleProxy as an alias for nativeModuleProxy[name], so TurboModuleRegistry's first question succeeds and the gated fallback is never reached. Verified against 0.81's own JavaScript -- kino's unmodified bundle reaches Running \"main\" with no flag prepended.",
+        "Its Hermes builds `libhermes` rather than `hermesvm`, and React Native links `hermes-engine::libhermes`. Both handled already.",
+        "Its codegen has no -f flag, writes core artifacts inside the package, and exits non-zero after printing Done. Handled already.",
+        "Our own sources need version guards: TextAlignment has no Start or End, TextMeasureCacheKey has no pointScaleFactor, BaseTouch has no timeStamp. The first two are done.",
+        "GtkAnimationChoreographer has to be compiled out: there is no react/renderer/animationbackend, only react/renderer/animations.",
+        "ReactHost takes eleven parameters rather than twelve, takes TurboModuleManagerDelegates rather than TurboModuleProviders, and has no choreographer parameter. A second host construction path.",
+        "There is no websocket client. 0.81 ships IWebSocketClient with no implementation behind it, so no packager connection, no Fast Refresh, and no websockets for the app. Writing one is the largest piece."
+      ],
+      "verdict": "A permanent second code path through the host, for the version that would also be the most degraded. Three of the six are now handled, and the three that remain are the structural ones: ReactHost's constructor, the missing websocket client, and the choreographer. Worth doing only for a specific app that needs it, and kino would still stop at Expo afterwards."
+    }
+  ]
+}

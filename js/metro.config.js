@@ -37,11 +37,11 @@ const {getDefaultConfig, mergeConfig} = rnRequire('@react-native/metro-config');
 // Native modules that have no variant for them. Without it, bundling with
 // --platform linux produces a bundle that builds and then dies on
 // Platform.constants being undefined.
-// The built package: react-native-basalt is TypeScript, and requiring the
+// The built package: basalt-core is TypeScript, and requiring the
 // source here does not fail cleanly -- Node 24 loads the .ts sibling and
 // reports `Unexpected token 'export'`, which names neither the file nor the
 // reason. Run scripts/build_ts.sh; scripts/bundle.sh does it for you.
-const {withDesktopPlatforms} = require('../packages/react-native-basalt/dist/metro-config');
+const {withDesktopPlatforms} = require('../packages/basalt-core/dist/metro-config');
 
 // See extraNodeModules below. Named individually so that nothing else of the
 // app's is in reach, and quietly empty when BASALT_EXPO_APP is unset.
@@ -121,11 +121,11 @@ module.exports = withDesktopPlatforms(mergeConfig(getDefaultConfig(__dirname), {
     extraNodeModules: {
       react: path.join(rnDir, 'node_modules', 'react'),
       'react-native': path.join(rnDir, 'node_modules', 'react-native'),
-      'react-native-basalt': path.resolve(__dirname, '..', 'packages', 'react-native-basalt'),
+      'basalt-core': path.resolve(__dirname, '..', 'packages', 'basalt-core'),
       // The capability packages with JavaScript of their own, so a demo app can
       // import one the way an app that installed it would.
-      'react-native-basalt-subprocess': path.resolve(
-        __dirname, '..', 'packages', 'react-native-basalt-subprocess'),
+      'basalt-subprocess': path.resolve(
+        __dirname, '..', 'packages', 'basalt-subprocess'),
       // Expo, borrowed from an app that has it installed.
       //
       // This directory is not an npm package and nothing is installed into it,

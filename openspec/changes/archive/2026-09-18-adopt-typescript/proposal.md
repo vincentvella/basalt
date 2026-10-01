@@ -5,7 +5,7 @@
 The package ships no types. `package.json` sets no `types`, there is no `.d.ts`
 anywhere, and there was no `tsconfig.json` in the repository. `create-expo-app`
 gives you TypeScript, so the first line the intended user writes is
-`import {useWindow} from 'react-native-basalt'` and it resolves to `any`.
+`import {useWindow} from 'basalt-core'` and it resolves to `any`.
 
 That was drift rather than a decision -- nothing in `docs/DECISIONS.md` argued
 for JavaScript, which is where the argument would have been. It is now a

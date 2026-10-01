@@ -21,7 +21,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, Text, View} from 'react-native';
-import {DragSource, DropTarget} from 'react-native-basalt';
+import {DragSource, DropTarget} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 

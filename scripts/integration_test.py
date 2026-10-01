@@ -148,7 +148,7 @@ def check_output(stderr: str, returncode: int, allow_js_errors: bool = False) ->
 def click_with_xdotool(points: list[tuple[int, int]]) -> None:
     """Clicks through the X server, so GDK delivers the event itself."""
     window = subprocess.run(
-        ["xdotool", "search", "--name", "react-native-basalt"],
+        ["xdotool", "search", "--name", "basalt-core"],
         capture_output=True,
         text=True,
     ).stdout.split()
@@ -1723,7 +1723,7 @@ def test_share(bundle: Path) -> None:
     Two things were broken and only one of them was a missing module.
     `Share.js` branches on `Platform.OS` being exactly `android` or `ios` and
     rejects with "Unsupported platform" otherwise, so no desktop module was ever
-    reached; the replacement is in packages/react-native-basalt/src/overrides.
+    reached; the replacement is in packages/basalt-core/src/overrides.
 
     Run twice, because a share sheet has two answers and an app is expected to
     handle both. BASALT_TEST_DIALOG answers the picker without showing one --
@@ -1925,7 +1925,7 @@ def packaged_host(build: Path) -> Path:
          "process.stdout.write(packageApp({"
          "platform: 'macos', hostBinary: process.argv[2],"
          "outputDir: process.argv[3], projectRoot: process.argv[4]}).launchPath);",
-         str(REPO / "packages/react-native-basalt/dist/cli/packageApp.js"),
+         str(REPO / "packages/basalt-core/dist/cli/packageApp.js"),
          str(HOST), str(build / "app"), str(REPO / "js")],
         cwd=REPO, capture_output=True, text=True, timeout=120,
     )
@@ -2132,7 +2132,7 @@ def test_subprocess(bundle: Path) -> None:
 
     The command is written for both shells, and the variable is passed rather
     than written into it, which is the thing that makes one command string run on
-    all three desktops; see react-native-basalt-subprocess/native/Subprocess.h.
+    all three desktops; see basalt-subprocess/native/Subprocess.h.
     """
     app = bundle_app(bundle.parent, "subprocess")
     host = packaged_host(bundle.parent)

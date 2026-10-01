@@ -16,7 +16,7 @@
 #   scripts/metro.sh ../react-native
 #   BASALT_DEV=1 ./build/basalt_gtk build/main.jsbundle.js BasaltDemo
 #
-# Built for the `linux` platform: packages/react-native-basalt supplies the
+# Built for the `linux` platform: packages/basalt-core supplies the
 # Platform module and the Metro configuration that makes Metro resolve it, so
 # an app sees Platform.OS === 'linux' and can use .linux.js files.
 #
@@ -72,7 +72,7 @@ RN_DIR="$(cd "$RN_DIR" && pwd)"
   exit 1
 }
 
-# react-native-basalt's `main` points into its `dist/`, so it has to be built
+# basalt-core's `main` points into its `dist/`, so it has to be built
 # before Metro can resolve it. Cheap when it is already up to date.
 "$REPO_ROOT/scripts/build_ts.sh" "$RN_DIR" >/dev/null
 

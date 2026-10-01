@@ -129,7 +129,7 @@ and none of it is a missing half.
   renderer has exactly one special case, and a drawing effect that is an
   `ID2D1Brush` is it.
 - ~~**No `react-native run-windows`.**~~ Phase 47, and `run-macos` with it. All
-  three are one function in `react-native-basalt/cli/desktop.js` with four
+  three are one function in `basalt-core/cli/desktop.js` with four
   strings passed in, which is the same split the C++ half makes.
 - ~~**CI has no Windows runner.**~~ Added in phase 39, and small: the view layer
   builds with MSBuild and needs no display, no React Native and no bootstrap.

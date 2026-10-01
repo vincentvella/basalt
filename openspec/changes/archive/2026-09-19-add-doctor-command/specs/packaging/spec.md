@@ -51,7 +51,7 @@ asked for.
 
 - **WHEN** an app with no `basalt.desktops` is configured
 - **THEN** a host package for every supported desktop is added
-- **AND** each is pinned to the same version as `react-native-basalt`
+- **AND** each is pinned to the same version as `basalt-core`
 
 #### Scenario: An app that names one desktop
 

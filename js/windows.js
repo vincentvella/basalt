@@ -25,7 +25,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, Pressable, StyleSheet, Text, View} from 'react-native';
-import {Window, useCloseRequest} from 'react-native-basalt';
+import {Window, useCloseRequest} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 console.log(`windows supported: ${Window.isSupported}`);

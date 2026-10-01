@@ -124,7 +124,7 @@ skip() {
 # --- Unit suites -------------------------------------------------------------
 #
 # Each platform's own, which also carries core's: the tests in
-# packages/react-native-basalt/native/tests belong to neither toolkit, so they
+# packages/basalt-core/native/tests belong to neither toolkit, so they
 # are compiled into every suite rather than into one.
 for suite in basalt_gtk_tests basalt_appkit_tests basalt_win32_tests; do
   if [[ -x "$build/$suite" ]]; then
@@ -143,7 +143,7 @@ if command -v node >/dev/null 2>&1; then
   # names, so this checks all three wherever it runs.
   step "javascript build" "$root/scripts/build_ts.sh"
   step "cli" node --test scripts/test_cli.js
-  # react-native-basalt's JavaScript that needs no React Native to run.
+  # basalt-core's JavaScript that needs no React Native to run.
   step "platform javascript" node --test scripts/test_platform_js.js
   # A header reaching <cstdint> through windows.h took CI down for twenty-three
   # commits and nobody developing on Windows could see it. See the file.

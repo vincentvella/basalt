@@ -68,7 +68,7 @@ platforms=()
 # See compare_hosts.sh for why this is the only way one machine gets two hosts,
 # and for why every path handed to wsl.exe has conversion turned off.
 wsl_distro="${BASALT_COMPARE_WSL:-}"
-wsl_repo="${BASALT_COMPARE_WSL_REPO:-/root/react-native-basalt}"
+wsl_repo="${BASALT_COMPARE_WSL_REPO:-/root/basalt-core}"
 wsl_run() {
   MSYS2_ARG_CONV_EXCL='*' MSYS_NO_PATHCONV=1 wsl.exe -d "$wsl_distro" -u root -e "$@"
 }

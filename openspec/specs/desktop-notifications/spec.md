@@ -44,7 +44,7 @@ a Start Menu shortcut carrying it.
 ### Requirement: Notifications ship as their own package
 
 The system SHALL provide notifications in a package separate from
-`react-native-basalt`, which an app installs when it wants them.
+`basalt-core`, which an app installs when it wants them.
 
 Notifications are the shipped capability the packaging rule catches: the
 operating system asks the person for consent, which is the first of its three

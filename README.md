@@ -1,4 +1,4 @@
-# react-native-basalt
+# basalt-core
 
 React Native on the desktop -- Linux, macOS and Windows -- built on React
 Native's *own* C++ core rather than on a fork of it.
@@ -63,12 +63,12 @@ interface has exactly two pure-virtual methods — `executeMount` and
 
 Four npm packages, and the split is the architecture rather than tidiness.
 
-    packages/react-native-basalt          the shared half
-    packages/react-native-basalt-gtk      Linux, over GTK4
-    packages/react-native-basalt-appkit   macOS, over AppKit
-    packages/react-native-basalt-win32    Windows, over Win32 and Direct2D
+    packages/basalt-core          the shared half
+    packages/basalt-gtk      Linux, over GTK4
+    packages/basalt-appkit   macOS, over AppKit
+    packages/basalt-win32    Windows, over Win32 and Direct2D
 
-`react-native-basalt` is everything that is not about a toolkit: the JavaScript
+`basalt-core` is everything that is not about a toolkit: the JavaScript
 platform layer, the bundler, React Native's C++ core and Hermes, the Expo
 runtime, the core TurboModules, and Fabric's mutation walk. It builds and
 *links* with no toolkit at all, which is how that claim is kept honest rather
@@ -111,7 +111,7 @@ Inside the shared package, under `native/`:
     cli/                        The bundler, Metro, and the desktop run command
                                 the three platform packages name.
 
-`react-native-basalt-gtk`, under `native/`:
+`basalt-gtk`, under `native/`:
 
     gtk/RnView.h/.cpp           GTK4 widget layer. No RN dependency.
     gtk/GtkMountingManager.*    The GTK half of IMountingManager: making a widget,
@@ -136,9 +136,9 @@ Inside the shared package, under `native/`:
     gtk/demo_layout_gtk.cpp     Hand-written frames; no RN needed.
     gtk/mount_harness_gtk.cpp   Hand-built mutations; no JS runtime.
     cli/                        run-linux. Four strings; the command itself is
-                                react-native-basalt/cli/desktop.js.
+                                basalt-core/cli/desktop.js.
 
-`react-native-basalt-appkit`, under `native/`:
+`basalt-appkit`, under `native/`:
 
     appkit/RnAppKitView.h/.mm   AppKit view layer. Flipped, layer-backed.
     appkit/AppKitMountingManager.*  The AppKit half of IMountingManager: making a
@@ -167,7 +167,7 @@ Inside the shared package, under `native/`:
     appkit/mount_harness_appkit.mm  The same two transactions as GTK's.
     cli/                        run-macos, the same four strings.
 
-`react-native-basalt-win32`, under `native/`:
+`basalt-win32`, under `native/`:
 
     win32/RnWin32View.h/.cpp    Win32 view layer, painted with Direct2D. Not one
                                 HWND per view; see docs/DECISIONS.md.
@@ -463,7 +463,7 @@ both stock from npm, on a platform that forks neither.
 One command makes the change:
 
 ```
-npx react-native-basalt init
+npx basalt-core init
 ```
 
 It adds this package, a host package per desktop, and the two dev dependencies
@@ -478,7 +478,7 @@ when an app has none -- which a stock `create-expo-app` does not:
 
 ```js
 const {getDefaultConfig} = require('expo/metro-config');
-const {withDesktopPlatforms} = require('react-native-basalt/metro-config');
+const {withDesktopPlatforms} = require('basalt-core/metro-config');
 
 module.exports = withDesktopPlatforms(getDefaultConfig(__dirname));
 ```
@@ -497,7 +497,7 @@ that wants fewer says so in `app.json`:
 To find out whether a machine can build any of it:
 
 ```
-npx react-native-basalt doctor
+npx basalt-core doctor
 ```
 
 The same checks with writing off, plus the ones `init` has no fix for --
@@ -541,7 +541,7 @@ mount hook inert (phase 38).
 | `main` | supported, and where development happens |
 | everything else | refused, with a message saying so |
 
-`packages/react-native-basalt/supported-versions.json` is the source of truth,
+`packages/basalt-core/supported-versions.json` is the source of truth,
 and it pins a triple: this platform, a React Native, and the Hermes to build for
 it, chosen and tested together. Bootstrap reads it and stops in seconds on an
 unsupported version rather than failing three compile errors deep.
@@ -658,7 +658,7 @@ From an app, once a host binary exists:
     react-native run-windows
 
 One command with three names: everything a desktop run does is the same, so it
-is written once in `react-native-basalt/cli/desktop.js` and each platform
+is written once in `basalt-core/cli/desktop.js` and each platform
 package passes in four strings. It starts a packager if one is not running,
 launches the app, and stays attached. `--build` builds the host first, and
 without it the command says how to build one when it cannot find one.
@@ -744,7 +744,7 @@ which runs a script through both and diffs the tree each produced.
 
 ## The `linux`, `macos` and `windows` platforms
 
-`packages/react-native-basalt` is the JavaScript half: the `Platform` module and
+`packages/basalt-core` is the JavaScript half: the `Platform` module and
 the Metro configuration that makes Metro resolve it. With it, an app bundled
 with `--platform macos` sees `Platform.OS === 'macos'` and can use `.macos.js`
 files, in development and in a release build alike. The names match
@@ -753,7 +753,7 @@ react-native-macos and react-native-windows, so a library that already ships
 
 In an app's `metro.config.js`:
 
-    const {withDesktopPlatforms} = require('react-native-basalt/metro-config');
+    const {withDesktopPlatforms} = require('basalt-core/metro-config');
     module.exports = withDesktopPlatforms(config);
 
 `withLinuxPlatform` still exists and still enables only `linux`.

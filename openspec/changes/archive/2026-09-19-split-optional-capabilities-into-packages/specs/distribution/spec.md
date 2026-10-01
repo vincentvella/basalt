@@ -26,7 +26,7 @@ producing a host without it.
 
 ### Requirement: Core is the application's own surface
 
-The system SHALL keep in `react-native-basalt` the application's own surface --
+The system SHALL keep in `basalt-core` the application's own surface --
 its windows, menus, dialogs, title bar, components, input, and the APIs React
 Native itself exposes.
 
@@ -68,7 +68,7 @@ of offering one that does nothing.
 
 ### Requirement: Core builds with no capability package installed
 
-The system SHALL build `react-native-basalt` in an app that has installed none
+The system SHALL build `basalt-core` in an app that has installed none
 of them. Core SHALL NOT include a capability package's header or name its
 symbols; a package whose code is compiled into core SHALL also supply whatever
 a build with no platform needs in order to link.

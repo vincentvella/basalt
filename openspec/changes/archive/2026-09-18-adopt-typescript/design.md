@@ -29,7 +29,7 @@ output like everything else. The emitted filenames are what Metro selects by --
 is checked by bundling and asking what `Platform.OS` says.
 
 What they import cannot be typed and should not be. The
-`react-native-basalt/upstream/*` prefix is not a package: metro-config.ts turns
+`basalt-core/upstream/*` prefix is not a package: metro-config.ts turns
 it into an absolute path inside whichever React Native is being bundled, and
 behind it are React Native's internals at paths it reserves the right to move.
 `src/overrides/upstream.d.ts` declares the whole prefix as `any` in the

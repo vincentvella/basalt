@@ -14,9 +14,9 @@
   "dependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-basalt": "*",
-    "react-native-basalt-appkit": "*",
-    "react-native-basalt-gtk": "*",
-    "react-native-basalt-win32": "*"
+    "basalt-core": "*",
+    "basalt-appkit": "*",
+    "basalt-gtk": "*",
+    "basalt-win32": "*"
   }
 }

@@ -1,0 +1,26 @@
+{
+  "name": "basalt-appkit",
+  "version": "0.0.0-rc4",
+  "description": "The macOS view layer for basalt-core: an AppKit view layer, a Fabric mounting manager, and a host. Everything behind them is in basalt-core.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt-core.git",
+    "directory": "packages/basalt-appkit"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cli",
+    "native",
+    "react-native.config.js"
+  ],
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "basalt-core": "0.0.0-rc4"
+  }
+}

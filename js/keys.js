@@ -8,7 +8,7 @@
 // scenario most.
 import React, {useCallback, useMemo, useState} from 'react';
 import {AppRegistry, StyleSheet, Text, View} from 'react-native';
-import {KeyHandler} from 'react-native-basalt';
+import {KeyHandler} from 'basalt-core';
 
 function App() {
   const [pressed, setPressed] = useState([]);

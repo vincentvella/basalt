@@ -51,7 +51,7 @@ docs/TESTING.md rather than left for somebody to discover.
 ## 5. JavaScript and tests
 
 - [x] Expose the React API -- `<DropTarget>` -- and export it from
-      `react-native-basalt`
+      `basalt-core`
 - [x] Add a demo to `js/drop.js`: two targets, one inside the other, because
       the rule that can be wrong is which one is told
 - [x] Add `BASALT_TEST_DROP` on both hosts, and a scenario asserting the

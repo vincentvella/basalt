@@ -37,5 +37,5 @@ equivalent cannot replace it, whatever else it does.
   keys a view claims is policy and belongs in core; `NSEvent`, `GdkEvent` and
   `WM_KEYDOWN` are the hosts'.
 - Each host's key handling, which already exists for `<TextInput>` and for Tab.
-- `packages/react-native-basalt/src/KeyHandler.tsx`: the component apps use.
+- `packages/basalt-core/src/KeyHandler.tsx`: the component apps use.
 - `docs/backlog/input.md`: this entry stops being a decision.

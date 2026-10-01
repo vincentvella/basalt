@@ -30,11 +30,11 @@ if (!fs.existsSync(path.join(rnDir, 'node_modules', 'react-native'))) {
 const rnRequire = createRequire(path.join(rnDir, 'package.json'));
 const {getDefaultConfig, mergeConfig} = rnRequire('@react-native/metro-config');
 
-// The built package: react-native-basalt is TypeScript, and requiring the
+// The built package: basalt-core is TypeScript, and requiring the
 // source here does not fail cleanly -- Node 24 loads the .ts sibling and
 // reports `Unexpected token 'export'`, which names neither the file nor the
 // reason. Run scripts/build_ts.sh; scripts/bundle.sh does it for you.
-const {withDesktopPlatforms} = require('../../packages/react-native-basalt/dist/metro-config');
+const {withDesktopPlatforms} = require('../../packages/basalt-core/dist/metro-config');
 
 module.exports = withDesktopPlatforms(
   mergeConfig(getDefaultConfig(__dirname), {

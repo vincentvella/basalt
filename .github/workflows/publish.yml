@@ -89,9 +89,9 @@ jobs:
           [ -n "$tok" ] || { echo "no OIDC token"; exit 1; }
           echo "token: ${#tok} chars"
           bad=0
-          for p in react-native-basalt react-native-basalt-appkit \
-                   react-native-basalt-gtk react-native-basalt-notifications \
-                   react-native-basalt-subprocess react-native-basalt-win32; do
+          for p in basalt-core basalt-appkit \
+                   basalt-gtk basalt-notifications \
+                   basalt-subprocess basalt-win32; do
             out=$(curl -sS -w '\n%{http_code}' -X POST \
               -H "Authorization: Bearer $tok" \
               -H 'Content-Type: application/json' \
@@ -204,7 +204,7 @@ jobs:
         # Every path is written `./tarballs/...` and the leading `./` is
         # load-bearing. `npm publish` takes a package spec rather than a
         # filename, and a bare `a/b` is GitHub shorthand -- so
-        # `npm publish tarballs/react-native-basalt-0.0.0-rc2.tgz` refused with
+        # `npm publish tarballs/basalt-core-0.0.0-rc2.tgz` refused with
         # EALLOWGIT and "Refusing to fetch github:tarballs/...", having never
         # looked at the disk.
         run: |
@@ -250,10 +250,10 @@ jobs:
             # so a separate step to move it afterwards cannot work however it
             # authenticates. Every release here is a release candidate, so
             # `latest` is the tag that matters: it is what a plain
-            # `npm install react-native-basalt` resolves to.
+            # `npm install basalt-core` resolves to.
             npm publish "$1" --access public --tag latest
           }
-          core=$(ls ./tarballs/react-native-basalt-[0-9]*.tgz)
+          core=$(ls ./tarballs/basalt-core-[0-9]*.tgz)
           publish "$core"
           for tarball in ./tarballs/*.tgz; do
             [ "$tarball" = "$core" ] && continue

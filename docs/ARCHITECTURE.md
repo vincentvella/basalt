@@ -274,7 +274,7 @@ are documented in the project README.
 
 ### The JavaScript is built too
 
-`react-native-basalt` is TypeScript, and `main` points into its `dist/`. So
+`basalt-core` is TypeScript, and `main` points into its `dist/`. So
 nothing that bundles works in a fresh checkout until `scripts/build_ts.sh` has
 run -- `scripts/bundle.sh` runs it for you, and CI runs it before the Node
 suites on both runners, where it doubles as the type check.

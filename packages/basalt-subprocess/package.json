@@ -1,0 +1,36 @@
+{
+  "name": "basalt-subprocess",
+  "version": "0.0.0-rc4",
+  "description": "Running a command and watching its output, for basalt-core. Arbitrary code execution, so it ships separately from the core platform.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt-core.git",
+    "directory": "packages/basalt-subprocess"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "basalt": {
+    "native": "native/CMakeLists.txt"
+  },
+  "files": [
+    "dist",
+    "native",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "../../scripts/build_ts.sh",
+    "prepack": "../../scripts/build_ts.sh"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "basalt-core": "0.0.0-rc4"
+  }
+}

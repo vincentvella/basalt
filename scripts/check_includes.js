@@ -36,14 +36,14 @@ const REPO = path.resolve(__dirname, '..');
 
 // Where this project's own C++ lives. React Native's is not ours to police.
 const ROOTS = [
-  'packages/react-native-basalt/native/core',
-  'packages/react-native-basalt/native/tests',
-  'packages/react-native-basalt-gtk/native/gtk',
-  'packages/react-native-basalt-gtk/native/tests',
-  'packages/react-native-basalt-appkit/native/appkit',
-  'packages/react-native-basalt-appkit/native/tests',
-  'packages/react-native-basalt-win32/native/win32',
-  'packages/react-native-basalt-win32/native/tests',
+  'packages/basalt-core/native/core',
+  'packages/basalt-core/native/tests',
+  'packages/basalt-gtk/native/gtk',
+  'packages/basalt-gtk/native/tests',
+  'packages/basalt-appkit/native/appkit',
+  'packages/basalt-appkit/native/tests',
+  'packages/basalt-win32/native/win32',
+  'packages/basalt-win32/native/tests',
 ];
 
 /**

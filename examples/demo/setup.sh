@@ -37,10 +37,10 @@ ln -sfn "$RN_DIR/node_modules/react-native" "$HERE/node_modules/react-native"
 # All three even on a machine that can only run one of them, deliberately: a
 # command whose host does not exist says which paths it looked in and how to
 # build one, which is more useful than the command not existing.
-ln -sfn "$REPO_ROOT/packages/react-native-basalt" "$HERE/node_modules/react-native-basalt"
+ln -sfn "$REPO_ROOT/packages/basalt-core" "$HERE/node_modules/basalt-core"
 for platform in gtk appkit win32; do
-  ln -sfn "$REPO_ROOT/packages/react-native-basalt-$platform" \
-    "$HERE/node_modules/react-native-basalt-$platform"
+  ln -sfn "$REPO_ROOT/packages/basalt-core-$platform" \
+    "$HERE/node_modules/basalt-core-$platform"
 done
 
 # react-native's cli.js refuses to run unless it finds this in the *project's*
@@ -50,7 +50,7 @@ ln -sfn "$RN_DIR/node_modules/@react-native-community/cli" \
   "$HERE/node_modules/@react-native-community/cli"
 
 echo "==> linked react-native from $RN_DIR"
-echo "==> linked react-native-basalt and react-native-basalt-gtk from $REPO_ROOT/packages"
+echo "==> linked basalt-core and basalt-gtk from $REPO_ROOT/packages"
 echo
 echo "Now, from $HERE:"
 echo "  RN_DIR=$RN_DIR node node_modules/react-native/cli.js run-linux"

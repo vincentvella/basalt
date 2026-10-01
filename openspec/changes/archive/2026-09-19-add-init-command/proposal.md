@@ -15,7 +15,7 @@ person should not be asked to get right by hand.
 
 ## What Changes
 
-- `npx react-native-basalt init` configures an existing app to build for the
+- `npx basalt-core init` configures an existing app to build for the
   desktops this platform supports.
 - It is idempotent: running it on a configured app reports what is already
   right and changes nothing, so it is safe to re-run after an upgrade.

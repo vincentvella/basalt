@@ -108,7 +108,7 @@ done
 # scripts/wsl_setup.sh makes that checkout and builds it the way the Linux CI
 # job does.
 wsl_distro="${BASALT_COMPARE_WSL:-}"
-wsl_repo="${BASALT_COMPARE_WSL_REPO:-/root/react-native-basalt}"
+wsl_repo="${BASALT_COMPARE_WSL_REPO:-/root/basalt-core}"
 
 # Every argument handed to wsl.exe is a path *inside* the distro, and Git
 # Bash's MSYS runtime rewrites anything shaped like an absolute POSIX path on

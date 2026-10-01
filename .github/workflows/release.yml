@@ -45,7 +45,7 @@ jobs:
 
       - name: Compare
         # All four at once, and the platform packages' dependency on the shared
-        # one too: a gtk package at 0.2.0 that asks for react-native-basalt
+        # one too: a gtk package at 0.2.0 that asks for basalt-core
         # 0.1.0 installs, and runs against the wrong core.
         run: |
           node - "${GITHUB_REF_NAME#v}" <<'EOF'
@@ -57,9 +57,9 @@ jobs:
             if (manifest.version !== want) {
               problems.push(`${manifest.name} is ${manifest.version}`);
             }
-            const core = manifest.dependencies?.['react-native-basalt'];
+            const core = manifest.dependencies?.['basalt-core'];
             if (core !== undefined && core !== want) {
-              problems.push(`${manifest.name} depends on react-native-basalt ${core}`);
+              problems.push(`${manifest.name} depends on basalt-core ${core}`);
             }
           }
           if (problems.length) {
@@ -208,7 +208,7 @@ jobs:
 
       - name: Install the packages into it
         # All four in one install, so the platform packages' dependency on
-        # react-native-basalt is satisfied by its tarball and not looked up on
+        # basalt-core is satisfied by its tarball and not looked up on
         # the registry.
         working-directory: app
         run: npm install ../tarballs/*.tgz
@@ -225,7 +225,7 @@ jobs:
         # why the install below is separate and not a repeat.
         working-directory: app
         run: |
-          npx react-native-basalt init
+          npx basalt-core init
           npm install
 
       - name: Check it the way a person would
@@ -236,7 +236,7 @@ jobs:
         # host packages: every run-<desktop> command was missing and the build
         # step was the first thing to say so.
         working-directory: app
-        run: npx react-native-basalt doctor
+        run: npx basalt-core doctor
 
       - name: Start a display
         run: |

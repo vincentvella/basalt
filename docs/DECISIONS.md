@@ -538,7 +538,7 @@ published.
 repository. That was drift rather than a decision: nothing here argued for
 JavaScript, which is where the argument would have been. Meanwhile
 `create-expo-app` gives you TypeScript, so the first line the intended user
-writes is `import {useWindow} from 'react-native-basalt'`, and it resolves to
+writes is `import {useWindow} from 'basalt-core'`, and it resolves to
 `any`.
 
 JSDoc would have delivered types to consumers without a build. It was rejected
@@ -683,7 +683,7 @@ dropped on the way to JavaScript. Nothing failed and nothing was logged.
 A listener therefore belongs to the *set* of live modules, not to an instance:
 installed when the first appears, handed to one still alive when another goes,
 cleared only when the last does. `core/WindowsModule.cpp` is the worked example
-and `react-native-basalt-subprocess` follows it. The tempting middle answer — an
+and `basalt-subprocess` follows it. The tempting middle answer — an
 ownership guard, where the destructor clears only if it is the one that installed
 — was tried first and is wrong for the same reason: the installer is routinely
 the one that dies first.

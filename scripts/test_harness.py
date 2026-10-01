@@ -128,13 +128,13 @@ def main() -> int:
     # a C++ unit test cannot read portably. test_settle.cpp checks the list's
     # contents; this checks it is still the right list.
     repo = pathlib.Path(__file__).resolve().parent.parent
-    header = (repo / "packages/react-native-basalt/native/core/TestSettle.h").read_text()
+    header = (repo / "packages/basalt-core/native/core/TestSettle.h").read_text()
     listed = set(re.findall(r'"(BASALT_TEST_[A-Z_]+)"', header))
 
     hosts = [
-        "packages/react-native-basalt-gtk/native/gtk/main_gtk.cpp",
-        "packages/react-native-basalt-appkit/native/appkit/main_appkit.mm",
-        "packages/react-native-basalt-win32/native/win32/main_win32.cpp",
+        "packages/basalt-gtk/native/gtk/main_gtk.cpp",
+        "packages/basalt-appkit/native/appkit/main_appkit.mm",
+        "packages/basalt-win32/native/win32/main_win32.cpp",
     ]
     read_by_hosts = set()
     for host in hosts:
@@ -144,7 +144,7 @@ def main() -> int:
     # the hosts call scriptedKeyPresses(), which is the arrangement this file
     # keeps asking for everywhere else -- and which this check did not allow for
     # until it flagged it.
-    for source in sorted((repo / "packages/react-native-basalt/native/core").glob("*.h")):
+    for source in sorted((repo / "packages/basalt-core/native/core").glob("*.h")):
         if source.name == "TestSettle.h":
             continue  # the list itself
         read_by_hosts |= set(re.findall(r'"(BASALT_TEST_[A-Z_]+)"', source.read_text()))

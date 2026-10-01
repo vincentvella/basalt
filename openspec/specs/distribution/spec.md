@@ -6,7 +6,7 @@ Where a capability lives, and how it reaches the host binary.
 
 React Native shipped one package with everything in it and spent the decade
 since extracting the parts that did not belong. This capability is the
-decision made in advance instead: what `react-native-basalt` keeps, what ships
+decision made in advance instead: what `basalt-core` keeps, what ships
 beside it, and the one mechanism by which anything outside core gets compiled
 into an app's host.
 
@@ -43,7 +43,7 @@ producing a host without it.
 
 ### Requirement: Core is the application's own surface
 
-The system SHALL keep in `react-native-basalt` the application's own surface --
+The system SHALL keep in `basalt-core` the application's own surface --
 its windows, menus, dialogs, title bar, components, input, and the APIs React
 Native itself exposes.
 
@@ -85,7 +85,7 @@ of offering one that does nothing.
 
 ### Requirement: Core builds with no capability package installed
 
-The system SHALL build `react-native-basalt` in an app that has installed none
+The system SHALL build `basalt-core` in an app that has installed none
 of them. Core SHALL NOT include a capability package's header or name its
 symbols; a package whose code is compiled into core SHALL also supply whatever
 a build with no platform needs in order to link.

@@ -32,7 +32,7 @@
 
 ## 3. JavaScript and tests
 
-- [x] `useQuitRequest(handler)`, exported from `react-native-basalt`, with
+- [x] `useQuitRequest(handler)`, exported from `basalt-core`, with
       `quit()` beside it
 - [x] Ensure `BASALT_QUIT_AFTER_MS` bypasses the interception. It did not:
       that timer quits by calling `terminate:`, which arrives at the new

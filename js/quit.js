@@ -18,7 +18,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, Text, View} from 'react-native';
-import {useQuitRequest} from 'react-native-basalt';
+import {useQuitRequest} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 

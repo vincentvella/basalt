@@ -1,0 +1,43 @@
+{
+  "name": "basalt-core",
+  "version": "0.0.0-rc4",
+  "description": "React Native on the desktop, over React Native's own C++ core rather than a fork. The shared half: the platform module, the Metro configuration that resolves it, the bundler, and the C++ that is not about a toolkit.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt-core.git",
+    "directory": "packages/basalt-core"
+  },
+  "main": "dist/src/index.js",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./metro-config": "./dist/metro-config.js",
+    "./cli/bundleWithAssets": "./dist/cli/bundleWithAssets.js",
+    "./cli/desktop": "./dist/cli/desktop.js",
+    "./cli/metro": "./dist/cli/metro.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "native",
+    "metro-config.js",
+    "react-native.config.js",
+    "supported-versions.json"
+  ],
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.25.0"
+  },
+  "bin": {
+    "basalt": "dist/cli/basalt.js",
+    "basalt-bundle": "dist/cli/bundle-cli.js"
+  },
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "../../scripts/build_ts.sh",
+    "prepack": "../../scripts/build_ts.sh"
+  }
+}

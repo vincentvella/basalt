@@ -22,7 +22,7 @@ general: the CLI knows those three by name.
   capability.
 - Goal: any package can contribute native code to the host build, discovered
   rather than hardcoded.
-- Non-Goal: splitting the three host packages. `react-native-basalt-gtk`,
+- Non-Goal: splitting the three host packages. `basalt-gtk`,
   `-appkit` and `-win32` are the hosts; that boundary is already right.
 - Non-Goal: matching Electron's module list. Electron is a reference for what a
   desktop does, not for how a package is shaped.
@@ -109,7 +109,7 @@ with the host is a support problem nobody here wants yet.
 ## Risks / Trade-offs
 
 - More packages is more install friction, which is the cost `npx
-  react-native-basalt init` exists to absorb. If `init` does not add the
+  basalt-core init` exists to absorb. If `init` does not add the
   packages an app needs, the split is worse than not splitting.
 - A wrong boundary is harder to fix than no boundary, because moving twice is
   worse than moving once. This is why the rule is written down rather than
