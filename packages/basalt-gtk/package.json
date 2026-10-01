@@ -1,6 +1,6 @@
 {
   "name": "basalt-gtk",
-  "version": "0.0.0-rc4",
+  "version": "0.0.0-rc5",
   "description": "The Linux view layer for basalt-core: a GTK4 widget layer, a Fabric mounting manager, and a host. Everything behind them is in basalt-core.",
   "license": "MIT",
   "repository": {
@@ -21,6 +21,6 @@
     "react-native": "*"
   },
   "dependencies": {
-    "basalt-core": "0.0.0-rc4"
+    "basalt-core": "0.0.0-rc5"
   }
 }

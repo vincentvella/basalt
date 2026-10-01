@@ -1,6 +1,6 @@
 {
   "name": "basalt-core",
-  "version": "0.0.0-rc4",
+  "version": "0.0.0-rc5",
   "description": "React Native on the desktop, over React Native's own C++ core rather than a fork. The shared half: the platform module, the Metro configuration that resolves it, the bundler, and the C++ that is not about a toolkit.",
   "license": "MIT",
   "repository": {

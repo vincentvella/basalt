@@ -1,6 +1,6 @@
 {
   "name": "basalt-notifications",
-  "version": "0.0.0-rc4",
+  "version": "0.0.0-rc5",
   "description": "Desktop notifications for basalt-core. Permission-gated, so it ships separately from the core platform.",
   "license": "MIT",
   "repository": {
