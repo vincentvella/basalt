@@ -17,7 +17,12 @@ const VERBS: Readonly<Record<string, (argv: string[]) => number>> = {
   doctor: doctorMain,
 };
 
-const USAGE = `basalt-core <command> [directory]
+// The binary, not the package. They differ: the package had to be basalt-core
+// because the bare name was taken on npm, and bin names are a separate
+// namespace where it was not. The rename rewrote this string along with every
+// other mention of the old package name, and it is the one place that wanted
+// the command a person types.
+const USAGE = `basalt <command> [directory]
 
   init     configure an app to build for the desktop
   doctor   report what a build needs, changing nothing
