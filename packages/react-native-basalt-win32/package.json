@@ -1,6 +1,6 @@
 {
   "name": "react-native-basalt-win32",
-  "version": "0.0.0-rc3",
+  "version": "0.0.0-rc4",
   "description": "The Windows view layer for react-native-basalt: a Win32 and Direct2D view layer, a Fabric mounting manager, and a host. Everything behind them is in react-native-basalt.",
   "license": "MIT",
   "repository": {
@@ -21,6 +21,6 @@
     "react-native": "*"
   },
   "dependencies": {
-    "react-native-basalt": "0.0.0-rc3"
+    "react-native-basalt": "0.0.0-rc4"
   }
 }
