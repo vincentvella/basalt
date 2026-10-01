@@ -362,14 +362,26 @@ fi
 # as x86-64" -- a check that fires on correct output is worse than no check,
 # because the next person has to rule it out by hand. An object file has no
 # such ambiguity.
-FIRST=$(ar t "$DEST/libskia.a" 2>/dev/null | head -1)
+# `|| true` on the listing, which is load-bearing. libskia.a holds 1159
+# members, `head -1` closes the pipe after the first, `ar` dies of SIGPIPE,
+# and under `set -euo pipefail` that is exit 141 and the end of the script --
+# one line before the manifest is written. The nine archives were already
+# built and verified by then, so it failed having done all the work, silently,
+# and left behind output nothing could identify.
+FIRST=$(ar t "$DEST/libskia.a" 2>/dev/null | head -1 || true)
+# What `file` calls this architecture, which is not what `uname -m` calls it.
+case "$SKIA_ARCH" in
+  x86_64)  WANT="x86-64" ;;
+  aarch64) WANT="ARM aarch64" ;;
+  *)       WANT="$SKIA_ARCH" ;;
+esac
 if [ -n "$FIRST" ] && ar p "$DEST/libskia.a" "$FIRST" > "$WORK/.arch-probe.o" 2>/dev/null; then
-  ELF=$(file -b "$WORK/.arch-probe.o" | grep -c "x86-64\|x86_64" || true)
+  ELF=$(file -b "$WORK/.arch-probe.o" | grep -c "$WANT" || true)
   rm -f "$WORK/.arch-probe.o"
   if [ "${ELF:-0}" -gt 0 ]; then
-    note "ok   x86-64 objects"
+    note "ok   $WANT objects"
   else
-    note "warn $FIRST in libskia.a is not x86-64"
+    note "warn $FIRST in libskia.a is not $WANT"
   fi
 else
   note "warn could not read an object out of libskia.a to check its architecture"
