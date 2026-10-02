@@ -13,6 +13,12 @@ The whole suite is about a quarter of an hour per host, and most changes want
 one part of it. Everything here narrows, and each narrows the same way: a
 substring of a name, and `--list` to see the names.
 
+`make test`, `make test-quick` and `make test-list` are the first three of
+these with the arguments filled in, and `make` is what passes `BASALT_BUILD_DIR`
+through so that a run against a second build tree tests the tree it built.
+Everything below still works on its own, and is what you want as soon as you
+are narrowing to one thing.
+
 ```bash
 scripts/test_all.sh --list                  # the step names
 scripts/test_all.sh --only unit             # steps whose name contains "unit"

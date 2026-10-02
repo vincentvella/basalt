@@ -28,8 +28,8 @@ const FeatureList: FeatureItem[] = [
     title: "React Native's own core",
     description: (
       <>
-        The same C++ that runs on iOS and Android — Fabric, Yoga, the shadow
-        tree — with a host per desktop written against its toolkit. Your
+        The same C++ that runs on iOS and Android (Fabric, Yoga, the shadow
+        tree) with a host per desktop written against its toolkit. Your
         components, props and layout behave the way they already do.
       </>
     ),

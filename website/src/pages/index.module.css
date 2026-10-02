@@ -28,7 +28,15 @@
 .heroCode {
   max-width: 24rem;
   margin: 0 auto 2rem;
-  text-align: left;
+}
+
+/* Centred in its box, under a centred title and tagline. The copy button is
+   positioned against the right edge and does not take part in the text flow,
+   so centring the line centres it in the box rather than in what is left of
+   it. Reaching inside Docusaurus's own markup, which is why :global is here:
+   the <pre> carries the padding the line sits in. */
+.heroCode :global(pre) {
+  text-align: center;
 }
 
 .heroButtons {

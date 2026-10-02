@@ -287,6 +287,16 @@ From inside this repo. The `../` puts React Native alongside it, which is where
 have, absolute or relative:
 
     git clone --depth 1 https://github.com/react/react-native ../react-native
+    make bootstrap
+    make build
+
+`make` is the front door; `make help` lists the rest. Each target is the script
+or cmake line below it, with the arguments filled in, and anything here can
+still be run directly. Point it elsewhere with `make build RN_DIR=../rn-0.87
+BUILD=build-087`.
+
+The same two steps by hand:
+
     scripts/bootstrap.sh ../react-native
 
     cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
@@ -635,6 +645,12 @@ See `docs/BACKLOG.md` for the per-component detail.
 
 ## Testing
 
+    make test                           # everything this machine can run
+    make test-quick                     # unit suites only
+    make test-list                      # what the steps are called
+
+One suite at a time, which is what most changes want:
+
     ./build/basalt_gtk_tests            # unit, Linux
     ./build/basalt_appkit_tests         # unit, on a Mac
     ./build/basalt_win32_tests.exe      # unit, on Windows
@@ -669,12 +685,12 @@ three platform packages even on a machine that can only run one of them, so
 
 Directly, without the CLI. Build a bundle once, then run:
 
-    scripts/bundle.sh ../react-native      # production; see below
+    make bundle                            # production; see below
     ./build/basalt_gtk
 
 Or against Metro, which is how to develop, and the only way to get Fast Refresh:
 
-    scripts/metro.sh ../react-native          # one terminal
+    make metro                           # one terminal
     BASALT_DEV=1 ./build/basalt_gtk      # another
 
 `scripts/bundle.sh` writes a production bundle. A `--dev` one loads and runs
