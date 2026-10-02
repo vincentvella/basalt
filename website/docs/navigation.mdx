@@ -5,106 +5,71 @@ title: Navigation
 
 # Navigation
 
-Both **react-navigation** and **expo-router** work on the desktop, including
-real navigation between screens. One thing has to be set up by hand first, and
-without it you get a window that renders nothing at all.
+**react-navigation** and **expo-router** both work, with no change to your app.
 
-:::warning[A blank window is almost always the safe area]
-`SafeAreaProvider` renders `null` until it has insets, and it gets them from a
-native module Basalt does not have yet. With nothing to wait for it waits
-forever, so every screen underneath it stays unmounted and the window is empty.
-No error is logged, which is what makes it hard to place.
+```bash
+npm install @react-navigation/native @react-navigation/native-stack \
+            react-native-screens react-native-safe-area-context
+```
+
+Screens render, `navigation.navigate` pushes, and a press on a `<Link>` routes.
+Verified by running both on a desktop host and reading the mounted view tree.
+
+:::tip[On macOS and Linux, turn screens on]
+```js
+import {enableScreens} from 'react-native-screens';
+enableScreens();
+```
+
+react-native-screens enables itself only for `ios`, `android` and `windows`,
+and that list is in the library rather than something Basalt can set. Without
+this, a native stack quietly falls back to plain views: it still works, it just
+stops using the screen machinery. Basalt's Windows host needs nothing, because
+it reports `Platform.OS === 'windows'` and is already on the list.
 :::
-
-## The fix
-
-Give the provider its metrics so it never asks:
-
-```jsx
-import {SafeAreaProvider} from 'react-native-safe-area-context';
-
-const metrics = {
-  frame: {x: 0, y: 0, width: 900, height: 700},
-  insets: {top: 0, left: 0, right: 0, bottom: 0},
-};
-
-<SafeAreaProvider initialMetrics={metrics}>
-  {/* navigators, screens, the rest of the app */}
-</SafeAreaProvider>
-```
-
-Zero insets are correct here: a desktop window has no notch and no home
-indicator, so there is nothing to inset for.
-
-### With expo-router
-
-expo-router mounts its own `SafeAreaProvider` above your routes, so there is no
-`_layout` high enough to wrap. Replace the entry point instead. In
-`package.json` set `"main": "index.js"`, and write:
-
-```jsx
-import '@expo/metro-runtime';
-import * as React from 'react';
-import {SafeAreaProvider} from 'react-native-safe-area-context';
-import {App} from 'expo-router/build/qualified-entry';
-import {renderRootComponent} from 'expo-router/build/renderRootComponent';
-
-const metrics = {
-  frame: {x: 0, y: 0, width: 900, height: 700},
-  insets: {top: 0, left: 0, right: 0, bottom: 0},
-};
-
-renderRootComponent(() => (
-  <SafeAreaProvider initialMetrics={metrics}>
-    <App />
-  </SafeAreaProvider>
-));
-```
-
-That is `expo-router/entry-classic` with one wrapper added. An outer provider
-that already holds metrics lets the inner one resolve immediately instead of
-waiting.
 
 ## What works
 
-Verified by running both on the AppKit host and reading the mounted view tree,
-not by reasoning about it:
-
 | | |
 | --- | --- |
-| `@react-navigation/native` with `native-stack` | screens render, `navigation.navigate` pushes, a real press on a `Pressable` routes |
-| expo-router | file routes under `app/` render, and a `<Link href="/details">` routes |
-| `expo-router`'s `_layout` with `<Stack />` | works |
+| `@react-navigation/native` with `native-stack` | screens render and navigate |
+| expo-router | file routes under `app/`, `<Link>` routing, the stock entry point |
+| `SafeAreaProvider`, `useSafeAreaInsets` | real insets, which are zero on a desktop |
+| `initialWindowMetrics` | the window the app started with |
+
+Insets are zero on every desktop, which is the correct answer rather than a
+placeholder: a window has no notch and no home indicator. If a desktop ever
+draws over its own content, a title bar on top of the client area for instance,
+that is where a non-zero inset would come from.
 
 ## What does not, yet
 
-- **No header.** The native stack's header mounts at `900x0`, so titles and a
-  back button are absent. Give screens `headerShown: false` and draw your own,
-  or accept the gap.
-- **Screens are not culled.** `react-native-screens` manages visibility through
-  its `RNSModule`, which is missing, so a pushed screen is added to the tree
-  without the one underneath being detached. The top screen covers the one
-  below and it looks right, but both are mounted, and both are visible to
-  accessibility.
-- **Tabs resolve to their Android implementation.** `TabsHost` and `TabsScreen`
-  ship no desktop file, so the bundler falls back, and the bundle says so as it
-  builds. Untested here.
+- **No header.** `RNSScreenStackHeaderConfig` mounts and takes no space, so a
+  native stack has no title and no back button. Pass `headerShown: false` and
+  draw your own.
+- **A covered screen stays mounted.** Pushing a second screen leaves the first
+  in the view tree at full size, underneath. It looks right, because the top
+  screen covers it, but both are measured and both reach accessibility.
+- **Tabs are untested.** `TabsHost` and `TabsScreen` ship no desktop file, so
+  the bundler falls back to their Android implementations and says so as it
+  builds.
 
-The two missing native modules are `RNCSafeAreaContext` and `RNSModule`.
-Neither is hard in principle and both are tracked in the repository's backlog.
+The covered-screen one is worth explaining, because the obvious fix is not the
+fix. `RNSScreen` has an `activityState` prop, and Basalt hides a screen whose
+`activityState` is 0. A native stack never sets it to 0: react-native-screens
+throws `activityState cannot be decreased in NativeStack`, because on iOS the
+navigation controller is what covers the lower screen, not the prop. Measured
+rather than assumed, every screen in a pushed stack reports `activityState=2`.
+So closing this means teaching `RNSScreenStack` to show only its top child in
+each host's mounting layer, not another prop.
 
 ## Versions
 
-expo-router needs the React Native that its Expo SDK is built against, which
-for SDK 57 is **0.86.3**. Installing expo-router beside React Native 0.87 fails
-at bundle time, in Expo's own Metro config, looking for a
-`react-native/rn-get-polyfills` that 0.87 no longer ships. That is upstream of
-Basalt and not something this platform can paper over.
+expo-router needs the React Native its Expo SDK targets, which for SDK 57 is
+**0.86.3**. Against 0.87 the bundle fails inside Expo's own Metro config
+looking for a `react-native/rn-get-polyfills` that 0.87 no longer ships. That
+is upstream of Basalt.
 
-React Native 0.86 is supported here, with the Fast Refresh caveat in
-[Getting started](/docs/getting-started#supported-react-native-versions).
-
-Also make sure `@react-native/assets-registry` resolves at the top level of
-`node_modules` at the version your React Native wants. expo-router ships PNGs,
-and the copy nested inside `react-native` is not reachable from expo-router's
-own resolution path.
+`@react-native/assets-registry` also has to resolve at the top level of
+`node_modules`, at the version your React Native wants. expo-router ships PNGs
+and cannot reach the copy nested inside `react-native`.

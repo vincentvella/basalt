@@ -3,6 +3,8 @@
 
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
+#include "SafeAreaComponent.h"
+#include "ScreensComponent.h"
 
 #include <react/renderer/componentregistry/ComponentDescriptorProviderRegistry.h>
 #include <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>
@@ -24,6 +26,24 @@ ComponentRegistryFactory getDefaultComponentRegistryFactory() {
     static auto providerRegistry = []() {
       auto registry = std::make_shared<ComponentDescriptorProviderRegistry>();
       registry->add(concreteComponentDescriptorProvider<ViewComponentDescriptor>());
+      // react-native-safe-area-context's provider. Registered on every
+      // platform, like expo-image's above: the descriptor is ordinary Fabric
+      // C++ and an app that never mounts one pays a registry entry. Without
+      // it the provider renders its children never, not badly. See
+      // core/SafeAreaComponent.h.
+      registry->add(concreteComponentDescriptorProvider<SafeAreaProviderComponentDescriptor>());
+      // react-native-screens. RNSScreen carries activityState, which is what
+      // hides the screen behind the one in front; the rest are containers that
+      // only need their names known, since an unregistered name becomes
+      // UnimplementedNativeView and carries none of the layout props. See
+      // core/ScreensComponent.h.
+      registry->add(concreteComponentDescriptorProvider<RNSScreenComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<RNSScreenStackComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<RNSScreenContainerComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<RNSScreenNavigationContainerComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<RNSScreenContentWrapperComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<RNSScreenStackHeaderConfigComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<RNSScreenStackHeaderSubviewComponentDescriptor>());
       // Text is three descriptors, and only one of them mounts. <Text> becomes
       // a Text node, its string a RawText node, and the outermost <Text>
       // becomes a Paragraph that folds the whole subtree into a single

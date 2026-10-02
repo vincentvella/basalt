@@ -79,33 +79,59 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   CLI loads as plain CommonJS by path convention; they are checked with
   `@ts-check` rather than compiled.
 
-## Navigation: two native modules stand between here and it working unaided
+## Navigation: done, except for the stack itself
 
-Measured on 2026-10-01 by running react-navigation and expo-router on the
-AppKit host and reading the mounted tree, not by reasoning about the registry.
+Implemented 2026-10-02 in `core/SafeAreaComponent.{h,cpp}` and
+`core/ScreensComponent.{h,cpp}`, registered on all three hosts. Verified by
+running react-navigation and expo-router on the AppKit host and reading the
+mounted tree: both render and both navigate with no change to the application.
 
-Both libraries already work, and both need the app to pass `initialMetrics` to
-`SafeAreaProvider` first. Without it the window renders nothing and logs no
-error, which is the worst shape a failure can take: safe-area-context returns
-`null` until it has insets, and with no native module behind it, it never does.
+What was wrong, and is not any more:
 
-What is missing:
+- **`RNCSafeAreaProvider`** was the whole blank-window failure.
+  `SafeAreaProvider` renders null until it has insets, and the only thing that
+  delivers them is this component's `onInsetsChange`. The event is emitted from
+  the shadow node's `layout()` rather than from a mounting peer, because the
+  insets are zero on every desktop and the frame is the node's own layout, so
+  there was nothing left for a host to contribute.
+- **`RNCSafeAreaContext`** answers `initialWindowMetrics`, fed by each host
+  through `basalt::setInitialWindowFrame` from its own `kInitialWidth`.
+- **`RNSModule`** exists and is empty, which is exactly what its TypeScript spec
+  is: `interface Spec extends TurboModule {}`. The library only asks whether it
+  is there.
+- **`RNSScreen` and the container components** are registered, and a screen
+  whose `activityState` is 0 is given `display: none`, which takes it out of
+  layout on every host at once.
 
-- **`RNCSafeAreaContext`**, a TurboModule returning the window frame and the
-  insets. On a desktop the insets are zero, so this is close to a constant plus
-  a resize event. It is the one that turns a blank window into a working app
-  with no change to the application, and it is the higher value of the two by
-  a distance.
-- **`RNSModule`**, react-native-screens' own module. Without it a pushed screen
-  is added to the tree and the one beneath it is never detached. The top screen
-  covers the lower one so it looks right, but both are mounted and both reach
-  accessibility. The native stack's header also mounts at `900x0`, so there is
-  no title and no back button.
+### What is left, and why the obvious fix is the wrong one
 
-`TabsHost` and `TabsScreen` resolve to their Android implementations through
-the platform fallback, and are untested.
+A covered screen in a native stack is still mounted at full size under the one
+in front. The temptation is to lean harder on `activityState`, and that does not
+work: react-native-screens throws `activityState cannot be decreased in
+NativeStack`, because on iOS the thing that hides the lower screen is
+`UINavigationController`, not the prop. Measured with a `ScreenContext` spy,
+every screen in a pushed stack reports `activityState=2`, including the covered
+one.
 
-Also worth recording, because it cost an hour: expo-router has to be installed
-against the React Native its Expo SDK targets. SDK 57 targets 0.86.3, and
-against 0.87 the bundle fails inside Expo's Metro config looking for
-`react-native/rn-get-polyfills`, which 0.87 does not ship. Not ours to fix.
+So closing it means `RNSScreenStack` showing only its top child, in each host's
+mounting manager. Three implementations, and the only one of the three that can
+be tested from a Mac is AppKit. The visible result today is correct, since the
+top screen covers the lower one; what is wrong is that both are measured and
+both reach accessibility.
+
+The header is the other half of the same component. `RNSScreenStackHeaderConfig`
+is registered as a plain view, so it mounts and takes no space, which is what it
+already did. A real one is a toolkit header per platform rather than a prop
+translation.
+
+### Two things an app still has to do
+
+- **`enableScreens()` on macOS and Linux.** react-native-screens gates itself on
+  `Platform.OS === 'ios' || 'android' || 'windows'`, in its own `core.ts`.
+  Windows is on that list and so Basalt's Windows host needs nothing, which is a
+  dividend of having kept react-native-windows' platform name. Worth an upstream
+  patch adding `macos` and `linux`; forking the file through a Metro override
+  would work and is not worth owning.
+- **Match expo-router to its SDK's React Native.** SDK 57 targets 0.86.3, and
+  against 0.87 the bundle fails inside Expo's Metro config looking for
+  `react-native/rn-get-polyfills`, which 0.87 does not ship. Not ours to fix.

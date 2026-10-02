@@ -82,6 +82,8 @@
 #include "ExpoRuntime.h"
 #include "TurboModuleProxy.h"
 #include "GestureHandlerModule.h"
+#include "SafeAreaComponent.h"
+#include "ScreensComponent.h"
 #include "PlatformConstantsModule.h"
 #include "PlatformServices.h"
 #include "ReanimatedModule.h"
@@ -489,6 +491,12 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         }
         if (name == basalt::DesktopAppModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppModule>(jsInvoker);
+        }
+        if (name == basalt::DesktopSafeAreaModule::kModuleName) {
+          return std::make_shared<basalt::DesktopSafeAreaModule>(jsInvoker);
+        }
+        if (name == basalt::DesktopScreensModule::kModuleName) {
+          return std::make_shared<basalt::DesktopScreensModule>(jsInvoker);
         }
         if (name == basalt::DesktopAppearanceModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppearanceModule>(jsInvoker);
@@ -1993,6 +2001,11 @@ std::vector<facebook::react::SurfaceId> hostWindows() {
 } // namespace basalt
 
 int main(int argc, char **argv) {
+
+  // What `initialWindowMetrics` answers, before any JavaScript asks. The window
+  // is this size until something resizes it, and the provider's own layout
+  // corrects it after that. See core/SafeAreaComponent.h.
+  basalt::setInitialWindowFrame(kInitialWidth, kInitialHeight);
   // glog, before anything logs through it.
   //
   // Without this every run opens with "WARNING: Logging before

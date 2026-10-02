@@ -229,6 +229,8 @@ if(DEFINED RN_DIR)
     core/DebuggingOverlay.cpp
     core/DevBundle.cpp
     core/ExpoImageComponent.cpp
+    core/SafeAreaComponent.cpp
+    core/ScreensComponent.cpp
     core/GestureHandlerModule.cpp
     core/Gestures.cpp
     # Hover: the pointer-event path React Native only has on Android.
