@@ -25,7 +25,7 @@ const config: Config = {
 
   // Canonical URLs and the sitemap are built from this, so it has to be the
   // address the site is actually served from, not an aspiration.
-  url: 'https://basalt-snowy.vercel.app',
+  url: 'https://basaltjs.dev',
   baseUrl: '/',
 
   organizationName: 'vincentvella',

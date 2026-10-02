@@ -8,6 +8,7 @@
     "url": "git+https://github.com/vincentvella/basalt.git",
     "directory": "packages/basalt-win32"
   },
+  "homepage": "https://basaltjs.dev",
   "exports": {
     "./package.json": "./package.json"
   },

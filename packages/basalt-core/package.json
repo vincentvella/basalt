@@ -8,6 +8,7 @@
     "url": "git+https://github.com/vincentvella/basalt.git",
     "directory": "packages/basalt-core"
   },
+  "homepage": "https://basaltjs.dev",
   "main": "dist/src/index.js",
   "exports": {
     ".": "./dist/src/index.js",

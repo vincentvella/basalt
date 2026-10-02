@@ -1,23 +1,58 @@
-/**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
- */
-
-.heroBanner {
-  padding: 4rem 0;
+.hero {
+  padding: 5rem 0 4rem;
   text-align: center;
-  position: relative;
-  overflow: hidden;
+  /* Basalt is dark rock. The gradient reads as a cooled face of it rather
+     than as a brand colour, and holds up in both colour modes. */
+  background: linear-gradient(
+    180deg,
+    var(--ifm-background-surface-color) 0%,
+    var(--ifm-background-color) 100%
+  );
+  border-bottom: 1px solid var(--ifm-toc-border-color);
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+.heroTitle {
+  font-size: 4rem;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.5rem;
 }
 
-.buttons {
+.heroTagline {
+  font-size: 1.4rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 2rem;
+}
+
+/* The install line is the one thing most visitors came for, so it gets to be
+   wide enough to read and no wider. */
+.heroCode {
+  max-width: 24rem;
+  margin: 0 auto 2rem;
+  text-align: left;
+}
+
+.heroButtons {
   display: flex;
-  align-items: center;
+  gap: 1rem;
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+.heroStatus {
+  margin: 2.5rem auto 0;
+  max-width: 34rem;
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+@media screen and (max-width: 768px) {
+  .hero {
+    padding: 3rem 1rem 2.5rem;
+  }
+  .heroTitle {
+    font-size: 2.75rem;
+  }
+  .heroTagline {
+    font-size: 1.15rem;
+  }
 }

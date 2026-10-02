@@ -1,30 +1,42 @@
 /**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+ * Global styles. Infima ships with the classic theme and is what the variables
+ * below feed.
+ *
+ * The palette is a steel blue rather than the template's green: basalt is dark
+ * rock, and the site should not look like an unedited Docusaurus scaffold.
+ * Both ramps are walked around a base lightness the way Docusaurus's own
+ * palette tool does, so Infima's hover and active states stay in proportion.
  */
-
-/* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
+  --ifm-color-primary: #39699d;
+  --ifm-color-primary-dark: #335f8e;
+  --ifm-color-primary-darker: #315a87;
+  --ifm-color-primary-darkest: #2a4e74;
+  --ifm-color-primary-light: #3e73ac;
+  --ifm-color-primary-lighter: #4178b4;
+  --ifm-color-primary-lightest: #4f85bf;
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
+/* Lifted, not the same blue: the light ramp does not have the contrast to sit
+   on a dark background. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
+  --ifm-color-primary: #81acda;
+  --ifm-color-primary-dark: #71a2d6;
+  --ifm-color-primary-darker: #699cd3;
+  --ifm-color-primary-darkest: #558fce;
+  --ifm-color-primary-light: #90b6df;
+  --ifm-color-primary-lighter: #98bbe1;
+  --ifm-color-primary-lightest: #acc8e7;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* The repository docs are read in place and were written for GitHub, where a
+   table is as wide as it needs to be. Several list every platform across the
+   top, which overflows the content column rather than shrinking. */
+.markdown table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
 }

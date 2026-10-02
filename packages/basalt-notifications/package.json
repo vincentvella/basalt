@@ -8,6 +8,7 @@
     "url": "git+https://github.com/vincentvella/basalt.git",
     "directory": "packages/basalt-notifications"
   },
+  "homepage": "https://basaltjs.dev",
   "basalt": {
     "native": "native/CMakeLists.txt"
   },
