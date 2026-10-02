@@ -1,0 +1,180 @@
+---
+sidebar_position: 2
+title: Getting started
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Getting started
+
+Basalt adds a desktop to a React Native app that already exists. It does not
+create one — `create-expo-app` does that, and the division is deliberate: this
+is a platform you add, not a way to start a project.
+
+## Before you start
+
+Install the toolchain for the desktop you are building on. You only need the
+one you are building for; the build configures the host for the platform it is
+running on and ignores the others.
+
+<Tabs groupId="os" queryString>
+<TabItem value="linux" label="Linux">
+
+```bash
+sudo apt install cmake ninja-build libgtk-4-dev
+```
+
+A C++20 compiler, and GTK 4's development headers. `pkg-config --exists gtk4`
+is the check `doctor` runs.
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+xcode-select --install
+brew install cmake ninja
+```
+
+The macOS SDK comes from the Command Line Tools; `doctor` asks
+`xcrun --show-sdk-version` for it.
+
+</TabItem>
+<TabItem value="windows" label="Windows">
+
+Install CMake and Ninja, set up [vcpkg](https://vcpkg.io), and point
+`VCPKG_INSTALLATION_ROOT` at it. You also need **`clang-cl`**, not just `cl`:
+Hermes uses `__builtin_expect`, which MSVC's compiler does not have.
+
+</TabItem>
+</Tabs>
+
+:::tip[Check before you build]
+`npx basalt doctor` asks all of these questions in seconds and changes
+nothing. A first build compiles Hermes and React Native's C++ from source and
+takes tens of minutes, and without this every missing prerequisite surfaces as
+a CMake error twenty minutes in.
+:::
+
+## Configure the app
+
+From the root of your app:
+
+```bash
+npx basalt init
+```
+
+It is idempotent, and it reports every step as one of four things:
+
+```
+  = dependencies     dependencies are already present
+  + scripts          added scripts: linux, macos, windows
+  + metro config     wrote metro.config.js, on expo/metro-config
+  ! desktops         app.json's "basalt.desktops" names bsd, which is not a
+                     desktop this platform has. Expected any of linux, macos,
+                     windows; using all of them
+```
+
+`=` already right, `+` changed by this run, `!` needs you, `?` could not be
+asked from here. An app it cannot recognise is refused before anything is
+written — a half-configured app fails later and further from the cause.
+
+### What it changes
+
+- **`package.json`** gains `basalt-core` and a host package per desktop as
+  dependencies, at the same version because they share a C++ ABI with the host. It
+  also adds `@react-native/metro-config` and `@react-native-community/cli` as
+  dev dependencies, which an Expo app does not have because `expo` is its CLI.
+- **`scripts`** gains `linux`, `macos` and `windows`, each running
+  `react-native run-<platform>`. Any script you already defined is left alone.
+- **`metro.config.js`** is wrapped in `withDesktopPlatforms`, or written if you
+  have none — which is what a stock Expo app looks like. It starts from
+  `expo/metro-config` in an Expo app and React Native's own otherwise.
+
+All three desktops are configured by default, because `package.json` is
+committed: which desktops an app builds for is a property of the project, not
+of whoever happened to run the command. Narrow it in
+[`app.json`](/docs/reference/app-json) if you want fewer. The cost of the
+others is source that is never compiled.
+
+Then install, and run:
+
+```bash
+npm install
+npm run linux     # or macos, or windows
+```
+
+## Building
+
+The run command does not build by default — it starts your app against a
+Metro packager, which is what you want on the second and every later run. Pass
+`--build` for the first one:
+
+```bash
+npm run linux -- --build
+```
+
+The build lands in `.basalt/build`. Add `--jobs` to control parallelism.
+
+The binary is turned into a real application on every run, not only for
+release: on macOS `NSBundle.mainBundle` is derived from where the executable
+sits, so a host run straight out of a build directory has no bundle identifier
+and cannot post a notification, while the same code inside a `.app` can.
+Packaging only for release would mean a feature that works in production and
+not in development.
+
+### Release
+
+```bash
+npm run linux -- --mode release --build
+```
+
+`release` runs a production bundle from disk instead of connecting to Metro. A
+`--dev` bundle is not a development mode and will not load.
+
+## Supported React Native versions
+
+| React Native | Status |
+| --- | --- |
+| **0.87** | Supported. What CI pins, and verified on 0.87.1. |
+| **0.86** | Supported, verified on 0.86.3 — but **no Fast Refresh**. |
+| 0.83 – 0.85 | Never built or tested. Nothing suggests they would not work; nothing has checked. |
+| 0.82 and older | Attempted and deliberately stopped. Needs a second host construction path and a websocket client React Native does not ship there. |
+
+`doctor` checks the installed version against this list and reports rather than
+refuses.
+
+Hermes is pinned alongside React Native rather than derived from it, because
+Basalt builds it from source — Meta publishes a prebuilt Hermes for Windows,
+macOS, iOS and Android, and none for Linux. That single difference is where
+every version problem here comes from.
+
+## Packages
+
+| package | what it is |
+| --- | --- |
+| `basalt-core` | the platform, the CLI and the shared C++ |
+| `basalt-gtk` | the Linux host, and the `run-linux` command |
+| `basalt-appkit` | the macOS host, and `run-macos` |
+| `basalt-win32` | the Windows host, and `run-windows` |
+| `basalt-subprocess` | running a command and watching its output |
+| `basalt-notifications` | desktop notifications |
+
+Each host package carries its own run command, because React Native's CLI reads
+a `react-native.config.js` out of every dependency. An app with only
+`basalt-appkit` installed never sees a command it could not have used — and an
+app that installed `basalt-core` alone has no desktop commands at all.
+
+## If something goes wrong
+
+**`run-linux` is not a command.** The host package is not installed. Run your
+package manager, or `npx basalt init` if it was never a dependency.
+
+**Metro cannot find a module, or fails on `@babel/runtime`.** Usually a linked
+checkout or a monorepo, where Metro resolves Basalt's files by their real path
+and then looks for dependencies from there. `withDesktopPlatforms` names the
+project's `node_modules` explicitly to cover this, so check your Metro config
+is actually wrapped — `doctor` reports that.
+
+**The build fails naming a path, deep in CMake.** Run `npx basalt doctor`. It
+encodes the same prerequisite list the build needs and CI installs.

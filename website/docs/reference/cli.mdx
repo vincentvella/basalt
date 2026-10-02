@@ -1,0 +1,150 @@
+---
+sidebar_position: 1
+title: CLI
+---
+
+# CLI reference
+
+Two kinds of command. `basalt` is a binary you run with `npx`, because before
+it runs Basalt is not a dependency yet and React Native's CLI has no config to
+read. The run commands are React Native CLI commands, registered by the host
+packages.
+
+## `basalt`
+
+```
+basalt <command> [directory]
+
+  init     configure an app to build for the desktop
+  doctor   report what a build needs, changing nothing
+```
+
+`directory` defaults to the working directory. The binary is `basalt`; the
+package is `basalt-core`, because the bare name was taken on npm and bin names
+are a separate namespace where it was not.
+
+### `basalt init`
+
+```bash
+npx basalt init [directory]
+```
+
+Configures an app that exists. Idempotent — running it twice is safe and says
+so. It writes `package.json` and `metro.config.js`; see
+[what it changes](/docs/getting-started#what-it-changes).
+
+Exits `1` if the directory is not an app it recognises, or if any step needs
+doing by hand. `0` otherwise, including when there was nothing to do.
+
+### `basalt doctor`
+
+```bash
+npx basalt doctor [directory]
+```
+
+`init` with its hands behind its back — the same steps, reported the same way,
+writing nothing — plus the checks `init` has no fix for, which are the
+expensive ones:
+
+- every host package the app asked for is actually installed
+- the installed React Native is one Basalt supports
+- `cmake` and `ninja` are on `PATH`
+- and, for **this machine's** desktop only: GTK 4's development headers on
+  Linux, the macOS SDK and `clang` on macOS, `VCPKG_INSTALLATION_ROOT` and
+  `clang-cl` on Windows
+
+It will not claim a desktop it cannot see. Whether GTK's headers are installed
+is not a question a Mac can answer, so those report as `?` with the reason
+rather than as passing.
+
+Exits `1` when something is blocked, `0` otherwise. A step `init` *would*
+change is not a failure: an app that has never been configured is not a broken
+machine.
+
+#### Step markers
+
+| | |
+| --- | --- |
+| `=` | already right |
+| `+` | this run changed it, or `init` would |
+| `!` | somebody has to do this |
+| `?` | could not be asked from here |
+
+## `react-native run-linux`, `run-macos`, `run-windows`
+
+Each comes from its host package — `basalt-gtk`, `basalt-appkit`,
+`basalt-win32` — so an app sees only the commands it could have used. `init`
+adds an npm script per desktop, so `npm run linux` is the same thing.
+
+**Builds nothing by default** and runs your app against a packager. Pass
+`--build` for a first run, or after changing native code.
+
+| option | default | |
+| --- | --- | --- |
+| `--port <number>` | `8081` | the port Metro is or should be on |
+| `--mode <string>` | `dev` | `dev` to run against Metro, `release` to run a bundle |
+| `--no-packager` | | do not start Metro, and do not check for one |
+| `--build` | | build the host before running it, into `.basalt/build` |
+| `--jobs <number>` | | parallelism for `--build` |
+| `--host-binary <path>` | | the host executable to run, if it is not somewhere obvious |
+| `--module <string>` | | the `AppRegistry` name to start, if it is not `app.json`'s |
+| `--bundle <path>` | `build/main.jsbundle.js` | where the release bundle is written and read |
+| `--entry-file <path>` | `index.js` | the app entry point |
+
+Through an npm script, options need `--` first:
+
+```bash
+npm run linux -- --build --jobs 8
+```
+
+The host binaries are `basalt_gtk`, `basalt_appkit` and `basalt_win32`. That is
+what shows in `ps` and in a crash report, rather than your app's name, which is
+deliberate.
+
+## `basalt-bundle`
+
+For apps that cannot use React Native's CLI. An Expo app has `expo` as its CLI,
+which does not know this platform, and Metro's own `build` emits no assets.
+This is the missing command: one bundle, its assets beside it, ready for the
+host to load.
+
+```bash
+npx basalt-bundle --platform linux --bundle-output build/main.jsbundle.js
+```
+
+| option | default |
+| --- | --- |
+| `--platform <name>` | `linux` |
+| `--project-root <path>` | the working directory |
+| `--entry-file <path>` | `index.js` |
+| `--bundle-output <path>` | |
+| `--assets-dest <path>` | |
+| `--config <path>` | |
+| `--dev <bool>` | `false` |
+| `--minify <bool>` | |
+
+`--dev false` is the default on purpose: a development bundle on disk is not a
+development mode and the host will not load one.
+
+## Metro configuration
+
+```js
+const {withDesktopPlatforms} = require('basalt-core/metro-config');
+
+module.exports = withDesktopPlatforms(config, options);
+```
+
+`init` writes this for you. `options` is optional:
+
+| | default | |
+| --- | --- | --- |
+| `platforms` | `['linux', 'macos', 'windows']` | which desktops to enable |
+| `devServerPlatform` | the first enabled | which one a dev-server request with no `app=` is assumed to be |
+| `platformFallbacks` | | what to fall back to for a module with no desktop implementation |
+
+The wrapper adds the platforms to Metro's resolver, redirects React Native's
+self-importing deep-import shims to their Android siblings — these platforms
+report `PlatformConstants` from C++ and drive the same components Android's
+JavaScript drives, so Android's implementation is the one that matches what is
+actually implemented — and adds its own directory to `watchFolders`, because
+Metro will not read a file it is not watching and this package hands it files.

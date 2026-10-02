@@ -1,6 +1,9 @@
 import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
-/** The user-facing half. Mostly stubs for now; the content is the next job. */
+/**
+ * The user-facing half, for people building an app. The repository's own docs
+ * are a second instance with its own sidebar; see sidebarsContributing.ts.
+ */
 const sidebars: SidebarsConfig = {
   docs: [
     'intro',
@@ -8,7 +11,8 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Reference',
-      items: ['reference/cli', 'reference/app-json'],
+      collapsed: false,
+      items: ['reference/cli', 'reference/app-json', 'reference/api'],
     },
   ],
 };

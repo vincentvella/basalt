@@ -1,0 +1,132 @@
+---
+sidebar_position: 2
+title: app.json
+---
+
+# app.json
+
+Basalt reads what your app already declares and only needs its own keys where
+there is nothing to read. Everything below is optional.
+
+```json
+{
+  "expo": {
+    "name": "Kino",
+    "slug": "kino",
+    "scheme": "kino",
+    "ios": {"bundleIdentifier": "com.example.kino"}
+  },
+  "basalt": {
+    "desktops": ["linux", "macos"]
+  }
+}
+```
+
+The `basalt` key is used rather than Expo's `platforms`: a bare React Native
+app does not have one, and it is Expo's to define rather than Basalt's to
+borrow.
+
+## `basalt.desktops`
+
+Which desktops the app targets. Defaults to all three.
+
+```json
+{"basalt": {"desktops": ["macos"]}}
+```
+
+Valid entries are `linux`, `macos` and `windows`. It decides which host
+packages `init` adds, which ones `doctor` checks are installed, and whether
+`doctor` bothers checking this machine's own toolchain — on a Mac, with
+`["linux"]`, the macOS checks report `?` with the reason.
+
+A value that is not a list of names, or that names something else, is
+**reported and ignored** — `init` and `doctor` print it as a blocked step and
+carry on with all three. Refusing would leave the app configured for nothing,
+and the mistake is one field.
+
+## `basalt.identifier`
+
+The reverse-DNS bundle identifier, used for the macOS `Info.plist`, the Linux
+`.desktop` file and the Windows application identity. It is what lets the app
+post a notification, own its Dock icon and appear by name in the switcher.
+
+Taken from the first of these that exists:
+
+1. `basalt.identifier`
+2. `expo.ios.bundleIdentifier`
+3. `expo.android.package`
+4. `com.basalt.<slug>`
+
+So an Expo app that already has an iOS bundle identifier needs nothing here.
+The last resort is deliberately visible in the string: an app shipping as
+`com.basalt.something` can tell that nobody chose it.
+
+## `basalt.scheme`
+
+Custom URL schemes the app registers, as a string or a list of them. On macOS
+these become `CFBundleURLTypes`; on Linux, `x-scheme-handler/` entries so a
+link opens the app.
+
+```json
+{"basalt": {"scheme": ["kino", "kino-dev"]}}
+```
+
+:::note[Expo's `scheme` wins here]
+Unlike `identifier`, where `basalt.identifier` takes precedence,
+`expo.scheme` is read **first** and `basalt.scheme` is the fallback. If you
+have both, the Expo one is what ships.
+:::
+
+## What else is read, and from where
+
+Basalt never invents these beyond the last column.
+
+| | read from, in order | fallback |
+| --- | --- | --- |
+| display name | `expo.name`, `displayName`, `name`, `package.json`'s `name` | `App` |
+| slug | `expo.slug`, `app.json`'s `name`, `package.json`'s `name` | `app` |
+| version | `expo.version`, `app.json`'s `version`, `package.json`'s `version` | `1.0.0` |
+
+An Expo config wins where there is one, because it is read through
+`expo/config` and may be a function; `app.json` is the plain file.
+
+## `basalt.native`, in a package
+
+Not an app.json key — this one goes in the `package.json` of a **package** that
+ships native code for Basalt:
+
+```json
+{
+  "name": "my-native-thing",
+  "basalt": {"native": "native/CMakeLists.txt"}
+}
+```
+
+Any direct dependency of the app that declares it gets its CMake contributed to
+the host build. This is how `basalt-subprocess` and `basalt-notifications`
+work, and it means Basalt does not keep a list of their names.
+
+Two rules worth knowing:
+
+- Only the app's **own** dependencies are scanned, not everything in
+  `node_modules`. A transitive dependency contributing C++ to your binary
+  without you asking is not a thing to make easy.
+- A package that declares the key and does not have the file is a **hard
+  error**, not a warning. A host built without native code it was promised
+  fails later and further away.
+
+### Your app's own native code
+
+An app can contribute C++ without publishing a package. A directory under
+`modules/` with a `native/CMakeLists.txt` in it is picked up:
+
+```
+modules/
+  my-thing/
+    native/CMakeLists.txt
+```
+
+Presence is the declaration, because a local Expo module has no `package.json`
+to declare it in — which is the same way its Apple half is declared. This is
+the same `modules/` directory Expo's autolinking already looks in, so the
+desktop half sits beside the iOS and Android halves of the same module.
