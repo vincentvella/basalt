@@ -8,9 +8,28 @@ name: CI
 #
 # That machine is now a Windows box, which is why the whole Windows stack is
 # built and tested here too. macOS is not, and neither is anything that is only
-# worth its cost before a release -- building from nothing with no caches,
+# worth its cost before a release: building from nothing with no caches,
 # installing the packed packages into a fresh app, the MSBuild generator. That
 # is .github/workflows/release.yml.
+#
+# ## Why these steps say `make`
+#
+# The Linux and macOS jobs invoke the Makefile rather than the scripts and cmake
+# lines behind it, so that what CI runs and what a person runs are the same text
+# rather than two copies of it that drift. `scripts/test_all.sh` was written
+# because that drift had already happened once: the order CI ran things in
+# existed only in this file, and running everything locally meant reading YAML
+# and retyping it.
+#
+# The Windows job does not, and that is deliberate rather than unfinished. Its
+# steps are PowerShell, its configure needs clang-cl and RelWithDebInfo, and
+# `make` is not something a windows runner is guaranteed to have. A target that
+# existed only to be wrong on one platform would be worse than the four explicit
+# lines it replaced.
+#
+# What stays a direct call either way is anything CI-specific with no reason to
+# exist outside it: `scripts/check_ccache.py` guards a cache this file
+# configures, and the `node --test` suites take no arguments worth hiding.
 #
 # ## Caches
 #
@@ -199,7 +218,7 @@ jobs:
         id: bootstrap
         run: |
           ccache --zero-stats
-          BUILD_JOBS=$(nproc) scripts/bootstrap.sh react-native-src
+          BUILD_JOBS=$(nproc) make bootstrap RN_DIR=react-native-src
           # A run that rebuilds Hermes is a run whose cache key is wrong, and
           # the only symptom otherwise is that CI is slow.
           du -sh third_party react-native-src/node_modules
@@ -223,15 +242,12 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DRN_DIR=react-native-src/packages/react-native
+          make configure RN_DIR=react-native-src
 
       - name: Build
         id: build
         run: |
-          cmake --build build -j "$(nproc)"
+          make build RN_DIR=react-native-src
           ccache --show-stats
           scripts/check_ccache.py
 
@@ -263,7 +279,7 @@ jobs:
         # so nothing below can require it until this has run. It is also the
         # type check: `noEmitOnError` is set, so a type that has stopped
         # describing the code fails here rather than misleading a reader.
-        run: ./scripts/build_ts.sh
+        run: make ts RN_DIR=react-native-src
 
       - name: CLI tests
         # Once per job, not once per shard: these read the same files and
@@ -313,7 +329,7 @@ jobs:
         run: node scripts/check_includes.js
 
       - name: Bundle the demo
-        run: scripts/bundle.sh react-native-src --prod
+        run: make bundle RN_DIR=react-native-src
 
       - name: End-to-end tests
         # xdotool is installed, so this runs in `real` input mode: the pointer
@@ -349,7 +365,7 @@ jobs:
           # This drops the edit, not the scenario: everything before it is the
           # host's own dev-mode code and works here. See docs/TESTING.md.
           BASALT_SKIP_FAST_REFRESH: "1"
-        run: scripts/integration_test.py --shard ${{ matrix.shard }}/3
+        run: make e2e SHARD=${{ matrix.shard }}/3
 
       - name: Save the widget tree on failure
         if: failure()
@@ -498,7 +514,7 @@ jobs:
 
       - name: Bootstrap
         id: bootstrap
-        run: BUILD_JOBS=$(sysctl -n hw.ncpu) scripts/bootstrap.sh react-native-src
+        run: BUILD_JOBS=$(sysctl -n hw.ncpu) make bootstrap RN_DIR=react-native-src
 
       - name: Save third_party
         if: steps.bootstrap.outcome == 'success' && steps.third-party.outputs.cache-hit != 'true'
@@ -524,10 +540,7 @@ jobs:
         # is never written restores in 0 seconds and saves in 0 seconds.
         run: |
           ccache --zero-stats
-          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DRN_DIR=react-native-src/packages/react-native
-          cmake --build build -j "$(sysctl -n hw.ncpu)"
+          make build RN_DIR=react-native-src
           ccache --show-stats
           python3 scripts/check_ccache.py
 
@@ -543,7 +556,7 @@ jobs:
         run: ./build/basalt_appkit_tests
 
       - name: Build the JavaScript packages
-        run: ./scripts/build_ts.sh
+        run: make ts RN_DIR=react-native-src
 
       - name: CLI tests
         # Once per job, not once per shard: these read the same files and
@@ -554,7 +567,7 @@ jobs:
 
 
       - name: Bundle the demo
-        run: scripts/bundle.sh react-native-src --prod --platform macos
+        run: make bundle RN_DIR=react-native-src PLATFORM=macos
 
       - name: End-to-end tests
         env:
@@ -564,7 +577,7 @@ jobs:
           # DevSettings, and a bundle served by Metro rather than read off disk
           # -- runs here. See docs/TESTING.md.
           BASALT_SKIP_FAST_REFRESH: "1"
-        run: python3 scripts/integration_test.py --platform macos --shard ${{ matrix.shard }}/3
+        run: make e2e PLATFORM=macos SHARD=${{ matrix.shard }}/3
 
       - name: GTK and AppKit, compared
         # Every app in js/, through both hosts on this one runner -- the check
@@ -572,7 +585,7 @@ jobs:
         # job can make because no other has both.
         env:
           BASALT_COMPARE_SHARD: ${{ matrix.shard }}/3
-        run: scripts/compare_all.sh
+        run: make compare
 
       - uses: actions/upload-artifact@v7
         if: failure()

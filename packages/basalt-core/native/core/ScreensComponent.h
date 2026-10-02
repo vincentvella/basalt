@@ -40,6 +40,7 @@
 #include <react/renderer/components/view/ViewEventEmitter.h>
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
+#include <react/renderer/core/LayoutContext.h>
 
 namespace facebook::react {
 
@@ -55,6 +56,12 @@ class RNSScreenProps final : public ViewProps {
   // 0 inactive, 1 transitioning, 2 active, and -1 for "the library is not
   // managing this one", which is its own default and has to stay visible.
   float activityState{-1.0f};
+
+  // Whether the screen beneath this one shows through it. True for the
+  // `transparentModal` presentations and false for everything else, which is
+  // what decides how far down the stack hides. Parsed from `stackPresentation`
+  // rather than kept as the string, because that is the only question asked.
+  bool seeThrough{false};
 };
 
 using RNSScreenShadowNode =
@@ -71,7 +78,6 @@ using RNSScreenComponentDescriptor = ConcreteComponentDescriptor<RNSScreenShadow
       ConcreteViewShadowNode<Symbol##ComponentName, ViewProps, ViewEventEmitter>; \
   using Symbol##ComponentDescriptor = ConcreteComponentDescriptor<Symbol##ShadowNode>;
 
-BASALT_SCREENS_VIEW(RNSScreenStack)
 BASALT_SCREENS_VIEW(RNSScreenContainer)
 BASALT_SCREENS_VIEW(RNSScreenNavigationContainer)
 BASALT_SCREENS_VIEW(RNSScreenContentWrapper)
@@ -79,6 +85,39 @@ BASALT_SCREENS_VIEW(RNSScreenStackHeaderConfig)
 BASALT_SCREENS_VIEW(RNSScreenStackHeaderSubview)
 
 #undef BASALT_SCREENS_VIEW
+
+extern const char RNSScreenStackComponentName[];
+
+// The stack, which shows one screen and covers the rest.
+//
+// A native stack renders every screen it has pushed and expects the platform to
+// show the top one. On iOS that is UINavigationController; `activityState` is
+// not the signal, and measuring it is what established that: react-native-screens
+// throws `activityState cannot be decreased in NativeStack`, and every screen in
+// a pushed stack reports 2, the covered ones included.
+//
+// So the stack does it, after layout, by giving every screen below the topmost
+// opaque one `DisplayType::None`. All three mounting managers already hide a
+// view on exactly that, so this is one implementation rather than three, and a
+// hidden widget is out of the accessibility tree on each of them for free.
+//
+// What this does not do is skip the layout. Yoga has already measured the
+// covered screens by the time `layout()` can see which is on top, and the only
+// way to get in front of that would be for a screen to know its own position in
+// the stack, which it does not. The cost is measuring a subtree that is not
+// shown; the thing that was actually wrong, two screens mounted and both
+// reaching accessibility, is fixed.
+class RNSScreenStackShadowNode final
+    : public ConcreteViewShadowNode<RNSScreenStackComponentName, ViewProps,
+                                    ViewEventEmitter> {
+ public:
+  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+
+  void layout(LayoutContext layoutContext) override;
+};
+
+using RNSScreenStackComponentDescriptor =
+    ConcreteComponentDescriptor<RNSScreenStackShadowNode>;
 
 } // namespace facebook::react
 

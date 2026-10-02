@@ -3922,6 +3922,67 @@ def test_window_close_request(bundle: Path) -> None:
         raise Failure(f"the app's own window closed after refusing to:\n{tree}")
 
 
+def test_screen_stack(bundle: Path) -> None:
+    """A stack shows its top screen and hides what is under it.
+
+    react-navigation's native stack renders every screen it has pushed and
+    leaves it to the platform to show one. On iOS that is
+    UINavigationController. There is no equivalent here, so
+    RNSScreenStackShadowNode does it: every screen below the topmost opaque one
+    is given `DisplayType::None` after layout, which all three mounting
+    managers already turn into a hidden widget.
+
+    `activityState` is deliberately 2 on all three, because that is what a real
+    native stack sends. It never drops to 0 there, react-native-screens throws
+    `activityState cannot be decreased in NativeStack` if it would, and a
+    version of this that keyed on the prop passed while doing nothing.
+
+    js/screens.js puts a transparent modal on top, so one run checks both
+    halves: a see-through screen covers nothing and the opaque one under it
+    stays visible, while everything under *that* is hidden.
+    """
+    app = bundle_app(bundle.parent, "screens")
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env = dict(os.environ)
+        env["BASALT_DUMP_TREE"] = str(dump)
+        env["BASALT_QUIT_AFTER_MS"] = "4000"
+        result = subprocess.run(
+            [str(HOST), str(app), "BasaltScreens"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=64,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        tree = dump.read_text() if dump.exists() else ""
+
+    def line_for(label: str) -> str:
+        for line in tree.split("\n"):
+            if f'text="{label} screen"' in line:
+                return line
+        raise AssertionError(f"no {label} screen in the tree:\n{tree}")
+
+    # The text node is inside the screen, so the screen is the line above its
+    # own text. Asserting on the text line itself would pass whatever the
+    # screen did, since a hidden parent does not mark its children.
+    lines = tree.split("\n")
+    def screen_above(label: str) -> str:
+        index = lines.index(line_for(label))
+        assert index > 0, f"{label} screen has no parent line"
+        return lines[index - 1]
+
+    assert "hidden" in screen_above("bottom"), (
+        "the bottom screen is covered by an opaque screen and should be "
+        f"hidden:\n{tree}"
+    )
+    assert "hidden" not in screen_above("middle"), (
+        f"the middle screen is the topmost opaque one and should show:\n{tree}"
+    )
+    assert "hidden" not in screen_above("top"), (
+        f"the top screen should always show:\n{tree}"
+    )
+
+
 SCENARIOS = [
     ("initial render", test_initial_render),
     ("scrollToEnd, and a tap that bubbles from a label", test_scroll_to_end),
@@ -3942,6 +4003,8 @@ SCENARIOS = [
     ("an Expo app's fetch works rather than naming a module it has not got", test_expo_fetch),
     ("ActivityIndicator, Switch, Modal and RefreshControl mount and answer",
      test_controls),
+    ("a screen stack shows its top screen and hides what is under it",
+     test_screen_stack),
     ("the native file dialogs answer with a path, or with a cancel",
      test_file_dialogs),
     ("scrollTo({animated: true}) moves rather than jumps", test_animated_scroll),

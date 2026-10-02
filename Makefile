@@ -36,6 +36,13 @@ JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
 # choice.
 PLATFORM ?= $(shell uname -s | sed 's/Darwin/macos/;s/Linux/linux/')
 
+# One of N shards of the end-to-end suite, as `I/N`. Empty runs the whole
+# suite, which is what a person wants; CI sets it per job.
+SHARD ?=
+ifneq ($(SHARD),)
+SHARD_ARG := --shard $(SHARD)
+endif
+
 # clang on both, because docs/DECISIONS.md says GCC is not supported and
 # Hermes needs clang-cl rather than cl on Windows.
 CC_NAME ?= clang
@@ -122,7 +129,7 @@ test-list: ## Print the step names test_all.sh knows
 
 .PHONY: e2e
 e2e: ## The end-to-end suite, against whichever host is built
-	python3 scripts/integration_test.py --platform $(PLATFORM) --build-dir $(BUILD)
+	python3 scripts/integration_test.py --platform $(PLATFORM) --build-dir $(BUILD) $(SHARD_ARG)
 
 .PHONY: compare
 compare: ## Run every demo app through every host that is built

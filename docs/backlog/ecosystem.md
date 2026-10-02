@@ -103,35 +103,57 @@ What was wrong, and is not any more:
   whose `activityState` is 0 is given `display: none`, which takes it out of
   layout on every host at once.
 
-### What is left, and why the obvious fix is the wrong one
+### The stack, done 2026-10-02
 
-A covered screen in a native stack is still mounted at full size under the one
-in front. The temptation is to lean harder on `activityState`, and that does not
-work: react-native-screens throws `activityState cannot be decreased in
-NativeStack`, because on iOS the thing that hides the lower screen is
-`UINavigationController`, not the prop. Measured with a `ScreenContext` spy,
-every screen in a pushed stack reports `activityState=2`, including the covered
-one.
+`RNSScreenStackShadowNode::layout` gives every screen below the topmost opaque
+one `DisplayType::None`, which all three mounting managers already turn into a
+hidden widget and which therefore takes it out of accessibility on each of them.
+A transparent modal covers nothing, so the search for the topmost opaque screen
+walks past one; `stackPresentation` is parsed for that and nothing else.
 
-So closing it means `RNSScreenStack` showing only its top child, in each host's
-mounting manager. Three implementations, and the only one of the three that can
-be tested from a Mac is AppKit. The visible result today is correct, since the
-top screen covers the lower one; what is wrong is that both are measured and
-both reach accessibility.
+Done in the shadow node rather than in three mounting managers because the only
+inputs are the child list and one prop, and RN's own
+`YogaLayoutableShadowNode::layout` already writes children's metrics through
+`ensureUnsealed()`, so there was a sanctioned place to do it. Verified on both
+the AppKit and GTK hosts from the same code, by `js/screens.js` and the
+"a screen stack shows its top screen" scenario.
 
-The header is the other half of the same component. `RNSScreenStackHeaderConfig`
-is registered as a plain view, so it mounts and takes no space, which is what it
-already did. A real one is a toolkit header per platform rather than a prop
-translation.
+The route that looks right and is not: `activityState`. Basalt hides a screen
+whose `activityState` is 0, which is correct and, in a native stack, never
+happens. react-native-screens throws `activityState cannot be decreased in
+NativeStack`, and a `ScreenContext` spy shows every screen in a pushed stack
+reporting 2, the covered one included.
+
+What this does not do is skip the layout. Yoga has measured the covered screens
+before `layout()` can see which is on top, and getting in front of that would
+need a screen to know its own position in the stack. The cost is measuring a
+subtree that is not shown.
+
+The header is still missing. `RNSScreenStackHeaderConfig` mounts as a plain view
+and takes no space, so a native stack has no title and no back button. That one
+is a real toolkit header per platform rather than a prop translation.
 
 ### Two things an app still has to do
 
-- **`enableScreens()` on macOS and Linux.** react-native-screens gates itself on
-  `Platform.OS === 'ios' || 'android' || 'windows'`, in its own `core.ts`.
-  Windows is on that list and so Basalt's Windows host needs nothing, which is a
-  dividend of having kept react-native-windows' platform name. Worth an upstream
-  patch adding `macos` and `linux`; forking the file through a Metro override
-  would work and is not worth owning.
+- **Nothing, on Windows. On macOS and Linux, wait for upstream.**
+  react-native-screens decides whether to use its native components at all with
+
+  ```ts
+  export const isNativePlatformSupported =
+    Platform.OS === 'ios' || Platform.OS === 'android' || Platform.OS === 'windows';
+  ```
+
+  a const in its own `core.ts`, and `Screen` renders natively only when it is
+  true. Basalt's Windows host reports `windows`, so it is on that list and gets
+  all of the above today, which is a dividend of having kept
+  react-native-windows' platform name. On the other two the library renders
+  plain views and `enableScreens()` does not change it, because that function
+  sets a different flag.
+
+  The fix is one line upstream. Forking `core.ts` through a Metro override would
+  work, and metro-config.ts argues against exactly that: the library fallback
+  "cannot be a list of names". Owning a third-party module's gate is not a thing
+  to start doing for one library.
 - **Match expo-router to its SDK's React Native.** SDK 57 targets 0.86.3, and
   against 0.87 the bundle fails inside Expo's Metro config looking for
   `react-native/rn-get-polyfills`, which 0.87 does not ship. Not ours to fix.

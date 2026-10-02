@@ -15,17 +15,24 @@ npm install @react-navigation/native @react-navigation/native-stack \
 Screens render, `navigation.navigate` pushes, and a press on a `<Link>` routes.
 Verified by running both on a desktop host and reading the mounted view tree.
 
-:::tip[On macOS and Linux, turn screens on]
+:::warning[Screen stacking works on Windows only, for now]
+Basalt implements react-native-screens' components, and a stack correctly shows
+its top screen and hides what is under it. Whether your app reaches that code is
+the library's decision, not Basalt's:
+
 ```js
-import {enableScreens} from 'react-native-screens';
-enableScreens();
+// react-native-screens/src/core.ts
+export const isNativePlatformSupported =
+  Platform.OS === 'ios' || Platform.OS === 'android' || Platform.OS === 'windows';
 ```
 
-react-native-screens enables itself only for `ios`, `android` and `windows`,
-and that list is in the library rather than something Basalt can set. Without
-this, a native stack quietly falls back to plain views: it still works, it just
-stops using the screen machinery. Basalt's Windows host needs nothing, because
-it reports `Platform.OS === 'windows'` and is already on the list.
+That is a const, and `Screen` renders its native component only when it is true.
+Basalt's Windows host reports `windows`, so it is on the list and gets the
+behaviour today. On `macos` and `linux` the library renders plain views instead,
+`enableScreens()` does not change it, and every pushed screen stays mounted.
+
+The fix is one line upstream, adding `'macos'` and `'linux'` to that list. Until
+then the only visible consequence is the one below.
 :::
 
 ## What works
@@ -47,21 +54,27 @@ that is where a non-zero inset would come from.
 - **No header.** `RNSScreenStackHeaderConfig` mounts and takes no space, so a
   native stack has no title and no back button. Pass `headerShown: false` and
   draw your own.
-- **A covered screen stays mounted.** Pushing a second screen leaves the first
-  in the view tree at full size, underneath. It looks right, because the top
-  screen covers it, but both are measured and both reach accessibility.
+- **A covered screen stays mounted on macOS and Linux.** Pushing a second
+  screen leaves the first in the view tree at full size, underneath. It looks
+  right, because the top screen covers it, but both are measured and both reach
+  accessibility. Windows does not have this, for the reason above.
 - **Tabs are untested.** `TabsHost` and `TabsScreen` ship no desktop file, so
   the bundler falls back to their Android implementations and says so as it
   builds.
 
-The covered-screen one is worth explaining, because the obvious fix is not the
-fix. `RNSScreen` has an `activityState` prop, and Basalt hides a screen whose
-`activityState` is 0. A native stack never sets it to 0: react-native-screens
-throws `activityState cannot be decreased in NativeStack`, because on iOS the
-navigation controller is what covers the lower screen, not the prop. Measured
-rather than assumed, every screen in a pushed stack reports `activityState=2`.
-So closing this means teaching `RNSScreenStack` to show only its top child in
-each host's mounting layer, not another prop.
+That one has a history worth recording, because the obvious fix is not the fix.
+`RNSScreen` has an `activityState` prop and Basalt hides a screen whose
+`activityState` is 0, which looks like the answer and is not: a native stack
+never sets it to 0. react-native-screens throws `activityState cannot be
+decreased in NativeStack`, because on iOS the navigation controller covers the
+lower screen rather than the prop. Measured rather than assumed, every screen in
+a pushed stack reports 2, the covered ones included.
+
+So the stack does it instead. `RNSScreenStack` gives every screen below the
+topmost opaque one `DisplayType::None` after layout, which all three hosts
+already turn into a hidden widget, and a hidden widget is out of the
+accessibility tree on each of them. A transparent modal covers nothing, so the
+search for "topmost opaque" walks past one.
 
 ## Versions
 
