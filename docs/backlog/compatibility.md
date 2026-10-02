@@ -34,8 +34,8 @@ Found by bundling and running a real application.
   This entry briefly claimed the flag was needed on `main` too, on the strength
   of `getEnforcing('RNSkiaModule')` failing without it and succeeding with it
   while bundling `js/skia.js`. That was wrong and the reasoning was bad: the two
-  runs differed in another way as well -- React was not yet pinned, so Skia had
-  its own copy -- and once it was pinned the bundle works **with or without the
+  runs differed in another way as well: React was not yet pinned, so Skia had
+  its own copy, and once it was pinned the bundle works **with or without the
   flag**. `TurboInterop` does not appear anywhere in this React Native, so the
   flag had no referent and could not have been what changed. Two variables, one
   conclusion, and the wrong one.
@@ -46,8 +46,8 @@ Found by bundling and running a real application.
   second, and `TurboModuleRegistry` reaches it through the ungated
   `NativeModules[name]` fallback. That is upstream's design rather than a gap.
   What 0.82 and earlier gate is that fallback, which is what the paragraph above
-  is about and why installing `__turboModuleProxy` ourselves would help *there*
-  -- path one would succeed and the gate would never be reached.
+  is about and why installing `__turboModuleProxy` ourselves would help *there*;
+   path one would succeed and the gate would never be reached.
 - React Native 0.83 through 0.86 are refused rather than untested-but-allowed.
   Each would need building against and both suites run; see
   `docs/PORTING.md` and `supported-versions.json`.
@@ -69,7 +69,7 @@ Found by bundling and running a real application.
   comment saying it is for 0.81. Checked rather than assumed, after this entry
   named it as outstanding twice.
 
-  Three of the six are handled -- the module proxy above, the Hermes naming, and
+  Three of the six are handled: the module proxy above, the Hermes naming, and
   0.81's codegen. The three that remain are the structural ones, and they are
   why that file's verdict is what it is:
 
@@ -95,7 +95,7 @@ Found by bundling and running a real application.
   exist is any Expo *module*: `ExpoAsset` and `ExponentConstants` are stubs that
   exist only so Expo's start-up survives, and `expo-font`, `expo-image` and
   every config plugin's native half are each their own port.
-- **No `@shopify/react-native-skia`**, which is the thing that stops kino dead --
+- **No `@shopify/react-native-skia`**, which is the thing that stops kino dead,
   and it is closer than "not this platform's to fix" suggested. Established by
   bundling kino's `apps/desktop` against basalt and running it, 2026-09-26:
 
@@ -123,8 +123,8 @@ Found by bundling and running a real application.
     needs its own view hosting a `CAMetalLayer` plus the component registered in
     `AppKitMountingManager`.
 
-  Which stages: the module alone unblocks Skia's imperative API -- `Skia.Path`,
-  image decoding, typefaces -- which is what kino's `runtime/images.ts`,
+  Which stages: the module alone unblocks Skia's imperative API: `Skia.Path`,
+  image decoding, typefaces, which is what kino's `runtime/images.ts`,
   `runtime/media.ts` and `store.ts` use. `<Canvas>` is only needed for
   `ui/Preview.tsx` and `ui/AnchorsPane.tsx`.
 

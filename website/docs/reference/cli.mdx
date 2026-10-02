@@ -1,7 +1,7 @@
----
+-,
 sidebar_position: 1
-title: CLI
----
+title: CLI,
+-
 
 # CLI reference
 
@@ -29,7 +29,7 @@ are a separate namespace where it was not.
 npx basalt init [directory]
 ```
 
-Configures an app that exists. Idempotent — running it twice is safe and says
+Configures an app that exists. Idempotent; running it twice is safe and says
 so. It writes `package.json` and `metro.config.js`; see
 [what it changes](/docs/getting-started#what-it-changes).
 
@@ -42,8 +42,8 @@ doing by hand. `0` otherwise, including when there was nothing to do.
 npx basalt doctor [directory]
 ```
 
-`init` with its hands behind its back — the same steps, reported the same way,
-writing nothing — plus the checks `init` has no fix for, which are the
+`init` with its hands behind its back, the same steps, reported the same way,
+writing nothing: plus the checks `init` has no fix for, which are the
 expensive ones:
 
 - every host package the app asked for is actually installed
@@ -72,8 +72,8 @@ machine.
 
 ## `react-native run-linux`, `run-macos`, `run-windows`
 
-Each comes from its host package — `basalt-gtk`, `basalt-appkit`,
-`basalt-win32` — so an app sees only the commands it could have used. `init`
+Each comes from its host package, `basalt-gtk`, `basalt-appkit`,
+`basalt-win32`, so an app sees only the commands it could have used. `init`
 adds an npm script per desktop, so `npm run linux` is the same thing.
 
 **Builds nothing by default** and runs your app against a packager. Pass
@@ -143,8 +143,8 @@ module.exports = withDesktopPlatforms(config, options);
 | `platformFallbacks` | | what to fall back to for a module with no desktop implementation |
 
 The wrapper adds the platforms to Metro's resolver, redirects React Native's
-self-importing deep-import shims to their Android siblings — these platforms
+self-importing deep-import shims to their Android siblings: these platforms
 report `PlatformConstants` from C++ and drive the same components Android's
 JavaScript drives, so Android's implementation is the one that matches what is
-actually implemented — and adds its own directory to `watchFolders`, because
+actually implemented, and adds its own directory to `watchFolders`, because
 Metro will not read a file it is not watching and this package hands it files.

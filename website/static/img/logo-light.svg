@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Basalt">
+  <!--
+    Columnar basalt: the hexagonal columns a lava flow cools into, which is the
+    one thing the rock is recognisable for. Three at different heights, with a
+    gap between them so they still read as three shapes at 16 pixels, where an
+    earlier version with overlapping columns merged into one blob.
+
+    currentColor so the same file serves the favicon, the navbar and a dark
+    background without a second copy of it.
+  -->
+  <g fill="#39699d">
+    <polygon points="7,27 14,22 21,27 21,52 14,57 7,52" opacity=".58"/>
+    <polygon points="25,12 32,7 39,12 39,52 32,57 25,52" opacity="1"/>
+    <polygon points="43,21 50,16 57,21 57,52 50,57 43,52" opacity=".78"/>
+  </g>
+</svg>

@@ -1,7 +1,7 @@
----
+-,
 sidebar_position: 3
-title: APIs
----
+title: APIs;
+-
 
 # APIs
 
@@ -16,7 +16,7 @@ import {Platform, dialog, useDialog, resourcePath} from 'basalt-core';
 :::note
 `basalt-core` does not re-export `react-native`. It used to, and
 `export * from 'react-native'` compiles into a loop that reads every one of
-React Native's exports — most of which are lazy getters that run their
+React Native's exports; most of which are lazy getters that run their
 module's top level when read. That loaded every deprecated component and then
 threw on `DevMenu`, which in an Expo app aborted `App.js` with "App entry not
 found".
@@ -32,7 +32,7 @@ for its own.
 Platform.select({macos: 'Cmd', default: 'Ctrl'});
 ```
 
-`select` resolves this platform, then `native`, then `default` — the same
+`select` resolves this platform, then `native`, then `default`, the same
 shape as every other platform's, so `Platform.select({native, default})` keeps
 working in shared code.
 
@@ -72,7 +72,7 @@ are optional:
 | `defaultPath` | starting directory, or for `saveFile` the suggested name |
 | `confirmLabel` | the accept button's text |
 | `multiple` | `openFile` only |
-| `filters` | `[{name, extensions}]` — extensions **bare**: `'png'`, not `'.png'` and not `'image/png'` |
+| `filters` | `[{name, extensions}]`, with extensions **bare**: `'png'`, not `'.png'` and not `'image/png'` |
 
 `useDialog()` is the same object from a hook, for code that prefers one.
 
@@ -83,7 +83,7 @@ than throwing.
 
 ## `resourcePath()`
 
-Where the files the build put beside your application are —
+Where the files the build put beside your application are:
 `Foo.app/Contents/Resources` on macOS, beside the executable on Linux and
 Windows, which have no separate resources directory. A development run answers
 the build directory.
@@ -103,8 +103,8 @@ path cannot be determined, which no supported desktop does.
 npm install basalt-subprocess
 ```
 
-A desktop front end for something else — a video editor driving `ffmpeg`, an
-editor running a language server — needs this, and React Native has no API for
+A desktop front end for something else: a video editor driving `ffmpeg`, an
+editor running a language server: needs this, and React Native has no API for
 it.
 
 ```js
@@ -130,7 +130,7 @@ const exit = addExitListener(e => console.log(e.pid, 'exited', e.code));
 | `addExitListener(fn)` | `{pid, code}` |
 
 The command is handed to the platform's own shell, which is what gets a
-packaged application the `PATH` a person's login shell sets up — `node`,
+packaged application the `PATH` a person's login shell sets up: `node`,
 `ffmpeg`, and anything installed by asdf, nvm or Homebrew. Quote your
 arguments, as above.
 
@@ -146,13 +146,13 @@ npm install basalt-notifications
 
 This package has no JavaScript API of its own. It implements
 **`expo-notifications`' contract** natively, so the API you write against is
-`expo-notifications` — the same approach that made
+`expo-notifications`, the same approach that made
 `react-native-gesture-handler` work here. React Native has nothing in core to
 be compatible with: `PushNotificationIOS` is a separate package and Android's
 is a library.
 
 Each desktop uses its own mechanism, and what a desktop can do depends on the
-app having an identity — a bundle identifier on macOS, an AppUserModelID on
+app having an identity, a bundle identifier on macOS, an AppUserModelID on
 Windows. The run command packages the binary into a real application on every
 run partly for this reason. Check `getPermissionsAsync()` before presenting
 anything, which is what expo-notifications' own documentation says to do: where

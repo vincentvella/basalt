@@ -13,8 +13,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 7. Nothing makes a red build hard to ignore
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
-component the other two desktops do -- `<View>`, `<Text>`, `<Image>`,
-`<ScrollView>` and `<TextInput>` -- and Hermes evaluates a bundle, Fabric diffs
+component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
+`<ScrollView>` and `<TextInput>`, and Hermes evaluates a bundle, Fabric diffs
 a shadow tree, Direct2D paints it in an HWND, a click on a `<Pressable>` runs
 its `onPress`, a wheel scrolls a list, and a character typed into a field
 reaches React and comes back. It runs the same end-to-end suite, it has a
@@ -35,7 +35,7 @@ and none of it is a missing half.
   fixes, and it had to: the prebuilt everyone else consumes cannot be used here.
   `Microsoft.JavaScript.Hermes` ships jsi headers with no `IRuntime` at all and
   React Native 0.87's have 186 references to it, so every JSI symbol mangles
-  differently. That is structural rather than bad luck -- react-native-windows
+  differently. That is structural rather than bad luck: react-native-windows
   targets React Native 0.84 and react-native-macos 0.81, and this is on 0.87, so
   nobody has built the prebuilt yet. `supported-versions.json` says Windows is a
   platform with a prebuilt Hermes; that is true in general and false for any
@@ -57,13 +57,13 @@ and none of it is a missing half.
 - ~~**`native/bootstrap.sh` has no Windows path.**~~ It has one, and it was run
   end to end: it detects Git Bash, finds a vcpkg that actually has the packages,
   patches Hermes, builds it with the three Windows flags, and prints a configure
-  line that works. What it does **not** do is install anything -- vcpkg and its
+  line that works. What it does **not** do is install anything: vcpkg and its
   packages are still a manual prerequisite, and so is a Node new enough for
   React Native 0.87, which wants `^22.13 || ^24.3 || >= 26` and is not what a
   machine is likely to have.
 - ~~**Nothing has run bootstrap from an empty `third_party`** on Windows.~~
   Done while writing the full Windows CI job, which would have been the first
-  thing to do it -- and the entry was right to worry. Every earlier bootstrap
+  thing to do it, and the entry was right to worry. Every earlier bootstrap
   had found Hermes already built by hand, so its configure step had never run,
   and it failed on its first real execution: Git Bash's MSYS runtime rewrites
   an argument that looks like an absolute POSIX path, `/DWIN32` looks exactly
@@ -75,7 +75,7 @@ and none of it is a missing half.
   and runs codegen with no errors.
 - ~~**`<Text>`**~~ (phase 40, over DirectWrite) and ~~**`<Image>`**~~ (phase 40,
   over WIC, with the fetch shared from `core/ImageBytes.cpp`).
-- ~~**Accessibility.**~~ Phase 40, over UI Automation -- the one place Windows
+- ~~**Accessibility.**~~ Phase 40, over UI Automation: the one place Windows
   is structurally different rather than differently spelled, since UIA wants a
   provider object where GTK and AppKit take properties on a view. What is left
   of it is `IRawElementProviderFragment` and the control patterns, both of which
@@ -85,17 +85,17 @@ and none of it is a missing half.
   `js/press.js` counts presses on Windows. What is still missing is what a mouse
   has and a finger does not: **no right button**; **no keyboard**, which arrives
   with `<TextInput>` because there is nothing yet that focus could belong to. The
-  wheel is not among them any more -- phase 45 took it, and routed it through
+  wheel is not among them any more: phase 45 took it, and routed it through
   the mounting manager rather than the touch dispatcher, because what it needs
   is the list of tags that are ScrollViews.
 - ~~**`offsetPoint` is page coordinates on all three platforms.**~~ Fixed on
   all three; see `docs/backlog/input.md` for how. Windows walks up from the
   target composing `localToParent` and inverts the chain, rather than building
-  the gesture hit chain on every press as this entry proposed -- the walk is
+  the gesture hit chain on every press as this entry proposed: the walk is
   only as deep as the view, and it is the same matrix `hitTest` inverts coming
   down, which is the property worth having.
 - ~~**No `<ScrollView>` on Windows.**~~ Phase 45. What it does not have is
-  scrollbars, momentum, and a precision touchpad -- a Windows touchpad reports
+  scrollbars, momentum, and a precision touchpad, a Windows touchpad reports
   through `WM_POINTER*` rather than `WM_MOUSEWHEEL`, so a two-finger scroll
   arrives as notches like a wheel rather than as pixels, which neither other
   desktop confuses. `SPI_GETWHEELSCROLLLINES` is ignored on purpose so that one
@@ -103,19 +103,19 @@ and none of it is a missing half.
 - ~~**No `<TextInput>` on Windows.**~~ Phase 46, over a real `EDIT` control.
   Windows now mounts all five components the other two desktops do. What it
   does not have is multiline, `onKeyPress`, `onSelectionChange`, a tab order, or
-  the colours the cue banner and the selection take from the system -- and a
+  the colours the cue banner and the selection take from the system, and a
   field with no `backgroundColor` paints the system window colour, because a
   child window cannot see through itself to what Direct2D drew behind it.
 - **`BASALT_SNAPSHOT` cannot see a `<TextInput>` on Windows.** It renders the
   `RnWin32View` tree offscreen and a text field's peer is a child window, not a
-  view -- so a field comes out as its background with no text, no placeholder
+  view, so a field comes out as its background with no text, no placeholder
   and no caret. Not a bug in the snapshot, but it does mean the one host that
   can assert on pixels cannot assert on the one component whose appearance is
   hardest to get right. `PrintWindow` on the live window is the answer and
   nothing in the repository does it yet.
 - **A `<TextInput>` on Windows is always on top of everything.** Its peer is a
   child window, so a later sibling cannot cover it and it does not clip to a
-  scrolled ancestor -- it is hidden when it leaves the ancestor's box instead,
+  scrolled ancestor; it is hidden when it leaves the ancestor's box instead,
   which looks right until something is half-scrolled. A transform on the view
   does not reach it either: a window cannot be rotated.
 - **The Windows choreographer is a 16ms timer**, not a display link. Doing it
@@ -125,7 +125,7 @@ and none of it is a missing half.
   Reanimated on both other desktops.
 - ~~**Text colour is per-paragraph, not per-run.**~~ Phase 47. DirectWrite
   carries colour as a drawing effect rather than as a range attribute, which
-  looks like it needs a custom `IDWriteTextRenderer` -- but Direct2D's own
+  looks like it needs a custom `IDWriteTextRenderer`, but Direct2D's own
   renderer has exactly one special case, and a drawing effect that is an
   `ID2D1Brush` is it.
 - ~~**No `react-native run-windows`.**~~ Phase 47, and `run-macos` with it. All
@@ -138,7 +138,7 @@ and none of it is a missing half.
   `scripts/wsl_setup.sh`, beside the Windows host, and `compare_all.sh` says the
   two agree on all twelve apps. Getting there found two things, neither of them
   in a view layer. The distro had nothing registered for `https`, so Linux
-  honestly failed a `canOpenURL` check a GitHub runner passes -- an environment
+  honestly failed a `canOpenURL` check a GitHub runner passes, an environment
   gap, now covered by the setup script. And Windows failed a clipboard check in
   2 runs of 15, because a refused `OpenClipboard` silently dropped the write.
   It retries now, with a test that holds the clipboard from a window and fails
@@ -149,10 +149,10 @@ and none of it is a missing half.
   starts the packager in Node, on any platform, and `metro.sh` now delegates to
   it so there is one implementation rather than two that resolve `RN_DIR`
   differently. It serves in-process rather than spawning `metro serve`, which is
-  what makes it stoppable on Windows -- terminating a process there does not
+  what makes it stoppable on Windows; terminating a process there does not
   terminate its children, so a wrapper would have left the packager behind.
-  Fast Refresh already worked on Windows -- an edit to a running Expo app
-  reaches the tree -- after three separate fixes: the host read its Metro entry
+  Fast Refresh already worked on Windows: an edit to a running Expo app
+  reaches the tree, after three separate fixes: the host read its Metro entry
   from an argument nothing passed, React Native's `start` command needs
   `@react-native/metro-config` in the app, and every host reported a dev script
   URL naming `linux`, so Metro sent Windows HMR updates for a Linux graph. What
@@ -163,7 +163,7 @@ and none of it is a missing half.
 - ~~**CI does not build the Windows host.**~~ It does, as `windows-full`:
   vcpkg, Hermes from source, React Native's core under clang-cl, every Windows
   test, the demo bundle and the end-to-end suite. Green on its first run, and
-  51 minutes cold -- vcpkg 20, Hermes 13, the build 17. What that cost is
+  51 minutes cold, vcpkg 20, Hermes 13, the build 17. What that cost is
   what the caching around it is for: every cache is now saved by its own step
   as soon as it exists rather than when the whole job succeeds, the Windows
   build goes through ccache, and a change to `bootstrap.sh` no longer throws
@@ -171,9 +171,9 @@ and none of it is a missing half.
 - ~~**CI had been red for twenty-three commits.**~~ Fixed in phase 47, and worth
   keeping written down. The last green run was "Blob, File and FileReader"; the
   Linux job failed on every commit after it, including all nine Windows phases,
-  and nobody looked. Both causes were invisible from a Windows desk -- a static
+  and nobody looked. Both causes were invisible from a Windows desk: a static
   archive cycle only GNU ld minds, and a header reaching `<cstdint>` through
-  windows.h -- which is the argument for `scripts/check_includes.js` and for
+  windows.h, which is the argument for `scripts/check_includes.js` and for
   reading the log rather than the tick.
 
 - **Nothing makes a red build hard to ignore.** No branch protection, no

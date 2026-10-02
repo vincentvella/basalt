@@ -1,7 +1,7 @@
----
+-,
 sidebar_position: 2
-title: app.json
----
+title: app.json;
+-
 
 # app.json
 
@@ -36,11 +36,11 @@ Which desktops the app targets. Defaults to all three.
 
 Valid entries are `linux`, `macos` and `windows`. It decides which host
 packages `init` adds, which ones `doctor` checks are installed, and whether
-`doctor` bothers checking this machine's own toolchain — on a Mac, with
+`doctor` bothers checking this machine's own toolchain, on a Mac, with
 `["linux"]`, the macOS checks report `?` with the reason.
 
 A value that is not a list of names, or that names something else, is
-**reported and ignored** — `init` and `doctor` print it as a blocked step and
+**reported and ignored**, `init` and `doctor` print it as a blocked step and
 carry on with all three. Refusing would leave the app configured for nothing,
 and the mistake is one field.
 
@@ -92,7 +92,7 @@ An Expo config wins where there is one, because it is read through
 
 ## `basalt.native`, in a package
 
-Not an app.json key — this one goes in the `package.json` of a **package** that
+Not an app.json key; this one goes in the `package.json` of a **package** that
 ships native code for Basalt:
 
 ```json
@@ -127,6 +127,6 @@ modules/
 ```
 
 Presence is the declaration, because a local Expo module has no `package.json`
-to declare it in — which is the same way its Apple half is declared. This is
+to declare it in, which is the same way its Apple half is declared. This is
 the same `modules/` directory Expo's autolinking already looks in, so the
 desktop half sits beside the iOS and Android halves of the same module.

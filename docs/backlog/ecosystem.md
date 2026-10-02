@@ -8,7 +8,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. Porting a first third-party native module end to end
 3. Packaging: Arch PKGBUILD, Flatpak
 
-- **Nobody else can use this yet** -- because nothing is published, and no
+- **Nobody else can use this yet**, because nothing is published, and no
   longer because installing would not work. A fresh `create-expo-app` (SDK 57,
   React Native 0.86.3) with the core packages installed from their tarballs
   runs `react-native run-linux --build` and renders the template's text, with
@@ -43,13 +43,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   should happen first: deciding which capabilities ship separately, because
   moving one after the first publish is a breaking change rather than a commit.
   See `openspec/changes/split-optional-capabilities-into-packages`, whose first
-  move -- notifications -- is done. And a first `--build` that compiles Hermes
+  move (notifications) is done. And a first `--build` that compiles Hermes
   and React Native's C++ from source, which is the part a user will notice.
 - ~~**Adding a desktop to an Expo app is manual.**~~ Done:
   `npx basalt-core init` adds this package and the two dev dependencies
-  an app needs -- `@react-native/metro-config`, which React Native's `start`
+  an app needs: `@react-native/metro-config`, which React Native's `start`
   requires whatever the app's Metro config says, and
-  `@react-native-community/cli`, which provides `run-windows` -- wraps the
+  `@react-native-community/cli`, which provides `run-windows`: wraps the
   Metro config, and adds a script per desktop.
 
   Idempotent, and it refuses rather than half-configuring: run twice it reports

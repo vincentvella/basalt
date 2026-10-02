@@ -31,7 +31,7 @@ If an entry here is about to be picked up, run the thing it describes first.
   A transform with no 2D inverse is the case worth naming. `scale: 0` is legal
   and draws nothing, so it is skipped and the press reaches what is behind it;
   a perspective transform is not affine, and answers with the translation
-  alone -- which is what every transform got before this.
+  alone, which is what every transform got before this.
 
   Three tests, and each was run against the old code first to check it failed:
   a translation, which moves the drawing and not the frame; a quarter turn,
@@ -39,8 +39,8 @@ If an entry here is about to be picked up, run the thing it describes first.
   the frame and the centre does not move; and the degenerate scale.
 - ~~**No accessibility.**~~ Done: roles, names, hints, states and hiding, with
   nine tests in `test_appkit_accessibility.mm`. What is left of it is listed
-  separately below -- subroles, `accessibilityValue`, and nothing having been
-  tried against a real screen reader -- which is a different claim from the one
+  separately below: subroles, `accessibilityValue`, and nothing having been
+  tried against a real screen reader, which is a different claim from the one
   this entry made.
 - **Justified text.** `NSTextAlignmentJustified` reaches the paragraph style and
   Core Text ignores it for lines drawn individually, which is how RnTextLayout
@@ -53,7 +53,7 @@ If an entry here is about to be picked up, run the thing it describes first.
   `textinput_max_length_is_enforced_on_both_peers`.
 - ~~**No multiline `<TextInput>`**~~ Done on both: the NSTextView and
   GtkTextView peers, with the text and the selection round-tripping through
-  each -- `textinput_multiline_builds_a_text_view` and its two siblings.
+  each, `textinput_multiline_builds_a_text_view` and its two siblings.
 - **No `keyboardType`, `autoCapitalize`, `autoCorrect` or `spellCheck`** on
   macOS, all of which AppKit has some form of.
 - **Nothing tested against a real screen reader**, on either platform.
@@ -66,7 +66,7 @@ If an entry here is about to be picked up, run the thing it describes first.
   `accessibilityLabelledBy`** are unimplemented on both platforms.
 - **No animated images.** The first frame of a GIF is drawn as a still, on both
   desktops.
-- ~~**No scrollbars.**~~ Done, and on all three -- the claim that the GTK side
+- ~~**No scrollbars.**~~ Done, and on all three, the claim that the GTK side
   got them from its widget theme was never true: neither host drew one. See the
   ScrollView section for the shape. AppKit's own are `NSScroller`, which comes
   with `NSScrollView` and so was never available here, so the indicator is drawn
@@ -76,15 +76,15 @@ If an entry here is about to be picked up, run the thing it describes first.
   `onMomentumScrollBegin` and `onMomentumScrollEnd` be answered honestly here.
   See the ScrollView section for what is left, which is Windows.
 - ~~**Nothing is reachable by Tab**~~ Done: Tab visits focusable views in tree
-  order and wraps, and what counts as focusable is what `accessible` marks --
+  order and wraps, and what counts as focusable is what `accessible` marks,
   `focus_tab_visits_focusable_views_in_tree_order_and_wraps`.
 - **No gesture cancellation from the platform.** `dispatchTouchCancel` exists
   and nothing calls it: AppKit has no equivalent of GTK's gesture `cancel`, and
-  the case it covers -- a press interrupted by the window losing focus -- has no
+  the case it covers (a press interrupted by the window losing focus) has no
   handler yet.
 - ~~Within `<View>`: per-corner radii, borders, transform, z-index and
   pointer-events are unmapped.~~ All five are mapped, and have been since
-  2026-09-13 -- see "The borders macOS was never drawing". The entry outlived
+  2026-09-13; see "The borders macOS was never drawing". The entry outlived
   the gap by five days, which is the second time this file has claimed
   something missing that was done; the title bar was the first.
 

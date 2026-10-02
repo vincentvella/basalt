@@ -12,7 +12,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
  * website would have broken every one. A website is not a good enough reason
  * for the source to lie about where its reasons live.
  *
- * BACKLOG and HANDOFF stay off the site. They are notes to whoever picks the
+ * BACKLOG, HANDOFF and ci-performance stay off the site. They are notes to whoever picks the
  * work up next rather than documentation, and publishing them invites reading
  * them as promises.
  */
@@ -20,6 +20,15 @@ const config: Config = {
   title: 'Basalt',
   tagline: 'React Native on the desktop: Linux, macOS and Windows',
   favicon: 'img/favicon.ico',
+
+  headTags: [
+    // An SVG favicon, which modern browsers prefer over the .ico and which
+    // stays sharp wherever the tab strip is rendered larger than 16 pixels.
+    {
+      tagName: 'link',
+      attributes: {rel: 'icon', type: 'image/svg+xml', href: '/img/favicon.svg'},
+    },
+  ],
 
   future: {v4: true},
 
@@ -71,7 +80,7 @@ const config: Config = {
         routeBasePath: 'contributing',
         sidebarPath: './sidebarsContributing.ts',
         // backlog/ is eighteen more files of the same, one per area.
-        exclude: ['BACKLOG.md', 'HANDOFF.md', 'backlog/**'],
+        exclude: ['BACKLOG.md', 'HANDOFF.md', 'backlog/**', 'ci-performance.md'],
         editUrl: 'https://github.com/vincentvella/basalt/tree/main/',
       },
     ],
@@ -81,6 +90,13 @@ const config: Config = {
     colorMode: {respectPrefersColorScheme: true},
     navbar: {
       title: 'Basalt',
+      logo: {
+        alt: '',
+        src: 'img/logo-light.svg',
+        srcDark: 'img/logo-dark.svg',
+        width: 22,
+        height: 22,
+      },
       items: [
         {
           type: 'docSidebar',

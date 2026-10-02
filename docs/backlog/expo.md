@@ -28,7 +28,7 @@ Measured in phase 34 against a real dependency set, on both desktops.
   three now: a desktop hands a URL over on the command line, so each host
   records whichever argument carried a scheme. What is still missing is the
   second delivery, to an application that is already open, and that is where the
-  three desktops diverge -- a GApplication with `G_APPLICATION_HANDLES_OPEN` on
+  three desktops diverge: a GApplication with `G_APPLICATION_HANDLES_OPEN` on
   Linux, an Apple Event handler and a registered scheme on macOS, a named pipe
   and a shell association on Windows. `ExpoLinking.getLinkingURL` is the same
   question and would come with it.

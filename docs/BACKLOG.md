@@ -3,13 +3,13 @@
 Not scheduled. One file per area, because this was a single 1,200-line document
 and finding anything in it meant reading all of it.
 
-Counts are open entries. Nothing is lost -- the prose moved, it did not shrink.
+Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 
 ## What a desktop still owes
 
 | Area | Open | What is left there |
 | --- | --- | --- |
-| [Desktop capabilities](backlog/desktop-capabilities.md) | 10 | Windows, menus and dialogs are done; the catalogue at the end of that file is the rest of the surface -- drag and drop, tray, permissions, power, global shortcuts -- checked one at a time against the repository. |
+| [Desktop capabilities](backlog/desktop-capabilities.md) | 10 | Windows, menus and dialogs are done; the catalogue at the end of that file is the rest of the surface (drag and drop, tray, permissions, power, global shortcuts) checked one at a time against the repository. |
 | [Ecosystem](backlog/ecosystem.md) | 3 | Nobody else can use this yet: nothing is published. Porting a first third-party native module, and packaging for Arch and Flatpak. |
 | [Core modules](backlog/core-modules.md) | 7 | React Native APIs with no implementation here. |
 | [Expo](backlog/expo.md) | 11 | Beyond the template: more Expo views, notification delivery and scheduling. |
@@ -42,15 +42,15 @@ Counts are open entries. Nothing is lost -- the prose moved, it did not shrink.
 
 Add an entry to the file for its area, not here; the counts above are a snapshot
 and will drift, which is fine. Strike an entry through when it is done rather
-than deleting it -- the order things were done in is the useful part, and
+than deleting it: the order things were done in is the useful part, and
 [Windows](backlog/platform-windows.md) is mostly struck-through for that reason.
 
 An entry earns its length by saying *why*, not by saying more. If it is only a
 title, it is probably not understood well enough to schedule.
 
-**Check an entry before building it.** This file is read from -- a commit
+**Check an entry before building it.** This file is read from, a commit
 message quoted `backlog/platform-macos.md` to say macOS had no borders, five
-days after macOS got borders -- so a stale entry does not just sit there, it
+days after macOS got borders, so a stale entry does not just sit there, it
 propagates. An audit on 2026-09-18 struck nine entries across three files, and
 in each case the thing was already done:
 
@@ -63,4 +63,4 @@ in each case the thing was already done:
 Nothing about those nine was hard to check. What they had in common is that
 nobody looked: each was written when it was true and read later as though it
 still was. Running the thing an entry describes costs a minute and is the only
-way to know -- a grep finds code, and only running it finds behaviour.
+way to know: a grep finds code, and only running it finds behaviour.

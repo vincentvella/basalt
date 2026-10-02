@@ -1,6 +1,6 @@
 # basalt-core
 
-React Native on the desktop -- Linux, macOS and Windows -- built on React
+React Native on the desktop (Linux, macOS and Windows) built on React
 Native's *own* C++ core rather than on a fork of it.
 
 Basalt is the bedrock everything else sits on, and it forms columns: one shared
@@ -8,21 +8,20 @@ mass, separate columns standing on it. That is the architecture. React Native's
 C++ platform, Hermes, Yoga, Fabric's mutation walk and the JavaScript platform
 layer are shared; a GTK4 widget layer, an AppKit view layer and a Win32 one
 stand on them separately. Nothing is forked, which is why this can track the
-current Expo instead of trailing a rebase -- and why it is on React Native
+current Expo instead of trailing a rebase, and why it is on React Native
 0.87 while react-native-windows is on 0.84 and react-native-macos on 0.81.
 
-Today all three desktops mount the components an ordinary app is built from --
+Today all three desktops mount the components an ordinary app is built from:
 `<View>`, `<Text>`, `<Image>`, `<ScrollView>`, `<TextInput>`, `<Switch>`,
-`<ActivityIndicator>`, `<Modal>` and `<RefreshControl>` -- and answer a press, a
+`<ActivityIndicator>`, `<Modal>` and `<RefreshControl>`, and answer a press, a
 wheel, a hover, a Tab and a keystroke with the events React Native says they
 should. `Alert`, `Share`, `Linking`, `Animated` with the native driver,
-`require()`d assets, React Native's own LogBox inspector and its developer menu
--- Ctrl+D, Cmd+D on macOS -- work on all three; `run-macos` builds a real `.app`
+`require()`d assets, React Native's own LogBox inspector and its developer menu (Ctrl+D, Cmd+D on macOS) work on all three; `run-macos` builds a real `.app`
 so notifications and the Dock icon work, and `run-linux` writes a `.desktop`
 entry; and `useDialog()`, `useWindow()`, `<Menu>` and `<Window>` cover the native file
 dialogs, the window's own geometry, the application menu, context menus and
 opening a second window, none of which React Native has an API for because a phone has none of
-them -- a window can also refuse to close and ask first, which is where an app
+them: a window can also refuse to close and ask first, which is where an app
 with unsaved work puts the question, and say how big it may be;
 so do Reanimated, gesture-handler, expo-image and a proxy for
 `expo-notifications`. The demo app written for GTK runs on each of them
@@ -34,7 +33,7 @@ CI builds and tests it in full. macOS and Linux produce a byte-identical view
 tree for every app in `js/`; `scripts/compare_all.sh` is what says so, and
 `scripts/compare_hosts.sh` is the single-app version. Windows and Linux agree on
 all of them too, run side by side on one Windows machine with the GTK host in
-WSL -- see `docs/TESTING.md`.
+WSL, see `docs/TESTING.md`.
 
 Windows is where this project first asserts on pixels rather than on a tree,
 because Direct2D renders offscreen with no window and neither other toolkit
@@ -51,12 +50,12 @@ reload), `SchedulerDelegateImpl`, and implementations of http, io, logging,
 threading, profiling, devsupport, coremodules and TurboModule hosting.
 
 `private/react-native-fantom/tester/` is a CMake-built C++ host that already
-runs on Linux — its `CMakeLists.txt` has an explicit `if(UNIX AND NOT APPLE)`
+runs on Linux: its `CMakeLists.txt` has an explicit `if(UNIX AND NOT APPLE)`
 branch, and `getHostPlatform.js` maps `process.platform === 'linux'` to a
 supported host. So Hermes, Yoga and Fabric already build and run here.
 
 `ReactHost`'s constructor takes a `std::shared_ptr<IMountingManager>`. That
-interface has exactly two pure-virtual methods — `executeMount` and
+interface has exactly two pure-virtual methods, `executeMount` and
 `dispatchCommand`. Implementing it against GTK4 is the core of this project.
 
 ## Layout
@@ -72,7 +71,7 @@ Four npm packages, and the split is the architecture rather than tidiness.
 platform layer, the bundler, React Native's C++ core and Hermes, the Expo
 runtime, the core TurboModules, and Fabric's mutation walk. It builds and
 *links* with no toolkit at all, which is how that claim is kept honest rather
-than aspirational -- `basalt_core_probe` is a program that links it and nothing
+than aspirational; `basalt_core_probe` is a program that links it and nothing
 else, built on every build.
 
 A platform package is a view layer, a mounting manager and a host, and nothing
@@ -251,7 +250,7 @@ Read off `StubViewTree::mutate`, RN's own reference walk:
 | `Create` | `-1` | Allocate a widget, register by tag. Not attached yet. |
 | `Delete` | `-1` | Unregister and drop the last reference. |
 | `Insert` | parent | Attach an existing child at `index`. |
-| `Remove` | parent | Detach, but do **not** destroy — a `Delete` may follow, or a re-`Insert`. |
+| `Remove` | parent | Detach, but do **not** destroy; a `Delete` may follow, or a re-`Insert`. |
 | `Update` | parent | New props / layout metrics for an existing tag. |
 
 Two consequences the implementation depends on:
@@ -263,7 +262,7 @@ Two consequences the implementation depends on:
   tree to keep an `EventEmitter` alive. They have no widget; skip them on
   Insert and Remove.
 
-Fabric emits no `Create` for a surface root — the root shadow node is the base
+Fabric emits no `Create` for a surface root; the root shadow node is the base
 of every diff. The host calls `createSurfaceRoot(surfaceId)` before
 `ReactHost::startSurface`. In Fabric a `SurfaceId` *is* the root node's tag,
 which lets the root live in the same registry as every other view.
@@ -284,7 +283,7 @@ preserves mutation ordering.
 ## Build
 
 From inside this repo. The `../` puts React Native alongside it, which is where
-`bootstrap.sh` looks by default -- or pass the path to a checkout you already
+`bootstrap.sh` looks by default, or pass the path to a checkout you already
 have, absolute or relative:
 
     git clone --depth 1 https://github.com/react/react-native ../react-native
@@ -295,7 +294,7 @@ have, absolute or relative:
     nice -n 10 cmake --build build -j 12
 
 `scripts/bootstrap.sh` fetches the vendored third-party sources, builds Hermes,
-and runs React Native's codegen -- everything below that is not in the repo. It
+and runs React Native's codegen; everything below that is not in the repo. It
 is idempotent, and `--force` redoes it. See `docs/HANDOFF.md` for setting up on
 a different machine.
 
@@ -324,7 +323,7 @@ is a component of the same Build Tools install, and dropping the flag builds
 that half with `cl` instead.
 
 **The whole thing** additionally needs what Linux gets from apt, which on
-Windows means vcpkg, and Node 24 -- React Native 0.87 refuses anything below
+Windows means vcpkg, and Node 24, React Native 0.87 refuses anything below
 `^22.13`. Run `scripts/bootstrap.sh` from Git Bash; it fetches folly and Hermes,
 patches Hermes, builds it, runs codegen, and prints the configure line. It
 refuses early and says what to install if vcpkg is missing its packages.
@@ -355,7 +354,7 @@ own `node_modules`, so the versions can never drift from the JavaScript:
 on worklets. Without them a plain React Native app is unaffected and an app that
 imports one fails at that import, which is what it did before.
 
-`react-native run-linux --build` -- and `run-macos` and `run-windows` -- passes
+`react-native run-linux --build` (and `run-macos` and `run-windows`) passes
 whichever of the three the app has installed, and builds against the app's
 installed `react-native` rather than asking for a checkout, so these flags are
 only for building the host by hand.
@@ -412,8 +411,8 @@ the same with a global `include_directories()`.
 
 ### Codegen
 
-24 targets need `react_codegen_rncore` -- including ReactCxxPlatform's
-`react/runtime`, where `ReactHost` lives -- so codegen is mandatory for any host
+24 targets need `react_codegen_rncore`; including ReactCxxPlatform's
+`react/runtime`, where `ReactHost` lives, so codegen is mandatory for any host
 that runs JS. It is a Node tool, and RN's monorepo must be installed first.
 
 **Node version matters.** RN requires `^22.13.0 || ^24.3.0 || >= 26.0.0`.
@@ -474,7 +473,7 @@ run somewhere that is not an app, it says what it expected to find and leaves
 the directory alone.
 
 The whole change it makes to the config is three lines, and it writes the file
-when an app has none -- which a stock `create-expo-app` does not:
+when an app has none, which a stock `create-expo-app` does not:
 
 ```js
 const {getDefaultConfig} = require('expo/metro-config');
@@ -487,7 +486,7 @@ All three desktops by default, because `package.json` is committed: which
 desktops an app builds for belongs to the project rather than to whoever set it
 up, and installing for only the machine at hand would configure an app on a Mac
 that failed on a contributor's Linux box. The other two cost source that is
-never compiled -- the build configures only the host it is running on. An app
+never compiled, the build configures only the host it is running on. An app
 that wants fewer says so in `app.json`:
 
 ```json
@@ -500,7 +499,7 @@ To find out whether a machine can build any of it:
 npx basalt-core doctor
 ```
 
-The same checks with writing off, plus the ones `init` has no fix for --
+The same checks with writing off, plus the ones `init` has no fix for,
 cmake, ninja, GTK's development headers, vcpkg, a React Native outside
 `supported-versions.json`. Every one of those otherwise arrives as a compiler
 error twenty minutes into a first build, which compiles Hermes and React
@@ -509,9 +508,9 @@ as unchecked rather than as fine.
 
 That is what this project exists to show.
 
-Beyond the template, a real app's dependency set -- expo-image, expo-font,
+Beyond the template, a real app's dependency set: expo-image, expo-font,
 expo-constants, expo-clipboard, gesture-handler, Reanimated, react-navigation
-and the rest -- loads **fifteen of fifteen**, identically on both desktops.
+and the rest, loads **fifteen of fifteen**, identically on both desktops.
 
 `expo-clipboard` really does write the system clipboard, `Constants.expoConfig`
 really is the app's `app.json`, and `Linking.createURL` produces the app's own
@@ -521,15 +520,15 @@ beside the bundle the way Expo's own native builds embed it. See
 
 `expo-image` renders too, which took the other half of the port: an Expo *view*
 is a Fabric component with a view config in front of it, and phase 36 built that
-seam. **react-native-gesture-handler** works as well -- taps and pans through
-the real library, on both desktops -- which took writing its recognisers rather
+seam. **react-native-gesture-handler** works as well, taps and pans through
+the real library, on both desktops, which took writing its recognisers rather
 than compiling them, since it ships no portable C++ (phase 37).
 
 **Reanimated** works too, worklets and all: a pan gesture whose callbacks are
 worklets drives a shared value on the UI thread, `useAnimatedScrollHandler`
 divides a scroll offset, and neither causes a React re-render. Both packages
 ship portable C++, so that port was compiling their sources and supplying the
-four things they expect from a platform -- plus one gap in React Native's own
+four things they expect from a platform: plus one gap in React Native's own
 cxx platform, which never calls `Scheduler::reportMount` and so leaves every
 mount hook inert (phase 38).
 
@@ -627,8 +626,8 @@ Not yet done:
   drag and drop, no tray. React Native has no cross-platform API for any of it,
   so each is a design decision before it is an implementation.
 - **Nothing is published yet.** An Expo app can install these packages and get
-  a desktop -- `run-linux --build` and `run-windows --build` build the host
-  against the app's installed React Native -- but setting that up is manual, and
+  a desktop: `run-linux --build` and `run-windows --build` build the host
+  against the app's installed React Native, but setting that up is manual, and
   the first build compiles Hermes from source. And no third-party native module
   has been ported end to end, so what porting one costs is still unknown.
 
@@ -683,7 +682,7 @@ too, which it did not before phase 32: it pulls in LogBox, which reads the
 `DevSettings` TurboModule at import time, and `ReactCxxTurboModuleProvider`
 serves that module only when a dev server exists. This project now supplies one
 outside dev mode, so that import no longer takes the app down. What a `--dev`
-bundle still is not is a development *mode* -- nothing reloads it, nothing
+bundle still is not is a development *mode*: nothing reloads it, nothing
 refreshes it, and LogBox's own images are not among the assets copied next to
 it. Use Metro for that.
 
@@ -815,7 +814,7 @@ Six things a host has to get right, none of them documented:
    supports. See `native/src/LinuxComponentRegistry.h`. Fantom has its own version.
 6. **`JSIDynamic.cpp` is compiled by no CMakeLists in the tree**, yet
    `RawProps` references `jsi::dynamicFromValue`. Hosts must build it.
-7. **`getHttpClientFactory()` is declared but defined nowhere** -- a host must
+7. **`getHttpClientFactory()` is declared but defined nowhere**; a host must
    implement `IHttpClient` (one method). And `getWebSocketClientFactory()` *is*
    defined, in `react/http/platform/cxx/WebSocketClient.cpp`, which the
    `react_cxx_platform_react_http` target does not glob. Hosts compile it.
@@ -833,7 +832,7 @@ includes. Worked around with a force-include rather than patching the checkout.
 
 RN pins glog `0.3.5`, boost `1_83_0`; Arch ships glog `0.7.1`, boost `1.92.0`.
 glog >= 0.6 added a guard requiring `GLOG_USE_GLOG_EXPORT` when its headers are
-not consumed through its own CMake target, which RN's pin predates -- without
+not consumed through its own CMake target, which RN's pin predates, without
 it every glog header hard-errors. Boost 1.92 caused no problems.
 
 ### Note on rendering
@@ -848,13 +847,13 @@ In the order it is likely to be done. An entry with a proposal behind it names
 it; the rest are not designed yet. The per-area detail is `docs/BACKLOG.md`; how
 the thing is built is `docs/ARCHITECTURE.md`.
 
-1. **Fast Refresh end to end in CI.** It works on all three desktops --
+1. **Fast Refresh end to end in CI.** It works on all three desktops,
    observed, including on Windows through `run-windows`, which is what phase 43
    was for. What it is not is *tested* by any machine that is not somebody's
    laptop. Half of that is now fixed: the scenario no longer skips on Windows,
    because `scripts/metro.js` starts the packager in Node rather than in shell.
    The other half is that CI sets `BASALT_SKIP_FAST_REFRESH` on all three jobs,
-   because Metro on a GitHub runner never notices an edit -- the file changes
+   because Metro on a GitHub runner never notices an edit: the file changes
    with a fresh mtime, a freshly requested bundle still carries the old text,
    and Metro logs nothing. That variable now drops the *edit* rather than the
    scenario, so CI does guard the host half: dev mode, the dev server helper,
@@ -880,19 +879,19 @@ closes the app.
 macOS is verified again as of 2026-09-14, on an Apple Silicon Mac: the whole
 tree builds with no diagnostics, both unit suites pass, `integration_test.py`
 passes all five scenarios including Fast Refresh, and `compare_all.sh` agrees
-with Linux on all twelve apps -- borders and radii included, which that dump
+with Linux on all twelve apps, borders and radii included, which that dump
 could not previously express.
 
 The guess this paragraph used to make was wrong, and it is worth keeping the
 correction. Fast Refresh failing on macOS was blamed on the dev script URL in
 `main_appkit.mm` naming `linux`; that had already been fixed and was not the
 cause. The cause was this project's own `SourceCode` module reporting a
-synthesised bundle URL, which named a Metro *graph* nobody had built -- and
+synthesised bundle URL, which named a Metro *graph* nobody had built, and
 Linux was not exempt, only lucky, because the end-to-end suite happened to
 build that graph before the client asked for it.
 
 ## Caveat
 
-`ReactCxxPlatform` carries no public API stability guarantee -- Fantom builds it
+`ReactCxxPlatform` carries no public API stability guarantee, Fantom builds it
 with `RN_BUILDING` to reach private includes. It will churn. The mitigation is
 that Meta keeps it working for their own CI.

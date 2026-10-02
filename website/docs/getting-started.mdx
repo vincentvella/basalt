@@ -1,7 +1,7 @@
----
+-,
 sidebar_position: 2
-title: Getting started
----
+title: Getting started,
+-
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 # Getting started
 
 Basalt adds a desktop to a React Native app that already exists. It does not
-create one — `create-expo-app` does that, and the division is deliberate: this
+create one: `create-expo-app` does that, and the division is deliberate: this
 is a platform you add, not a way to start a project.
 
 ## Before you start
@@ -77,7 +77,7 @@ It is idempotent, and it reports every step as one of four things:
 
 `=` already right, `+` changed by this run, `!` needs you, `?` could not be
 asked from here. An app it cannot recognise is refused before anything is
-written — a half-configured app fails later and further from the cause.
+written; a half-configured app fails later and further from the cause.
 
 ### What it changes
 
@@ -88,7 +88,7 @@ written — a half-configured app fails later and further from the cause.
 - **`scripts`** gains `linux`, `macos` and `windows`, each running
   `react-native run-<platform>`. Any script you already defined is left alone.
 - **`metro.config.js`** is wrapped in `withDesktopPlatforms`, or written if you
-  have none — which is what a stock Expo app looks like. It starts from
+  have none, which is what a stock Expo app looks like. It starts from
   `expo/metro-config` in an Expo app and React Native's own otherwise.
 
 All three desktops are configured by default, because `package.json` is
@@ -106,7 +106,7 @@ npm run linux     # or macos, or windows
 
 ## Building
 
-The run command does not build by default — it starts your app against a
+The run command does not build by default: it starts your app against a
 Metro packager, which is what you want on the second and every later run. Pass
 `--build` for the first one:
 
@@ -137,7 +137,7 @@ npm run linux -- --mode release --build
 | React Native | Status |
 | --- | --- |
 | **0.87** | Supported. What CI pins, and verified on 0.87.1. |
-| **0.86** | Supported, verified on 0.86.3 — but **no Fast Refresh**. |
+| **0.86** | Supported, verified on 0.86.3, but **no Fast Refresh**. |
 | 0.83 – 0.85 | Never built or tested. Nothing suggests they would not work; nothing has checked. |
 | 0.82 and older | Attempted and deliberately stopped. Needs a second host construction path and a websocket client React Native does not ship there. |
 
@@ -145,7 +145,7 @@ npm run linux -- --mode release --build
 refuses.
 
 Hermes is pinned alongside React Native rather than derived from it, because
-Basalt builds it from source — Meta publishes a prebuilt Hermes for Windows,
+Basalt builds it from source: Meta publishes a prebuilt Hermes for Windows,
 macOS, iOS and Android, and none for Linux. That single difference is where
 every version problem here comes from.
 
@@ -162,7 +162,7 @@ every version problem here comes from.
 
 Each host package carries its own run command, because React Native's CLI reads
 a `react-native.config.js` out of every dependency. An app with only
-`basalt-appkit` installed never sees a command it could not have used — and an
+`basalt-appkit` installed never sees a command it could not have used, and an
 app that installed `basalt-core` alone has no desktop commands at all.
 
 ## If something goes wrong
@@ -174,7 +174,7 @@ package manager, or `npx basalt init` if it was never a dependency.
 checkout or a monorepo, where Metro resolves Basalt's files by their real path
 and then looks for dependencies from there. `withDesktopPlatforms` names the
 project's `node_modules` explicitly to cover this, so check your Metro config
-is actually wrapped — `doctor` reports that.
+is actually wrapped, `doctor` reports that.
 
 **The build fails naming a path, deep in CMake.** Run `npx basalt doctor`. It
 encodes the same prerequisite list the build needs and CI installs.

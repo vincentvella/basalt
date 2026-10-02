@@ -16,18 +16,18 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 10. A cancelled job reads as a job that ran
 
 - **The `image` comparison flaked once and nobody can say why.** It differed on
-  one CI run, passed on a rerun of the same commit, and passes locally -- run
+  one CI run, passed on a rerun of the same commit, and passes locally: run
   with the right module, which is a trap of its own: `compare_hosts.sh image`
   defaults to `BasaltViews`, mounts nothing on either host, and compares two
   empty trees. The diff CI produced was discarded by `compare_all.sh`, which
-  said "rerun that one through compare_hosts.sh" -- advice that cannot work for
+  said "rerun that one through compare_hosts.sh"; advice that cannot work for
   something that does not reproduce. It prints the diff now, so the next
   occurrence is diagnosable; until then there is nothing to fix and guessing
   would be inventing a cause.
 
 - **No rendering assertions on GTK.** The widget tree says a view has a colour
   and a frame, not that the right pixels reached the screen. This is not
-  theoretical -- GTK's cairo renderer mangled every transform in the demo and no
+  theoretical, GTK's cairo renderer mangled every transform in the demo and no
   test noticed. See `docs/TESTING.md`.
 
   Windows has them as of phase 39, because Direct2D renders offscreen with no
@@ -35,7 +35,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   **macOS has them too, by a cheaper route than this entry predicted.** It
   guessed at an offscreen `NSWindow` and a display cycle. What the three files
-  doing it actually use is a `CGBitmapContext` and the view's own `drawRect:` --
+  doing it actually use is a `CGBitmapContext` and the view's own `drawRect:`:
   no window, no display, no permission: `test_appkit_image.mm` asserts where the
   ink of each resize mode lands, `test_appkit_text.mm` that a paragraph draws
   where its alignment says, and `test_appkit_scrollbar.mm` that the overlay
@@ -54,8 +54,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   It also measures per host, which the constants could not: the three shapers
   disagree about how wide "scroll to end" is, so the centre of that label is a
   few points apart on each desktop. What is still hard-coded is the other
-  apps' coordinates -- `js/hover.js`'s boxes, the devtools taps, the menu
-  taps -- which are boxes rather than labels and have no text to find.
+  apps' coordinates: `js/hover.js`'s boxes, the devtools taps, the menu
+  taps, which are boxes rather than labels and have no text to find.
 - ~~CI builds and tests Linux and Windows on every push. macOS is built only
   by `release.yml`, which has not run yet, and otherwise by whoever is
   developing on a Mac.~~ macOS is a job in `ci.yml` now, running on every
@@ -72,12 +72,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   What the gap cost, measured rather than guessed: `release.yml` ran for the
   first time that same day and found a scenario that had never passed on
-  macOS -- LogBox's toast sits at a different height there, and the tap that
+  macOS: LogBox's toast sits at a different height there, and the tap that
   hit it on Linux missed by 22 points. AppKit had 257 unit tests and no
   per-push check, and the only thing standing between a macOS regression and
   a release was whoever happened to run the suite on a Mac.
 - **The Fast Refresh *edit* is skipped in CI.** Not the scenario: it runs on
-  all three platforms and guards the host half of development mode -- dev mode,
+  all three platforms and guards the host half of development mode: dev mode,
   the dev server helper, the websocket, `DevSettings`, and a bundle Metro is on
   record as having served this process. What is unguarded is narrower than this
   entry used to claim, and one thing it used to claim was never true: the check
@@ -105,7 +105,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   - It ran. `watchman --version` answered `20260727.012849.0`, and
     `watchman watch-project js` reported `"watcher": "inotify"` over exactly
     the root Metro was given.
-  - A `.watchmanconfig` was added at the project root -- React Native ships one
+  - A `.watchmanconfig` was added at the project root: React Native ships one
     and this repo never had it -- so watch-project resolved the root Metro
     asked about rather than some parent. That file is still in the repo, since
     it is correct regardless of CI.
@@ -144,15 +144,15 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   What was ruled out: it is not a code change. The one edit in flight touched
   `main_gtk.cpp` and was reverted, rebuilt and re-run, and the failure
-  survived that -- so it was already failing before anything that day touched
+  survived that, so it was already failing before anything that day touched
   the host. The suspicion is that a pile of stray `basalt_gtk` and
   `basalt_appkit` processes from earlier runs were holding or stealing focus,
   since killing them is the only thing that happened between the last failure
   and the first pass. That is a correlation and nothing more; it was not
   tested by reproducing it.
 
-  Worth doing before trusting it: reproduce deliberately -- leave a host
-  running and start another -- and if that is it, have the scenario fail with
+  Worth doing before trusting it: reproduce deliberately, leave a host
+  running and start another, and if that is it, have the scenario fail with
   "another host is already running" rather than with a focus error, which is
   the misleading half. If it cannot be reproduced that way, the next suspect
   is the quartz backend itself, and the answer is that this scenario should
@@ -161,13 +161,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - ~~CI has no rendering assertions, so it cannot catch what the cairo renderer
   did.~~ It has them, on Windows: the job runs `basalt_win32_tests.exe`, and
   `test_win32_paint.cpp`'s fourteen are in it. What CI still cannot catch is
-  what the *cairo* renderer does, because the GTK job has none -- which is the
+  what the *cairo* renderer does, because the GTK job has none, which is the
   entry above, and a narrower claim than this one was making.
 
 
 - **Nothing tests tap-to-focus.** Clicking a `<TextInput>` focuses it on both
-  hosts -- verified with a real `CGEvent` mouse click, after which a keystroke
-  round-trips -- but no automated test can check that, and two obvious ways of
+  hosts: verified with a real `CGEvent` mouse click, after which a keystroke
+  round-trips, but no automated test can check that, and two obvious ways of
   trying give a false negative.
 
   `BASALT_TEST_TAP` enters at the touch dispatcher, below the window system, so
@@ -175,7 +175,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   actually takes focus. That is the same deliberate limitation `BASALT_TEST_TYPE`
   has with the key controller, and it looks exactly like a broken feature: the
   `<Pressable>` beside the field responds to an injected tap and the field does
-  not. System Events' `click at` is no better -- it performs an accessibility
+  not. System Events' `click at` is no better: it performs an accessibility
   press, which is why it answers with the name of the element it found, and a
   text field does nothing with one.
 
@@ -183,19 +183,19 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   scenario taps a *button* that calls `focus()`, and every `<TextInput>` feature
   added in phases 51 and 52 was probed by focusing programmatically. Testing it
   needs a real click, which on macOS means `CGEventPost` and the accessibility
-  permission that goes with it, and on Linux means xdotool -- which CI already
+  permission that goes with it, and on Linux means xdotool, which CI already
   has, and which is where this is worth adding.
 
 - **A `<TextInput>`'s wrapper is still an element of its own on Windows.**
   Fixed on the other two in phase 53: the accessible name lands on the peer,
-  which is what a screen reader reaches, and the wrapper leaves the tree --
+  which is what a screen reader reaches, and the wrapper leaves the tree:
   `accessibilityElement = NO` on AppKit, and `GTK_ACCESSIBLE_ROLE_PRESENTATION`
   chosen at construction on GTK, which is the only moment a GtkAccessible role
   can be chosen at all.
 
   Windows has not been looked at. UI Automation is the one that works
-  differently -- a provider answers questions rather than a view carrying
-  properties -- so the question there is whether the wrapper's provider should
+  differently: a provider answers questions rather than a view carrying
+  properties, so the question there is whether the wrapper's provider should
   refuse to be a control, and whether the `EDIT` peer is exposed as its own
   element at all. `RnWin32Accessible.cpp` is where it would go.
 
@@ -207,12 +207,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `native/tests/EventRecorder.h`. Five tests use it so far: a change reaching
   React on each host, blur before endEditing on AppKit, a prop that must not
   report itself as typing on GTK, and on both a field that has only been
-  mounted staying silent -- which is there to catch a recorder wired up wrong,
+  mounted staying silent, which is there to catch a recorder wired up wrong,
   since every other assertion rests on it hearing what it should.
 
   **The stub emitter this entry ruled out is still ruled out, and the way
-  round it was to stop stubbing.** `EventDispatcher` takes a listener --
-  `std::function<bool(const RawEvent &)>` -- and consults it at the top of
+  round it was to stop stubbing.** `EventDispatcher` takes a listener (  `std::function<bool(const RawEvent &)>`) and consults it at the top of
   `dispatchEvent`, before the logger and before the queue; returning true says
   the event was handled and stops the default dispatch, so nothing downstream
   runs and no beat has to flush. A real emitter over a real dispatcher, and no
@@ -234,14 +233,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   **`onKeyPress` before `onChange` is the one case this entry named that is
   still the end-to-end suite's**, and the window it needed turned out to be
   half enough. AppKit tests can make a real window, focus the field and post a
-  key through `NSApp` -- which is what invokes a local event monitor, and so
+  key through `NSApp`, which is what invokes a local event monitor, and so
   what makes the monitor the thing under test rather than a direct call to
   `handleKeyDown`. Three tests came out of that: focus reported, a key press
   reported, and nothing reported for a key that types nothing.
 
   What cannot follow is the edit. `NSApp` routes a key to the *key* window,
-  and a window belonging to an inactive process cannot become one --
-  `makeKeyWindow` leaves `isKeyWindow` false -- so the field editor never sees
+  and a window belonging to an inactive process cannot become one (  `makeKeyWindow` leaves `isKeyWindow` false) so the field editor never sees
   the keystroke and no `onChange` follows it. Sending the event a second time
   straight to the window does perform the edit, and then the ordering is the
   test's arrangement rather than AppKit's, which is not worth calling a test.
@@ -252,7 +250,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   skipped there with a note rather than loosened. A real cursor sitting over the
   window when it maps has already entered the card before the first scripted
   move lands, so the `enter card` the sequence expects in the middle arrives at
-  the start -- and again at the end. Deterministic rather than flaky: three runs
+  the start, and again at the end. Deterministic rather than flaky: three runs
   byte-identical. CI runs this host under Xvfb, which has no pointer, and
   asserts the full order, so nothing was weakened where it counts.
 
@@ -261,12 +259,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `scripts/integration_test.py` with "the focus command did not move focus to
   the field", and passed the other four. The scenario schedules taps at fixed
   delays and assumes the host has caught up, which is a timing assumption rather
-  than a synchronisation. Fixing it means waiting on something observable --
-  the tree, or a log line -- instead of on a clock.
+  than a synchronisation. Fixing it means waiting on something observable (  the tree, or a log line) instead of on a clock.
 
 - **An app build compiles this repository's test suites.** `native/` is packed
-  whole, tests included, and nothing gates them -- so `react-native run-macos
-  --build` in someone's app builds `basalt_appkit_tests`,
+  whole, tests included, and nothing gates them, so `react-native run-macos:
+  build` in someone's app builds `basalt_appkit_tests`,
   `mount_harness_appkit` and `basalt_core_probe` before it builds their app.
   Minutes of a first build that is already the slow one, for binaries the app
   will never run.
@@ -278,7 +275,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   an app compiling.
 
   The shape is a `BASALT_BUILD_TESTS` option defaulting off, with the
-  repository's root CMakeLists turning it on -- which matches the split that
+  repository's root CMakeLists turning it on, which matches the split that
   already exists between the two entry points: the root is for a checkout, a
   host package's CMakeLists is what an app configures. Left undone deliberately
   rather than folded into a change about the init command.
@@ -292,7 +289,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   of cancelling, which on a public repository is patience rather than money.
 
   And `scripts/ci_status.py` reads the last run that reached a *verdict* per
-  job, rather than the last run, with the count of newer runs that did not --
+  job, rather than the last run, with the count of newer runs that did not,
   which is the size of the blind spot, and on the day this entry describes would
   have read 5. Shards fold together, and a job with one cancelled shard is
   undecided rather than green, because three green shards and one cancelled is

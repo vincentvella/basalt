@@ -21,7 +21,7 @@ to write against GTK, GLib or the portals.
 
 How each fails matters, and splits in two. Most are looked up with
 `TurboModuleRegistry.get`, which returns null, so React Native's JavaScript
-falls back or silently does nothing -- the API appears to work and simply has no
+falls back or silently does nothing; the API appears to work and simply has no
 effect. `Clipboard` and `Vibration` use `getEnforcing`, which throws at import,
 so anything importing them dies at startup.
 
@@ -33,7 +33,7 @@ so anything importing them dies at startup.
 - ~~**`BlobModule`**~~ **done in phase 31**, on both desktops. What is left:
   blob request bodies and `responseType: 'blob'`, both blocked upstream (below),
   and `readAsArrayBuffer`, which does not exist here and does not exist in React
-  Native's own JavaScript either -- `FileReader` has no such method, so there is
+  Native's own JavaScript either; `FileReader` has no such method, so there is
   no native half to be missing yet. Worth knowing before somebody goes looking.
   binary websocket frames, and `readAsText` understanding only UTF-8.
 - ~~**`Clipboard`**, **`Vibration`**, **`AlertManager`**, **`LinkingManager`**,
@@ -48,9 +48,9 @@ so anything importing them dies at startup.
   (phase 26) and `AccessibilityInfo.js` (phase 32) all did this, each found by an
   app failing rather than by review. Worth checking for deliberately the next
   time a module misbehaves.
-- **Notifications on macOS need a person.** The implementation is real --
+- **Notifications on macOS need a person.** The implementation is real:
   `UNUserNotificationCenter`, behind the bundle check that keeps an unbundled
-  host from raising `bundleProxyForCurrentProcess is nil` -- and the first send
+  host from raising `bundleProxyForCurrentProcess is nil`, and the first send
   asks for authorisation. Whether a banner appears then depends on someone
   granting it, which needs a real launch and a real prompt; an automated run
   gets "Notifications are not allowed for this application" and cannot do
@@ -65,7 +65,7 @@ so anything importing them dies at startup.
   `android` or `ios` and rejects with "Unsupported platform" otherwise, so no
   desktop module was ever reached. macOS shows `NSSharingServicePicker`. Linux
   and Windows show the picker core/ShareFallback.h builds from a clipboard and a
-  mail client, which is the honest answer where no share service exists -- see
+  mail client, which is the honest answer where no share service exists, see
   that header for the argument. Windows' own `DataTransferManager` share UI is
   the upgrade, and needs WinRT interop that cannot be tested from a Mac.
 
@@ -74,26 +74,25 @@ so anything importing them dies at startup.
   macOS read its request through a dangling reference, which showed as a dialog
   with no text; and no instrument could get past a modal dialog, which is now
   `BASALT_TEST_DIALOG`.
-- ~~**`Alert.alert()` did nothing.**~~ Not a gap -- a silent break, in a module
+- ~~**`Alert.alert()` did nothing.**~~ Not a gap, a silent break, in a module
   the backlog recorded as finished in phase 32. Two of them in one chain:
   `Alert.js` branches on `Platform.OS` being exactly `ios` or `android` with no
   else, and `RCTAlertManager.js` is one of the self-importing shims, so it
-  resolved to its `.android.js` sibling, which calls `DialogManagerAndroid` --
-  a module this platform does not have -- and returns. `AlertManager` also
+  resolved to its `.android.js` sibling, which calls `DialogManagerAndroid` (  a module this platform does not have) and returns. `AlertManager` also
   answered with Android's three-argument callback rather than the two its own
   spec declares. Every one of those was invisible because nothing ever reached
   the next layer. js/alert.js logged "showing the alert" and asserted only that
   the main queue kept running, which it does whether or not a dialog appears.
 - ~~**A desktop notification API.**~~ There is one, and it is not this project's:
   the contract implemented is `expo-notifications`, which is what an app
-  reaching for notifications is most likely already using -- the same argument
+  reaching for notifications is most likely already using, the same argument
   react-native-gesture-handler and expo-clipboard were ported on. Thirteen
   native modules, three of them with methods; the other ten exist because
   `requireNativeModule` throws on a name it cannot find and the package asks for
   every one at import.
 
-  Linux can show one, through `org.freedesktop.Notifications` on the session bus
-  -- not `g_application_send_notification`, which routes through the portal and
+  Linux can show one, through `org.freedesktop.Notifications` on the session bus,
+   not `g_application_send_notification`, which routes through the portal and
   displays nothing without an installed `.desktop` file matching the
   application id. macOS and Windows report `denied` with a reason, because both
   need the host to be an installed, bundled application:
@@ -105,8 +104,8 @@ so anything importing them dies at startup.
 
   The send is verified, and the end-to-end suite verifies it on every run that
   has `dbus-daemon`: it starts a session bus and
-  `basalt_notification_stub` on it -- a stand-in daemon that owns the name,
-  answers `Notify` and prints what it was asked to show -- then asserts that the
+  `basalt_notification_stub` on it: a stand-in daemon that owns the name,
+  answers `Notify` and prints what it was asked to show: then asserts that the
   permission is granted, that the service received the notification, and that it
   carried the app's own words. Not `dbus-run-session`, which on macOS insists on
   launchd's socket and will not start a plain bus. Where there is no
@@ -116,13 +115,13 @@ so anything importing them dies at startup.
   registered and empty, so an app never hears that a notification was tapped.
   The freedesktop specification has `ActionInvoked` and `NotificationClosed`
   signals for exactly this and they are a subscription away, but the thing on
-  the other end -- expo's handler and response machinery -- is a larger surface
+  the other end (expo's handler and response machinery) is a larger surface
   than presenting one.
 - **Scheduling.** `scheduleNotificationAsync` delivers immediately, which is
   what a null trigger means, and rejects by name for anything else. A real
   trigger needs a timer that outlives the process and somewhere to keep the
   queue, which is a feature rather than a branch.
-- **Packaging the host as an application** -- an `.app` on macOS, a Start Menu
+- **Packaging the host as an application**, an `.app` on macOS, a Start Menu
   shortcut with an AppUserModelID on Windows. It is the thing standing between
   this platform and notifications on two of three desktops, and it is not only
   notifications: the Dock icon, the menu bar name, file associations and a
@@ -133,7 +132,7 @@ so anything importing them dies at startup.
   AppRegistry under the name "LogBox" exactly as an app registers its own
   component, ReactCxxPlatform already implements the `LogBox` TurboModule, and
   it only provides it when a host hands `ReactHost` a `SurfaceDelegate`. This
-  project passed null, so `NativeLogBox.show()` was a call into nothing -- and
+  project passed null, so `NativeLogBox.show()` was a call into nothing, and
   the *toasts* worked all along, because AppContainer renders those inside the
   app's own surface.
 - **A Metro error still has no red box.** Phase 33 stopped the error page being

@@ -19,7 +19,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 13. `ImageLoaderModule` is built with no loader and nothing can supply one
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
-  ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}` --
+  ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
   an object. So a `Blob` request body throws "Value is an object, expected a
   String" in the bridging layer before reaching any platform's http client,
   identically on both desktops. The fix is a structured type or bridging that
@@ -31,12 +31,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - **`BaseViewConfig` registers `onPointerDown`, `onPointerUp` and
   `onPointerCancel` and does not declare them.** All three are in
   `bubblingEventTypes` with their bubbled and captured names, and supported the
-  whole way down -- `propsConversions.h` parses them into `ViewProps::events`,
+  whole way down, `propsConversions.h` parses them into `ViewProps::events`,
   `PointerEventsProcessor` handles them, `TouchEventEmitter::onPointerDown`
   dispatches one. What is missing is their line in `validAttributes`, which
   lists the five hover-ish pointer props and stops. So React never sends the
   prop, the bit is never set, `shouldEmitPointerEvent` returns false, and the
-  event is dropped in C++ -- silently, and only for the three left out.
+  event is dropped in C++: silently, and only for the three left out.
 
   Costs a phone nothing, because a phone has no button to press. Costs a desktop
   the ability to answer a right-click at all, which is what found it. Worked
@@ -68,7 +68,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - Report the `HttpUtils.h` missing-`<cstdint>` bug. There are now two more of
   exactly the same shape and all three should go together:
   `react/renderer/components/view/conversions.h` uses `M_PI` seven times, and
-  `M_PI` is a POSIX extension rather than standard C++ -- MSVC's `<cmath>`
+  `M_PI` is a POSIX extension rather than standard C++, MSVC's `<cmath>`
   defines it only behind `_USE_MATH_DEFINES`. And
   `ReactCxxPlatform/react/runtime/ReactInstanceConfig.h` declares a `uint32_t`
   `devServerPort` while including only `<string>`.
@@ -82,7 +82,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   React Native compiles, and it took the release workflow's first run to say
   so. All three compile on Meta's toolchains through luck rather than intent.
 - **`ReactCommon/cmake-utils/react-native-flags.cmake` hardcodes clang's command
-  line** -- `-Wall -Werror -fexceptions -frtti -std=c++20` -- and carries
+  line** (`-Wall -Werror -fexceptions -frtti -std=c++20`) and carries
   `TODO T228344694 improve this so that it works for all platforms` directly
   beneath. Worth attaching a concrete report to: MSVC's front end has none of
   those spellings, `-Wall` is actively misread by clang-cl as `/Wall` (which it
@@ -104,7 +104,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `Image.getSize` and `Image.prefetch` cannot work on any ReactCxxPlatform host
   as shipped: the promise never settles.
 
-  The interface exists and is small -- `loadImage` and `getCacheStatus` -- so
+  The interface exists and is small (`loadImage` and `getCacheStatus`) so
   the fix upstream is a config field and one more constructor argument,
   alongside the ones already there for the WebSocket client factory and the
   dev UI delegate.

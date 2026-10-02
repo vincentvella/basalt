@@ -4,7 +4,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 An entry here is a gap, not a plan. When one is picked up it becomes a change in
 `openspec/changes/`, which is where the requirements and the task list live from
-then on -- the entry stays, so the catalogue remains a complete answer to "what
+then on: the entry stays, so the catalogue remains a complete answer to "what
 is missing", and gains a pointer. Three entries have one today.
 
 **Open (32):**
@@ -20,11 +20,11 @@ is missing", and gains a pointer. Three entries have one today.
 9. A system tray icon
 10. Windows notifications carry no identity of their own
 11. Cursor control
-12. Application lifecycle -- refusing to quit is proposed
-13. ~~Drag and drop~~ -- both directions; dragging out is untestable and says so
+12. Application lifecycle; refusing to quit is proposed
+13. ~~Drag and drop~~; both directions; dragging out is untestable and says so
 14. Clipboard
 15. Shell integration
-16. ~~Displays and screen~~ -- done
+16. ~~Displays and screen~~, done
 17. Power and idle
 18. Global shortcuts
 19. Permissions
@@ -53,7 +53,7 @@ has gone unrecorded until now.
 - ~~**More than one window**~~, and ~~**a window that can refuse to close**~~.
   Done on all three: `<Window>` opens one, `useCloseRequest()` guards it. A
   window is a surface is a React root, which is Fabric's grain rather than a
-  simplification -- and the refusal is a registration rather than a returned
+  simplification, and the refusal is a registration rather than a returned
   `false`, because the window manager wants a synchronous answer and the handler
   is on another thread, so the decision has to exist before the attempt.
 
@@ -74,13 +74,13 @@ has gone unrecorded until now.
 - **`<Modal>` is still an in-surface overlay**, though a real window is now
   something this platform could do.
 - **Packaging is macOS and Linux only, and shallow.** `react-native run-macos`
-  builds a real `.app` -- `Info.plist`, an identifier, declared URL schemes, and
+  builds a real `.app`: `Info.plist`, an identifier, declared URL schemes, and
   an ad-hoc signature, which macOS requires before it will grant notification
   permission at all. What it does not do is an icon (`.icns` needs `iconutil`),
   a real signing identity, notarisation, or a `.dmg`. `run-linux` writes a
-  `.desktop` file and does not install it -- putting a file in
+  `.desktop` file and does not install it: putting a file in
   `~/.local/share/applications` is a change to the session that a build command
-  should not make on its own -- and there is no `.deb`, `.rpm` or Flatpak.
+  should not make on its own, and there is no `.deb`, `.rpm` or Flatpak.
   Windows writes a per-user Start Menu shortcut carrying an AppUserModelID, at
   startup rather than from the CLI, and has no installer, no `.msi` and no code
   signature.
@@ -88,24 +88,24 @@ has gone unrecorded until now.
   than a gap. The rest of window geometry is done: `useWindow()` gives an app
   `setSize`, `setPosition`, `center`, `setFullScreen`, `minimize`,
   `toggleMaximize`, `close`, and live `bounds`. What is left is the part GTK4
-  will not do at all -- `setPosition` and `center` are no-ops on Linux and
+  will not do at all: `setPosition` and `center` are no-ops on Linux and
   `bounds.x` is always zero there, because `gtk_window_move` is gone and Wayland
   has no equivalent. The rest of the lifecycle is done: a close attempt is
   reported, so an app can ask "are you sure", and `setMinimumSize`,
   `setMaximumSize`, `setResizable` and `setAlwaysOnTop` are there with
-  `capabilities` saying which of them this desktop actually does -- on Linux the
+  `capabilities` saying which of them this desktop actually does: on Linux the
   maximum and always-on-top are `false`, because GTK4 removed both calls and
   Wayland has no protocol for either.
-- **A window's lifecycle is an app's to influence now** -- `useCloseRequest()`
+- **A window's lifecycle is an app's to influence now**, `useCloseRequest()`
   and `<Window onCloseRequest>` refuse the close and report the attempt, which
-  is where "are you sure" goes. So is how big it may be -- a minimum, a maximum,
+  is where "are you sure" goes. So is how big it may be: a minimum, a maximum,
   a resizable flag and always-on-top, with `capabilities` answering which of
   those this desktop does. What is left of the lifecycle is **quitting**, which
   is a different event from closing a window: Cmd-Q, and the Windows and GNOME
   session-end signals, each need their own seam. Proposed, as
   `openspec/changes/refuse-to-quit`.
   The title can be influenced too, with the title bar's colours and a hidden
-  style that lets the app draw its own header -- `useTitleBar`, `<TitleBar>`,
+  style that lets the app draw its own header: `useTitleBar`, `<TitleBar>`,
   `<TitleBar.DragRegion>` and `useTitleBarMetrics`. Implemented on all three:
   GTK drops its decorations and takes a header from the app, AppKit uses a
   transparent full-size-content title bar that keeps the traffic lights, and
@@ -114,9 +114,9 @@ has gone unrecorded until now.
 - **Menus have no checkbox or radio items, and no dynamic enabling.** The
   application menu itself is done where a platform has one: `<Menu>`
   with `<Menu.Item role="copy" />`, over NSMenu and an HMENU. `Menu.isSupported`
-  is false on Linux and is not a gap -- GNOME's guidelines have said to use a
+  is false on Linux and is not a gap: GNOME's guidelines have said to use a
   header bar with a menu button since GNOME 3, and GTK4 removed the widget.
-  Context menus are done too, on all three -- `useContextMenu().show(items,
+  Context menus are done too, on all three: `useContextMenu().show(items,
   where)`, which answers with the index chosen or null. That one is *more*
   portable than the menu bar rather than less: a popup is something every
   desktop has always had, including the one with no menu bar.
@@ -132,7 +132,7 @@ has gone unrecorded until now.
 - ~~**Native file dialogs.**~~ Done on all three: `useDialog().openFile()`,
   `saveFile()` and `openFolder()`, over `GtkFileDialog`, `NSOpenPanel` /
   `NSSavePanel` and `IFileDialog`. What is left is the rest of what a desktop
-  calls a dialog -- a message box with arbitrary buttons (`Alert` is limited to
+  calls a dialog: a message box with arbitrary buttons (`Alert` is limited to
   three on Windows, and has no text field on Linux; see the core modules
   section), and no API for a print or colour dialog.
 - **A system tray icon.** Half done, and not as a feature: `Win32Notifications.cpp`
@@ -154,7 +154,7 @@ has gone unrecorded until now.
 
 Everything above grew out of something the demo or an app needed, which is why
 it is mostly windows, menus and dialogs: those are what came up. This is the
-other direction -- Electron's main-process surface and the consent dialogs a
+other direction: Electron's main-process surface and the consent dialogs a
 desktop actually shows, gone through one at a time and checked against the
 repository rather than remembered. Status is *done*, *partial* or *absent*, and
 partial always says which half.
@@ -169,7 +169,7 @@ between what core owes every app and what belongs in a capability package. It
 was written against this catalogue, so a new entry here is also a new entry for
 that boundary to place.
 
-- **Application lifecycle** -- *absent*, all of it.
+- **Application lifecycle**, *absent*, all of it.
   - **Quitting cannot be refused.** The gap `useCloseRequest()` leaves: an app can
   guard every window and still lose data to Cmd-Q, which goes through
   `applicationShouldTerminate:` and never asks a window whether it minds. The
@@ -178,13 +178,13 @@ that boundary to place.
   in core/WindowHost.h is the shape to copy. Proposed, as
   `openspec/changes/refuse-to-quit`.
   - **No single-instance lock.** A second launch starts a second process. Every
-  desktop expects the first to be raised and handed the arguments instead --
+  desktop expects the first to be raised and handed the arguments instead,
   which is also how a file association or a URL reaches a running app.
   - **No launch at login**, no recent-documents list, no dock or taskbar badge,
   no jump list, and no standard About panel.
 
 
-- **Drag and drop** -- *dropping in works on all three; dragging out is
+- **Drag and drop**; *dropping in works on all three; dragging out is
   absent*. A view marks itself with `nativeID` and is told what was dropped on
   it, over `GtkDropTarget`, `NSDraggingDestination` and OLE's `IDropTarget`,
   with the hit test and the "innermost marked view wins" rule in
@@ -193,35 +193,35 @@ that boundary to place.
   Dragging *out* works too, through `GdkContentProvider`,
   `NSPasteboardWriting` and `DoDragDrop`. It needed the payload declared in
   advance rather than asked for, because every toolkit owns the gesture and
-  asks what is being dragged synchronously on the UI thread -- the same
+  asks what is being dragged synchronously on the UI thread, the same
   constraint refusing to close has.
 
   It has no automated coverage and cannot: the system owns the drag once it
   starts, and no instrument can put a file manager on the other end. What is
   proven is that a drag source is inert when nothing is marked; the rest is
-  the demo and a person. Windows needed by far the most code -- OLE has no
+  the demo and a person. Windows needed by far the most code: OLE has no
   simple data object, so one dragged file means a hand-written `IDataObject`,
   an `IDropSource` and `SHCreateStdEnumFmtEtc`.
-- **Clipboard** -- *partial*. Text works, through React Native's own `Clipboard`.
+- **Clipboard**, *partial*. Text works, through React Native's own `Clipboard`.
   Images, HTML, RTF and a list of files are each a separate pasteboard type on
   each platform, and none is carried.
 
   On Linux there is a second limit, and it is structural rather than missing
   work: `clipboardText` sees only this application's own clipboard.
-  `GdkClipboard` reads asynchronously -- it may have to ask another process --
+  `GdkClipboard` reads asynchronously; it may have to ask another process,
   and the seam is synchronous because `Clipboard.getString()` resolves at once.
   Reading another application's clipboard needs an async path core does not hand
   down. The file says so plainly rather than returning an empty string, which
   would look like an empty clipboard.
 
-- **Shell integration** -- *partial*. Opening a URL works (`Linking`). Opening a
+- **Shell integration**, *partial*. Opening a URL works (`Linking`). Opening a
   path with its default application, revealing a file in the file manager, and
   moving one to the trash do not. Custom URL schemes are declared by
   `app.identity.json` and `Linking.getInitialURL()` answers on a cold start, but a
-  URL delivered to an app that is *already running* is not reported -- which needs
+  URL delivered to an app that is *already running* is not reported, which needs
   the single-instance lock above to be anywhere to deliver it to.
 
-- ~~**Displays and screen** -- *partial, and not exposed at all*.~~ Done:
+- ~~**Displays and screen**: *partial, and not exposed at all*.~~ Done:
   `useDisplays()`, `displays()`, `primaryDisplay()` and `pointerPosition()`,
   each display carrying its bounds, work area, scale factor and whether it is
   primary, plus an event when the arrangement changes. The lookups did already
@@ -233,74 +233,74 @@ that boundary to place.
   Wayland has no protocol for a work area a client can read, no notion of a
   primary output, and tells a client where the pointer is only while it is
   over that client's own surfaces. So GTK reports the work area as the full
-  bounds, the first monitor as primary, and the pointer as unknown -- which is
+  bounds, the first monitor as primary, and the pointer as unknown, which is
   why `PointerPosition` carries a `known` flag rather than a bare point.
 
-- **Power and idle** -- *absent*. Suspend, resume, lock, unlock, on-battery and
+- **Power and idle**, *absent*. Suspend, resume, lock, unlock, on-battery and
   battery level; how long the person has been idle; and asking the system not to
   sleep while something is running. The last is the one a media or build app needs
   and cannot fake.
 
-- **Global shortcuts** -- *absent*. A menu accelerator works while the app is
+- **Global shortcuts**, *absent*. A menu accelerator works while the app is
   focused, which is a different thing from a shortcut that works when it is not.
 
-- **Permissions** -- *absent as a concept*, which matters more than any single one
+- **Permissions**, *absent as a concept*, which matters more than any single one
   of them. macOS gates the camera, the microphone, screen recording, location,
   accessibility and full disk access behind TCC, and each needs a usage string in
   `Info.plist` *and* a request at runtime; Windows has its own capability prompts.
   Today `cli/packageApp.js` writes no usage strings and nothing asks for anything,
   so an app that reaches for a camera is denied without a prompt. Notifications
   are the one consent flow that works, and only because expo-notifications drove
-  it. What is missing is the seam -- "ask for X, tell me the answer, tell me when
-  it changes" -- rather than any particular permission.
+  it. What is missing is the seam, "ask for X, tell me the answer, tell me when
+  it changes", rather than any particular permission.
 
-- **Secure storage** -- *absent*. No Keychain, Credential Manager or libsecret, so
+- **Secure storage**, *absent*. No Keychain, Credential Manager or libsecret, so
   an app storing a token has nowhere but a file.
 
-- **Auto-update** -- *absent*, and worth deciding rather than building: it is
+- **Auto-update**: *absent*, and worth deciding rather than building: it is
   Sparkle on macOS, MSIX or a custom updater on Windows, and the package manager
   on Linux, which is three answers rather than one API.
 
-- **Printing** -- *absent*. No print dialog and no page rendering.
+- **Printing**, *absent*. No print dialog and no page rendering.
 
-- **File system beyond the dialogs** -- *absent*. No watching a directory, and no
+- **File system beyond the dialogs**, *absent*. No watching a directory, and no
   security-scoped bookmarks, which is how a sandboxed macOS app keeps access to a
   file the person chose last week.
 
-- **Screen capture and media devices** -- *absent*. No display or window capture,
+- **Screen capture and media devices**, *absent*. No display or window capture,
   no camera or microphone enumeration.
 
-- **Crash reporting** -- *absent*. A host that segfaults leaves an `.ips` on macOS
+- **Crash reporting**, *absent*. A host that segfaults leaves an `.ips` on macOS
   and nothing an app or its author sees.
 
   The eight below came from reading Electron's own contents page against this
   list, which is worth doing once more than never: each is something a desktop
   app routinely does and none of them had been written down.
 
-- **Window state is not remembered between launches** -- *absent*. Every desktop
+- **Window state is not remembered between launches**, *absent*. Every desktop
   app reopens where it was, the size it was, maximised if it was. `useWindow()`
   has every piece needed to do it by hand and no app should have to.
-- **No progress in the taskbar or dock** -- *absent*. A determinate or
+- **No progress in the taskbar or dock**, *absent*. A determinate or
   indeterminate bar on the dock icon or the taskbar button, which is what a
   download or an export is expected to show.
-- **A window cannot represent a file** -- *absent*. macOS puts a proxy icon and
+- **A window cannot represent a file**, *absent*. macOS puts a proxy icon and
   an edited dot in the title bar for the document a window is showing; Windows
   conventionally marks the title. An editor wants both.
-- **No vibrancy, transparency or window shape** -- *absent*. Translucent
+- **No vibrancy, transparency or window shape**, *absent*. Translucent
   material behind content is how a native macOS sidebar looks, and a
   transparent or shaped window is how anything that is not a rectangle is
   drawn.
-- **No online and offline detection** -- *absent*. Whether the machine has a
+- **No online and offline detection**, *absent*. Whether the machine has a
   network, and an event when that changes. React Native's own answer is
   NetInfo, which is a community package rather than core.
-- **No spell checking** -- *absent* as a service. `spellCheck` on a
+- **No spell checking**, *absent* as a service. `spellCheck` on a
   `<TextInput>` is listed under TextInput as an unimplemented prop; the desktop
-  version is larger -- a dictionary, a language, and a context menu of
+  version is larger: a dictionary, a language, and a context menu of
   corrections, which is what the platform's own text controls do.
-- **No dock, launcher or jump-list menu** -- *absent*. The menu a desktop shows
+- **No dock, launcher or jump-list menu**, *absent*. The menu a desktop shows
   when you press and hold the icon: recent documents, and the two or three
   actions an app wants offered before it is even running.
-- **No way to do work off the JavaScript thread** -- *absent*. Electron has
+- **No way to do work off the JavaScript thread**, *absent*. Electron has
   `utilityProcess` and MessagePorts. Here the equivalent is a worklet runtime or
-  a second JSI runtime, and Reanimated already brings one -- so this is about
+  a second JSI runtime, and Reanimated already brings one, so this is about
   whether an app can use it for its own work, not about building one.

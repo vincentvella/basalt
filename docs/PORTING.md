@@ -11,7 +11,7 @@ rather than by reading, and each section says what breaks if you do not do it.
 
 `ReactCxxPlatform` is not in the npm package.
 `packages/react-native/package.json` lists `ReactCommon`, `ReactAndroid` and
-`ReactApple` under `files`, and not `ReactCxxPlatform` — so an installed React
+`ReactApple` under `files`, and not `ReactCxxPlatform`, so an installed React
 Native does not carry the layer an out-of-tree C++ platform is built on, and
 `react-native run-linux --build` used to need a source checkout. Every app has
 an installed React Native and almost none has a checkout.
@@ -25,7 +25,7 @@ consumer is easy to ignore, and this platform has no users yet to point at.
 **The workaround is to fetch the directory, not to vendor it.** When React
 Native is an installed package with no `ReactCxxPlatform`, bootstrap does a
 sparse, blobless clone of that one directory at the tag matching the app's exact
-version — about 3MB and four seconds, a smaller bargain than the folly and
+version: about 3MB and four seconds, a smaller bargain than the folly and
 Hermes downloads it already makes.
 
 Fetching is forced rather than preferred. Carrying a copy in this package was
@@ -41,7 +41,7 @@ construction.
 `ReactCommon/react/nativemodule/cputime` ships its C++ but not its codegen spec,
 which lives under `src/private/testing/fantom/specs/` and is reasonably
 excluded. The package therefore contains C++ that cannot be compiled from the
-package, and the failure reads as a missing `NativeCPUTimeCxxSpec` template —
+package, and the failure reads as a missing `NativeCPUTimeCxxSpec` template,
 like a codegen bug rather than a packaging one. Nothing links that target, so
 this platform does not build it.
 
@@ -58,7 +58,7 @@ development.
 A pinned triple rather than following the app, because following the app meant
 every combination was its own experiment. Adding a version is now a deliberate
 act: build against it, run both suites, add an entry. It cannot be done by
-widening a range, and that is the point — 0.83 through 0.86 were once described
+widening a range, and that is the point; 0.83 through 0.86 were once described
 as "expected to work", which was a prediction wearing the clothes of support.
 They are listed as untested and refused.
 
@@ -70,13 +70,13 @@ supported, and the fetch keeps the C++ and the JavaScript exact *within* one.
 
 Windows is listed among the platforms Meta publishes a prebuilt Hermes for, and
 the prebuilt does not exist. So Windows builds Hermes from source, which needs
-three things — one of them an upstream bug.
+three things, one of them an upstream bug.
 
 **`HERMES_ALLOW_BOOST_CONTEXT=0`.** Hermes' vendored `boost::context` throws
 `std::bad_alloc` from its *Windows* stack allocator, and Hermes compiles with
 exceptions off. The POSIX allocator does not, which is why this is Windows-only.
-This is Hermes' own option for exactly that case — the one its ASAN and
-Emscripten builds use — and the whole path is behind `#if
+This is Hermes' own option for exactly that case, the one its ASAN and
+Emscripten builds use, and the whole path is behind `#if
 HERMES_USE_BOOST_CONTEXT`, so it is a clean fallback rather than a hole.
 
 **`HERMES_EMPTY_BASES` on `VM::Environment`.** Static Hermes asserts that the
@@ -90,7 +90,7 @@ The fix is one word and Hermes already has it. `Support/Compiler.h` defines
     #define HERMES_EMPTY_BASES __declspec(empty_bases)
 
 with a comment saying it is necessary for `PointerBase` alignment under
-`HERMESVM_CONTIGUOUS_HEAP`, which is the mode this builds in — and the macro is
+`HERMESVM_CONTIGUOUS_HEAP`, which is the mode this builds in, and the macro is
 applied to nothing at all in the entire tree. Dead code that was presumably
 attached to something once. Applying it to `Environment` clears the assertion.
 
@@ -109,13 +109,13 @@ defaults them *off*. The strip is safe on every platform Hermes is tested on and
 fatal on this one.
 
 `HERMES_ENABLE_EH=ON` is the supported knob for Hermes' own targets, and it has
-to be `HERMES_ENABLE_RTTI=ON` alongside it — `API/hermes/CMakeLists.txt` refuses
+to be `HERMES_ENABLE_RTTI=ON` alongside it, `API/hermes/CMakeLists.txt` refuses
 the mixed case outright. Worth knowing because the failure arrives as a
 configure error about ICU much further down the log, which is collateral and
 sends you looking in the wrong place.
 
 For the jsi target the flag has to come from `CMAKE_CXX_FLAGS` instead, spelled
-`/EHs /EHc` — exactly equivalent, and not the literal string their `REPLACE`
+`/EHs /EHc`: exactly equivalent, and not the literal string their `REPLACE`
 looks for.
 
 One trap, recorded because it cost a full rebuild: `-DCMAKE_CXX_FLAGS=...`
@@ -130,7 +130,7 @@ The two front ends fail differently on Hermes, and the difference decided the
 toolchain for the whole core build:
 
 - **cl** stops at 260 of 415 on `__builtin_expect` in Static Hermes'
-  `static_h.h` — a GCC and Clang builtin MSVC does not have, and not something a
+  `static_h.h`: a GCC and Clang builtin MSVC does not have, and not something a
   flag can supply.
 - **clang-cl** has that builtin and gets past it, which is what makes the three
   fixes above sufficient rather than the first of a long list.
@@ -140,7 +140,7 @@ independent reasons.
 
 ## Upstream portability bugs this build works around
 
-Both are the same shape — a POSIX assumption in a header — and both are fixed
+Both are the same shape (a POSIX assumption in a header) and both are fixed
 from the command line rather than by editing React Native's tree:
 
 - **`M_PI`** is used seven times in

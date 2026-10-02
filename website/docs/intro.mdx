@@ -1,11 +1,11 @@
----
+-:
 sidebar_position: 1
-title: What Basalt is
----
+title: What Basalt is:
+-
 
 # What Basalt is
 
-Basalt runs React Native apps on the desktop — Linux, macOS and Windows — on
+Basalt runs React Native apps on the desktop (Linux, macOS and Windows) on
 React Native's own C++ core rather than on a browser engine.
 
 Each desktop gets a host written against its native toolkit: GTK4 on Linux,
@@ -16,8 +16,8 @@ window re-wraps it. The app ships as one binary with no bundled browser.
 
 What runs underneath is React Native's, not a reimplementation of it: Hermes,
 Yoga, Fabric and the shadow tree are the same C++ that runs on a phone. Basalt
-supplies the part ReactCommon declares and does not define — a component
-registry, a mounting manager and a text layout engine per platform — which is
+supplies the part ReactCommon declares and does not define: a component
+registry, a mounting manager and a text layout engine per platform, which is
 why your components, props and layout behave as they already do.
 
 ## How this differs from the alternatives
@@ -29,7 +29,7 @@ native widgets; there is no DOM and no CSS.
 **react-native-windows and react-native-macos** are Microsoft's and Meta's own
 desktop forks, each a separate repository with its own release cadence. Basalt
 is one project covering three desktops, and deliberately uses their platform
-names — `macos` and `windows` — so a library shipping `Button.macos.js`
+names (`macos` and `windows`) so a library shipping `Button.macos.js`
 resolves here without knowing Basalt exists.
 
 **Expo** is not an alternative; it is the common case. A stock Expo app runs,
@@ -55,8 +55,8 @@ Accessibility reaches the platform's accessible layer: `accessibilityRole`,
 `accessibilityLabel`, `accessibilityHint` and `accessibilityState` are mapped,
 and a `<Text>` calls itself a label without the app saying so.
 
-Third-party native modules work — `react-native-gesture-handler` and
-Reanimated both run — and an app can contribute its own C++ without publishing
+Third-party native modules work; `react-native-gesture-handler` and
+Reanimated both run, and an app can contribute its own C++ without publishing
 a package. See [Native modules](/contributing/PORTING).
 
 ## What to expect
@@ -70,7 +70,7 @@ is more useful than a maturity label:
   [Supported versions](/docs/getting-started#supported-react-native-versions).
 - **On 0.86 there is no Fast Refresh.** A teardown leaves the host without a
   mounting manager, so a reload collapses it. Root-caused and fixed upstream in
-  0.87 — so use 0.87 if you want it.
+  0.87, so use 0.87 if you want it.
 - **The first build compiles Hermes and React Native's C++ from source** and
   takes tens of minutes. Later builds do not.
 - **Windows registers one fewer component than the other two**, because nothing
@@ -78,15 +78,15 @@ is more useful than a maturity label:
 
 ## Where to go next
 
-- **[Getting started](/docs/getting-started)** — prerequisites, one command,
+- **[Getting started](/docs/getting-started)**: prerequisites, one command,
   and what it changes.
-- **[CLI reference](/docs/reference/cli)** — every command, option and default.
-- **[app.json](/docs/reference/app-json)** — which desktops to build, the
+- **[CLI reference](/docs/reference/cli)**: every command, option and default.
+- **[app.json](/docs/reference/app-json)**, which desktops to build, the
   bundle identifier, URL schemes.
-- **[APIs](/docs/reference/api)** — the few things Basalt adds that React
+- **[APIs](/docs/reference/api)**, the few things Basalt adds that React
   Native has no equivalent for, because a phone has no such thing.
 
 The repository's own documentation, under **Contributing**, is written for
-people working on Basalt rather than with it — but it is the most detailed
+people working on Basalt rather than with it, but it is the most detailed
 account of how any of this works, and
 [Decisions](/contributing/DECISIONS) records why it is built this way.

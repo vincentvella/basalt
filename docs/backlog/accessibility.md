@@ -20,6 +20,6 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and `accessibilityActions` are ignored.
 - ~~No keyboard focus model, so nothing is reachable by Tab.~~ Done on both:
   Tab visits focusable views in tree order and wraps, Shift-Tab goes back, and
-  what counts as focusable is what `accessible` marks -- six tests on GTK
+  what counts as focusable is what `accessible` marks, six tests on GTK
   (`focus_*`) and two on AppKit. A view that stops being accessible leaves the
   tab order, which is the part that had to be got right rather than added.

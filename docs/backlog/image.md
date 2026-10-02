@@ -21,7 +21,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   The policy is in core and the pixels are not, because the three hosts hold a
   `GdkTexture`, a `CGImage` and an `RnWin32Image` and none of those can be
   named there. Core answers with the URIs to release and never sees one. Each
-  host measures its own bytes -- GDK four per pixel, Core Graphics the row
+  host measures its own bytes: GDK four per pixel, Core Graphics the row
   stride times the height, since rows are padded and width times four would
   undercount.
 
@@ -33,7 +33,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   bitmap brush in wrap mode.
 
   Tiled from the top left, so whole tiles start at the origin and the partial
-  one is at the far edge, which is what CSS `repeat` does -- and why the
+  one is at the far edge, which is what CSS `repeat` does, and why the
   centring it used to fall back to was a different picture rather than a
   rougher one.
 
@@ -43,13 +43,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   small sharp images people tile.
 
   `fit=repeat` is in the tree dump, so `compare_hosts.sh` sees it, and
-  `test_appkit_image.mm` asserts the ink reaches all four corners -- which it
+  `test_appkit_image.mm` asserts the ink reaches all four corners, which it
   does not when centred, the check having been run against `center` first to
   be sure it discriminates.
 - ~~**`tintColor` is ignored.**~~ Done on all three, and on expo-image's
   `tintColor` too. The image becomes a stencil and the colour is what is drawn,
   which is what the prop means: recolour the silhouette rather than blend with
-  the pixels. Each toolkit spells that differently -- a GskMaskNode in alpha
+  the pixels. Each toolkit spells that differently: a GskMaskNode in alpha
   mode on GTK, `CGContextClipToMask` on AppKit, `FillOpacityMask` on Direct2D,
   which needs aliased antialiasing and refuses the call without it.
 
@@ -65,7 +65,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Metro's `build` command has no `--assets-dest`, so the files were never copied
   next to the bundle. `scripts/copy_assets.js` reads the asset descriptors back
   out of the bundle Metro just wrote and copies each one to where
-  `AssetSourceResolver.scaledAssetURLNearBundle` will look for it -- including
+  `AssetSourceResolver.scaledAssetURLNearBundle` will look for it, including
   that rule's own escaping, where each `../` becomes a single `_`. The demo's
   images never showed this because they are `{uri: ...}` rather than requires.
 - Assets are never fetched over the network, so a dev server's assets do not
@@ -84,6 +84,6 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   looks for the seam: `ReactCxxTurboModuleProvider` constructs
   `ImageLoaderModule(jsInvoker_)` with the default empty `weak_ptr`, and
   nothing in `ReactInstanceConfig` can supply one. So there is no hook to fill
-  in -- the module has to be built by the host instead, which works because a
+  in; the module has to be built by the host instead, which works because a
   host's own providers are consulted before the built-in ones. See
   `docs/backlog/upstream.md`.

@@ -21,7 +21,7 @@ coremodules and TurboModule hosting. This project is a *consumer* of it, not a
 fork of it.
 
 Proof it works off-Apple/Android: `private/react-native-fantom/tester/` is a
-CMake-built C++ host that runs on Linux today — its `CMakeLists.txt` has an
+CMake-built C++ host that runs on Linux today; its `CMakeLists.txt` has an
 explicit `if(UNIX AND NOT APPLE)` branch and `getHostPlatform.js` maps
 `process.platform === 'linux'` to a supported host. Hermes, Yoga and Fabric
 all build here already.
@@ -81,7 +81,7 @@ testable (`demo_layout_gtk`), and keeps RN types out of the widget layer.
 Read off `StubViewTree::mutate`, RN's own reference walk, and implemented once
 in `native/core/MountingWalk.h` for every desktop platform. None of what follows
 is about a toolkit, and writing it twice would mean two chances to get it subtly
-different -- which shows up as a layout that is wrong on one desktop and right on
+different, which shows up as a layout that is wrong on one desktop and right on
 another. Each platform supplies seven operations that do touch a view:
 `createView`, `createRootView`, `destroyView`, `insertChild`, `removeChild`,
 `updateView` and `forgetTag`.
@@ -107,7 +107,7 @@ Two consequences the implementation depends on:
   keep an `EventEmitter` alive. They have no widget; skip them on Insert and
   Remove. (It is hardcoded `false` off-Android, but honouring it keeps parity.)
 
-Fabric emits **no `Create` for a surface root** — the root shadow node is the
+Fabric emits **no `Create` for a surface root**; the root shadow node is the
 base of every diff. The host calls `createSurfaceRoot(surfaceId)` before
 `startSurface`. In Fabric a `SurfaceId` *is* the root node's tag, which lets
 the root live in the same registry as every other view.
@@ -127,7 +127,7 @@ Scheduler::uiManagerDidFinishTransaction
 `updateRendering` is the "update the rendering" step of React Native's event
 loop, drained inside `executeTask` with the runtime live. So a mounting manager
 must not touch platform widgets there. iOS and Android both marshal at this
-point -- that is what `RCTMountingManager`'s main-thread dispatch and Android's
+point; that is what `RCTMountingManager`'s main-thread dispatch and Android's
 `MountItemDispatcher` are for.
 
 `GtkMountingManager::executeMount` therefore only moves the transaction onto a
@@ -150,13 +150,13 @@ creates the `EventBeat` that flushes the event queue in step with the run loop.
 Nothing an `EventEmitter` produces reaches JavaScript without it.
 `EventQueue::onEnqueue` only sets a flag on the beat; the queue is flushed when
 something calls `RunLoopObserverManager::onRender()`. React Native asks for
-`Activity::BeforeWaiting` -- run once the loop has drained its work and is about
+`Activity::BeforeWaiting`: run once the loop has drained its work and is about
 to sleep, which on iOS is a `CFRunLoopObserver` and on Android the Choreographer.
 
 `native/src/GtkRunLoopObserver.cpp` is the GLib equivalent: a `GSource` that does the
 work in `prepare()` and never reports itself ready. `prepare()` runs once per
 main-loop iteration before the poll, so it costs a call when the loop is busy
-and nothing at all when the application is idle -- unlike a frame-clock tick
+and nothing at all when the application is idle, unlike a frame-clock tick
 callback, which would hold the clock open and wake the process at display rate
 forever.
 
@@ -166,7 +166,7 @@ forever.
 ## Input
 
 `native/src/GtkTouchDispatcher.cpp` turns GTK input into touch events. React Native's
-Pressability -- what backs every `onPress` -- runs on the responder system in
+Pressability (what backs every `onPress`) runs on the responder system in
 JavaScript, and the responder system is fed by touchstart/touchmove/touchend, so
 a desktop pointer is reported as a single touch point. W3C pointer events exist
 alongside these but are only consulted for hover, behind a feature flag.
@@ -174,7 +174,7 @@ alongside these but are only consulted for hover, behind a feature flag.
 Controllers are attached to the surface root, not to every view. A controller
 per widget would have to be created and destroyed on every mutation and would
 still need the same hit test, and `gtk_widget_pick` already walks the widget tree
-and returns the deepest widget at a point -- the answer React Native's own hit
+and returns the deepest widget at a point, the answer React Native's own hit
 testing is looking for, now that every view is allocated at the frame Yoga gave
 it.
 
@@ -188,8 +188,8 @@ into the nearest ancestor that does, with layout metrics rebased onto it. A
 
 This is visible in a `BASALT_DUMP_TREE` dump and is easy to mistake for a
 mounting bug, because it is invisible on screen: each view is placed at the
-frame Fabric gave it either way. A `<Pressable>` is not flattened -- it handles
-touches, so it forms a stacking context -- which is why its label *does* appear
+frame Fabric gave it either way. A `<Pressable>` is not flattened, it handles
+touches, so it forms a stacking context, which is why its label *does* appear
 nested.
 
 Two consequences worth knowing. Hit testing returns the innermost view under a
@@ -228,7 +228,7 @@ headers and measure through whatever `TextLayoutManager` is installed, which
 here is the Pango one. Android's variant includes `fbjni` and calls into a Java
 `FabricUIManager`, so it is unusable outside an Android build.
 
-The editing is a real `GtkText` -- the widget inside `GtkEntry` -- held as a
+The editing is a real `GtkText` (the widget inside `GtkEntry`) held as a
 non-`RnView` child of the view Fabric mounted, and allocated inside that view's
 content inset so padding and borders apply. It brings input methods, selection,
 the clipboard and every Linux keybinding with it.
@@ -251,8 +251,8 @@ it ignores `ParagraphAttributes` entirely and returns
 `layoutConstraints.minimumSize`, measuring nothing.
 
 A Linux implementation means mapping RN's `AttributedString` /
-`ParagraphAttributes` onto Pango — line breaking, bidi, shaping, font
-fallback, ellipsis modes, and per-fragment attributes — and doing it faithfully
+`ParagraphAttributes` onto Pango: line breaking, bidi, shaping, font
+fallback, ellipsis modes, and per-fragment attributes, and doing it faithfully
 enough that layout matches the other platforms.
 
 ## Build architecture
@@ -262,7 +262,7 @@ project supplies them:
 
 - `native/cmake/ReactNativeCore.cmake` adds the 29 RN targets in the transitive
   closure of `react_renderer_mounting`, computed from RN's own
-  `target_link_libraries`. Notably **Hermes is not in that closure** —
+  `target_link_libraries`. Notably **Hermes is not in that closure**;
   mounting does not require a JS runtime.
 - `cmake/ThirdParty.cmake` supplies the third-party target *names* RN links
   against, backed by system packages where possible (glog, boost, fmt,
@@ -276,7 +276,7 @@ are documented in the project README.
 
 `basalt-core` is TypeScript, and `main` points into its `dist/`. So
 nothing that bundles works in a fresh checkout until `scripts/build_ts.sh` has
-run -- `scripts/bundle.sh` runs it for you, and CI runs it before the Node
+run: `scripts/bundle.sh` runs it for you, and CI runs it before the Node
 suites on both runners, where it doubles as the type check.
 
 Three consequences are worth knowing before they are discovered:
@@ -292,8 +292,8 @@ Three consequences are worth knowing before they are discovered:
   that, because a failure here silently falls back to React Native's own
   `Platform` a long way from the cause.
 - **Two kinds of file stay JavaScript**, and neither is an exception waiting to
-  be tidied. `react-native.config.js` -- this package's and each host
-  package's -- is read by React Native's CLI from `node_modules/<package>/` as
+  be tidied. `react-native.config.js`, this package's and each host
+  package's; is read by React Native's CLI from `node_modules/<package>/` as
   plain CommonJS, by path convention rather than through `exports`. Putting a
   tool this project does not control behind a build step, to type what is mostly
   a data literal, is the wrong trade. They carry `// @ts-check` and JSDoc
@@ -310,7 +310,7 @@ which is validated rather than remembered; what is being worked on is
 and the order it is likely to happen in is the README's "Next".
 
 A roadmap table lived here for a long time and was wrong about four of its own
-rows by the end -- it still listed "port one third-party native module" as
+rows by the end, it still listed "port one third-party native module" as
 unstarted after gesture-handler and Reanimated had both shipped. A schedule kept
 in a fourth place is a schedule nobody updates.
 
@@ -320,7 +320,7 @@ in a fourth place is a schedule nobody updates.
 nowhere in it: each host supplies its own and, in doing so, declares what its
 platform can put on screen. It is defined once per host, in
 `ComponentRegistryGtk.cpp`, `ComponentRegistryAppKit.mm` and
-`ComponentRegistryWin32.cpp` -- fourteen descriptors on Linux and macOS, and
+`ComponentRegistryWin32.cpp`: fourteen descriptors on Linux and macOS, and
 thirteen on Windows, which does not register `ExpoImage` because nothing there
 mounts one yet. That is not tidiness. `ParagraphComponentDescriptor` constructs a
 `TextLayoutManager`, whose stub this build drops so the platform's own can be the
@@ -338,7 +338,7 @@ Four suites: `build/basalt_gtk_tests` for everything reachable without a JavaScr
 runtime, `scripts/integration_test.py` for the whole stack, asserting on the
 widget tree the host dumps rather than on a screenshot, `build/basalt_appkit_tests`
 for the macOS view layer and mounting manager, and `build/basalt_win32_tests` for
-the Windows view layer -- which is the only one of the four that asserts on
+the Windows view layer, which is the only one of the four that asserts on
 pixels, because Direct2D renders offscreen with no window and neither other
 toolkit does. See `docs/TESTING.md`, which also records what is still not
 covered and why.

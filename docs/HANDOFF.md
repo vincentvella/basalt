@@ -37,7 +37,7 @@ scroll. Accessibility properties reach AT-SPI. What is missing is still the comp
 surface rather than the runtime: no `<TextInput>`, and no keyboard or focus
 model.
 
-There are tests now -- `build/basalt_gtk_tests` and `scripts/integration_test.py`. See
+There are tests now, `build/basalt_gtk_tests` and `scripts/integration_test.py`. See
 `docs/TESTING.md`, which also has the recipe for running everything on Linux in
 a VM, which is where it should be checked before being believed.
 
@@ -54,12 +54,12 @@ Already have a React Native checkout? Skip that clone and point bootstrap at
 it (`scripts/bootstrap.sh /path/to/react-native`). Two caveats: bootstrap runs
 `yarn install` there if `node_modules` is empty, which rewrites its
 `yarn.lock`; and everything here is built against RN `main`, so an older tagged
-release will likely need adjustment -- `ReactCxxPlatform` carries no API
+release will likely need adjustment, `ReactCxxPlatform` carries no API
 stability guarantee.
 
 `bootstrap.sh` fetches folly/fast_float/nlohmann_json, builds Hermes, and runs
 React Native's codegen. It is idempotent; `--force` redoes everything. It caps
-build parallelism at `BUILD_JOBS` (default 12) deliberately -- a full-width
+build parallelism at `BUILD_JOBS` (default 12) deliberately; a full-width
 build makes a laptop unusable and pins the fans well past the end of the build.
 
 Then:
@@ -109,7 +109,7 @@ brew install gtk4 pango glib glog boost fmt double-conversion gflags \
 
 Only `gtk4` was missing on the first Mac. Node came from nvm (24.x); mise is
 optional, bootstrap falls back to the ambient node and checks its major version
-against RN's engines (`^22.13 || ^24.3 || >= 26.0.0` -- **Node 25.x is
+against RN's engines (`^22.13 || ^24.3 || >= 26.0.0`; **Node 25.x is
 excluded** and fails an engine check inside a preinstall hook). Bootstrap
 installs yarn globally into that node if it is absent.
 
@@ -149,7 +149,7 @@ renderer; the demo rendering correctly, captured with `grim`; and the
 end-to-end suite passing with real pointer events through an X server, which
 also confirmed the wheel path converts notches to pixels exactly as intended.
 
-Wayland *input* is still unverified -- a headless compositor has no seat, so
+Wayland *input* is still unverified; a headless compositor has no seat, so
 there is no pointer to move. That needs a desktop session or real hardware.
 
 ## A threading bug worth remembering, 2026-09-09
@@ -161,7 +161,7 @@ reentrant. `<TextInput>`'s `focus` reaches the platform input method, and on
 macOS AppKit asserts it is on the main thread and traps the whole process.
 
 Two things are worth taking from it. The bug was found on *macOS*, which
-inverts the pattern every other portability bug in this project has followed --
+inverts the pattern every other portability bug in this project has followed,
 so "it only breaks on Linux" is not a rule. And it was latent for two phases:
 GTK is not thread-safe either, so the Linux builds were relying on luck rather
 than on being correct. Anything reached from a scheduler delegate callback
@@ -184,7 +184,7 @@ input, scaling or accessibility.
 `docs/BACKLOG.md` and `docs/backlog/` carry the known gaps, one file per area.
 `docs/DECISIONS.md` records why Path A, why clang, and why `RnLayout` does no
 layout. `docs/PORTING.md` has what it takes to build React Native's core
-somewhere new -- the Hermes and MSVC fixes, and which React Natives are
+somewhere new: the Hermes and MSVC fixes, and which React Natives are
 supported. Work being proposed or under way is `openspec/changes/`; what the
 platform is required to do is `openspec/specs/`.
 
