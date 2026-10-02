@@ -33,9 +33,9 @@ on:
     branches: [main, ci]
     # Prose needs no compiler. Most commits here are a docs/ write-up or a
     # README line, and each one was paying for every build job.
-    paths-ignore: ["docs/**", "openspec/**", "**/*.md"]
+    paths-ignore: ["docs/**", "openspec/**", "website/**", "**/*.md"]
   pull_request:
-    paths-ignore: ["docs/**", "openspec/**", "**/*.md"]
+    paths-ignore: ["docs/**", "openspec/**", "website/**", "**/*.md"]
   workflow_dispatch:
     inputs:
       drift:

@@ -40,3 +40,7 @@ packages/*/tsconfig.paths.json
 
 # The CI jobs that set CCACHE_DIR inside the workspace (macOS, Windows).
 /ccache/
+
+# Docusaurus build output and caches.
+website/build/
+website/.docusaurus/
