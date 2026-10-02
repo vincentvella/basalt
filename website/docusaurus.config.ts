@@ -23,7 +23,9 @@ const config: Config = {
 
   future: {v4: true},
 
-  url: 'https://basalt.vercel.app',
+  // Canonical URLs and the sitemap are built from this, so it has to be the
+  // address the site is actually served from, not an aspiration.
+  url: 'https://basalt-snowy.vercel.app',
   baseUrl: '/',
 
   organizationName: 'vincentvella',

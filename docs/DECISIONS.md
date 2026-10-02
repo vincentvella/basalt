@@ -226,7 +226,7 @@ what the responder system expects. And on touchend the touch must not appear in
 `touches`, only in `changedTouches` -- leaving it in convinces the responder
 system a finger is still down and it swallows the next press.
 
-## <Image> loads its own pixels — 2026-09-09
+## `<Image>` loads its own pixels — 2026-09-09
 
 React Native's cxx `ImageManager` is a stub: `requestImage` returns
 `ImageRequest{source, nullptr, {}}`, so no `ImageResponse` ever arrives and
@@ -244,7 +244,7 @@ flight. And a mutation that changed only layout must not restart the load, or an
 `<Image>` flickers whenever its parent resizes -- so the current URI is tracked
 per tag and an unchanged one is served from cache.
 
-## <ScrollView> is an offset, not a GtkScrolledWindow — 2026-09-09
+## `<ScrollView>` is an offset, not a GtkScrolledWindow — 2026-09-09
 
 `GtkScrolledWindow` sizes its child through the measure/allocate protocol, and
 this platform's whole invariant is that React Native decides sizes and
@@ -298,7 +298,7 @@ States are tri-state on purpose. Leaving `checked` unset is not the same as
 setting it false: a view that never mentions being checked is not an unchecked
 checkbox, and a screen reader should not read it as one.
 
-## <TextInput> is blocked on shipping our own JS component — 2026-09-09
+## `<TextInput>` is blocked on shipping our own JS component — 2026-09-09
 
 Both of React Native's built-in text inputs are unusable here, for different
 reasons.
