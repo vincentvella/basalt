@@ -144,6 +144,18 @@ rendering update, so `dispatchCommand` queues onto an idle source and
 not incidental: it keeps a command behind the transaction that created the view
 it names, which is what `focus()` on a freshly mounted field depends on.
 
+**Assume a scheduler delegate callback is on the JS thread until proven
+otherwise.** `GtkMountingManager::dispatchCommand` called into GTK directly for
+two phases and nothing went wrong, because the only command was `ScrollView`'s
+and moving an adjustment touches nothing reentrant. `<TextInput>`'s `focus`
+reaches the platform input method, and AppKit asserts it is on the main thread
+and traps the whole process.
+
+Two things worth taking from that. It was found on **macOS**, which inverts the
+direction every other portability bug here has run in, so "it only breaks on
+Linux" is not a rule. And GTK is not thread-safe either, so the Linux builds had
+been relying on luck rather than on being correct.
+
 `RunLoopObserverManager`, despite the name, is **not** what drives mounting. It
 creates the `EventBeat` that flushes the event queue in step with the run loop.
 
@@ -353,6 +365,13 @@ it working for their own CI, so breakage tends to be mechanical.
 core and `react-native-macos` ~6, with paid teams. A solo platform will lag
 harder. Mitigation: track the C++ surface Fantom exercises, since Meta has a
 CI incentive to keep exactly that compiling.
+
+**Developing on a Mac means testing against a backend that is not the target.**
+Wayland fractional scaling, client-side decorations, portals and compositor
+behaviour are all different or absent under GTK's quartz backend. CI covers all
+three desktops now, which is most of the mitigation, but anything touching
+layout, input, scaling or accessibility is worth running on real Linux before
+believing it.
 
 **Third-party native modules are not portable for free.** Reanimated,
 gesture-handler, svg and friends ship ObjC/Java/Kotlin. This architecture gives

@@ -596,9 +596,31 @@ const packageApp = require(
 function projectWith(files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'basalt-package-'));
   for (const [name, contents] of Object.entries(files)) {
-    fs.writeFileSync(path.join(root, name), contents);
+    const file = path.join(root, name);
+    fs.mkdirSync(path.dirname(file), {recursive: true});
+    fs.writeFileSync(file, contents);
   }
   return root;
+}
+
+/**
+ * The files that make a fixture look like an Expo app.
+ *
+ * `readAppConfig` reaches Expo through `createRequire(<root>/package.json)`, so
+ * a fixture without one resolves no Expo config at all, `exp` stays null, and a
+ * test of "does the Expo value or the basalt value win" passes whichever way
+ * the code reads it. Standing a real module there is what makes it able to fail.
+ */
+function expoConfig(exp) {
+  return {
+    'package.json': JSON.stringify({name: 'fixture'}),
+    'node_modules/expo/package.json': JSON.stringify({
+      name: 'expo',
+      exports: {'./config': './config.js'},
+    }),
+    'node_modules/expo/config.js':
+      `exports.getConfig = () => ({exp: ${JSON.stringify(exp)}});`,
+  };
 }
 
 test('an app that names itself is not given a derived identifier', () => {
@@ -613,6 +635,40 @@ test('an app that names itself is not given a derived identifier', () => {
   assert.strictEqual(config.name, 'The Demo');
   assert.strictEqual(config.identifier, 'com.example.demo');
   assert.deepStrictEqual(config.schemes, ['demo']);
+});
+
+test('basalt.* overrides the Expo config, for the scheme as well as the id', () => {
+  // These read opposite ways until 2026-10-02: `basalt.identifier` beat Expo's
+  // and `expo.scheme` beat `basalt.scheme`, so an app that set both basalt keys
+  // had one honoured and the other silently dropped.
+  const root = projectWith({
+    ...expoConfig({
+      name: 'From Expo',
+      scheme: 'from-expo',
+      ios: {bundleIdentifier: 'com.expo.demo'},
+    }),
+    'app.json': JSON.stringify({
+      basalt: {identifier: 'com.example.demo', scheme: 'from-basalt'},
+    }),
+  });
+  const config = packageApp.readAppConfig(root);
+  assert.strictEqual(config.identifier, 'com.example.demo');
+  assert.deepStrictEqual(config.schemes, ['from-basalt']);
+});
+
+test('the Expo config still answers when basalt says nothing', () => {
+  const root = projectWith({
+    ...expoConfig({
+      name: 'From Expo',
+      scheme: ['a', 'b'],
+      ios: {bundleIdentifier: 'com.expo.demo'},
+    }),
+    'app.json': JSON.stringify({}),
+  });
+  const config = packageApp.readAppConfig(root);
+  assert.strictEqual(config.name, 'From Expo');
+  assert.strictEqual(config.identifier, 'com.expo.demo');
+  assert.deepStrictEqual(config.schemes, ['a', 'b']);
 });
 
 test('an app that names nothing still gets a usable identifier', () => {

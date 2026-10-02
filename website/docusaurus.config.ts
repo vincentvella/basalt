@@ -12,7 +12,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
  * website would have broken every one. A website is not a good enough reason
  * for the source to lie about where its reasons live.
  *
- * BACKLOG, HANDOFF and ci-performance stay off the site. They are notes to whoever picks the
+ * BACKLOG and ci-performance stay off the site. They are notes to whoever picks the
  * work up next rather than documentation, and publishing them invites reading
  * them as promises.
  */
@@ -80,7 +80,7 @@ const config: Config = {
         routeBasePath: 'contributing',
         sidebarPath: './sidebarsContributing.ts',
         // backlog/ is eighteen more files of the same, one per area.
-        exclude: ['BACKLOG.md', 'HANDOFF.md', 'backlog/**', 'ci-performance.md'],
+        exclude: ['BACKLOG.md', 'backlog/**', 'ci-performance.md'],
         editUrl: 'https://github.com/vincentvella/basalt/tree/main/',
       },
     ],

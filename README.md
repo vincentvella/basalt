@@ -298,9 +298,13 @@ here can still be run on its own. Another checkout or another tree:
 `make build RN_DIR=../rn-0.87 BUILD=build-087`.
 
 `scripts/bootstrap.sh` fetches the vendored third-party sources, builds Hermes,
-and runs React Native's codegen; everything below that is not in the repo. It
-is idempotent, and `--force` redoes it. See `docs/HANDOFF.md` for setting up on
-a different machine.
+and runs React Native's codegen. It is idempotent, and `--force` redoes it.
+
+What it produces is deliberately not in the repository: `third_party/` (folly,
+fast_float, nlohmann_json, hermes, hermes-build, codegen) and the build tree.
+Two bits of machine state do not travel either, and bootstrap handles both:
+React Native's `node_modules`, whose `yarn install` also rewrites `yarn.lock` in
+that checkout, and a Node satisfying React Native's `engines`.
 
 The manual equivalents of each bootstrap step are documented below.
 

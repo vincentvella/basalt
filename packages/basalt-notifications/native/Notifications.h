@@ -16,28 +16,35 @@
 // `.desktop` file matching the application id to display anything at all, which
 // a host run out of a build directory does not have.
 //
-// **macOS** cannot, and the reason is worth writing down because it is not a
-// missing implementation. `UNUserNotificationCenter` is the only supported API
-// since `NSUserNotification` was deprecated, and for a process with no bundle
-// identifier `+currentNotificationCenter` does not fail -- it throws
+// **macOS** can, once the binary is inside an `.app`, and the reason that
+// sentence has a condition on it is worth writing down.
+// `UNUserNotificationCenter` is the only supported API since
+// `NSUserNotification` was deprecated, and for a process with no bundle
+// identifier `+currentNotificationCenter` does not fail: it throws
 // `NSInternalInconsistencyException: bundleProxyForCurrentProcess is nil` and
-// takes the process down. This host is a bare binary; `react-native run-macos`
-// builds an executable, not an `.app`. So the API is not merely unavailable
-// here, it is unsafe to touch, and the check is on the bundle identifier rather
-// than on a call in a try block.
+// takes the process down. So the API is not merely unavailable to a bare
+// binary, it is unsafe to touch, which is why `available()` asks
+// `NSBundle.mainBundle.bundleIdentifier` rather than wrapping a call in a try
+// block.
 //
-// **Windows** cannot either. A toast needs an AppUserModelID and a shortcut
-// installed in the Start Menu, which is the same "be an installed application"
-// requirement in a different shape.
+// This file used to say macOS could not notify at all, and that was true when
+// it was written: the run command built an executable. It now packages one into
+// an `.app` on every run, release or not, precisely so that development and
+// production agree about this. See cli/packageApp.ts.
 //
-// ## Why that is reported rather than worked around
+// **Windows** can too, through a tray icon rather than a toast. A toast needs an
+// AppUserModelID with a Start Menu shortcut behind it, which `Win32Packaging.h`
+// now installs, and `Win32Notifications.cpp` falls back to the tray where it
+// cannot.
 //
-// Because the API already has a way to say it: `getPermissionsAsync` answers
-// `denied`, which is what expo-notifications' own documentation tells an app to
-// check before it presents anything. A fallback -- a window, a log line, a tray
-// balloon -- would be a different feature wearing this one's name. The share
-// picker in core/ShareFallback.h had an honest substitute available and this
-// does not, and that is the difference between the two.
+// ## Where a desktop still cannot, it says so
+//
+// The API already has a way to: `getPermissionsAsync` answers `denied`, which is
+// what expo-notifications' own documentation tells an app to check before it
+// presents anything. A fallback that was not a notification, a window or a log
+// line, would be a different feature wearing this one's name. The share picker
+// in core/ShareFallback.h had an honest substitute available and this does not,
+// and that is the difference between the two.
 
 #pragma once
 

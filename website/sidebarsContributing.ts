@@ -5,7 +5,7 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
  *
  * Grouped rather than flat. Four files is not many, but two of them are very
  * long, and a flat list of four gave no sense of which to open for what.
- * ci-performance.md, BACKLOG.md, HANDOFF.md and backlog/ are excluded in
+ * ci-performance.md, BACKLOG.md and backlog/ are excluded in
  * docusaurus.config.ts and so are absent here.
  */
 const sidebars: SidebarsConfig = {

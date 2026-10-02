@@ -137,7 +137,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   machine. No change was made between the two states that touches focus.
 
   It was running the **GTK host on macOS**, over the quartz backend, which
-  `docs/HANDOFF.md` already warns is not the target: keyboard focus there is
+  `docs/ARCHITECTURE.md` lists as a risk rather than the target: keyboard focus is
   the window server's to give, and the scenario needs the window to have it
   before `TextInput.focus()` can mean anything. CI, on real Linux under Xvfb,
   was green across the whole period and has never reproduced it.

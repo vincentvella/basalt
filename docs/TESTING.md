@@ -83,6 +83,13 @@ xvfb-run -a scripts/integration_test.py
 `basalt_gtk_tests` exits 77 rather than failing when it cannot reach a display, which
 is the convention for "skipped".
 
+### Screenshotting a GTK window on macOS
+
+`screencapture -l <window-id>` wants a CGWindow id, which nothing in the shell
+exposes. A five-line Swift program over `CGWindowListCopyWindowInfo`, filtered
+by `kCGWindowOwnerPID`, produces one. Compile it once with `swiftc`: `swift
+<file>` interprets slowly enough to miss the window's first frame.
+
 `basalt_appkit_tests` needs neither a display nor a window: nothing in it is presented.
 It is built only on a Mac, and CMake omits the target everywhere else.
 

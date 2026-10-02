@@ -165,7 +165,13 @@ export function readAppConfig(projectRoot: string): AppConfig {
 
   // `expo.scheme` is a string or a list of them. Everything downstream wants a
   // list, so it becomes one here.
-  const scheme = exp?.scheme ?? appJson.basalt?.scheme ?? null;
+  //
+  // `basalt.scheme` first, for the reason `basalt.identifier` is first above:
+  // the `basalt` key is this platform's override, and an app that sets one
+  // expects it to win. These two ran opposite ways until 2026-10-02, so an app
+  // that set both got its identifier honoured and its scheme ignored, with
+  // nothing to say which had happened.
+  const scheme = appJson.basalt?.scheme ?? exp?.scheme ?? null;
   const schemes = scheme == null ? [] : Array.isArray(scheme) ? scheme : [scheme];
 
   return {
