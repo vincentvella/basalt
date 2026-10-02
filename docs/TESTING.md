@@ -3,8 +3,8 @@
 All of it, in the order CI runs it:
 
 ```bash
-scripts/test_all.sh                 # everything this machine can run
-scripts/test_all.sh --quick         # unit and Node suites only
+make test           # everything this machine can run
+make test-quick     # unit and Node suites only
 ```
 
 ## Running one thing
@@ -13,11 +13,9 @@ The whole suite is about a quarter of an hour per host, and most changes want
 one part of it. Everything here narrows, and each narrows the same way: a
 substring of a name, and `--list` to see the names.
 
-`make test`, `make test-quick` and `make test-list` are the first three of
-these with the arguments filled in, and `make` is what passes `BASALT_BUILD_DIR`
-through so that a run against a second build tree tests the tree it built.
-Everything below still works on its own, and is what you want as soon as you
-are narrowing to one thing.
+The `make` targets above are these with the arguments filled in, and they pass
+`BASALT_BUILD_DIR` through, so `make test BUILD=build-087` tests the tree it
+built. Narrowing is what the scripts are for, and is below.
 
 ```bash
 scripts/test_all.sh --list                  # the step names
@@ -53,11 +51,11 @@ Linux, which is where they matter: see `.github/workflows/ci.yml`.
 ./build/basalt_appkit_tests         # unit, on a Mac
 ./build/basalt_win32_tests.exe      # unit, on Windows
 
-scripts/bundle.sh ../react-native --prod
-scripts/integration_test.py         # end to end, on whichever host is built
+make bundle                         # a production bundle to test against
+make e2e                            # end to end, on whichever host is built
 
-scripts/compare_hosts.sh            # every host built, same app, diffed
-scripts/compare_all.sh              # every app in js/, through every host
+make compare-hosts                  # every host built, same app, diffed
+make compare                        # every app in js/, through every host
 node --test scripts/test_cli.js     # run-linux, run-macos and run-windows
 node scripts/check_includes.js      # a header used and not included
 ```

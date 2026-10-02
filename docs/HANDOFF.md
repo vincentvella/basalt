@@ -44,14 +44,14 @@ a VM, which is where it should be checked before being believed.
 ## Setup
 
 ```bash
-git clone https://github.com/vincentvella/basalt-core
-cd basalt-core
+git clone https://github.com/vincentvella/basalt
+cd basalt
 git clone --depth 1 https://github.com/react/react-native ../react-native
-scripts/bootstrap.sh ../react-native
+make bootstrap
 ```
 
 Already have a React Native checkout? Skip that clone and point bootstrap at
-it (`scripts/bootstrap.sh /path/to/react-native`). Two caveats: bootstrap runs
+it (`make bootstrap RN_DIR=/path/to/react-native`). Two caveats: bootstrap runs
 `yarn install` there if `node_modules` is empty, which rewrites its
 `yarn.lock`; and everything here is built against RN `main`, so an older tagged
 release will likely need adjustment, `ReactCxxPlatform` carries no API
@@ -65,9 +65,7 @@ build makes a laptop unusable and pins the fans well past the end of the build.
 Then:
 
 ```bash
-cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-  -DRN_DIR=../react-native/packages/react-native
-nice -n 10 cmake --build build -j 12
+make build
 ./build/mount_harness_gtk
 ```
 

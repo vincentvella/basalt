@@ -128,6 +128,11 @@ e2e: ## The end-to-end suite, against whichever host is built
 compare: ## Run every demo app through every host that is built
 	BASALT_BUILD_DIR=$(BUILD) scripts/compare_all.sh
 
+# APP is optional: with none, compare_hosts.sh runs its own views-only app.
+.PHONY: compare-hosts
+compare-hosts: ## Run one app through every host and diff the trees
+	BASALT_BUILD_DIR=$(BUILD) scripts/compare_hosts.sh $(APP)
+
 # -- The website -------------------------------------------------------------
 
 .PHONY: docs

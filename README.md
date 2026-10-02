@@ -225,6 +225,8 @@ And at the repository root:
     js/demo.js                  Drives Fabric's JSI binding by hand. No React.
     js/metro.config.js          Resolves react/react-native out of the checkout.
     examples/demo/              A small app that consumes it like a stranger.
+    Makefile                    Every one of these with its arguments filled
+                                in. `make help` lists them.
     scripts/bundle.sh           Builds a bundle. scripts/metro.js serves one.
     scripts/compare_hosts.sh    Runs one app through every host that is built
                                 and diffs the trees. Needs two toolkits on one
@@ -290,18 +292,10 @@ have, absolute or relative:
     make bootstrap
     make build
 
-`make` is the front door; `make help` lists the rest. Each target is the script
-or cmake line below it, with the arguments filled in, and anything here can
-still be run directly. Point it elsewhere with `make build RN_DIR=../rn-0.87
-BUILD=build-087`.
-
-The same two steps by hand:
-
-    scripts/bootstrap.sh ../react-native
-
-    cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-      -DRN_DIR=../react-native/packages/react-native
-    nice -n 10 cmake --build build -j 12
+`make help` lists the rest. Every target is a script or a cmake line with its
+arguments filled in, so `make -n build` shows what it would run, and anything
+here can still be run on its own. Another checkout or another tree:
+`make build RN_DIR=../rn-0.87 BUILD=build-087`.
 
 `scripts/bootstrap.sh` fetches the vendored third-party sources, builds Hermes,
 and runs React Native's codegen; everything below that is not in the repo. It
@@ -343,7 +337,7 @@ refuses early and says what to install if vcpkg is missing its packages.
     vcpkg install --triplet x64-windows glog fmt double-conversion \
         boost-regex boost-beast boost-asio boost-thread openssl curl
 
-    scripts/bootstrap.sh ../react-native
+    make bootstrap
 
 Unlike the view layer, the core build **requires** clang-cl rather than `cl`:
 React Native's own CMake sets clang-style flags that `cl` does not understand,
@@ -751,11 +745,8 @@ a PNG of what is actually on screen. Two prefixes for the same knobs is an
 inconsistency that should become one; it has
 not yet.
 
-To check the two agree:
-
-    scripts/compare_hosts.sh
-
-which runs a script through both and diffs the tree each produced.
+To check the two agree, `make compare-hosts` runs a script through both and
+diffs the tree each produced.
 
 ## The `linux`, `macos` and `windows` platforms
 
