@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
   docs: [
     'intro',
     'getting-started',
+    'navigation',
     {
       type: 'category',
       label: 'Reference',

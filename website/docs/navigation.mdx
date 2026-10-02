@@ -1,0 +1,110 @@
+---
+sidebar_position: 3
+title: Navigation
+---
+
+# Navigation
+
+Both **react-navigation** and **expo-router** work on the desktop, including
+real navigation between screens. One thing has to be set up by hand first, and
+without it you get a window that renders nothing at all.
+
+:::warning[A blank window is almost always the safe area]
+`SafeAreaProvider` renders `null` until it has insets, and it gets them from a
+native module Basalt does not have yet. With nothing to wait for it waits
+forever, so every screen underneath it stays unmounted and the window is empty.
+No error is logged, which is what makes it hard to place.
+:::
+
+## The fix
+
+Give the provider its metrics so it never asks:
+
+```jsx
+import {SafeAreaProvider} from 'react-native-safe-area-context';
+
+const metrics = {
+  frame: {x: 0, y: 0, width: 900, height: 700},
+  insets: {top: 0, left: 0, right: 0, bottom: 0},
+};
+
+<SafeAreaProvider initialMetrics={metrics}>
+  {/* navigators, screens, the rest of the app */}
+</SafeAreaProvider>
+```
+
+Zero insets are correct here: a desktop window has no notch and no home
+indicator, so there is nothing to inset for.
+
+### With expo-router
+
+expo-router mounts its own `SafeAreaProvider` above your routes, so there is no
+`_layout` high enough to wrap. Replace the entry point instead. In
+`package.json` set `"main": "index.js"`, and write:
+
+```jsx
+import '@expo/metro-runtime';
+import * as React from 'react';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
+import {App} from 'expo-router/build/qualified-entry';
+import {renderRootComponent} from 'expo-router/build/renderRootComponent';
+
+const metrics = {
+  frame: {x: 0, y: 0, width: 900, height: 700},
+  insets: {top: 0, left: 0, right: 0, bottom: 0},
+};
+
+renderRootComponent(() => (
+  <SafeAreaProvider initialMetrics={metrics}>
+    <App />
+  </SafeAreaProvider>
+));
+```
+
+That is `expo-router/entry-classic` with one wrapper added. An outer provider
+that already holds metrics lets the inner one resolve immediately instead of
+waiting.
+
+## What works
+
+Verified by running both on the AppKit host and reading the mounted view tree,
+not by reasoning about it:
+
+| | |
+| --- | --- |
+| `@react-navigation/native` with `native-stack` | screens render, `navigation.navigate` pushes, a real press on a `Pressable` routes |
+| expo-router | file routes under `app/` render, and a `<Link href="/details">` routes |
+| `expo-router`'s `_layout` with `<Stack />` | works |
+
+## What does not, yet
+
+- **No header.** The native stack's header mounts at `900x0`, so titles and a
+  back button are absent. Give screens `headerShown: false` and draw your own,
+  or accept the gap.
+- **Screens are not culled.** `react-native-screens` manages visibility through
+  its `RNSModule`, which is missing, so a pushed screen is added to the tree
+  without the one underneath being detached. The top screen covers the one
+  below and it looks right, but both are mounted, and both are visible to
+  accessibility.
+- **Tabs resolve to their Android implementation.** `TabsHost` and `TabsScreen`
+  ship no desktop file, so the bundler falls back, and the bundle says so as it
+  builds. Untested here.
+
+The two missing native modules are `RNCSafeAreaContext` and `RNSModule`.
+Neither is hard in principle and both are tracked in the repository's backlog.
+
+## Versions
+
+expo-router needs the React Native that its Expo SDK is built against, which
+for SDK 57 is **0.86.3**. Installing expo-router beside React Native 0.87 fails
+at bundle time, in Expo's own Metro config, looking for a
+`react-native/rn-get-polyfills` that 0.87 no longer ships. That is upstream of
+Basalt and not something this platform can paper over.
+
+React Native 0.86 is supported here, with the Fast Refresh caveat in
+[Getting started](/docs/getting-started#supported-react-native-versions).
+
+Also make sure `@react-native/assets-registry` resolves at the top level of
+`node_modules` at the version your React Native wants. expo-router ships PNGs,
+and the copy nested inside `react-native` is not reachable from expo-router's
+own resolution path.

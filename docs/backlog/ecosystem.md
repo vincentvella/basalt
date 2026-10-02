@@ -78,3 +78,34 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   The two files that stay JavaScript are the CLI manifests, which React Native's
   CLI loads as plain CommonJS by path convention; they are checked with
   `@ts-check` rather than compiled.
+
+## Navigation: two native modules stand between here and it working unaided
+
+Measured on 2026-10-01 by running react-navigation and expo-router on the
+AppKit host and reading the mounted tree, not by reasoning about the registry.
+
+Both libraries already work, and both need the app to pass `initialMetrics` to
+`SafeAreaProvider` first. Without it the window renders nothing and logs no
+error, which is the worst shape a failure can take: safe-area-context returns
+`null` until it has insets, and with no native module behind it, it never does.
+
+What is missing:
+
+- **`RNCSafeAreaContext`**, a TurboModule returning the window frame and the
+  insets. On a desktop the insets are zero, so this is close to a constant plus
+  a resize event. It is the one that turns a blank window into a working app
+  with no change to the application, and it is the higher value of the two by
+  a distance.
+- **`RNSModule`**, react-native-screens' own module. Without it a pushed screen
+  is added to the tree and the one beneath it is never detached. The top screen
+  covers the lower one so it looks right, but both are mounted and both reach
+  accessibility. The native stack's header also mounts at `900x0`, so there is
+  no title and no back button.
+
+`TabsHost` and `TabsScreen` resolve to their Android implementations through
+the platform fallback, and are untested.
+
+Also worth recording, because it cost an hour: expo-router has to be installed
+against the React Native its Expo SDK targets. SDK 57 targets 0.86.3, and
+against 0.87 the bundle fails inside Expo's Metro config looking for
+`react-native/rn-get-polyfills`, which 0.87 does not ship. Not ours to fix.
