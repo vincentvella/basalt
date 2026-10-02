@@ -216,11 +216,27 @@ def click_field_with_cgevent(surface_height: int) -> None:
       return (wx as text) & "," & (wy as text) & "," & (ww as text) & "," & (wh as text)
     end tell
     """
-    found = subprocess.run(
-        ["osascript", "-e", script], capture_output=True, text=True
-    )
-    if found.returncode != 0 or found.stdout.count(",") != 3:
-        raise Failure(f"could not find the host window: {found.stderr.strip()}")
+    # Polled rather than asked once. The caller has already waited five seconds
+    # for the window, which is enough on a developer's machine and was enough on
+    # CI until it was not: a loaded runner produced "Can't get window 1 of
+    # application" from a run whose only change was elsewhere, and the same job
+    # had passed on the three commits before it. A fixed sleep in front of a
+    # single attempt is a race with the window server, and the fix for a race is
+    # not a longer sleep.
+    deadline = time.monotonic() + 20
+    found = None
+    while time.monotonic() < deadline:
+        found = subprocess.run(
+            ["osascript", "-e", script], capture_output=True, text=True
+        )
+        if found.returncode == 0 and found.stdout.count(",") == 3:
+            break
+        time.sleep(0.5)
+    if found is None or found.returncode != 0 or found.stdout.count(",") != 3:
+        raise Failure(
+            "could not find the host window after 20 seconds: "
+            f"{found.stderr.strip() if found is not None else 'never asked'}"
+        )
     wx, wy, _ww, wh = (int(part) for part in found.stdout.strip().split(","))
 
     chrome = wh - surface_height
