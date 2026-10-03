@@ -15,24 +15,46 @@ npm install @react-navigation/native @react-navigation/native-stack \
 Screens render, `navigation.navigate` pushes, and a press on a `<Link>` routes.
 Verified by running both on a desktop host and reading the mounted view tree.
 
-:::warning[Screen stacking works on Windows only, for now]
-Basalt implements react-native-screens' components, and a stack correctly shows
-its top screen and hides what is under it. Whether your app reaches that code is
-the library's decision, not Basalt's:
+## Screen stacking, and the one line it needs
 
+Basalt implements react-native-screens' components, and a stack shows its top
+screen and detaches what is under it. Whether your app reaches that code is the
+library's decision rather than Basalt's.
+
+```js
+import {enableScreens} from 'react-native-screens';
+enableScreens();
+```
+
+| | |
+| --- | --- |
+| **Windows** | works already, and needs no call. `Platform.OS` is `windows`, which react-native-screens has on its own list. |
+| **macOS and Linux** | the call is a no-op today and becomes the switch when [software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779) lands. Harmless to add now. |
+
+Until then, a pushed screen leaves the one beneath it mounted on those two.
+There is nothing to see: the top screen covers it at the same size. What it
+costs is a subtree that is still measured and still reachable by a screen
+reader.
+
+:::note[Why Basalt cannot just turn it on]
 ```js
 // react-native-screens/src/core.ts
 export const isNativePlatformSupported =
   Platform.OS === 'ios' || Platform.OS === 'android' || Platform.OS === 'windows';
 ```
 
-That is a const, and `Screen` renders its native component only when it is true.
-Basalt's Windows host reports `windows`, so it is on the list and gets the
-behaviour today. On `macos` and `linux` the library renders plain views instead,
-`enableScreens()` does not change it, and every pushed screen stays mounted.
+That const is what `Screen` checks, and it is not a list of platforms where
+native screens could work. It is the list of platforms the library ships native
+code for, which is why `macos` is absent: react-native-macos reports `macos`
+too, and react-native-screens has no macOS implementation. Adding the name
+would claim support that does not exist and would break those apps.
 
-The fix is one line upstream, adding `'macos'` and `'linux'` to that list. Until
-then the only visible consequence is the one below.
+So the upstream change is an opt-in rather than a longer list: an app on a
+platform that provides the components itself says so, and nothing else moves.
+Basalt could instead patch the library through its Metro config, and does not,
+because `metro-config.ts` argues that the library fallback "cannot be a list of
+names", and owning a third-party module's internals for one library is the
+worse problem.
 :::
 
 ## What works

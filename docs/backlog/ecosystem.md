@@ -150,10 +150,27 @@ is a real toolkit header per platform rather than a prop translation.
   plain views and `enableScreens()` does not change it, because that function
   sets a different flag.
 
-  The fix is one line upstream. Forking `core.ts` through a Metro override would
-  work, and metro-config.ts argues against exactly that: the library fallback
-  "cannot be a list of names". Owning a third-party module's gate is not a thing
-  to start doing for one library.
+  Proposed upstream as
+  [software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779),
+  as an opt-in rather than a longer list. Two reasons it is not a longer list,
+  both found by trying it:
+
+  - That const is not "platforms where this could work", it is "platforms this
+    library ships native code for". Their podspec covers ios, tvos and
+    visionos, and there is a `windows/` directory. `macos` is absent because
+    react-native-macos reports `macos` and the library has no macOS code, so
+    adding the name would claim support that does not exist.
+  - Relaxing the component gate to `enabled` alone does not work either, which
+    is not visible from reading it: `ScreenStackItem` passes `enabled` as a bare
+    prop to every `Screen` it renders, so the platform term is the only thing
+    keeping an unsupported platform off the native components. Measured, not
+    reasoned about: the first patch hid the covered screen even with no
+    `enableScreens()` call, which is how it was caught.
+
+  Forking `core.ts` through a Metro override would work today and is not worth
+  it: metro-config.ts argues that the library fallback "cannot be a list of
+  names", and owning a third-party module's gate for one library is the worse
+  problem.
 - **Match expo-router to its SDK's React Native.** SDK 57 targets 0.86.3, and
   against 0.87 the bundle fails inside Expo's Metro config looking for
   `react-native/rn-get-polyfills`, which 0.87 does not ship. Not ours to fix.
