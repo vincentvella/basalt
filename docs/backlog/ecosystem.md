@@ -129,9 +129,36 @@ before `layout()` can see which is on top, and getting in front of that would
 need a screen to know its own position in the stack. The cost is measuring a
 subtree that is not shown.
 
-The header is still missing. `RNSScreenStackHeaderConfig` mounts as a plain view
-and takes no space, so a native stack has no title and no back button. That one
-is a real toolkit header per platform rather than a prop translation.
+### The header, done 2026-10-03
+
+A bar when it has content, nothing when it does not, and the screen's body
+moved down below it rather than left behind it.
+
+Two things here were learned the hard way and are worth keeping.
+
+**A props constructor cannot style this node.** Setting `yogaStyle` in
+`RNSScreenStackHeaderConfigProps` has no effect: the yoga node holds its own
+copy of the style, and the props the node ends up with are not always the ones
+the constructor produced. Measured, after a props-side height left the bar
+hugging its text and a probe showed the node's own props reporting no height at
+all. `adopt()` is where it works, through `setSize` and `setPadding`, which
+write to the yoga node and mark it dirty. `ModalHostViewComponentDescriptor`
+upstream sizes itself the same way.
+
+**Padding rather than a height**, because `adopt()` reaches only `setSize`,
+`setPadding` and `setPositionType`. A height set through `setSize` leaves the
+title against the top edge, since `alignItems` lives in the props and the props
+are the half that does not arrive. Sizing the bar as its content plus a margin
+lands within a few points of the 56 every toolkit uses and centres a one-line
+title without having to know how tall it is.
+
+What is still not drawn is a plain string `title`. react-navigation sends a
+left-aligned string to the native navigation bar as a prop and renders it as a
+view only when it is centred or supplied as a component, so there is nothing to
+lay out. Drawing it would mean a text-drawing header widget in each of the
+three mounting managers, which is the toolkit header this entry used to call
+for. An empty header now takes itself out of the layout, so the default reads
+as no header rather than as a broken one.
 
 ### Two things an app still has to do
 

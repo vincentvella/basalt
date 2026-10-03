@@ -3972,6 +3972,12 @@ def test_screen_stack(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         tree = dump.read_text() if dump.exists() else ""
 
+    def line_for_text(text: str) -> str:
+        for line in tree.split("\n"):
+            if f'text="{text}"' in line:
+                return line
+        raise AssertionError(f"no {text!r} in the tree:\n{tree}")
+
     def line_for(label: str) -> str:
         for line in tree.split("\n"):
             if f'text="{label} screen"' in line:
@@ -3996,6 +4002,48 @@ def test_screen_stack(bundle: Path) -> None:
     )
     assert "hidden" not in screen_above("top"), (
         f"the top screen should always show:\n{tree}"
+    )
+
+    # The header, which the middle screen carries and the bottom one carries
+    # empty. Heights are asserted as "a bar rather than a line of text" rather
+    # than as a number: the bar is its content plus a margin, and the three
+    # platforms do not agree on how tall a line of text is.
+    def origin_y(line: str) -> float:
+        found = re.search(r"frame=\((?:[\d.]+),([\d.]+) ", line)
+        assert found is not None, f"no frame in {line!r}"
+        return float(found.group(1))
+
+    def height(line: str) -> float:
+        found = re.search(r"frame=\([^)]*x([\d.]+)\)", line)
+        assert found is not None, f"no frame in {line!r}"
+        return float(found.group(1))
+
+    # The text sits inside a subview, and a frame is relative to its parent, so
+    # the padding shows on the subview and the bar is one line above that.
+    title = line_for_text("middle title")
+    subview = lines[lines.index(title) - 1]
+    header = lines[lines.index(title) - 2]
+    assert height(header) > 40, (
+        f"a header with a title in it should be a bar, not a line of text:\n{tree}"
+    )
+    assert origin_y(subview) > 0, (
+        f"the title should be padded down from the top of the bar:\n{tree}"
+    )
+
+    # And the content below it, rather than behind it. react-native-screens
+    # gives the content wrapper absoluteFill, so without the screen moving it
+    # the first 50 points of every screen are under the bar.
+    body = line_for("middle")
+    assert origin_y(body) == height(header), (
+        f"the body should start where the header ends:\n{tree}"
+    )
+
+    # An empty header takes itself out rather than leaving a blank strip, which
+    # is what a plain string title produces: react-navigation renders that
+    # through a prop, for a toolbar this platform does not have.
+    empty = lines[lines.index(line_for("bottom")) + 1]
+    assert "hidden" in empty, (
+        f"a header with nothing in it should not reserve a bar:\n{tree}"
     )
 
 

@@ -64,8 +64,25 @@ class RNSScreenProps final : public ViewProps {
   bool seeThrough{false};
 };
 
-using RNSScreenShadowNode =
-    ConcreteViewShadowNode<RNSScreenComponentName, RNSScreenProps, ViewEventEmitter>;
+// The screen, which also has to get its content out from under the header.
+//
+// react-native-screens gives the content wrapper `StyleSheet.absoluteFill`, so
+// it covers the whole screen and the header, which is an ordinary in-flow
+// child, is painted on top of it. That is right on a platform whose navigation
+// bar floats; here it means the first 56 points of every screen are behind the
+// bar.
+//
+// The screen is the only node that can see both, so it moves the content down
+// by the header's height after layout. `adopt()` cannot do it instead: it runs
+// before the children are attached, measured by a probe that saw zero of them.
+class RNSScreenShadowNode final
+    : public ConcreteViewShadowNode<RNSScreenComponentName, RNSScreenProps,
+                                    ViewEventEmitter> {
+ public:
+  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+
+  void layout(LayoutContext layoutContext) override;
+};
 using RNSScreenComponentDescriptor = ConcreteComponentDescriptor<RNSScreenShadowNode>;
 
 // The containers. Each is a plain view that holds screens, so ViewProps parses
@@ -81,10 +98,85 @@ using RNSScreenComponentDescriptor = ConcreteComponentDescriptor<RNSScreenShadow
 BASALT_SCREENS_VIEW(RNSScreenContainer)
 BASALT_SCREENS_VIEW(RNSScreenNavigationContainer)
 BASALT_SCREENS_VIEW(RNSScreenContentWrapper)
-BASALT_SCREENS_VIEW(RNSScreenStackHeaderConfig)
 BASALT_SCREENS_VIEW(RNSScreenStackHeaderSubview)
 
 #undef BASALT_SCREENS_VIEW
+
+extern const char RNSScreenStackHeaderConfigComponentName[];
+
+/**
+ * What a header puts around its content.
+ *
+ * A bar is its title plus a margin rather than a fixed height, because the
+ * margin is the part that can be set from where this is applied. See the
+ * descriptor below.
+ */
+inline constexpr float kHeaderPaddingX = 16.0f;
+inline constexpr float kHeaderPaddingY = 18.0f;
+
+// The header bar.
+//
+// On iOS and Android this component configures a navigation bar that the
+// platform draws, and most of its props describe that bar. Here there is no
+// such bar, and the useful half of it arrives as views: react-navigation's
+// native stack takes its non-iOS branch on every desktop, which renders the
+// title, the back button and anything custom as `RNSScreenStackHeaderSubview`
+// children rather than as strings for a toolbar to draw.
+//
+// So this is a row that lays those children out, and the props it reads are the
+// ones that describe the row rather than the ones that describe UIKit.
+//
+// `title` as a plain string is the part that does not arrive as a view, and is
+// not drawn: react-navigation only renders it as a `<Text>` when the title is
+// centred or supplied as a component. See the navigation page in the docs.
+class RNSScreenStackHeaderConfigProps final : public ViewProps {
+ public:
+  RNSScreenStackHeaderConfigProps() = default;
+  RNSScreenStackHeaderConfigProps(const PropsParserContext &context,
+                                  const RNSScreenStackHeaderConfigProps &sourceProps,
+                                  const RawProps &rawProps);
+
+  bool hidden{false};
+};
+
+// A header with nothing in it takes no space.
+//
+// react-navigation renders the title as a view only when it is centred or
+// supplied as a component; a plain left-aligned string goes to the `title`
+// prop, for a toolbar that does not exist here, and the config ends up with no
+// children at all. Reserving 56 points for that would replace today's missing
+// header with an empty grey bar, which is worse: at least nothing looks
+// deliberate.
+//
+// Decided after layout because that is the first point at which the children
+// are attached. `adopt()` runs before they are, measured rather than assumed.
+class RNSScreenStackHeaderConfigShadowNode final
+    : public ConcreteViewShadowNode<RNSScreenStackHeaderConfigComponentName,
+                                    RNSScreenStackHeaderConfigProps,
+                                    ViewEventEmitter> {
+ public:
+  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+
+  void layout(LayoutContext layoutContext) override;
+};
+// The height is applied here rather than in the props.
+//
+// A props constructor can set `yogaStyle`, and for this node it does not take:
+// the yoga node keeps its own copy of the style, and `setSize` is the
+// affordance that writes to it and marks the node dirty. Measured, after a
+// props-side version set the dimension and the bar still hugged its text.
+// `ModalHostViewComponentDescriptor` upstream sizes itself the same way.
+//
+// Width is left alone. `points(NaN)` is `undefined` in yoga, so the bar still
+// stretches to its parent rather than being pinned to a width nothing knows
+// yet at adopt time.
+class RNSScreenStackHeaderConfigComponentDescriptor final
+    : public ConcreteComponentDescriptor<RNSScreenStackHeaderConfigShadowNode> {
+ public:
+  using ConcreteComponentDescriptor::ConcreteComponentDescriptor;
+
+  void adopt(ShadowNode &shadowNode) const override;
+};
 
 extern const char RNSScreenStackComponentName[];
 
@@ -115,6 +207,7 @@ class RNSScreenStackShadowNode final
 
   void layout(LayoutContext layoutContext) override;
 };
+
 
 using RNSScreenStackComponentDescriptor =
     ConcreteComponentDescriptor<RNSScreenStackShadowNode>;

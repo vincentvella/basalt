@@ -71,11 +71,44 @@ placeholder: a window has no notch and no home indicator. If a desktop ever
 draws over its own content, a title bar on top of the client area for instance,
 that is where a non-zero inset would come from.
 
+## Headers
+
+A header is a bar when it has something in it, and nothing when it does not.
+
+`headerShown: false` removes it. A header with a title, a back button or
+anything custom becomes a bar sized to its content plus a margin, with the body
+of the screen moved down below it rather than hidden behind it.
+
+:::warning[A plain string title draws nothing]
+```jsx
+// No header: the title goes to a toolbar this platform does not have.
+<Stack.Screen name="Home" component={Home} options={{title: 'Home'}} />
+
+// A header, because react-navigation renders a centred title as a view.
+<Stack.Screen
+  name="Home"
+  component={Home}
+  options={{title: 'Home', headerTitleAlign: 'center'}}
+/>
+
+// Also a header, and the way to control what is in it.
+<Stack.Screen
+  name="Home"
+  component={Home}
+  options={{headerTitle: () => <Text style={{fontWeight: '600'}}>Home</Text>}}
+/>
+```
+
+react-navigation sends a left-aligned string straight to the native navigation
+bar as a prop, and renders it as a `<Text>` only when it is centred or supplied
+as a component. Basalt can lay out a view; it cannot draw a prop that no bar
+exists to receive. Rather than reserve an empty strip for one, a header with no
+content takes itself out of the layout entirely, so the default looks like no
+header instead of a broken one.
+:::
+
 ## What does not, yet
 
-- **No header.** `RNSScreenStackHeaderConfig` mounts and takes no space, so a
-  native stack has no title and no back button. Pass `headerShown: false` and
-  draw your own.
 - **A covered screen stays mounted on macOS and Linux.** Pushing a second
   screen leaves the first in the view tree at full size, underneath. It looks
   right, because the top screen covers it, but both are measured and both reach

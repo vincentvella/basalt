@@ -41,6 +41,26 @@ exports.Screen = NativeComponentRegistry.get('RNSScreen', () => ({
   },
 }));
 
+exports.HeaderConfig = NativeComponentRegistry.get(
+  'RNSScreenStackHeaderConfig',
+  () => ({
+    uiViewClassName: 'RNSScreenStackHeaderConfig',
+    bubblingEventTypes: {},
+    directEventTypes: {},
+    validAttributes: {...base, hidden: true, title: true},
+  }),
+);
+
+exports.HeaderSubview = NativeComponentRegistry.get(
+  'RNSScreenStackHeaderSubview',
+  () => ({
+    uiViewClassName: 'RNSScreenStackHeaderSubview',
+    bubblingEventTypes: {},
+    directEventTypes: {},
+    validAttributes: {...base},
+  }),
+);
+
 exports.ScreenStack = NativeComponentRegistry.get('RNSScreenStack', () => ({
   uiViewClassName: 'RNSScreenStack',
   bubblingEventTypes: {},
