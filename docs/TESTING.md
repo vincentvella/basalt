@@ -73,6 +73,13 @@ platform; the packager the two development-mode ones need is started through
 `scripts/metro.js`, in Node, because a shell script is not a way to start one
 on Windows.
 
+**Read the first line of the output before believing a pass.** It names the host
+that actually ran, and the guess is first-found rather than this machine's own:
+on a Mac with both hosts built, a bare run says `on linux` and exercises GTK.
+Chasing a macOS-only failure that way produces a green run that proves nothing
+about macOS, which has happened. Pass `--platform macos` when the host is the
+point.
+
 On a headless machine, run either under a virtual display:
 
 ```bash
