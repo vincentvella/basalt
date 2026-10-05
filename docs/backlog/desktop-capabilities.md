@@ -16,7 +16,7 @@ is missing", and gains a pointer. Three entries have one today.
 5. Packaging is macOS and Linux only, and shallow
 6. A window cannot be positioned on Linux
 7. A window's lifecycle is an app's to influence now
-8. Menus have no checkbox or radio items, and no dynamic enabling
+8. Menus have no checkbox or radio items, no dynamic enabling, and a popup is flat
 9. A system tray icon
 10. Windows notifications carry no identity of their own
 11. Cursor control
@@ -111,8 +111,8 @@ has gone unrecorded until now.
   transparent full-size-content title bar that keeps the traffic lights, and
   Win32 draws the caption buttons over the app's own header. See the
   `window-title-bar` spec.
-- **Menus have no checkbox or radio items, and no dynamic enabling.** The
-  application menu itself is done where a platform has one: `<Menu>`
+- **Menus have no checkbox or radio items, no dynamic enabling, and a popup is
+  flat.** The application menu itself is done where a platform has one: `<Menu>`
   with `<Menu.Item role="copy" />`, over NSMenu and an HMENU. `Menu.isSupported`
   is false on Linux and is not a gap: GNOME's guidelines have said to use a
   header bar with a menu button since GNOME 3, and GTK4 removed the widget.
@@ -125,10 +125,38 @@ has gone unrecorded until now.
   `onPointerDown` with `button === 2` and does *not* fire `onPress`, which is
   what it means on every desktop. See core/PointerButtons.h.
 
-  What is left: no checkbox or radio items; no submenus in a popup, which is
-  deliberate rather than missing; no dynamic enabling without re-rendering the
-  whole menu; and the role labels are English, because nothing here is
-  localised.
+  What is left: no checkbox or radio items; no dynamic enabling without
+  re-rendering the whole menu; and the role labels are English, because nothing
+  here is localised.
+
+  **A popup takes neither a submenu nor a role**, and until 2026-10-05 the
+  TypeScript said otherwise: `ContextMenuItem` declared `role`, `submenu` and
+  `accelerator`, while `entriesFrom` in core/MenuModule.cpp read `label`,
+  `enabled`, `shortcut` and `separator` and nothing else. Three fields that did
+  nothing, with no error. The type now matches the reader. The two features
+  behind those fields are worth separating, because one is much closer than the
+  other:
+
+  *Submenus are a protocol choice, not a platform limit.* All three popups are
+  built from primitives that nest: `NSMenu` has `item.submenu`, GMenu has
+  `g_menu_append_submenu`, an HMENU takes `MF_POPUP`. What does not survive
+  nesting is the answer. `showMenu` resolves with a position in a flat vector,
+  which is how each host tags its items today (AppKit `item.tag = i`, Win32
+  `index + 1`, GTK an action name per index), and a tree has no single position.
+  The menu bar already solved this: `MenuItemModel` carries an `id`. Giving
+  `MenuEntry` one too is the work, across three hosts and the promise in
+  useContextMenu.ts.
+
+  *Roles in a popup are further off, and may not be wanted.* On AppKit they are
+  nearly free, since AppKitMenuBar.mm already maps a role to a selector with a
+  `nil` target and that works the same in a popup; Win32 has `commandForRole`
+  posting to the focused control. Linux has nothing to reuse, because it has no
+  menu bar at all: `applicationMenuSupported()` is false and
+  `setApplicationMenu` is deliberately empty. The harder half is the API. A role
+  is performed by the platform, so nothing comes back, and a promise documented
+  to answer "the index chosen, or null if dismissed" has no honest third thing
+  to say. That is a decision about what `show()` resolves with, and it should be
+  made before any of it is built.
 - ~~**Native file dialogs.**~~ Done on all three: `useDialog().openFile()`,
   `saveFile()` and `openFolder()`, over `GtkFileDialog`, `NSOpenPanel` /
   `NSSavePanel` and `IFileDialog`. What is left is the rest of what a desktop
