@@ -17,6 +17,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
+import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -31,13 +32,9 @@ const styles = StyleSheet.create({
 // Named in data rather than by `Function.name`: the bundler minifies names
 // away, and the first run of this file reported ten passes with no names at
 // all, which would have been useless had any of them failed.
-// Each returns a promise of true. Deliberately small and specific, so a failure
-// names one thing.
-//
-// Named in data rather than by `Function.name`: the bundler minifies names
-// away, and the first run of this file reported ten passes with no names at
-// all, which would have been useless had any of them failed.
-const CHECKS = [
+// Annotated because an array literal of pairs widens each element to
+// `string | (() => ...)`, and then the second half is not callable.
+const CHECKS: Array<[string, () => Promise<boolean>]> = [
   ['blob from a string', async () => new Blob(['hello']).size === 5],
 
   ['blob from several parts', async () => new Blob(['abc', 'de']).size === 5],
@@ -64,7 +61,7 @@ const CHECKS = [
     'readAsDataURL',
     async () =>
       // "hi" is aGk= in base64, and the padding is the half most likely wrong.
-      (await readBlob('DataURL', new Blob(['hi'], {type: 'text/plain'}))) ===
+      (await readBlob('DataURL', new Blob(['hi'], {type: 'text/plain', lastModified: 0}))) ===
       'data:text/plain;base64,aGk=',
   ],
 
@@ -129,15 +126,15 @@ async function probeBlobUpload() {
     });
     console.log('probe: blob upload reached the network layer');
   } catch (error) {
-    console.log(`probe: blob upload threw ${error.message}`);
+    console.log(`probe: blob upload threw ${messageOf(error)}`);
   }
 }
 
 // FileReader is callback-shaped; every check above wants a promise.
-function readBlob(how, blob) {
-  return new Promise((resolve, reject) => {
+function readBlob(how: 'Text' | 'DataURL', blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(reader.error ?? new Error('read failed'));
     reader[`readAs${how}`](blob);
   });
@@ -157,7 +154,7 @@ function App() {
             count++;
           }
         } catch (error) {
-          console.log(`FAIL: ${name} threw ${error.message}`);
+          console.log(`FAIL: ${name} threw ${messageOf(error)}`);
         }
       }
       console.log(`blob checks: ${count}/${CHECKS.length}`);

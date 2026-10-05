@@ -25,6 +25,7 @@
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
 import * as Notifications from 'expo-notifications';
+import {messageOf, nameOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -66,7 +67,7 @@ function App() {
         // The honest outcome where the desktop cannot show one. An app is
         // expected to have checked the permission first; this reports the
         // rejection rather than hiding it.
-        console.log(`notifications: rejected ${error.message}`);
+        console.log(`notifications: rejected ${messageOf(error)}`);
       }
 
       // A method this platform does not implement at all. expo's own check
@@ -76,7 +77,7 @@ function App() {
         await Notifications.getNotificationChannelsAsync();
         console.log('notifications: channels answered');
       } catch (error) {
-        console.log(`notifications: channels unavailable (${error.constructor.name})`);
+        console.log(`notifications: channels unavailable (${nameOf(error)})`);
       }
 
       setDone(true);

@@ -35,6 +35,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -62,7 +63,7 @@ const CONTENT = {
 };
 
 // Everything that can be checked without a person in front of the screen.
-const CHECKS = [
+const CHECKS: Array<[string, () => Promise<boolean>]> = [
   [
     'Share exists and has the two action constants',
     async () =>
@@ -77,10 +78,13 @@ const CHECKS = [
       // sheet with nothing in it is a bug in the caller, and it is better to
       // say so than to open an empty one.
       try {
-        await Share.share({});
+        // Cast because this argument is exactly what is being asserted to be
+        // refused: `ShareContent` requires a url or a message, and the check
+        // is that the runtime says so too rather than opening an empty sheet.
+        await Share.share({} as Parameters<typeof Share.share>[0]);
         return false;
       } catch (error) {
-        return /URL or message/.test(error.message);
+        return /URL or message/.test(messageOf(error));
       }
     },
   ],
@@ -99,7 +103,7 @@ const CHECKS = [
       const outcome = await Promise.race([
         promise.then(
           result => `action ${result.action}`,
-          error => `rejected: ${error.message}`,
+          error => `rejected: ${messageOf(error)}`,
         ),
         new Promise(resolve => setTimeout(() => resolve('still open'), 800)),
       ]);
@@ -132,7 +136,7 @@ function App() {
             count++;
           }
         } catch (error) {
-          console.log(`FAIL: ${name} threw ${error.message}`);
+          console.log(`FAIL: ${name} threw ${messageOf(error)}`);
         }
       }
       console.log(`share checks: ${count}/${CHECKS.length}`);

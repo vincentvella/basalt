@@ -43,7 +43,12 @@ import {useHandledKeys} from './useHandledKeys';
 
 export type {HandledKey, PressedKey} from './useHandledKeys';
 
-export type KeyHandlerProps = ViewProps & {
+// `onKeyDown` is omitted rather than intersected: a view's own `onKeyDown` takes
+// a key event, this one takes the `PressedKey` that `useHandledKeys` matched, and
+// an intersection of the two is a prop no handler can satisfy. Omitting is also
+// what the component does -- `onKeyDown` is destructured out below and never
+// reaches the inner `<View>`.
+export type KeyHandlerProps = Omit<ViewProps, 'onKeyDown'> & {
   /** The combinations this view handles. Anything else passes through. */
   keys: ReadonlyArray<HandledKey>;
   onKeyDown?: (pressed: PressedKey) => void;

@@ -67,21 +67,27 @@ import type {TurboModule} from 'react-native';
 import {TurboModuleRegistry} from 'react-native';
 
 /**
- * One item in a context menu, as `native/core/MenuModel.h` reads it, plus the
- * handler this file calls.
+ * One item in a context menu: the four fields `entriesFrom` in
+ * `native/core/MenuModule.cpp` reads into a `MenuEntry`, plus the handler this
+ * file calls.
+ *
+ * A popup menu is a flat list on all three desktops, so there is no `submenu`
+ * and no `role` here -- nesting and the platform roles are what a menu *bar*
+ * is for, and `<Menu.Item>` is where they live.
  *
  * `onSelect` is the only field the native side does not see: the promise
  * carries the index back, and this calls the handler before settling it.
  */
 export type ContextMenuItem = {
   label?: string;
-  /** One of the platform roles; see native/core/MenuModel.h. */
-  role?: string;
-  /** "CmdOrCtrl+O", in Electron's spelling. Ignored for a role. */
-  accelerator?: string;
+  /**
+   * Drawn beside the label -- "Cmd+C", "Del". Decoration only: nothing here
+   * binds a key. Note the menu *bar* spells the same idea `accelerator`,
+   * because there it really does bind one.
+   */
+  shortcut?: string;
   enabled?: boolean;
   separator?: boolean;
-  submenu?: ReadonlyArray<ContextMenuItem>;
   onSelect?: () => void;
 };
 

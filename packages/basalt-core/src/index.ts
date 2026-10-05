@@ -82,3 +82,17 @@ export type {
 // the app draw its own header. See TitleBar.js.
 export {TitleBar, useTitleBar, useTitleBarMetrics} from './TitleBar';
 export type {TitleBarMetrics, TitleBarOptions, TitleBarStyle} from './TitleBar';
+
+// `keyDownEvents` on every view, because the Metro override in metro-config.ts
+// swaps react-native's `View` for the one in overrides/View.tsx in every basalt
+// app -- so the prop really is there, and an app written against
+// react-native-macos should not have to cast to say so.
+//
+// Only this prop. The matching `onKeyDown` is already declared by react-native
+// with a different event, and an interface augmentation may add members but not
+// retype them.
+declare module 'react-native' {
+  interface ViewProps {
+    keyDownEvents?: ReadonlyArray<import('./useHandledKeys').HandledKey>;
+  }
+}

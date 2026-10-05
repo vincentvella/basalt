@@ -18,6 +18,7 @@
 import * as React from 'react';
 import {AppRegistry, Platform, Pressable, StyleSheet, Text, View} from 'react-native';
 import {useDialog} from 'basalt-core';
+import type {DialogResult} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -44,7 +45,7 @@ function App() {
   const dialog = useDialog();
   const [result, setResult] = React.useState('nothing yet');
 
-  const report = React.useCallback((what, answer) => {
+  const report = React.useCallback((what: string, answer: DialogResult) => {
     // One line, so the test reads it rather than the screen.
     console.log(
       `dialog ${what}: canceled=${answer.canceled} paths=${answer.paths.join('|')}`,

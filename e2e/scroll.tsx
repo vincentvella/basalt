@@ -25,6 +25,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, ScrollView, StyleSheet, View} from 'react-native';
+import type {ScrollViewInstance} from 'react-native';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -57,7 +58,7 @@ function rows() {
 }
 
 function App() {
-  const scroller = React.useRef(null);
+  const scroller = React.useRef<ScrollViewInstance>(null);
 
   React.useEffect(() => {
     // Late enough that the content has been measured and committed: scrollTo
@@ -101,7 +102,7 @@ AppRegistry.registerComponent('BasaltScroll', () => App);
  * 0 nor 530.
  */
 function Animated() {
-  const scroller = React.useRef(null);
+  const scroller = React.useRef<ScrollViewInstance>(null);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -140,7 +141,7 @@ AppRegistry.registerComponent('BasaltScrollAnimated', () => Animated);
  * pass a test that only looked for the missing bar.
  */
 function Bare() {
-  const scroller = React.useRef(null);
+  const scroller = React.useRef<ScrollViewInstance>(null);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -182,7 +183,7 @@ AppRegistry.registerComponent('BasaltScrollBare', () => Bare);
  * would pass a test that used the same value twice.
  */
 function Inset() {
-  const scroller = React.useRef(null);
+  const scroller = React.useRef<ScrollViewInstance>(null);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {

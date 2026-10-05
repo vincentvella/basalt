@@ -21,6 +21,7 @@ import {
   isSupported,
   spawn,
 } from 'basalt-subprocess';
+import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -34,7 +35,7 @@ function App() {
 
   React.useEffect(() => {
     console.log(`subprocess: supported ${isSupported()}`);
-    const output = [];
+    const output: string[] = [];
     const gotOutput = addOutputListener(event => {
       output.push(`${event.stream}:${event.data.trim()}`);
     });
@@ -58,7 +59,7 @@ function App() {
         console.log(`subprocess: spawned ${pid > 0}`);
         console.log(`subprocess: runningBefore ${isRunning(pid)}`);
       } catch (error) {
-        console.log(`subprocess: spawn threw ${error.message}`);
+        console.log(`subprocess: spawn threw ${messageOf(error)}`);
         setDone(true);
       }
     })();

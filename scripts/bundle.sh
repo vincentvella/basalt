@@ -29,9 +29,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEV=false
 PLATFORM=linux
-# The app to bundle, relative to e2e/, and what to call the output. e2e/views.js
+# The app to bundle, relative to e2e/, and what to call the output. e2e/views.tsx
 # is the one macOS can run: see its header.
-ENTRY=index.js
+ENTRY=index.tsx
 OUT_NAME=main.jsbundle
 # Which build tree to write into. Not always `build`: testing against a second
 # React Native version means a second configure, and the bundle has to land
@@ -44,7 +44,16 @@ while [ $# -gt 0 ]; do
     --dev) DEV=true; shift ;;
     --prod) DEV=false; shift ;;
     --platform) PLATFORM="$2"; shift 2 ;;
-    --entry) ENTRY="$2"; shift 2 ;;
+    # Named with or without an extension: the apps are .tsx now, and every
+    # caller that predates that says `--entry views.js`.
+    --entry)
+      ENTRY="$2"
+      if [ ! -f "$REPO_ROOT/e2e/$ENTRY" ]; then
+        for candidate in "${ENTRY%.*}.tsx" "${ENTRY%.*}.ts" "${ENTRY%.*}.js"; do
+          [ -f "$REPO_ROOT/e2e/$candidate" ] && { ENTRY="$candidate"; break; }
+        done
+      fi
+      shift 2 ;;
     --out) OUT_NAME="$2"; shift 2 ;;
     --build-dir) BUILD_DIR="$2"; shift 2 ;;
     *) args+=("$1"); shift ;;

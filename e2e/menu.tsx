@@ -32,6 +32,7 @@ import {
   View,
 } from 'react-native';
 import {Menu, useContextMenu} from 'basalt-core';
+import type {ContextMenuPoint} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 console.log(`menu supported: ${Menu.isSupported}`);
@@ -128,12 +129,12 @@ function Context() {
   // Logged as well as rendered, because `onSelect` running is the half most
   // callers use and a rendered string is not visible to a run that does not
   // dump the tree.
-  const pick = label => () => {
+  const pick = (label: string) => () => {
     console.log(`context menu selected: ${label}`);
     setChosen(label);
   };
 
-  const open = async where => {
+  const open = async (where: ContextMenuPoint) => {
     const index = await menu.show(
       [
         {label: 'Copy', shortcut: 'Cmd+C', onSelect: pick('Copy')},

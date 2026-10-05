@@ -16,6 +16,8 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, Text, View} from 'react-native';
+import type {ViewProps} from 'react-native';
+import type {PressedKey} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -32,9 +34,9 @@ const HOTKEYS = [
 ];
 
 function App() {
-  const [pressed, setPressed] = React.useState([]);
+  const [pressed, setPressed] = React.useState<string[]>([]);
 
-  const onKeyDown = React.useCallback(event => {
+  const onKeyDown = React.useCallback((event: {nativeEvent: PressedKey}) => {
     // `event.nativeEvent`, which is react-native-macos's shape: an app written
     // for it reads the key from there and would see undefined otherwise.
     const key = event.nativeEvent.key;
@@ -46,7 +48,13 @@ function App() {
     <View
       focusable={true}
       keyDownEvents={HOTKEYS}
-      onKeyDown={onKeyDown}
+      // `keyDownEvents` is typed by basalt-core's augmentation of `ViewProps`.
+      // `onKeyDown` cannot be: react-native already declares one, with its own
+      // key event, and an interface augmentation may add members but not retype
+      // them. basalt's View override hands `{nativeEvent}` instead -- which is
+      // the whole point, it being react-native-macos's shape -- so the one prop
+      // that disagrees is cast here.
+      onKeyDown={onKeyDown as unknown as ViewProps['onKeyDown']}
       style={styles.page}>
       <Text style={styles.line}>macos keys</Text>
       <Text style={styles.line}>{`pressed: ${pressed.join(',')}`}</Text>

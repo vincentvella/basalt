@@ -729,6 +729,21 @@ def git_bash() -> Path | None:
     return None
 
 
+def app_source(entry: str) -> Path:
+    """Where `entry` lives, whatever extension it is written in.
+
+    The apps are TypeScript; `metro.config.js` and `babel.config.js` are not,
+    because Metro and Babel load those as plain CommonJS before anything could
+    compile them. Asked rather than assumed so that a stray `.js` app keeps
+    working and so that this is the only place the answer lives.
+    """
+    for extension in ("tsx", "ts", "js"):
+        candidate = REPO / "e2e" / f"{entry}.{extension}"
+        if candidate.exists():
+            return candidate
+    raise Failure(f"no e2e/{entry}.(tsx|ts|js)")
+
+
 def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
     """Bundles e2e/<entry>.js for this platform, unless it is already there.
 
@@ -738,7 +753,7 @@ def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
     more steps to every CI job that will not use them.
     """
     bundled = build / f"{entry}.{PLATFORM}.jsbundle.js"
-    source = REPO / "e2e" / f"{entry}.js"
+    source = app_source(entry)
     # Older than the file it was built from means a scenario would silently test
     # the last version of the app rather than this one -- which is exactly what
     # happened the first time this helper was used twice.
@@ -747,7 +762,7 @@ def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
     arguments = [
         "--dev" if dev else "--prod",
         "--platform", PLATFORM,
-        "--entry", f"{entry}.js",
+        "--entry", source.name,
         "--out", f"{entry}.{PLATFORM}.jsbundle",
         "--build-dir", build.name,
     ]
@@ -1001,7 +1016,7 @@ def test_fast_refresh(bundle: Path):
     here without an edit ever being made.
     """
     skip_edit = bool(os.environ.get("BASALT_SKIP_FAST_REFRESH"))
-    source = REPO / "e2e" / "index.js"
+    source = app_source("index")
     original = source.read_text()
     if original.count(BEFORE) != 1:
         raise Failure(f"the demo does not contain exactly one {BEFORE!r} to edit")

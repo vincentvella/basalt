@@ -51,7 +51,17 @@ const styles = StyleSheet.create({
 });
 
 // A box that says, in the log, exactly which of the five events reached it.
-function Box({name, color, hoveredColor, onEvent}) {
+function Box({
+  name,
+  color,
+  hoveredColor,
+  onEvent,
+}: {
+  name: string;
+  color: string;
+  hoveredColor: string;
+  onEvent: (name: string) => void;
+}) {
   const [hovered, setHovered] = React.useState(false);
 
   return (
@@ -77,7 +87,7 @@ function App() {
   const [count, setCount] = React.useState(0);
   const [cardHovered, setCardHovered] = React.useState(false);
 
-  const onEvent = React.useCallback(name => {
+  const onEvent = React.useCallback((name: string) => {
     console.log(`hover: ${name}`);
     setCount(previous => previous + 1);
   }, []);

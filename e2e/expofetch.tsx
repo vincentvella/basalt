@@ -32,6 +32,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
+import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -59,7 +60,7 @@ function App() {
         implementation = globalThis.fetch;
         console.log(`fetch: global ${typeof implementation}`);
       } catch (error) {
-        console.log(`fetch: global threw ${error.message}`);
+        console.log(`fetch: global threw ${messageOf(error)}`);
         setDone(true);
         return;
       }
@@ -67,7 +68,10 @@ function App() {
       // And whether it is expo's. Expo brands what it installs with a
       // well-known symbol, so this asks rather than infers.
       const branded = Boolean(
-        implementation && implementation[Symbol.for('expo.builtin')],
+        implementation &&
+          (implementation as unknown as Record<symbol, unknown>)[
+            Symbol.for('expo.builtin')
+          ],
       );
       console.log(`fetch: expo ${branded}`);
 
@@ -84,7 +88,7 @@ function App() {
         const response = await fetch('http://127.0.0.1:1/');
         console.log(`fetch: status ${response.status}`);
       } catch (error) {
-        console.log(`fetch: rejected ${error.message}`);
+        console.log(`fetch: rejected ${messageOf(error)}`);
       }
       setDone(true);
     })();

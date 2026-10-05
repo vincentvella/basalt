@@ -20,10 +20,11 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
+import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
-const PROBES = [
+const PROBES: Array<[string, () => boolean | 'absent']> = [
   // --- web APIs the runtime is supposed to install -------------------------
   ['performance.now', () => typeof performance.now() === 'number'],
   ['performance.mark', () => {
@@ -124,7 +125,7 @@ const styles = StyleSheet.create({
 });
 
 function App() {
-  const [results, setResults] = React.useState([]);
+  const [results, setResults] = React.useState<boolean[]>([]);
 
   React.useEffect(() => {
     const out = [];
@@ -142,7 +143,7 @@ function App() {
           out.push(false);
         }
       } catch (error) {
-        console.log(`THREW:  ${name} -- ${error.message}`);
+        console.log(`THREW:  ${name} -- ${messageOf(error)}`);
         out.push(false);
       }
     }

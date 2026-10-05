@@ -21,6 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import type {ScrollViewInstance, TextInputInstance} from 'react-native';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -30,7 +31,15 @@ const IMAGE = {uri: 'assets/checker.png'};
 
 const ROWS = Array.from({length: 24}, (_, index) => index);
 
-function Button({label, onPress, color}) {
+function Button({
+  label,
+  onPress,
+  color,
+}: {
+  label: string;
+  onPress: () => void;
+  color: string;
+}) {
   return (
     <Pressable
       onPress={onPress}
@@ -85,8 +94,8 @@ function App() {
   const [offsetY, setOffsetY] = useState(0);
   const [name, setName] = useState('');
   const [focused, setFocused] = useState(false);
-  const scroller = useRef(null);
-  const field = useRef(null);
+  const scroller = useRef<ScrollViewInstance>(null);
+  const field = useRef<TextInputInstance>(null);
 
   return (
     <View style={styles.root}>

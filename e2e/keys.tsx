@@ -8,10 +8,10 @@
 // scenario most.
 import React, {useCallback, useMemo, useState} from 'react';
 import {AppRegistry, StyleSheet, Text, View} from 'react-native';
-import {KeyHandler} from 'basalt-core';
+import {KeyHandler, type PressedKey} from 'basalt-core';
 
 function App() {
-  const [pressed, setPressed] = useState([]);
+  const [pressed, setPressed] = useState<string[]>([]);
   // Starts with `m`, and `j` is added once `m` has arrived. So the second press
   // only fires if re-registering worked -- if the list were captured once, `j`
   // would be undeclared for ever and the log would stop after one line.
@@ -25,7 +25,7 @@ function App() {
     [extended],
   );
 
-  const onKeyDown = useCallback(pressedKey => {
+  const onKeyDown = useCallback((pressedKey: PressedKey) => {
     const modifiers = [
       pressedKey.altKey ? 'alt' : null,
       pressedKey.ctrlKey ? 'ctrl' : null,

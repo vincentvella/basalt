@@ -33,6 +33,7 @@ import {
   Vibration,
   View,
 } from 'react-native';
+import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -41,7 +42,7 @@ const styles = StyleSheet.create({
   pip: {width: 36, height: 36, borderRadius: 18, marginRight: 10, backgroundColor: '#59cc8c'},
 });
 
-const CHECKS = [
+const CHECKS: Array<[string, () => Promise<boolean>]> = [
   [
     'importing Clipboard and Vibration does not throw',
     async () => typeof Clipboard === 'object' && typeof Vibration === 'object',
@@ -144,7 +145,7 @@ function App() {
             count++;
           }
         } catch (error) {
-          console.log(`FAIL: ${name} threw ${error.message}`);
+          console.log(`FAIL: ${name} threw ${messageOf(error)}`);
         }
       }
       console.log(`module checks: ${count}/${CHECKS.length}`);

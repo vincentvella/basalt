@@ -13,6 +13,7 @@
 import React, {useEffect} from 'react';
 import {AppRegistry, StyleSheet, Text, View} from 'react-native';
 import {Canvas, Fill, Rect, useCanvasRef} from '@shopify/react-native-skia';
+import {messageOf} from './errors';
 
 function App() {
   const ref = useCanvasRef();
@@ -38,9 +39,9 @@ function App() {
         // where I asked".
         const pixels = image.readPixels();
         const scale = image.width() / 200;
-        const rgba = (x, y) => {
+        const rgba = (x: number, y: number) => {
           const i = (Math.round(y * scale) * image.width() + Math.round(x * scale)) * 4;
-          const hex = n => n.toString(16).padStart(2, '0');
+          const hex = (n: number) => n.toString(16).padStart(2, '0');
           return `#${hex(pixels[i])}${hex(pixels[i + 1])}${hex(pixels[i + 2])}`;
         };
         // (60,60) is inside the 20,20 120x80 rect; (180,120) is outside it and
@@ -48,7 +49,7 @@ function App() {
         console.log(`skia pixel inside the rect: ${rgba(60, 60)}`);
         console.log(`skia pixel inside the fill: ${rgba(180, 120)}`);
       } catch (error) {
-        console.log(`skia snapshot failed: ${error.message}`);
+        console.log(`skia snapshot failed: ${messageOf(error)}`);
       }
     }, 1200);
     return () => clearTimeout(timer);

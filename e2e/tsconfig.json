@@ -1,0 +1,25 @@
+{
+  // Checked, never emitted. Metro reads these files directly and compiles them
+  // with React Native's Babel preset, which strips types and asks no questions
+  // about them. Nothing here produces a dist/, so `noEmit` is the whole point:
+  // this exists to answer "does the app still agree with the API it calls",
+  // which until now nothing did.
+  "extends": "../packages/basalt-core/tsconfig.paths.json",
+
+  "compilerOptions": {
+    "strict": true,
+    "module": "node16",
+    "moduleResolution": "node16",
+    "target": "es2022",
+    "lib": ["es2022"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+
+  // The two config files stay JavaScript: Metro and Babel load them as plain
+  // CommonJS from a path convention, before anything could have compiled them.
+  "include": ["*.tsx", "*.ts", "types.d.ts"]
+}

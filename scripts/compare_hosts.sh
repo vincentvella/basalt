@@ -180,7 +180,7 @@ for entry in "${present[@]}"; do
       bash -c '
         if [ ! -f "$BUNDLE" ]; then
           echo "missing $BUNDLE -- build it inside the distro with:" >&2
-          echo "  scripts/bundle.sh react-native-src --platform linux --entry <app>.js --out <app>.linux.jsbundle" >&2
+          echo "  scripts/bundle.sh react-native-src --platform linux --entry <app> --out <app>.linux.jsbundle" >&2
           exit 1
         fi
         if ! xdpyinfo -display :99 >/dev/null 2>&1; then
@@ -198,7 +198,7 @@ for entry in "${present[@]}"; do
   [[ -n "$bundle" ]] || bundle="$build/$app.$name.jsbundle.js"
   if [[ ! -f "$bundle" ]]; then
     echo "missing $bundle -- build it with:" >&2
-    echo "  scripts/bundle.sh --platform $name --entry $app.js --out $app.$name.jsbundle" >&2
+    echo "  scripts/bundle.sh --platform $name --entry $app --out $app.$name.jsbundle" >&2
     exit 1
   fi
 

@@ -30,10 +30,13 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, Pressable, StyleSheet, View} from 'react-native';
+import type {ViewProps} from 'react-native';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
-const MODES = ['auto', 'none', 'box-none', 'box-only'];
+// `as const`, so each mode is its own literal and matches the union
+// `pointerEvents` actually takes rather than widening to `string`.
+const MODES = ['auto', 'none', 'box-none', 'box-only'] as const;
 
 const styles = StyleSheet.create({
   page: {flex: 1, backgroundColor: '#11131a', padding: 24},
@@ -70,7 +73,13 @@ const styles = StyleSheet.create({
   },
 });
 
-function Row({mode, onPress}) {
+function Row({
+  mode,
+  onPress,
+}: {
+  mode: ViewProps['pointerEvents'];
+  onPress: (where: string) => void;
+}) {
   return (
     <View style={styles.row}>
       <Pressable
@@ -95,7 +104,7 @@ function App() {
   // platform with no text engine: one pip per press that reached React.
   const [count, setCount] = React.useState(0);
 
-  const onPress = React.useCallback(where => {
+  const onPress = React.useCallback((where: string) => {
     console.log(`pressed ${where}`);
     setCount(previous => previous + 1);
   }, []);

@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   },
 });
 
-function Button({name, onPress}) {
+function Button({name, onPress}: {name: string; onPress: (name: string) => void}) {
   const [focused, setFocused] = React.useState(false);
 
   return (
@@ -95,7 +95,7 @@ function App() {
   // platform with no text engine: one pip per press that reached React.
   const [count, setCount] = React.useState(0);
 
-  const onPress = React.useCallback(name => {
+  const onPress = React.useCallback((name: string) => {
     console.log(`press ${name}`);
     setCount(previous => previous + 1);
   }, []);

@@ -27,7 +27,7 @@
 
   // Colours reach C++ as a signed 32-bit ARGB integer -- the same thing RN's
   // processColor() produces. `| 0` is what makes it signed.
-  function argb(value) {
+  function argb(value: number): number {
     return value | 0;
   }
 
@@ -42,25 +42,74 @@
   // which is itself the root node's tag.
   var nextTag = 100;
 
+  /**
+   * Keyed by what each box is rather than by where it sits, because the second
+   * commit clones particular ones and reads better for it.
+   */
+  type DemoTree = {
+    surfaceId: number;
+    container?: FabricNode;
+    topRow?: FabricNode;
+    blue?: FabricNode;
+    green?: FabricNode;
+    orange?: FabricNode;
+    nested?: FabricNode;
+  };
+
   // Nodes from the last commit, so the next one can clone them.
-  var tree = null;
+  var tree: DemoTree | null = null;
 
-  var fabric = null;
+  var fabric: NonNullable<typeof globalThis.nativeFabricUIManager> | null = null;
 
-  function create(props, children) {
-    var node = fabric.createNode(nextTag++, VIEW, tree.surfaceId, props, {});
+  /**
+   * The binding, or a complaint naming what is missing.
+   *
+   * Everything below runs after `basaltRender` has assigned both of these, and
+   * nothing in the file can prove that to a compiler. An accessor says so once
+   * and turns what would have been a property-of-null into a sentence.
+   */
+  function ui(): NonNullable<typeof fabric> {
+    if (fabric == null) {
+      throw new Error('the demo ran before basaltRender installed the binding');
+    }
+    return fabric;
+  }
+
+  /**
+   * A node the first commit created, which the second one clones.
+   *
+   * Optional on `DemoTree` because the tree starts as a surface id and nothing
+   * else, and required here because a second commit with a missing box is a
+   * bug in this file rather than a state to handle.
+   */
+  function must(node: FabricNode | undefined, what: string): FabricNode {
+    if (node == null) {
+      throw new Error('the second commit wanted ' + what + ' and the first made none');
+    }
+    return node;
+  }
+
+  function nodes(): DemoTree {
+    if (tree == null) {
+      throw new Error('the demo asked for a node before the first commit');
+    }
+    return tree;
+  }
+
+  function create(props: object, children?: FabricNode[]): FabricNode {
+    var node = ui().createNode(nextTag++, VIEW, nodes().surfaceId, props, {});
     if (children) {
       for (var i = 0; i < children.length; i++) {
-        fabric.appendChild(node, children[i]);
+        ui().appendChild(node, children[i]);
       }
     }
     return node;
   }
 
-  function childSet(nodes) {
-    var set = fabric.createChildSet();
+  function childSet(nodes: FabricNode[]): FabricChildSet {
+    var set = ui().createChildSet();
     for (var i = 0; i < nodes.length; i++) {
-      fabric.appendChildToSet(set, nodes[i]);
+      ui().appendChildToSet(set, nodes[i]);
     }
     return set;
   }
@@ -72,51 +121,51 @@
   function buildFirstTree() {
     // A nested child, to prove children are laid out relative to their parent
     // and clipped or overflowed by it rather than by the root.
-    tree.nested = create({
+    nodes().nested = create({
       backgroundColor: PALE,
       width: 160,
       height: 90,
       margin: 24,
     });
 
-    tree.blue = create(
+    nodes().blue = create(
       {
         backgroundColor: BLUE,
         flex: 1,
         marginRight: 16,
       },
-      [tree.nested]
+      [must(nodes().nested, 'nested')]
     );
 
-    tree.orange = create({
+    nodes().orange = create({
       backgroundColor: ORANGE,
       flex: 1,
     });
 
     // flexDirection defaults to 'column' in React Native, not 'row' as in CSS.
-    tree.topRow = create(
+    nodes().topRow = create(
       {
         flexDirection: 'row',
         flex: 1,
         marginBottom: 16,
       },
-      [tree.blue, tree.orange]
+      [must(nodes().blue, 'blue'), must(nodes().orange, 'orange')]
     );
 
-    tree.green = create({
+    nodes().green = create({
       backgroundColor: GREEN,
       height: 160,
     });
 
-    tree.container = create(
+    nodes().container = create(
       {
         flex: 1,
         padding: 24,
       },
-      [tree.topRow, tree.green]
+      [must(nodes().topRow, 'topRow'), must(nodes().green, 'green')]
     );
 
-    return [tree.container];
+    return [must(nodes().container, 'container')];
   }
 
   // ---------------------------------------------------------------------
@@ -127,29 +176,29 @@
 
   function buildSecondTree() {
     // Same node, new props: an Update, and a re-layout of its subtree.
-    var blue = fabric.cloneNodeWithNewProps(tree.blue, {
+    var blue = ui().cloneNodeWithNewProps(must(nodes().blue, 'blue'), {
       backgroundColor: PURPLE,
       flex: 2,
       marginRight: 16,
     });
 
     // The orange view is simply absent from the new child list.
-    var topRow = fabric.cloneNodeWithNewChildren(tree.topRow, childSet([blue]));
+    var topRow = ui().cloneNodeWithNewChildren(must(nodes().topRow, 'topRow'), childSet([blue]));
 
-    var green = fabric.cloneNodeWithNewProps(tree.green, {
+    var green = ui().cloneNodeWithNewProps(must(nodes().green, 'green'), {
       backgroundColor: GREEN,
       height: 260,
     });
 
-    var container = fabric.cloneNodeWithNewChildren(
-      tree.container,
+    var container = ui().cloneNodeWithNewChildren(
+      must(nodes().container, 'container'),
       childSet([topRow, green])
     );
 
-    tree.blue = blue;
-    tree.topRow = topRow;
-    tree.green = green;
-    tree.container = container;
+    nodes().blue = blue;
+    nodes().topRow = topRow;
+    nodes().green = green;
+    nodes().container = container;
 
     return [container];
   }
@@ -167,13 +216,13 @@
   // from C++, so there is nothing to unmount here -- this only drops the node
   // references this script is holding.
   globalThis.RN$stopSurface = function (surfaceId) {
-    if (tree != null && tree.surfaceId === surfaceId) {
+    if (tree != null && nodes().surfaceId === surfaceId) {
       tree = null;
     }
   };
 
   globalThis.basaltRender = function (surfaceId, step) {
-    fabric = globalThis.nativeFabricUIManager;
+    fabric = globalThis.nativeFabricUIManager ?? null;
     if (fabric == null) {
       throw new Error('nativeFabricUIManager is not installed on this runtime');
     }
@@ -185,6 +234,6 @@
     }
 
     var roots = step === 1 ? buildFirstTree() : buildSecondTree();
-    fabric.completeRoot(surfaceId, childSet(roots));
+    ui().completeRoot(surfaceId, childSet(roots));
   };
 })();

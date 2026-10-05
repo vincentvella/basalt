@@ -8,6 +8,7 @@
 // something React Native provides" is.
 import React from 'react';
 import {AppRegistry, StyleSheet, Text, View} from 'react-native';
+import {messageOf} from './errors';
 
 const proxy = global.__turboModuleProxy;
 console.log(`turbo proxy: ${typeof proxy}`);
@@ -24,7 +25,7 @@ if (typeof proxy === 'function') {
   try {
     unknown = proxy('NoSuchModuleAtAll') == null ? 'null' : 'found';
   } catch (error) {
-    unknown = `threw: ${error.message}`;
+    unknown = `threw: ${messageOf(error)}`;
   }
   console.log(`turbo proxy unknown name: ${unknown}`);
 }

@@ -110,7 +110,11 @@ cat > "$PATHS_FILE" <<JSON
     "paths": {
       "react-native": ["$(to_json_path "$RN_TYPES")"],
       "react": ["$(to_json_path "$REACT_TYPES")"],
-      "react/*": ["$(to_json_path "$REACT_TYPES")/*"]
+      "react/*": ["$(to_json_path "$REACT_TYPES")/*"],
+      "basalt-core": ["$(to_json_path "$REPO_ROOT")/packages/basalt-core/dist/src/index.d.ts"],
+      "basalt-core/*": ["$(to_json_path "$REPO_ROOT")/packages/basalt-core/*"],
+      "basalt-subprocess": ["$(to_json_path "$REPO_ROOT")/packages/basalt-subprocess/dist/index.d.ts"],
+      "basalt-navigation": ["$(to_json_path "$REPO_ROOT")/packages/basalt-navigation/dist/index.d.ts"]
     },
     "typeRoots": ["$(to_json_path "$RN_DIR")/node_modules/@types"],
     "types": ["node"]
@@ -150,6 +154,19 @@ if ! $WATCH; then
     echo "==> checking $(basename "$package")"
     "$TSC" --noEmit -p "$package"
   done
+
+  # The demo apps, last: they are the only thing here that reads the packages'
+  # published types the way an app does, so a prop that was renamed in src/ and
+  # not in the apps is caught here and nowhere else. They are checked against
+  # the dist/ just built above, which is why this cannot run earlier.
+  #
+  # Note `$TSC` and not `npx tsc`: there is an unrelated package on npm called
+  # `tsc`, and from a directory with no local typescript `npx` fetches *that*,
+  # which prints a banner and exits 0. A green that means nothing.
+  if [ -f "$REPO_ROOT/e2e/tsconfig.json" ]; then
+    echo "==> checking e2e"
+    "$TSC" --noEmit -p "$REPO_ROOT/e2e"
+  fi
 fi
 
 echo "==> built"

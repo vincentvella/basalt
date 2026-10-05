@@ -155,7 +155,7 @@ for entry in "${APPS[@]}"; do
     bundle="$build/$name.$platform.jsbundle.js"
     if [[ ! -f "$bundle" ]]; then
       echo "  building $bundle"
-      scripts/bundle.sh --platform "$platform" --entry "$name.js" \
+      scripts/bundle.sh --platform "$platform" --entry "$name" \
         --out "$name.$platform.jsbundle" --build-dir "$build" >/dev/null 2>&1
     fi
   done
