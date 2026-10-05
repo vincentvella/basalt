@@ -15,26 +15,40 @@ npm install @react-navigation/native @react-navigation/native-stack \
 Screens render, `navigation.navigate` pushes, and a press on a `<Link>` routes.
 Verified by running both on a desktop host and reading the mounted view tree.
 
-## Screen stacking, and the one line it needs
+## What you get on each desktop
 
-Basalt implements react-native-screens' components, and a stack shows its top
-screen and detaches what is under it. Whether your app reaches that code is the
-library's decision rather than Basalt's.
+Navigation itself works everywhere, today, with no patching and no upstream
+change: screens render, `navigate` pushes, `<Link>` routes. What varies is the
+screen machinery underneath.
+
+| | Windows | macOS and Linux |
+| --- | --- | --- |
+| navigation, routing | yes | yes |
+| safe area insets | yes | yes |
+| header bar | yes | yes |
+| covered screen detached | yes | not yet |
+| body inset below the header | yes | not yet |
+
+Windows is complete because react-native-screens already lists it as a platform
+it supports, so Basalt's components are reachable there. On macOS and Linux the
+library renders its own fallback views instead, and the two rows above are the
+difference that makes.
 
 ```js
 import {enableScreens} from 'react-native-screens';
 enableScreens();
 ```
 
-| | |
-| --- | --- |
-| **Windows** | works already, and needs no call. `Platform.OS` is `windows`, which react-native-screens has on its own list. |
-| **macOS and Linux** | the call is a no-op today and becomes the switch when [software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779) lands. Harmless to add now. |
+That line is what switches the other two on. It does nothing on macOS or Linux
+until
+[software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779)
+lands, and is harmless to add now. If you would rather not wait, the same patch
+applied locally with `patch-package` or `yarn patch` has the same effect; it is
+three lines.
 
-Until then, a pushed screen leaves the one beneath it mounted on those two.
-There is nothing to see: the top screen covers it at the same size. What it
-costs is a subtree that is still measured and still reachable by a screen
-reader.
+Nothing about this blocks shipping an app. A covered screen that stays mounted
+is invisible, because the screen in front covers it; what it costs is a subtree
+that is still measured and still reachable by a screen reader.
 
 :::note[Why Basalt cannot just turn it on]
 ```js
@@ -46,13 +60,12 @@ export const isNativePlatformSupported =
 That const is what `Screen` checks, and it is not a list of platforms where
 native screens could work. It is the list of platforms the library ships native
 code for, which is why `macos` is absent: react-native-macos reports `macos`
-too, and react-native-screens has no macOS implementation. Adding the name
-would claim support that does not exist and would break those apps.
+too and has no implementation behind it, so adding the name would claim support
+that does not exist and break those apps.
 
-So the upstream change is an opt-in rather than a longer list: an app on a
-platform that provides the components itself says so, and nothing else moves.
-Basalt could instead patch the library through its Metro config, and does not,
-because `metro-config.ts` argues that the library fallback "cannot be a list of
+The change proposed upstream is therefore an opt-in rather than a longer list.
+Basalt could patch the library through its own Metro config instead, and does
+not: `metro-config.ts` argues that the library fallback "cannot be a list of
 names", and owning a third-party module's internals for one library is the
 worse problem.
 :::

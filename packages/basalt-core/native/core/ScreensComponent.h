@@ -107,11 +107,14 @@ extern const char RNSScreenStackHeaderConfigComponentName[];
 /**
  * What a header puts around its content.
  *
- * A bar is its title plus a margin rather than a fixed height, because the
- * margin is the part that can be set from where this is applied. See the
- * descriptor below.
+ * A bar is its title plus a margin rather than a fixed height, which lands
+ * within a few points of the 56 every toolkit uses and centres a one-line
+ * title without needing to know how tall it is.
+ *
+ * Applied by the screen, not by the header, because the screen also moves the
+ * body down out of the way and the two have to happen together or not at all.
+ * See RNSScreenShadowNode::layout.
  */
-inline constexpr float kHeaderPaddingX = 16.0f;
 inline constexpr float kHeaderPaddingY = 18.0f;
 
 // The header bar.
@@ -159,24 +162,8 @@ class RNSScreenStackHeaderConfigShadowNode final
 
   void layout(LayoutContext layoutContext) override;
 };
-// The height is applied here rather than in the props.
-//
-// A props constructor can set `yogaStyle`, and for this node it does not take:
-// the yoga node keeps its own copy of the style, and `setSize` is the
-// affordance that writes to it and marks the node dirty. Measured, after a
-// props-side version set the dimension and the bar still hugged its text.
-// `ModalHostViewComponentDescriptor` upstream sizes itself the same way.
-//
-// Width is left alone. `points(NaN)` is `undefined` in yoga, so the bar still
-// stretches to its parent rather than being pinned to a width nothing knows
-// yet at adopt time.
-class RNSScreenStackHeaderConfigComponentDescriptor final
-    : public ConcreteComponentDescriptor<RNSScreenStackHeaderConfigShadowNode> {
- public:
-  using ConcreteComponentDescriptor::ConcreteComponentDescriptor;
-
-  void adopt(ShadowNode &shadowNode) const override;
-};
+using RNSScreenStackHeaderConfigComponentDescriptor =
+    ConcreteComponentDescriptor<RNSScreenStackHeaderConfigShadowNode>;
 
 extern const char RNSScreenStackComponentName[];
 

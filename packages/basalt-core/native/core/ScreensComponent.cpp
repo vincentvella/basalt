@@ -56,29 +56,6 @@ RNSScreenStackHeaderConfigProps::RNSScreenStackHeaderConfigProps(
   // which are the two places that work. See the header.
 }
 
-void RNSScreenStackHeaderConfigComponentDescriptor::adopt(ShadowNode &shadowNode) const {
-  auto &layoutable = static_cast<YogaLayoutableShadowNode &>(shadowNode);
-  const auto &props =
-      static_cast<const RNSScreenStackHeaderConfigProps &>(*shadowNode.getProps());
-
-  if (!props.hidden) {
-    // Padding rather than a height, which also centres the title.
-    //
-    // Only `setSize`, `setPadding` and `setPositionType` reach the yoga node
-    // from here, and a height set through `setSize` leaves the title against
-    // the top edge: `alignItems` lives in the props, and the props are the
-    // thing that does not arrive. So the bar is sized by what is in it plus a
-    // margin, which lands within a few points of the 56 every toolkit uses and
-    // centres a one-line title without needing to know how tall it is.
-    layoutable.setPadding({.left = kHeaderPaddingX,
-                           .top = kHeaderPaddingY,
-                           .right = kHeaderPaddingX,
-                           .bottom = kHeaderPaddingY});
-  }
-
-  ConcreteComponentDescriptor::adopt(shadowNode);
-}
-
 void RNSScreenStackHeaderConfigShadowNode::layout(LayoutContext layoutContext) {
   ConcreteViewShadowNode::layout(layoutContext);
 
@@ -101,27 +78,61 @@ void RNSScreenStackHeaderConfigShadowNode::layout(LayoutContext layoutContext) {
 void RNSScreenShadowNode::layout(LayoutContext layoutContext) {
   ConcreteViewShadowNode::layout(layoutContext);
 
-  float headerHeight = 0;
+  // The bar, and the body out from under it, together.
+  //
+  // Both here rather than the bar in the header itself, because the fallback
+  // path has no screen node at all: react-native-screens renders plain views
+  // where the native components are unavailable, nothing would move the body,
+  // and a bar given a height there would only be a taller strip painted over
+  // the content than the one already in the way.
+  RNSScreenStackHeaderConfigShadowNode *header = nullptr;
   for (const auto &child : getChildren()) {
-    const auto *header =
-        dynamic_cast<const RNSScreenStackHeaderConfigShadowNode *>(child.get());
-    if (header == nullptr || header->getConcreteProps().hidden ||
-        header->getLayoutMetrics().displayType == DisplayType::None) {
+    auto *candidate = const_cast<RNSScreenStackHeaderConfigShadowNode *>(
+        dynamic_cast<const RNSScreenStackHeaderConfigShadowNode *>(child.get()));
+    if (candidate == nullptr || candidate->getConcreteProps().hidden ||
+        candidate->getLayoutMetrics().displayType == DisplayType::None) {
       continue;
     }
-    headerHeight = header->getLayoutMetrics().frame.size.height;
+    header = candidate;
     break;
   }
-  if (headerHeight <= 0) {
+  if (header == nullptr) {
     return;
   }
 
-  for (const auto &child : getChildren()) {
-    auto *content = const_cast<ShadowNode *>(child.get());
-    if (dynamic_cast<const RNSScreenStackHeaderConfigShadowNode *>(content) != nullptr) {
+  auto headerMetrics = header->getLayoutMetrics();
+  const auto natural = headerMetrics.frame.size.height;
+  if (natural <= 0) {
+    return;
+  }
+  const auto barHeight = natural + 2 * kHeaderPaddingY;
+
+  headerMetrics.frame.size.height = barHeight;
+  header->ensureUnsealed();
+  header->setLayoutMetrics(headerMetrics);
+
+  // Grown after the fact, so the title keeps the position yoga gave it and is
+  // moved down by half the margin rather than relaid out. Vertical only:
+  // shifting a child sideways without reflowing it would push a centred title
+  // off centre, which is the one arrangement that works here.
+  for (const auto &child : header->getChildren()) {
+    auto *inside = const_cast<ShadowNode *>(child.get());
+    auto *layoutable = dynamic_cast<LayoutableShadowNode *>(inside);
+    if (layoutable == nullptr) {
       continue;
     }
-    auto *layoutable = dynamic_cast<LayoutableShadowNode *>(content);
+    auto metrics = layoutable->getLayoutMetrics();
+    metrics.frame.origin.y += kHeaderPaddingY;
+    inside->ensureUnsealed();
+    layoutable->setLayoutMetrics(metrics);
+  }
+
+  for (const auto &child : getChildren()) {
+    auto *body = const_cast<ShadowNode *>(child.get());
+    if (body == static_cast<ShadowNode *>(header)) {
+      continue;
+    }
+    auto *layoutable = dynamic_cast<LayoutableShadowNode *>(body);
     if (layoutable == nullptr) {
       continue;
     }
@@ -129,10 +140,9 @@ void RNSScreenShadowNode::layout(LayoutContext layoutContext) {
     if (metrics.displayType == DisplayType::None || metrics.frame.origin.y != 0) {
       continue;
     }
-    metrics.frame.origin.y = headerHeight;
-    metrics.frame.size.height =
-        std::max(0.0f, metrics.frame.size.height - headerHeight);
-    content->ensureUnsealed();
+    metrics.frame.origin.y = barHeight;
+    metrics.frame.size.height = std::max(0.0f, metrics.frame.size.height - barHeight);
+    body->ensureUnsealed();
     layoutable->setLayoutMetrics(metrics);
   }
 }
