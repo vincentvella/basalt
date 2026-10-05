@@ -1,7 +1,7 @@
 // Tests for the fling GTK hands over half-finished.
 //
 // `<ScrollView>` itself is exercised end to end by `scripts/compare_hosts.sh`
-// running `js/scroll.js` against both hosts, which is a better test than
+// running `e2e/scroll.js` against both hosts, which is a better test than
 // anything here -- it compares one desktop's answer to another's. Momentum is
 // the part that cannot reach: a real fling needs a touchscreen, and the frame
 // clock that drives it needs a mapped window and two seconds of main loop.

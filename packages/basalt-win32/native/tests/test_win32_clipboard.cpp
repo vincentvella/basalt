@@ -5,7 +5,7 @@
 // arranged from a test is a second thread in this process, which OpenClipboard
 // treats exactly like another program. What the clipboard held before is put
 // back at the end, as text; anything richer than text is lost, the same as
-// js/modules.js running.
+// e2e/modules.js running.
 
 #include "TestHarness.h"
 

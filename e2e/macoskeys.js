@@ -6,7 +6,7 @@
  * written for react-native-macos should not have to be rewritten to run here,
  * and kino's `hotkeyViewProps()` is exactly this shape.
  *
- * The other half, `<KeyHandler>`, is js/keys.js. Both are one implementation;
+ * The other half, `<KeyHandler>`, is e2e/keys.js. Both are one implementation;
  * see src/useHandledKeys.ts.
  *
  * @format

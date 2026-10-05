@@ -43,7 +43,7 @@ apt-get install -y -qq \
 
 # --- something that opens https ----------------------------------------------
 # `Linking.canOpenURL` asks GIO whether anything is registered for the scheme,
-# and a bare distro has nothing -- so js/modules.js honestly fails a check a
+# and a bare distro has nothing -- so e2e/modules.js honestly fails a check a
 # GitHub runner, which has a browser, passes. The first two-host comparison
 # reported exactly that as a difference. wslview opens the Windows default
 # browser, which makes it a real handler rather than a stub. The mimeinfo cache

@@ -55,7 +55,7 @@ make bundle                         # a production bundle to test against
 make e2e                            # end to end, on whichever host is built
 
 make compare-hosts                  # every host built, same app, diffed
-make compare                        # every app in js/, through every host
+make compare                        # every app in e2e/, through every host
 node --test scripts/test_cli.js     # run-linux, run-macos and run-windows
 node scripts/check_includes.js      # a header used and not included
 ```
@@ -187,7 +187,7 @@ manager with no JavaScript anywhere. `BASALT_SNAPSHOT_DIR=/tmp/out
 tree after each; with no directory set it opens a window and applies the second
 transaction two seconds in, the way the GTK harness does.
 
-`scripts/compare_all.sh` runs every app in `js/` through every host that is
+`scripts/compare_all.sh` runs every app in `e2e/` through every host that is
 built and prints where the platforms stand. Windows against Linux in WSL:
 
 ```
@@ -214,7 +214,7 @@ measurement. Everything else (tree shape, strings, colours, roles, flags) is
 still compared there.
 
 `scripts/compare_hosts.sh` is the single-app version, and the one that cannot
-run in CI. It runs `js/views.js` (a real React app made only of `<View>`) through every host that is built, and checks two things that fail differently:
+run in CI. It runs `e2e/views.js` (a real React app made only of `<View>`) through every host that is built, and checks two things that fail differently:
 that the view trees match, and that each host's log reports the `Platform.OS`
 its bundle was built for. A bundle built for the wrong platform can render
 perfectly and be wrong about everything `Platform.OS` guards.
@@ -252,13 +252,13 @@ than WSLg, because Xvfb is what CI uses.
 
 It also registers something to open `https` with. `Linking.canOpenURL` asks
 GIO whether anything handles the scheme, a bare distro has nothing, and
-`js/modules.js` then fails a check on Linux that a GitHub runner, which has a
+`e2e/modules.js` then fails a check on Linux that a GitHub runner, which has a
 browser, passes, which is exactly what the first comparison through WSL
 reported as a difference.
 
 `BASALT_COMPARE_TAP="x,y;x,y"` forwards taps to every host; they read the same
 variable, so the input path is compared too, not just the initial render.
-`js/press.js` is the app for that, and needs a longer quit than the default
+`e2e/press.js` is the app for that, and needs a longer quit than the default
 since the first tap is at 1500ms:
 
 ```bash
@@ -266,7 +266,7 @@ BASALT_COMPARE_TAP="400,100;400,100;400,100" BASALT_COMPARE_QUIT_AFTER_MS=5000 \
   scripts/compare_hosts.sh press BasaltPress
 ```
 
-`js/scroll.js` scrolls itself through `scrollTo` on a ref, which is how both
+`e2e/scroll.js` scrolls itself through `scrollTo` on a ref, which is how both
 hosts can be driven identically from one file: a wheel has to be injected per
 platform and a command does not, and is the only test of the command path:
 
@@ -276,7 +276,7 @@ scripts/bundle.sh --platform macos --entry scroll.js --out scroll.macos.jsbundle
 BASALT_COMPARE_QUIT_AFTER_MS=3000 scripts/compare_hosts.sh scroll BasaltScroll
 ```
 
-For `js/text.js` and `js/image.js`, frames have to be ignored:
+For `e2e/text.js` and `e2e/image.js`, frames have to be ignored:
 
 ```bash
 scripts/bundle.sh --platform linux --entry text.js --out text.linux.jsbundle
@@ -340,7 +340,7 @@ what a hand-maintained list of something the code already states turns into.
 What is worth writing down is what is not in the code.
 
 **They read coordinates from each app's own layout.** Most tap fixed points:
-`js/index.js` for the demo, and its own file for each of the apps written for a
+`e2e/index.js` for the demo, and its own file for each of the apps written for a
 scenario. Change a demo's spacing and the coordinates need changing too. The
 alternative, searching the dumped tree for a button by its label and tapping its
 centre, would be more robust and is worth doing; the reason it has not been is
@@ -355,7 +355,7 @@ working on all three.
 **Fast Refresh is the only scenario that runs in dev mode**, which is why it
 exists: "development still works" was being taken on trust, and a wrong claim
 about it reached the README. It starts its own Metro on port 8099, edits
-`js/index.js` while the app is on screen, and restores the file after the host
+`e2e/index.js` while the app is on screen, and restores the file after the host
 has exited, not before, because putting the original back while the app still
 has a Metro connection triggers a second refresh that undoes the edit before the
 tree is dumped, which looks exactly like Fast Refresh being broken. A `kill -9`
@@ -594,7 +594,7 @@ drag begins the system owns it, and no instrument can put a file manager on the
 other end to receive the drop. What the suite does prove is that a drag source
 is *inert* when no view is marked: every press, scroll and context-menu
 scenario passes with one attached, which is worth knowing and is not the same
-as proving a drag works. The verification is `js/drop.js`'s green row and a
+as proving a drag works. The verification is `e2e/drop.js`'s green row and a
 person dragging it somewhere.
 
 **An instrument goes on all three hosts, or the scenario that uses it skips
@@ -807,13 +807,13 @@ the host now closes any open sheet before it tries to quit.
 
 That cuts the other way too, and it is worth knowing before a tree looks wrong:
 a window that opens under someone's cursor *is* hovered, before either host has
-drawn anything. `js/hover.js` is left out of `scripts/compare_all.sh` for that
+drawn anything. `e2e/hover.js` is left out of `scripts/compare_all.sh` for that
 reason, and the end-to-end suite asserts the order events arrive in rather than
 that nothing else happens.
 
 ## Expo, and the apps that need it
 
-Two of the apps in `js/` import an Expo package, `notifications.js` imports
+Two of the apps in `e2e/` import an Expo package, `notifications.js` imports
 `expo-notifications`, and this directory is not an npm package, so there is
 nothing for Metro to resolve them against. Both halves have to be pointed at an
 app that does have them installed:

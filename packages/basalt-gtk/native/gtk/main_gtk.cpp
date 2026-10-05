@@ -126,7 +126,7 @@ constexpr int kInitialHeight = 700;
 
 // The entry point for the *scriptless* mode, where the bundle is a hand-written
 // script talking to nativeFabricUIManager directly rather than a React app.
-// See js/demo.js. Only used when no module name is given.
+// See e2e/demo.js. Only used when no module name is given.
 constexpr const char *kRenderFunctionName = "basaltRender";
 
 // ---------------------------------------------------------------------------
@@ -1440,7 +1440,7 @@ void onActivate(GtkApplication *app, gpointer data) {
   //
   // Empty: the surface is registered without JS being called at all, leaving it
   // for a script to commit into through nativeFabricUIManager by hand. That is
-  // how this host ran before there was a Metro bundle, and js/demo.js still
+  // how this host ran before there was a Metro bundle, and e2e/demo.js still
   // exercises it.
   host->reactHost->startSurface(kSurfaceId,
                                 host->moduleName,

@@ -3,7 +3,7 @@
 //
 // The first tests any of the three desktops has for a scroll manager. GTK's and
 // AppKit's are exercised end to end by `scripts/compare_hosts.sh` running
-// `js/scroll.js` on both, which is a better test in every way except that it
+// `e2e/scroll.js` on both, which is a better test in every way except that it
 // needs two working desktops and this machine has one -- WSL2 will not start
 // here, so nothing else can check Windows against another host. So the
 // arithmetic gets tested directly instead.
@@ -290,7 +290,7 @@ TEST(win32_shrinking_content_pulls_the_offset_back) {
   manager.destroySurfaceRoot(kSurfaceId);
 }
 
-// scrollTo and scrollToEnd, which arrive through dispatchCommand. js/scroll.js
+// scrollTo and scrollToEnd, which arrive through dispatchCommand. e2e/scroll.js
 // drives itself through a ref, so this is the path that file exercises and the
 // only one that needs no wheel.
 TEST(win32_scroll_to_and_scroll_to_end_move_the_offset) {

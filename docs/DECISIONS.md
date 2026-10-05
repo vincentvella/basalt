@@ -90,7 +90,7 @@ that supplies its own `Platform` module and native component registry, as
 to `resolver.platforms` would only move the failure somewhere less obvious.
 
 ## The demo app has no node_modules (2026-09-09)
-`js/` is not an installed npm package. `metro.config.js` points `watchFolders`
+`e2e/` is not an installed npm package. `metro.config.js` points `watchFolders`
 and `resolver.nodeModulesPaths` at the React Native checkout that
 `scripts/bootstrap.sh` already prepared, so `react`, `react-native`, Metro and
 the Babel preset all resolve from there. Nothing is installed twice, and the
@@ -121,7 +121,7 @@ dependencies: folly's `Uri.cpp`, which React Native does not build either, and
 Editing a module and seeing the window update goes through two channels.
 React Native's JS HMR client connects to Metro over `WebSocketModule`, and
 `ReactHost` separately opens a packager connection whose reload message calls
-`reloadReactInstance()`. For an edit to a module with no refresh boundary (`js/index.js` registers the app, so it has none) the observed path is
+`reloadReactInstance()`. For an edit to a module with no refresh boundary (`e2e/index.js` registers the app, so it has none) the observed path is
 `DevSettingsModule::reloadWithReason: Fast Refresh - No root boundary`, i.e. a
 full instance reload. That is the same behaviour as iOS and Android for that
 kind of edit, not a limitation of this platform.

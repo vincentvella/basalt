@@ -21,7 +21,7 @@
 // touches a view off the main thread.
 //
 // What this host can render is what AppKitMountingManager can mount, which today
-// is <View>. `js/demo.js` -- a surface driven straight through
+// is <View>. `e2e/demo.js` -- a surface driven straight through
 // nativeFabricUIManager, with no React and no react-native JavaScript -- is
 // therefore the bundle this runs, and is the same first light-up the GTK host
 // had. A React app needs the JavaScript platform layer to answer to a name
@@ -133,7 +133,7 @@ constexpr int kInitialHeight = 700;
 
 // The entry point for the *scriptless* mode, where the bundle is a hand-written
 // script talking to nativeFabricUIManager directly rather than a React app.
-// See js/demo.js. Only used when no module name is given.
+// See e2e/demo.js. Only used when no module name is given.
 constexpr const char *kRenderFunctionName = "basaltRender";
 
 // One window, and the surface in it.

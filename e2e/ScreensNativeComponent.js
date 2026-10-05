@@ -4,7 +4,7 @@
  * Written out rather than produced by `codegenNativeComponent`, which is what
  * the library itself uses. That call is rewritten into a static config at build
  * time by `@react-native/babel-plugin-codegen`, and the plugin wants a package
- * with a `codegenConfig` around it; `js/` is a directory of demo apps and has
+ * with a `codegenConfig` around it; `e2e/` is a directory of demo apps and has
  * neither. Left to run at runtime the call asks
  * `UIManager.getViewManagerConfig`, which the new architecture does not answer,
  * and the app dies with "View config not found for component `RNSScreen`".

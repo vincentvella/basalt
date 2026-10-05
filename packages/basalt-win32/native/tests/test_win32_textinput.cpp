@@ -9,7 +9,7 @@
 //
 // What still cannot be asserted from here is the events. An EventEmitter built
 // by hand has no EventDispatcher, so `onChange` and `onFocus` go nowhere; the
-// end-to-end proof is `js/input.js` under BASALT_TEST_TAP and BASALT_TEST_TYPE,
+// end-to-end proof is `e2e/input.js` under BASALT_TEST_TAP and BASALT_TEST_TYPE,
 // What is left is everything the
 // control itself can be asked: its text, its selection, its read-only and
 // password state, where it is, and whether the loop that writes it is broken
@@ -299,7 +299,7 @@ TEST(win32_the_text_prop_reaches_the_control) {
   manager->destroySurfaceRoot(kSurfaceId);
 }
 
-// The controlled loop, in the shape js/input.js exercises: the user types, and
+// The controlled loop, in the shape e2e/input.js exercises: the user types, and
 // JavaScript sends back something *different*. The field has to take it.
 TEST(win32_a_changed_text_prop_is_applied) {
   auto manager = makeManager();

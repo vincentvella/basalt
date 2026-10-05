@@ -172,7 +172,7 @@ else
 
   # --- Cross-host parity -----------------------------------------------------
   #
-  # Every app in js/ through every host that is built, diffed. Needs two hosts;
+  # Every app in e2e/ through every host that is built, diffed. Needs two hosts;
   # with one, compare_all.sh says so and exits 77, and this counts as skipped.
   # On Windows, BASALT_COMPARE_WSL=Ubuntu-24.04 supplies the second.
   step "cross-host parity" scripts/compare_all.sh

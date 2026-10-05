@@ -53,7 +53,7 @@ def main() -> int:
         log = pathlib.Path(directory) / "metro.log"
 
         # What prewarm leaves behind: Metro logs a progress line and a final one.
-        log.write_text(" BUNDLE  js/index.js 0% (0/1)\n BUNDLE  js/index.js\n")
+        log.write_text(" BUNDLE  e2e/index.js 0% (0/1)\n BUNDLE  e2e/index.js\n")
         served = log.stat().st_size
 
         # The bug, kept as a check so the distinction cannot quietly go away: read
@@ -66,12 +66,12 @@ def main() -> int:
               harness.wait_for_log(log, "BUNDLE", 1, timeout=1, start=served), False)
 
         # And it must still see what happens after it.
-        log.write_text(log.read_text() + " BUNDLE  js/index.js\n")
+        log.write_text(log.read_text() + " BUNDLE  e2e/index.js\n")
         check("an offset sees the host's own request",
               harness.wait_for_log(log, "BUNDLE", 1, timeout=1, start=served), True)
 
         # Counts past the offset, not in total: two more lines, asked for two.
-        log.write_text(log.read_text() + " BUNDLE  js/index.js\n")
+        log.write_text(log.read_text() + " BUNDLE  e2e/index.js\n")
         check("counts are relative to the offset",
               harness.wait_for_log(log, "BUNDLE", 2, timeout=1, start=served), True)
         check("and do not borrow from before it",
@@ -91,7 +91,7 @@ def main() -> int:
         # Undecodable bytes: Metro's progress lines carry control characters, and
         # a host can die mid-write. The wait must survive its own input.
         raw = pathlib.Path(directory) / "raw.log"
-        raw.write_bytes(b"\xff\xfe BUNDLE  js/index.js\n")
+        raw.write_bytes(b"\xff\xfe BUNDLE  e2e/index.js\n")
         check("invalid utf-8 does not stop the search",
               harness.wait_for_log(raw, "BUNDLE", 1, timeout=1), True)
 

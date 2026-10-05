@@ -30,7 +30,7 @@ command with three names.
 
 Linux is the most finished: it runs real Expo apps, with fonts and assets, and
 CI builds and tests it in full. macOS and Linux produce a byte-identical view
-tree for every app in `js/`; `scripts/compare_all.sh` is what says so, and
+tree for every app in `e2e/`; `scripts/compare_all.sh` is what says so, and
 `scripts/compare_hosts.sh` is the single-app version. Windows and Linux agree on
 all of them too, run side by side on one Windows machine with the GTK host in
 WSL, see `docs/TESTING.md`.
@@ -212,18 +212,18 @@ Inside the shared package, under `native/`:
 And at the repository root:
 
     CMakeLists.txt              The development build: adds all three packages.
-    js/index.js                 The demo app. Ordinary React Native.
-    js/views.js                 A React app made only of <View>. What
+    e2e/index.js                 The demo app. Ordinary React Native.
+    e2e/views.js                 A React app made only of <View>. What
                                 compare_hosts.sh runs by default.
-    js/text.js                  A React app that is mostly <Text>.
-    js/press.js                 A <Pressable> that counts presses as boxes.
-    js/scroll.js                A <ScrollView> that scrolls itself by command.
-    js/image.js                 Four resize modes, a data: URI, a broken source.
-    js/a11y.js                  Roles, labels, hints, states and hiding.
-    js/input.js                 A controlled field that upper-cases what it is
+    e2e/text.js                  A React app that is mostly <Text>.
+    e2e/press.js                 A <Pressable> that counts presses as boxes.
+    e2e/scroll.js                A <ScrollView> that scrolls itself by command.
+    e2e/image.js                 Four resize modes, a data: URI, a broken source.
+    e2e/a11y.js                  Roles, labels, hints, states and hiding.
+    e2e/input.js                 A controlled field that upper-cases what it is
                                 given, which is how the loop is checked.
-    js/demo.js                  Drives Fabric's JSI binding by hand. No React.
-    js/metro.config.js          Resolves react/react-native out of the checkout.
+    e2e/demo.js                  Drives Fabric's JSI binding by hand. No React.
+    e2e/metro.config.js          Resolves react/react-native out of the checkout.
     examples/demo/              A small app that consumes it like a stranger.
     Makefile                    Every one of these with its arguments filled
                                 in. `make help` lists them.
@@ -231,7 +231,7 @@ And at the repository root:
     scripts/compare_hosts.sh    Runs one app through every host that is built
                                 and diffs the trees. Needs two toolkits on one
                                 machine, so not CI.
-    scripts/compare_all.sh      Every app in js/, through all of them. The
+    scripts/compare_all.sh      Every app in e2e/, through all of them. The
                                 summary.
     scripts/integration_test.py End to end, against whichever host is built.
     scripts/test_cli.js         run-linux, run-macos and run-windows, which are
@@ -582,7 +582,7 @@ Verified, on screen:
   re-render, mutations, widgets.
 - **Text renders and measures** through Pango, so Yoga sizes paragraphs the way
   it does on iOS and Android, and narrowing the window re-wraps them.
-- **React runs, from Metro, with Fast Refresh.** Editing `js/index.js` while the
+- **React runs, from Metro, with Fast Refresh.** Editing `e2e/index.js` while the
   app is running updates it in place, verified by watching the change land in
   the dumped widget tree. Development is `scripts/metro.sh` plus
   `BASALT_DEV=1`; a `--dev` bundle on disk is not a development mode and will
@@ -600,7 +600,7 @@ Verified, on screen:
   so AT-SPI. A `<Text>` calls itself a label and an `<Image>` an image without
   the app saying so.
 - `mount_harness_gtk` still drives hand-built `ShadowViewMutation`s with no JS
-  runtime, and `js/demo.js` still drives Fabric's JSI binding with no React.
+  runtime, and `e2e/demo.js` still drives Fabric's JSI binding with no React.
 - This project's own sources build under `-Wall -Wextra` with zero diagnostics,
   enforced by the build rather than asserted.
 
@@ -705,10 +705,10 @@ error you see is Metro's own, code frame and all.
 
 Arguments are `basalt_gtk [bundle] [moduleName]`, defaulting to
 `build/main.jsbundle.js` and `BasaltDemo`. An **empty** module name starts a
-surface without calling `AppRegistry`, which is the raw-Fabric mode `js/demo.js`
+surface without calling `AppRegistry`, which is the raw-Fabric mode `e2e/demo.js`
 uses:
 
-    ./build/basalt_gtk js/demo.js ""
+    ./build/basalt_gtk e2e/demo.js ""
 
 Environment:
 
@@ -740,7 +740,7 @@ It mounts `<View>` and nothing else so far, and it defaults to an **empty**
 module name rather than `BasaltDemo`, because a React app with any text in it
 would render blank rectangles:
 
-    ./build/basalt_appkit js/demo.js
+    ./build/basalt_appkit e2e/demo.js
 
 Its environment variables are `BASALT_*` in place of `BASALT_*`:
 `BASALT_DEV`, `BASALT_DEV_HOST`, `BASALT_DEV_PORT`, `BASALT_DEV_ENTRY`,

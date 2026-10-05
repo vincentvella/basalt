@@ -20,7 +20,7 @@
 //
 // The host asks for "http://localhost:8081/index.bundle?platform=...", a URL
 // DevServerHelper builds from ReactInstanceConfig plus the source path. Metro
-// must therefore be serving js/ as its project root, which is what the config
+// must therefore be serving e2e/ as its project root, which is what the config
 // below arranges.
 
 const fs = require('fs');
@@ -76,7 +76,7 @@ if (!fs.existsSync(path.join(rnDir, 'node_modules', 'react-native'))) {
   process.exit(1);
 }
 
-// js/metro.config.js reads this, and so does CMake. Set rather than required so
+// e2e/metro.config.js reads this, and so does CMake. Set rather than required so
 // that a caller who passed the path as an argument does not also have to export
 // it.
 process.env.RN_DIR = rnDir;
@@ -87,10 +87,10 @@ process.env.RN_DIR = rnDir;
 const rnRequire = createRequire(path.join(rnDir, 'package.json'));
 const {loadConfig, runServer} = rnRequire('metro');
 
-const configPath = path.join(REPO_ROOT, 'js', 'metro.config.js');
+const configPath = path.join(REPO_ROOT, 'e2e', 'metro.config.js');
 
 async function main() {
-  console.log(`==> Metro on port ${port}, project root ${REPO_ROOT}/js`);
+  console.log(`==> Metro on port ${port}, project root ${REPO_ROOT}/e2e`);
   // What `metro serve` does, minus the config-file watching that restarts the
   // server: loadConfig takes the port from here and puts it in config.server,
   // which is where runServer looks for it. Fast Refresh needs nothing switched

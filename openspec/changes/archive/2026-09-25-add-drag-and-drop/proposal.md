@@ -34,5 +34,5 @@ can be dragged out.
   `NSPasteboardWriting`, and OLE's `IDropTarget` with `DoDragDrop`.
 - The mounting managers gain per-view drop registration, alongside the hover
   listener bookkeeping they already keep.
-- `js/` gains a demo, and `scripts/integration_test.py` a scenario; a synthetic
+- `e2e/` gains a demo, and `scripts/integration_test.py` a scenario; a synthetic
   drag will need a test instrument, as taps and hovers did.

@@ -18,7 +18,7 @@
  *
  * **What it does not assert** is expo honouring it, because this app does not
  * import `expo` -- and adding the import does not help: this repository's own
- * bundler does not pull expo's winter runtime into a js/ app at all, so the
+ * bundler does not pull expo's winter runtime into a e2e/ app at all, so the
  * replacement never runs here whatever the variable says. That half is expo's
  * code, and it was checked by running kino: with the default the app boots
  * clean, and without it the first `fetch` dies naming the module.

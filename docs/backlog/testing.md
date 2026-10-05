@@ -54,7 +54,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   It also measures per host, which the constants could not: the three shapers
   disagree about how wide "scroll to end" is, so the centre of that label is a
   few points apart on each desktop. What is still hard-coded is the other
-  apps' coordinates: `js/hover.js`'s boxes, the devtools taps, the menu
+  apps' coordinates: `e2e/hover.js`'s boxes, the devtools taps, the menu
   taps, which are boxes rather than labels and have no text to find.
 - ~~CI builds and tests Linux and Windows on every push. macOS is built only
   by `release.yml`, which has not run yet, and otherwise by whoever is

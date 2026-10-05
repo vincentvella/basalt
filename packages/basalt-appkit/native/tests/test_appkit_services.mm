@@ -52,6 +52,6 @@ TEST(can_open_url_answers_by_scheme) {
 // What the alert needs proving about it is that it does not block: it is called
 // from the JavaScript thread, and a modal run loop there would freeze every
 // mount, timer and animation frame until somebody clicked. That is checked by
-// js/alert.js instead, which keeps a 300ms heartbeat running and shows an alert
+// e2e/alert.js instead, which keeps a 300ms heartbeat running and shows an alert
 // half a second in -- the ticks carry straight on past it, which a blocking
 // implementation could not do.

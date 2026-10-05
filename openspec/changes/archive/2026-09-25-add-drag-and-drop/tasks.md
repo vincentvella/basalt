@@ -52,7 +52,7 @@ docs/TESTING.md rather than left for somebody to discover.
 
 - [x] Expose the React API -- `<DropTarget>` -- and export it from
       `basalt-core`
-- [x] Add a demo to `js/drop.js`: two targets, one inside the other, because
+- [x] Add a demo to `e2e/drop.js`: two targets, one inside the other, because
       the rule that can be wrong is which one is told
 - [x] Add `BASALT_TEST_DROP` on both hosts, and a scenario asserting the
       innermost target is told and the outer one is not. Entered below the

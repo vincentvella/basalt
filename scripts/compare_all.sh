@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Every app in js/, through every host that is built, diffed.
+# Every app in e2e/, through every host that is built, diffed.
 #
 # This is the summary that says where the platforms actually stand. Each app is
 # tried twice: first demanding identical trees, then ignoring frames. An app
@@ -40,12 +40,12 @@ APPS=(
   "controls:BasaltControls"
   "dialogs:BasaltDialogs"
   "menu:BasaltMenu"
-  # js/window.js is deliberately absent: its tree prints the window's own
+  # e2e/window.js is deliberately absent: its tree prints the window's own
   # size, which differs between a host that was given one and a host whose
   # window manager had an opinion. That is a property of the machine rather
-  # than of the platform, the same reason js/hover.js is not here.
+  # than of the platform, the same reason e2e/hover.js is not here.
   "probe:BasaltProbe"
-  # js/hover.js is deliberately absent. Its tree depends on where the cursor
+  # e2e/hover.js is deliberately absent. Its tree depends on where the cursor
   # is: a box under the pointer takes a different background, and a window that
   # opens under someone's mouse is hovered before either host has drawn
   # anything. That is a property of the machine rather than of the platform, so

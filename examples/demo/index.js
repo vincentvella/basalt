@@ -1,7 +1,7 @@
 /**
  * Deliberately tiny.
  *
- * `js/index.js` is the demo that exercises the platform, and the end-to-end
+ * `e2e/index.js` is the demo that exercises the platform, and the end-to-end
  * suite asserts on every part of it. This app exercises the *command*: whether
  * `react-native run-linux` can find a host, start a packager, and put an app on
  * screen from a directory that looks like somebody else's project. Keeping it

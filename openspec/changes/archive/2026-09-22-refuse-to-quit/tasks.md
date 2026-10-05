@@ -40,7 +40,7 @@
       running it would have hung until its own timeout. GTK and Win32 need no
       exemption -- their session signals are not on the path `g_application_quit`
       and `PostQuitMessage` take
-- [x] Demo in `js/quit.js`, scenario asserting a refused quit and an agreed
+- [x] Demo in `e2e/quit.js`, scenario asserting a refused quit and an agreed
       one, plus `BASALT_TEST_QUIT` on both hosts -- a count rather than a flag,
       because one ask cannot show both halves. Checked against the bug: with
       the interception removed the scenario fails

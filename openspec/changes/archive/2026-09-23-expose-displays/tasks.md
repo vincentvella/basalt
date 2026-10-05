@@ -37,7 +37,7 @@
 - [x] `useDisplays()`, `displays()`, `primaryDisplay()` and
       `pointerPosition()`, exported from `basalt-core`. The pointer is
       the one promise: nothing reports it moving, so there is nothing to cache
-- [x] Demo in `js/displays.js`, scenario asserting at least one display,
+- [x] Demo in `e2e/displays.js`, scenario asserting at least one display,
       exactly one primary, and a scale factor that is a ratio rather than a
       DPI -- checked against that bug by making AppKit report 192
 

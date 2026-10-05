@@ -5,7 +5,7 @@
 //
 // What is *not* tested here is the module: createFromParts and readAsText take
 // jsi values, which need a runtime, and the thing worth proving about them --
-// that a Blob round-trips through JavaScript -- is proven by js/blob.js running
+// that a Blob round-trips through JavaScript -- is proven by e2e/blob.js running
 // on both hosts. This covers the half underneath, where an off-by-one lives.
 
 #include "TestHarness.h"

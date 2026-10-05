@@ -44,13 +44,13 @@
 
 - [x] 4.1 `useReactNativeFetch`: set `EXPO_PUBLIC_USE_RN_FETCH` before the
       bundle, as a default a developer can beat.
-- [x] 4.2 `js/expofetch.js` and a scenario asserting the value arrives and
+- [x] 4.2 `e2e/expofetch.js` and a scenario asserting the value arrives and
       `fetch` works. Checked against a build with the call neutered: it fails
       there, and the first attempt to check that -- deleting the call -- proved
       nothing, because `-Werror` on the now-unused function meant the test ran
       against the previous binary.
 - [ ] 4.3 The other half -- expo honouring it -- in basalt's own harness. Blocked
-      on this repository's bundler not pulling expo's winter runtime into a js/
+      on this repository's bundler not pulling expo's winter runtime into a e2e/
       app; verified by running kino instead.
 
 ## 5. The probe

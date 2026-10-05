@@ -1,7 +1,7 @@
 /**
  * A React Native app that is mostly `<Text>`.
  *
- * The counterpart of js/views.js for the text milestone: it exercises the
+ * The counterpart of e2e/views.js for the text milestone: it exercises the
  * attributes that a text engine has to get right and that differ between
  * engines -- size, weight, colour, alignment, line height, letter spacing,
  * decorations, nested fragments with their own styles, and numberOfLines with

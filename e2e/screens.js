@@ -4,7 +4,7 @@
  * The components come from ScreensNativeComponent.js, declared the way the
  * library declares its own, so this exercises exactly the descriptors
  * core/ScreensComponent.h registers. Not the library itself, for two reasons:
- * `js/` has no node_modules, and react-native-screens refuses its native path
+ * `e2e/` has no node_modules, and react-native-screens refuses its native path
  * on a desktop anyway, because `isNativePlatformSupported` lists ios, android
  * and windows and is a const. Testing through it would test that gate.
  *

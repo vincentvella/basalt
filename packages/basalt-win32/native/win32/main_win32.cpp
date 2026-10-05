@@ -25,7 +25,7 @@
 //
 // What this host can render is what Win32MountingManager can mount: <View>,
 // <Text>, <Image>, <ScrollView> and <TextInput> -- the same five as the other
-// two desktops. `js/demo.js` -- a surface driven straight through
+// two desktops. `e2e/demo.js` -- a surface driven straight through
 // nativeFabricUIManager, with no React and no react-native JavaScript -- is
 // still the bundle this runs by default, because it is what an argumentless run
 // has always meant here; an ordinary React app runs from a bundle and a module
@@ -154,7 +154,7 @@ constexpr int kInitialHeight = 700;
 
 // The entry point for the *scriptless* mode, where the bundle is a hand-written
 // script talking to nativeFabricUIManager directly rather than a React app.
-// See js/demo.js. Only used when no module name is given.
+// See e2e/demo.js. Only used when no module name is given.
 constexpr const char *kRenderFunctionName = "basaltRender";
 
 constexpr UINT_PTR kSecondTreeTimer = 100;
@@ -2021,7 +2021,7 @@ int main(int argc, char **argv) {
   // Defaults to the raw-Fabric script, because a React screen needs
   // <ScrollView> and <TextInput> that Windows does not mount yet and would
   // render with holes in it. A React app that stays inside <View>, <Text>,
-  // <Image> and <Pressable> -- js/press.js, say -- runs from here.
+  // <Image> and <Pressable> -- e2e/press.js, say -- runs from here.
   gHost.moduleName = argc > 2 ? argv[2] : "";
   // Metro's entry, as the GTK and AppKit hosts read it: BASALT_DEV_ENTRY, which
   // is what `run-windows` sets, and "index" otherwise. A third argument still

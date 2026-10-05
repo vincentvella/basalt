@@ -199,7 +199,7 @@ namespace {
 // a write that lands while one is reading is refused -- and before this, the
 // refusal was silent: a write simply did not happen.
 //
-// Found as js/modules.js failing "clipboard takes unicode", its second write in
+// Found as e2e/modules.js failing "clipboard takes unicode", its second write in
 // a row, in 2 of 15 runs on the development machine, which compare_hosts.sh
 // reported as Windows disagreeing with Linux. What was holding the clipboard
 // was never caught: with this retry in place and logging on every refusal, 190
@@ -586,7 +586,7 @@ void showAlert(const AlertRequest &request, AlertCallback onButton) {
   // comment below even says it marshals "for the same reason showAlert" does.
   // It did not; now it does. The end-to-end suite never saw it because its
   // alerts are answered by BASALT_TEST_DIALOG before this is reached; the
-  // cross-host comparison, which does not script dialogs, hung on js/share.js.
+  // cross-host comparison, which does not script dialogs, hung on e2e/share.js.
   const std::wstring title = widen(request.title);
   const std::wstring message = widen(request.message);
 

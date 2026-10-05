@@ -58,7 +58,7 @@ is `Platform.OS` being `android` a long way from here.
 Today `main` points at `src/index.js` and a fresh clone can bundle immediately.
 After this it cannot, until `tsc` has run. Everything that bundles has to build
 first: `scripts/bundle.sh`, `scripts/integration_test.py`, `compare_all.sh`, the
-CI jobs, and the demo apps in `js/`.
+CI jobs, and the demo apps in `e2e/`.
 
 Making the build cheap matters more than making it clever. One `tsc -b`, no
 bundler, no transform beyond what TypeScript does.

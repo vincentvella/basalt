@@ -135,7 +135,7 @@ module.exports = withDesktopPlatforms(mergeConfig(getDefaultConfig(__dirname), {
       // are borrowed by name rather than by adding its node_modules to the
       // search path, which would also hand over its React and its React Native.
       //
-      // Unset is the normal case and changes nothing: js/notifications.js is
+      // Unset is the normal case and changes nothing: e2e/notifications.js is
       // the only app that needs it, and it is skipped without it.
       ...expoModules,
     },

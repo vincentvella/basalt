@@ -81,7 +81,7 @@ so anything importing them dies at startup.
   resolved to its `.android.js` sibling, which calls `DialogManagerAndroid` (  a module this platform does not have) and returns. `AlertManager` also
   answered with Android's three-argument callback rather than the two its own
   spec declares. Every one of those was invisible because nothing ever reached
-  the next layer. js/alert.js logged "showing the alert" and asserted only that
+  the next layer. e2e/alert.js logged "showing the alert" and asserted only that
   the main queue kept running, which it does whether or not a dialog appears.
 - ~~**A desktop notification API.**~~ There is one, and it is not this project's:
   the contract implemented is `expo-notifications`, which is what an app

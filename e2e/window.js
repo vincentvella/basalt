@@ -2,7 +2,7 @@
  * A React Native app about the window it is in.
  *
  * React Native has no API for this: on a phone there is one window, it is the
- * screen, and nothing an app says would change it. So, like js/dialogs.js, this
+ * screen, and nothing an app says would change it. So, like e2e/dialogs.js, this
  * is a screen about something React Native does not do at all.
  *
  * Its own bounds are on screen and logged, which is the half worth asserting:

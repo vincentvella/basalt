@@ -580,7 +580,7 @@ jobs:
         run: make e2e PLATFORM=macos SHARD=${{ matrix.shard }}/3
 
       - name: GTK and AppKit, compared
-        # Every app in js/, through both hosts on this one runner -- the check
+        # Every app in e2e/, through both hosts on this one runner -- the check
         # that the two desktops still produce the same tree, which no other
         # job can make because no other has both.
         env:

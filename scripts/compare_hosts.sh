@@ -39,7 +39,7 @@
 #
 #   scripts/compare_hosts.sh                       # the views-only React app
 #   scripts/compare_hosts.sh <app> [moduleName]    # build/<app>.<platform>.jsbundle.js
-#   scripts/compare_hosts.sh js/demo.js ''         # one file, every host
+#   scripts/compare_hosts.sh e2e/demo.js ''         # one file, every host
 #
 # A React app needs a bundle per platform, because the platform is baked in at
 # bundle time, so an app name is given rather than a path and the per-platform
@@ -219,7 +219,7 @@ for entry in "${present[@]}"; do
 done
 
 # Each host should have got the platform its bundle was built for. Only checked
-# when the app says so -- js/views.js logs it, a raw-Fabric script does not, and
+# when the app says so -- e2e/views.js logs it, a raw-Fabric script does not, and
 # neither does a single bundle handed to every host.
 for entry in "${present[@]}"; do
   name="${entry%%:*}"

@@ -4,7 +4,7 @@
  * The only line that is about this project is `withDesktopPlatforms`. Everything else
  * is here because this example is not installed from npm: it resolves React
  * Native out of a checkout rather than out of its own node_modules, the same
- * arrangement js/metro.config.js uses and for the same reason, so the app stays
+ * arrangement e2e/metro.config.js uses and for the same reason, so the app stays
  * in step with the source tree the host is built from.
  *
  * @format

@@ -22,7 +22,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   the field on the user's second keystroke. It is now applied when the *prop*
   changes, because a controlled field's value changes as the user types and an
   uncontrolled one's never does, and a prop older than the last keystroke is
-  dropped without being forgotten. Nobody had noticed because `js/input.js`
+  dropped without being forgotten. Nobody had noticed because `e2e/input.js`
   asserts on its *controlled* field.
 
 - **A controlled field's value is applied by heuristic rather than from state.**

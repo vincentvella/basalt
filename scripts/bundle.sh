@@ -29,7 +29,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEV=false
 PLATFORM=linux
-# The app to bundle, relative to js/, and what to call the output. js/views.js
+# The app to bundle, relative to e2e/, and what to call the output. e2e/views.js
 # is the one macOS can run: see its header.
 ENTRY=index.js
 OUT_NAME=main.jsbundle
@@ -80,24 +80,24 @@ RN_DIR="$(cd "$RN_DIR" && pwd)"
 OUT="$REPO_ROOT/$BUILD_DIR/$OUT_NAME"
 mkdir -p "$REPO_ROOT/$BUILD_DIR"
 
-echo "==> bundling js/$ENTRY (platform=$PLATFORM, dev=$DEV) against $RN_DIR"
+echo "==> bundling e2e/$ENTRY (platform=$PLATFORM, dev=$DEV) against $RN_DIR"
 if [ "$DEV" = true ]; then
   echo "    note: a --dev bundle runs, but nothing reloads or refreshes it." >&2
   echo "          For development use Metro and BASALT_DEV=1. See the header." >&2
 fi
 # metro appends .js to --out.
-# The entry is resolved against projectRoot (js/), so it is named relative to
+# The entry is resolved against projectRoot (e2e/), so it is named relative to
 # that, not to this script's working directory.
 RN_DIR="$RN_DIR" "$RN_DIR/node_modules/.bin/metro" build "$ENTRY" \
   --platform "$PLATFORM" \
   --dev "$DEV" \
   --out "$OUT" \
-  --config "$REPO_ROOT/js/metro.config.js"
+  --config "$REPO_ROOT/e2e/metro.config.js"
 
 # The images the bundle `require()`s. Metro's `build` has no --assets-dest, so
 # without this an <Image> from a require() lays out at the right size and draws
 # nothing -- which is what kept LogBox's own icons off the screen. See the
 # script's header for how the paths are worked out.
-node "$REPO_ROOT/scripts/copy_assets.js" "$OUT.js" "$REPO_ROOT/js" "$REPO_ROOT/$BUILD_DIR"
+node "$REPO_ROOT/scripts/copy_assets.js" "$OUT.js" "$REPO_ROOT/e2e" "$REPO_ROOT/$BUILD_DIR"
 
 echo "==> wrote $OUT.js"

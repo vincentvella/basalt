@@ -82,9 +82,9 @@ HOST = REPO / "build" / "basalt_gtk"
 MODULE = "BasaltDemo"
 
 # Where the demo's buttons are is asked of the running app rather than worked
-# out from js/index.js. See `tap_point` below for why.
+# out from e2e/index.js. See `tap_point` below for why.
 
-# js/hover.js, which the hover scenario runs instead of the demo: a card at
+# e2e/hover.js, which the hover scenario runs instead of the demo: a card at
 # y=24..244 holding two 140pt boxes, at x=44..184 and x=204..344. The third
 # point is inside the card and outside both boxes, which is the one that
 # distinguishes enter from over.
@@ -116,7 +116,7 @@ class Skipped(Exception):
     """A scenario that cannot run here, and says why rather than passing."""
 
 
-# The demo's <TextInput>, from js/index.js: frame (24,183 320x44). Clicked
+# The demo's <TextInput>, from e2e/index.js: frame (24,183 320x44). Clicked
 # rather than tapped, so this is a point inside it in surface coordinates.
 FIELD_POINT = (120, 205)
 
@@ -136,7 +136,7 @@ def check_output(stderr: str, returncode: int, allow_js_errors: bool = False) ->
     if returncode != 0:
         raise Failure(f"host exited {returncode}\n{stderr[-2000:]}")
     if allow_js_errors:
-        # For the one scenario whose whole point is an error: js/logbox.js calls
+        # For the one scenario whose whole point is an error: e2e/logbox.js calls
         # console.error deliberately, and LogBox is what is being tested.
         return
     for line in stderr.splitlines():
@@ -274,7 +274,7 @@ def click_field_for_real(surface_height: int) -> None:
         click_field_with_cgevent(surface_height)
         return
     if PLATFORM == "linux":
-        # The demo's field, from js/index.js. xdotool goes through the X server,
+        # The demo's field, from e2e/index.js. xdotool goes through the X server,
         # so GDK delivers the press itself.
         click_with_xdotool([(FIELD_POINT[0], FIELD_POINT[1])])
         return
@@ -391,7 +391,7 @@ def scroller_size(tree: str) -> tuple:
 # --------------------------------------------------------------------------
 # Where to tap
 #
-# These coordinates used to be constants worked out from js/index.js -- "the
+# These coordinates used to be constants worked out from e2e/index.js -- "the
 # button row sits at the bottom of a 900x700 window, inside 24pt of padding,
 # three buttons across 852pt with 12pt gaps, so each is 272 wide". Correct
 # arithmetic, and it says nothing about where the button actually went: a
@@ -730,7 +730,7 @@ def git_bash() -> Path | None:
 
 
 def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
-    """Bundles js/<entry>.js for this platform, unless it is already there.
+    """Bundles e2e/<entry>.js for this platform, unless it is already there.
 
     Most scenarios run the demo, which CI bundles as a build step. The two that
     need an app of their own -- hover and pointerEvents, both about input that
@@ -738,7 +738,7 @@ def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
     more steps to every CI job that will not use them.
     """
     bundled = build / f"{entry}.{PLATFORM}.jsbundle.js"
-    source = REPO / "js" / f"{entry}.js"
+    source = REPO / "e2e" / f"{entry}.js"
     # Older than the file it was built from means a scenario would silently test
     # the last version of the app rather than this one -- which is exactly what
     # happened the first time this helper was used twice.
@@ -779,7 +779,7 @@ def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
         # stdout, and a failure that reports neither is a failure nobody can act
         # on -- which is exactly how this first failed on a runner.
         raise Failure(
-            f"could not bundle js/{entry}.js (exit {built.returncode}, "
+            f"could not bundle e2e/{entry}.js (exit {built.returncode}, "
             f"{'wrote' if bundled.exists() else 'no'} bundle):\n"
             f"--- stdout ---\n{tail_text(built.stdout, 30)}\n"
             f"--- stderr ---\n{tail_text(built.stderr, 30)}"
@@ -1001,7 +1001,7 @@ def test_fast_refresh(bundle: Path):
     here without an edit ever being made.
     """
     skip_edit = bool(os.environ.get("BASALT_SKIP_FAST_REFRESH"))
-    source = REPO / "js" / "index.js"
+    source = REPO / "e2e" / "index.js"
     original = source.read_text()
     if original.count(BEFORE) != 1:
         raise Failure(f"the demo does not contain exactly one {BEFORE!r} to edit")
@@ -1342,7 +1342,7 @@ def test_click_focuses_a_field(bundle: Path) -> None:
 def test_hover(bundle: Path) -> None:
     """A cursor that presses nothing still reaches JavaScript.
 
-    Runs js/hover.js rather than the demo, because hover is the one part of the
+    Runs e2e/hover.js rather than the demo, because hover is the one part of the
     input path with no equivalent in React Native's touch model and the demo has
     nothing listening for it.
 
@@ -1442,7 +1442,7 @@ def test_hover(bundle: Path) -> None:
 def test_pointer_events(bundle: Path) -> None:
     """What a press can land on, which is not the same as what is drawn.
 
-    Runs js/pointerevents.js: four rows, one per value of the prop, each a
+    Runs e2e/pointerevents.js: four rows, one per value of the prop, each a
     panel with a button inside it and a backdrop behind it. Every one of the
     three reports which view it thinks was pressed, so each tap has exactly one
     right answer and a wrong implementation says which way it is wrong.
@@ -1503,7 +1503,7 @@ def test_pointer_events(bundle: Path) -> None:
 def test_keyboard_focus(bundle: Path) -> None:
     """An app driven entirely from the keyboard.
 
-    Runs js/focus.js: three buttons and a text field, in that order. The field
+    Runs e2e/focus.js: three buttons and a text field, in that order. The field
     is the interesting neighbour -- it takes focus because it is a real GtkText,
     NSTextField or EDIT control, and it has to sit in the same Tab order as the
     buttons around it without either side knowing about the other.
@@ -1810,7 +1810,7 @@ def test_alert(bundle: Path) -> None:
     chain, both silent. Found while implementing Share, which fails the same way
     for the same reason.
 
-    js/alert.js logs which button its handler ran, so the assertion is on the
+    e2e/alert.js logs which button its handler ran, so the assertion is on the
     answer travelling back rather than on a dialog being on screen.
     """
     app = bundle_app(bundle.parent, "alert")
@@ -1834,7 +1834,7 @@ def test_alert(bundle: Path) -> None:
                 return line.split("chose: ", 1)[1].strip()
         raise Failure(f"the alert's callback never reached JavaScript:\n{tail_text(both, 30)}")
 
-    # js/alert.js offers Cancel then Delete, in that order.
+    # e2e/alert.js offers Cancel then Delete, in that order.
     if chose("0") != "Cancel":
         raise Failure(f"pressing the first button reported {chose('0')!r}")
     if chose("1") != "Delete":
@@ -1942,7 +1942,7 @@ def packaged_host(build: Path) -> Path:
          "platform: 'macos', hostBinary: process.argv[2],"
          "outputDir: process.argv[3], projectRoot: process.argv[4]}).launchPath);",
          str(REPO / "packages/basalt-core/dist/cli/packageApp.js"),
-         str(HOST), str(build / "app"), str(REPO / "js")],
+         str(HOST), str(build / "app"), str(REPO / "e2e")],
         cwd=REPO, capture_output=True, text=True, timeout=120,
     )
     if node.returncode != 0:
@@ -2219,7 +2219,7 @@ def test_expo_fetch(bundle: Path) -> None:
 
     It does not cover expo honouring the variable. This app does not import
     `expo`, and importing it does not help -- this repository's own bundler does
-    not pull expo's winter runtime into a js/ app, so the replacement never runs
+    not pull expo's winter runtime into a e2e/ app, so the replacement never runs
     here. That half was checked by running kino against a real Expo bundle: with
     the default it boots clean, and without it the first `fetch` dies naming the
     module.
@@ -2289,7 +2289,7 @@ def test_expo_fetch(bundle: Path) -> None:
 def test_controls(bundle: Path) -> None:
     """The four components that are a control rather than a box.
 
-    Runs js/controls.js, which has one of each: three <ActivityIndicator>s, three
+    Runs e2e/controls.js, which has one of each: three <ActivityIndicator>s, three
     <Switch>es, a <Modal> and a <RefreshControl> inside a <ScrollView>. Three
     short runs rather than one, because each needs a different instrument and
     the three hosts do not agree on what order two instruments run in -- a
@@ -2523,7 +2523,7 @@ def test_dev_menu(bundle: Path) -> None:
 def test_file_dialogs(bundle: Path) -> None:
     """The native file dialogs, which React Native has no API for at all.
 
-    Runs js/dialogs.js: three buttons, one per kind. A phone has no file dialog,
+    Runs e2e/dialogs.js: three buttons, one per kind. A phone has no file dialog,
     so unlike every other scenario here there is no React Native behaviour to be
     compatible with -- what is asserted is this project's own contract, which is
     that all three answer `{canceled, paths}`:
@@ -2623,7 +2623,7 @@ def has_window_manager() -> bool:
 def test_window(bundle: Path) -> None:
     """The window an app is in, which React Native has no API for.
 
-    Runs js/window.js, which logs its own bounds every time they change. Two
+    Runs e2e/window.js, which logs its own bounds every time they change. Two
     presses, and what each one proves is different:
 
       setSize      that a request reaches the window manager and comes back as
@@ -2708,7 +2708,7 @@ def test_window(bundle: Path) -> None:
 def test_context_menu(bundle: Path) -> None:
     """The other kind of menu: the one that pops up where you press.
 
-    Runs the second app in js/menu.js. A press opens a four-entry popup --
+    Runs the second app in e2e/menu.js. A press opens a four-entry popup --
     a separator and a disabled item among them -- and BASALT_TEST_MENU answers
     it, because a menu cannot be dismissed by an automated run. On macOS that is
     not a convenience: `popUpMenuPositioningItem` runs the menu's own tracking
@@ -2811,7 +2811,7 @@ def test_context_menu(bundle: Path) -> None:
 def test_animated_scroll(bundle: Path) -> None:
     """`scrollTo({animated: true})` moves rather than jumps.
 
-    Runs the second app in js/scroll.js, which scrolls to 530 with the flag set
+    Runs the second app in e2e/scroll.js, which scrolls to 530 with the flag set
     and logs every offset `onScroll` reports.
 
     Arriving at 530 proves nothing: an instant jump arrives too, which is what
@@ -2871,7 +2871,7 @@ def test_scrollbar_can_be_turned_off(bundle: Path) -> None:
     """`showsVerticalScrollIndicator={false}` takes the bar away and leaves the
     scrolling.
 
-    Runs the third app in js/scroll.js, which is the same list as the first one
+    Runs the third app in e2e/scroll.js, which is the same list as the first one
     with the prop set. The first app's scenarios above already assert that a
     list that overflows grows a scrollbar, so what is left is the absence --
     and that the absence is only the bar: a host that read the prop as
@@ -2915,7 +2915,7 @@ def test_content_inset(bundle: Path) -> None:
     """`contentInset` changes how far a list scrolls, and
     `scrollIndicatorInsets` changes only where its bar is drawn.
 
-    Runs the fourth app in js/scroll.js, which sets a 60pt top content inset
+    Runs the fourth app in e2e/scroll.js, which sets a 60pt top content inset
     and a 30pt top indicator inset, then scrolls to -60.
 
     The offset is the whole of the first half: a platform that reads the prop
@@ -2980,7 +2980,7 @@ def test_press_location(bundle: Path) -> None:
     for a view sitting at the surface's origin, and wrong by that view's
     position for every other.
 
-    js/press.js is the app for it because its button is inset by the page's
+    e2e/press.js is the app for it because its button is inset by the page's
     24pt padding, so page and local differ by a number this can name. A tap at
     (100, 60) is 76 into the button and 36 down; a host reporting the page
     point logs 100,60 instead.
@@ -3069,7 +3069,7 @@ def test_window_limits(bundle: Path) -> None:
     """How big the window may be, and the fact that it is not the same list
     everywhere.
 
-    Runs the second app in js/window.js: a minimum of 500x400, a maximum of
+    Runs the second app in e2e/window.js: a minimum of 500x400, a maximum of
     800x600, and two buttons that ask for sizes outside both. A size is a
     request; a limit is what the window manager answers it with.
 
@@ -3199,7 +3199,7 @@ def test_window_limits(bundle: Path) -> None:
 def test_application_menu(bundle: Path) -> None:
     """The application menu, and the thing its absence quietly broke.
 
-    Runs js/menu.js, which describes a File menu of its own and an Edit menu
+    Runs e2e/menu.js, which describes a File menu of its own and an Edit menu
     built entirely out of roles, and dumps whatever menu the platform actually
     installed.
 
@@ -3278,7 +3278,7 @@ def test_application_menu(bundle: Path) -> None:
 def test_debugging_overlay(bundle: Path) -> None:
     """React DevTools' element highlighter, which is driven only by commands.
 
-    Runs js/overlay.js, which issues the commands DevTools would: the filled
+    Runs e2e/overlay.js, which issues the commands DevTools would: the filled
     blue box over an inspected element, and the outline around something that
     just re-rendered. Directly rather than through DevTools, because DevTools
     is the only other thing that would and it needs a session attached.
@@ -3343,7 +3343,7 @@ def test_debugging_overlay(bundle: Path) -> None:
 def test_windows(bundle: Path) -> None:
     """More than one window, which is more than one React tree.
 
-    Runs js/windows.js: a counter in the first window's state, a button to open
+    Runs e2e/windows.js: a counter in the first window's state, a button to open
     a second, and the same counter rendered again over there.
 
     A window is a surface is a React root -- that is Fabric's grain rather than
@@ -3548,7 +3548,7 @@ def test_view_key_events(bundle: Path) -> None:
     The last is the reason this scenario exists more than the others. A
     `<KeyHandler>` registers through a module rather than by `nativeID`, and the
     failure that invites -- silently going quiet after a re-render -- is the one
-    `<DropTarget>` warns about in so many words. `js/keys.js` declares `m` and
+    `<DropTarget>` warns about in so many words. `e2e/keys.js` declares `m` and
     adds `j` only once `m` has arrived, so `j` firing is proof the re-registration
     happened. If the list were captured once, the log would stop after one line
     and everything else here would still pass.
@@ -3953,7 +3953,7 @@ def test_screen_stack(bundle: Path) -> None:
     `activityState cannot be decreased in NativeStack` if it would, and a
     version of this that keyed on the prop passed while doing nothing.
 
-    js/screens.js puts a transparent modal on top, so one run checks both
+    e2e/screens.js puts a transparent modal on top, so one run checks both
     halves: a see-through screen covers nothing and the opaque one under it
     stays visible, while everything under *that* is hidden.
     """

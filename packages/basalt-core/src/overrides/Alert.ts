@@ -8,7 +8,7 @@
  *
  * with no `else`, so on a desktop it returns having done nothing at all -- no
  * dialog, no error, no warning. `AlertManager` was implemented in phase 32 and
- * was never once reached; js/alert.js logs "showing the alert" and then asserts
+ * was never once reached; e2e/alert.js logs "showing the alert" and then asserts
  * only that the main queue kept running, which it does whether or not anything
  * appeared. Found while implementing Share, which fails the same way for the
  * same reason.

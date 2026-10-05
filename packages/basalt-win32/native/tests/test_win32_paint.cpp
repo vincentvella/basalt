@@ -388,7 +388,7 @@ TEST(win32_paint_clips_children_to_each_corner) {
 }
 
 TEST(win32_describe_prints_radii_and_borders_as_gtk_does) {
-  // The line js/index.js's header produces on Linux, which is the one the
+  // The line e2e/index.js's header produces on Linux, which is the one the
   // cross-host comparison failed on: two rounded corners, one colour on three
   // edges and another on the fourth.
   RnWin32View view(16);

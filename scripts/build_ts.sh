@@ -6,7 +6,7 @@
 # TypeScript comes from the React Native checkout's node_modules, which is where
 # this repository borrows every node tool from -- see scripts/bundle.sh, which
 # finds metro the same way. Nothing here has node_modules of its own, and that
-# is deliberate: see js/package.json.
+# is deliberate: see e2e/package.json.
 #
 # Everything that bundles needs this to have run first, because `main` points
 # into `dist/`. scripts/bundle.sh runs it for you.
@@ -41,9 +41,9 @@ TSC="$RN_DIR/node_modules/.bin/tsc"
 
 # Where TypeScript finds `react` and `react-native`.
 #
-# Nothing here has node_modules of its own -- see js/package.json -- so tsc
+# Nothing here has node_modules of its own -- see e2e/package.json -- so tsc
 # cannot resolve either by walking up from the source. Metro is told the same
-# thing through `nodeModulesPaths` in js/metro.config.js; this is the type
+# thing through `nodeModulesPaths` in e2e/metro.config.js; this is the type
 # checker's half of that arrangement, and it is generated rather than committed
 # because the checkout it points at is wherever this machine put it.
 #
