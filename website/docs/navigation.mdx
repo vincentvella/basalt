@@ -26,25 +26,35 @@ screen machinery underneath.
 | navigation, routing | yes | yes |
 | safe area insets | yes | yes |
 | header bar | yes | yes |
-| covered screen detached | yes | not yet |
-| body inset below the header | yes | not yet |
+| covered screen detached | yes | with `basalt-navigation` |
+| body inset below the header | yes | with `basalt-navigation` |
 
-Windows is complete because react-native-screens already lists it as a platform
-it supports, so Basalt's components are reachable there. On macOS and Linux the
-library renders its own fallback views instead, and the two rows above are the
-difference that makes.
+Windows is complete on its own because react-native-screens already lists it as
+a platform it supports, so Basalt's components are reachable there. On macOS and
+Linux the library renders its own fallback views instead, and one package closes
+the gap.
 
-```js
-import {enableScreens} from 'react-native-screens';
-enableScreens();
+```bash
+npm install basalt-navigation
 ```
 
-That line is what switches the other two on. It does nothing on macOS or Linux
-until
-[software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779)
-lands, and is harmless to add now. If you would rather not wait, the same patch
-applied locally with `patch-package` or `yarn patch` has the same effect; it is
-three lines.
+```jsx
+import {NavigationScreens} from 'basalt-navigation';
+
+<NavigationScreens>
+  <NavigationContainer>{/* navigators, as usual */}</NavigationContainer>
+</NavigationScreens>
+```
+
+One wrapper, and the last two rows behave like Windows. It is not a patch or a
+fork: react-native-screens picks the component it renders for each screen out
+of a React context, the platform check lives inside the component it would
+otherwise pick, and this provides a different one. `ScreenStack` needs nothing,
+because it was never gated.
+
+Harmless on Windows and on a phone, where the library already renders the same
+components. The one place not to put it is a web build, which has no native
+components to ask for.
 
 Nothing about this blocks shipping an app. A covered screen that stays mounted
 is invisible, because the screen in front covers it; what it costs is a subtree

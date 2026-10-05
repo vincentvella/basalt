@@ -1,0 +1,32 @@
+{
+  "name": "basalt-navigation",
+  "version": "0.0.0-rc5",
+  "description": "Native screens for react-navigation on the desktop, through react-native-screens' own ScreenContext. No patch and no fork.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt.git",
+    "directory": "packages/basalt-navigation"
+  },
+  "homepage": "https://basaltjs.dev",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../scripts/build_ts.sh",
+    "prepack": "../../scripts/build_ts.sh"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "react-native-screens": ">=4"
+  }
+}

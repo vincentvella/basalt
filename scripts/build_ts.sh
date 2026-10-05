@@ -121,6 +121,7 @@ JSON
 PACKAGES=(
   "$REPO_ROOT/packages/basalt-core"
   "$REPO_ROOT/packages/basalt-subprocess"
+  "$REPO_ROOT/packages/basalt-navigation"
 )
 
 # Checked but not built. Everything in these is in react-native.config.js's
