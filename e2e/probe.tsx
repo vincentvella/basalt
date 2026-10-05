@@ -20,6 +20,12 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
+// Reached through the runtime module rather than as ambient globals: at the
+// React Native CI pins, neither is declared. See e2e/runtime.ts.
+import {
+  requestAnimationFrameOrNull,
+  requestIdleCallbackOrNull,
+} from './runtime';
 import {messageOf} from './errors';
 
 console.log(`Platform.OS is ${Platform.OS}`);
@@ -36,14 +42,19 @@ const PROBES: Array<[string, () => boolean | 'absent']> = [
     return true;
   }],
   ['requestIdleCallback', () => {
-    if (typeof requestIdleCallback !== 'function') {
+    const idle = requestIdleCallbackOrNull();
+    if (typeof idle !== 'function') {
       return 'absent';
     }
-    requestIdleCallback(() => {});
+    idle(() => {});
     return true;
   }],
   ['requestAnimationFrame', () => {
-    requestAnimationFrame(() => {});
+    const frame = requestAnimationFrameOrNull();
+    if (typeof frame !== 'function') {
+      return 'absent';
+    }
+    frame(() => {});
     return true;
   }],
   ['setTimeout', () => {

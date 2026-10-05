@@ -18,6 +18,10 @@
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
 import {messageOf} from './errors';
+// Not the ambient `Blob`/`File`/`FileReader`: which declaration supplies those
+// depends on the React Native version. See e2e/runtime.ts.
+import {Blob, File, FileReader} from './runtime';
+import type {RuntimeBlob} from './runtime';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -61,7 +65,7 @@ const CHECKS: Array<[string, () => Promise<boolean>]> = [
     'readAsDataURL',
     async () =>
       // "hi" is aGk= in base64, and the padding is the half most likely wrong.
-      (await readBlob('DataURL', new Blob(['hi'], {type: 'text/plain', lastModified: 0}))) ===
+      (await readBlob('DataURL', new Blob(['hi'], {type: 'text/plain'}))) ===
       'data:text/plain;base64,aGk=',
   ],
 
@@ -88,7 +92,13 @@ const CHECKS: Array<[string, () => Promise<boolean>]> = [
   [
     'URL.createObjectURL',
     async () => {
-      const url = URL.createObjectURL(new Blob(['x']));
+      // `URL` and `fetch` are typed by whatever supplies them on this checkout,
+      // and neither knows about React Native's Blob. Cast to what each one asks
+      // for rather than to a name, so this resolves the same way against
+      // @types/node as against react-native's own globals.
+      const url = URL.createObjectURL(
+        new Blob(['x']) as unknown as Parameters<typeof URL.createObjectURL>[0],
+      );
       return typeof url === 'string' && url.startsWith('blob:');
     },
   ],
@@ -122,7 +132,7 @@ async function probeBlobUpload() {
     // being probed is whether the body survives the trip to native.
     await fetch('http://127.0.0.1:9/upload', {
       method: 'POST',
-      body: new Blob(['payload']),
+      body: new Blob(['payload']) as unknown as RequestInit['body'],
     });
     console.log('probe: blob upload reached the network layer');
   } catch (error) {
@@ -131,7 +141,7 @@ async function probeBlobUpload() {
 }
 
 // FileReader is callback-shaped; every check above wants a promise.
-function readBlob(how: 'Text' | 'DataURL', blob: Blob): Promise<string> {
+function readBlob(how: 'Text' | 'DataURL', blob: RuntimeBlob): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));

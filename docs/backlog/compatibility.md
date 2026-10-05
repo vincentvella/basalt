@@ -90,6 +90,17 @@ Found by bundling and running a real application.
   the weekly drift job, which does not block. So a regression that only affects
   `main` can wait up to a week. Building both on every run would be the fix and
   would double CI cost on a private repo.
+
+  The reverse also happens, and it is less obvious: a check can pass against
+  `main` and fail against the pin. The e2e type check did, on all nine shards,
+  the first time it ran. React Native's `main` hand-declares `Blob`, `File`,
+  `FileReader`, `requestAnimationFrame` and `requestIdleCallback` in
+  `src/types/globals.d.ts`; 0.87.1 has no such file, so `@types/node`'s `buffer`
+  Blob wins and the other four are undeclared. Anything that merges into one of
+  those ambient names is therefore version-dependent. e2e/runtime.ts is the
+  answer for the demo apps: it names the surface the *runtime* installs and
+  reaches it through one cast of `globalThis`, so no ambient declaration has to
+  win. Checked both ways by moving `globals.d.ts` aside.
 - **Expo starts but no Expo module works.** `globalThis.expo` is installed now, from the
   app's own expo-modules-core, so an Expo app starts and renders. What does not
   exist is any Expo *module*: `ExpoAsset` and `ExponentConstants` are stubs that

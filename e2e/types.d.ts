@@ -173,16 +173,6 @@ var RN$stopSurface: ((surfaceId: number) => void) | undefined;
 /** What the host calls to render a step of the demo, installed by the app. */
 var basaltRender: ((surfaceId: number, step: number) => void) | undefined;
 
-// React Native's hand-written global `Blob` (its src/types/globals.d.ts) lists
-// only size/type/slice, but the class the runtime installs -- and that RN's own
-// generated Libraries/Blob/Blob.d.ts describes -- also has `close()`. It is the
-// one method that is RN's rather than the web's: nothing here is garbage
-// collected, so a caller has to release the bytes itself. Merged in rather than
-// cast at the call site, because it is a real method and the gap is upstream's.
-interface Blob {
-  close(): void;
-}
-
 // The TurboModule proxy the host installs on the global before the bundle runs.
 // React Native calls it through `global.__turboModuleProxy` in its own
 // TurboModuleRegistry and declares it nowhere a user bundle can see, so an app
