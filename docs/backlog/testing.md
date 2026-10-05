@@ -11,7 +11,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 5. Nothing tests tap-to-focus
 6. A `<TextInput>`'s wrapper is still an element of its own on Windows
 7. The hover scenario cannot assert its order on GTK-over-quartz
-8. One flaky end-to-end scenario
+8. One flaky end-to-end scenario, and a reload teardown that crashes on CI's Mac
 9. An app build compiles this repository's test suites
 10. A cancelled job reads as a job that ran
 
@@ -260,6 +260,32 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   the field", and passed the other four. The scenario schedules taps at fixed
   delays and assumes the host has caught up, which is a timing assumption rather
   than a synchronisation. Fixing it means waiting on something observable (  the tree, or a log line) instead of on a clock.
+
+  **A second one, and this one crashes.** "the developer menu reloads, and shows
+  the element inspector" failed twice on CI's macOS runner at 6e58901 and then
+  passed on a third attempt with no change, so it is intermittent rather than
+  broken. The two failures were not the same failure, which is the interesting
+  part:
+
+  | Attempt | Symptom |
+  | --- | --- |
+  | 1 | `the host did not exit`: TimeoutExpired after 110s |
+  | 2 | `host exited -11`, after `Scheduler::~Scheduler()` and `Shutting down PlatformTimerRegistryImpl...` |
+  | 3 | passed |
+
+  A hang and a SIGSEGV from the same code is a race in the reload teardown, and
+  the second one means a pointer is being used after something it belongs to has
+  gone. That is a real bug in the host, not a test that needs a longer sleep:
+  the scenario asks for a reload and then a quit, which an app's developer does
+  by hand every day.
+
+  It does not reproduce on a developer Mac. Four runs at the same commit passed:
+  three of the scenario alone and one of the whole shard, in CI's order
+  (`--platform macos --shard 1/3`, 11/11). So whatever orders those destructors
+  differently is something about that runner, and the next step is a stack from
+  it rather than another local run. The host writes nothing on a signal today,
+  which is its own entry waiting to be written: a crash handler that logs where
+  it died would have answered this in one attempt.
 
 - **An app build compiles this repository's test suites.** `native/` is packed
   whole, tests included, and nothing gates them, so `react-native run-macos:
