@@ -3799,9 +3799,20 @@ def test_crash_handler(bundle: Path) -> None:
             f"only runs in CI is four words and no address.\n{tail_text(logged)}"
         )
 
-    # A stack, not just a header. Every frame line carries a hex address, and one
-    # frame is not a stack -- the handler asks for up to 64.
-    frames = [line for line in logged.splitlines() if re.search(r"0x[0-9a-f]{6,}", line)]
+    # A stack, not just a header. One frame is not a stack; the handler asks for
+    # up to 64.
+    #
+    # The two platforms format a frame differently and the pattern has to take
+    # both, which the first version of this did not: `backtrace_symbols_fd` writes
+    # `0  basalt_appkit  0x0000000104e8c040  _ZN6basalt...`, and Windows's `%p`
+    # writes ` 0  00007FF621EE0094` -- upper case and no `0x`. Requiring a
+    # lower-case `0x` failed a Windows handler that had printed twelve perfectly
+    # good frames.
+    #
+    # An index, then an address, which is what a frame is on both and what the
+    # header and the module line are not.
+    frames = [line for line in logged.splitlines()
+              if re.match(r"\s*\d+\s+.*?(?:0x)?[0-9a-fA-F]{8,}", line)]
     if len(frames) < 3:
         raise Failure(
             "the crash handler printed a header and no usable stack "

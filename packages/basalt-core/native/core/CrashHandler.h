@@ -26,7 +26,16 @@
 //
 // On Windows there are no symbols, for want of a .pdb in a release build, so it
 // prints the module base and the return addresses: subtract the one from the
-// others and the offsets resolve against the binary.
+// others and the offsets resolve against the binary. Measured on CI, which is
+// the only place this can be:
+//
+//     *** basalt: exception 0xc0000005 at 00007FF92942EFDC, thread 2776 ***
+//     module 00007FF621B00000
+//      0  00007FF621EE0094
+//      1  00007FF9294A05BD
+//
+// Note the shape: `%p` there is upper case and carries no `0x`, unlike
+// `backtrace_symbols_fd` above. Anything reading this output has to take both.
 //
 // ## What it may call
 //
