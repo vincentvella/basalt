@@ -38,7 +38,7 @@ own native code does more than answer immediately.
 
 Calling `fetch` was the next thing to fail, and for a related reason: Expo
 replaces the global with its own implementation over `ExpoFetchModule`, which is
-not ported, and does it as a lazy getter — so the failure lands on the app's
+not ported, and does it as a lazy getter, so the failure lands on the app's
 first call rather than at import. That is one line to fix and was worth fixing
 here, because an Expo app that cannot call `fetch` is not running whatever else
 works.
@@ -73,10 +73,10 @@ works.
   the command has to become portable before the spawning can.
 - **`ExpoFetchModule` itself.** The default above routes around it rather than
   porting it. Porting it means a pair of SharedObject-derived native classes with
-  per-instance events — which `emitExpoEvent` does not cover, because it finds a
-  module by name and a `NativeResponse` is an instance — plus a streamed body.
-  Until then `expo/fetch`, imported directly, still reports the module is
-  missing, and a response body is buffered rather than streamed.
+  per-instance events, plus a streamed body. `emitExpoEvent` does not cover
+  per-instance events, because it finds a module by name and a `NativeResponse`
+  is an instance. Until then `expo/fetch`, imported directly, still reports the
+  module is missing, and a response body is buffered rather than streamed.
 - **An Expo event in basalt's own end-to-end suite.** basalt has no Expo module
   of its own that emits, so the runtime half of `emitExpoEvent` is proven by
   kino's daemon and by nothing in this repository. What is covered here is the

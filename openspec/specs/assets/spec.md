@@ -5,7 +5,7 @@
 `require('./picture.png')`: getting a bundled file from the packager onto the
 screen.
 
-Three things have to agree — Metro records which assets a build referenced, the
+Three things have to agree. Metro records which assets a build referenced, the
 CLI copies them where the host will look, and the runtime resolves an asset id
 back to a path. React Native's own CLI does two of the three and does not know
 this platform, so both are this project's.
@@ -38,8 +38,8 @@ SHALL load it through the same image path a network source uses, so a
 ### Requirement: An asset that cannot be resolved says why
 
 The system SHALL report a missing or unresolvable asset with the path it looked
-for, rather than drawing nothing — a blank box is indistinguishable from an
-image that decoded to nothing.
+for, rather than drawing nothing. A blank box is indistinguishable from an image
+that decoded to nothing.
 
 #### Scenario: A missing asset is reported
 
