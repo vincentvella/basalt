@@ -109,6 +109,25 @@ Chasing a macOS-only failure that way produces a green run that proves nothing
 about macOS, which has happened. Pass `--platform macos` when the host is the
 point.
 
+**And `--platform linux` on a Mac is not Linux.** It is the GTK host built
+against this machine's C library, so anything whose behaviour comes from libc
+rather than from GTK behaves as macOS, not as glibc. A green GTK run here is a
+statement about the GTK code and not about the platform under it.
+
+That is not a hypothetical. `backtrace_symbols_fd`, which the crash handler uses,
+formats a frame differently in each of the three, and only one of the three can
+be seen from here:
+
+    macOS      0   basalt_appkit   0x0000000104e8c040 _ZN6basalt... + 156
+    glibc      build/basalt_gtk(+0x875a5c)[0x55cef4472a5c]
+    Windows     0  00007FF621EE0094
+
+A leading index on two and none on glibc; `0x` on two and absent on the third.
+A scenario matching the shape of the one visible here passed locally on both
+hosts and failed on CI twice, once per platform, against a handler that was
+printing a perfectly good stack each time. It counts the lines between the marker
+and the blank line now, which is the one thing all three agree on.
+
 On a headless machine, run either under a virtual display:
 
 ```bash

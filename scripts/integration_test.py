@@ -3802,17 +3802,33 @@ def test_crash_handler(bundle: Path) -> None:
     # A stack, not just a header. One frame is not a stack; the handler asks for
     # up to 64.
     #
-    # The two platforms format a frame differently and the pattern has to take
-    # both, which the first version of this did not: `backtrace_symbols_fd` writes
-    # `0  basalt_appkit  0x0000000104e8c040  _ZN6basalt...`, and Windows's `%p`
-    # writes ` 0  00007FF621EE0094` -- upper case and no `0x`. Requiring a
-    # lower-case `0x` failed a Windows handler that had printed twelve perfectly
-    # good frames.
+    # Counted by position rather than matched by shape, because the shape is
+    # different everywhere and two attempts at a pattern were wrong:
     #
-    # An index, then an address, which is what a frame is on both and what the
-    # header and the module line are not.
-    frames = [line for line in logged.splitlines()
-              if re.match(r"\s*\d+\s+.*?(?:0x)?[0-9a-fA-F]{8,}", line)]
+    #   macOS      0   basalt_appkit   0x0000000104e8c040 _ZN6basalt... + 156
+    #   glibc      build/basalt_gtk(+0x875a5c)[0x55cef4472a5c]
+    #   Windows     0  00007FF621EE0094
+    #
+    # A leading index on macOS and Windows and none on glibc; `0x` lower case on
+    # two and absent on the third. The first pattern wanted a lower-case `0x` and
+    # failed twelve good Windows frames; the second wanted a leading index and
+    # failed nine good glibc ones.
+    #
+    # Worse, neither could be caught here: `--platform linux` on a Mac is the GTK
+    # host against *macOS's* libc, so it prints macOS's format. The only place the
+    # glibc shape exists is CI.
+    #
+    # So: the handler writes the marker, then the frames, then a blank line. The
+    # frames are what is between, whatever they look like.
+    lines = logged.splitlines()
+    start = next((i for i, line in enumerate(lines) if marker in line), None)
+    frames = []
+    for line in lines[start + 1:] if start is not None else []:
+        if line.strip() == "":
+            break
+        frames.append(line)
+    # And they are frames rather than prose: every format carries an address.
+    frames = [line for line in frames if re.search(r"[0-9a-fA-F]{6,}", line)]
     if len(frames) < 3:
         raise Failure(
             "the crash handler printed a header and no usable stack "
