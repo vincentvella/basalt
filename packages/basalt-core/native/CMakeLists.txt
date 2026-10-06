@@ -256,6 +256,8 @@ if(DEFINED RN_DIR)
     core/SourceCodeModule.cpp
     # Answering a modal dialog without showing one; see the header.
     core/TestDialog.cpp
+    # What the host says when it dies, which was nothing; see the header.
+    core/CrashHandler.cpp
     # Quitting gracefully when the harness says so, rather than on a budget
     # fixed before launch; see the header.
     core/TestQuitFile.cpp

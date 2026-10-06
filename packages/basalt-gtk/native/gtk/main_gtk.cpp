@@ -17,6 +17,7 @@
 // every mount is marshalled back here by GtkMountingManager. Nothing below
 // touches a widget off the main thread.
 
+#include "CrashHandler.h"
 #include "GtkAnimationChoreographer.h"
 #include "AppIdentity.h"
 #include "AppPaths.h"
@@ -1889,6 +1890,9 @@ int main(int argc, char **argv) {
   // arrives before anything this project writes.
   FLAGS_logtostderr = true;
   google::InitGoogleLogging(argv[0]);
+  // Straight after, so a crash between here and the first window still
+  // says where. See core/CrashHandler.h.
+  basalt::installCrashHandler();
 
   Host host;
   host.bundlePath = argc > 1 ? argv[1] : "build/main.jsbundle.js";

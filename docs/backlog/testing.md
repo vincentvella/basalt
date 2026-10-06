@@ -311,10 +311,19 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   if the guard dropped a mount it should have applied -- three times on AppKit
   and once on GTK. Windows is unverified locally, it not compiling on a Mac.
 
-  **Still missing, and it is why two attempts produced no address:** the host
-  writes nothing on a signal. A handler that logged where it died would have
-  answered this in one run instead of three, and would be the difference between
-  confirming the fix and waiting to see whether CI goes quiet.
+  ~~**Still missing, and it is why two attempts produced no address:** the host
+  writes nothing on a signal.~~ Done, 2026-10-06: core/CrashHandler.h. SIGSEGV,
+  SIGBUS, SIGILL, SIGFPE and SIGABRT now print a marker, the faulting address,
+  the thread and up to 64 frames, and re-raise so the exit status is still the
+  signal. Not SIGTERM, which is how the harness ends a host that is working.
+
+  Exercised rather than assumed: `BASALT_TEST_CRASH` raises the signal on
+  purpose and the scenario "a crash says where it died, and still exits with the
+  signal" asserts the marker, that there is a stack rather than one line, and
+  that the status survives. A handler that has never run is a guess.
+
+  So if this scenario fails again, the next run says where. Which is what it
+  should have said the first time.
 
 - **An app build compiles this repository's test suites.** `native/` is packed
   whole, tests included, and nothing gates them, so `react-native run-macos:

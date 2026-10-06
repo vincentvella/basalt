@@ -32,6 +32,7 @@
 
 #include <react/io/ImageLoaderModule.h>
 
+#include "CrashHandler.h"
 #include "AppIdentity.h"
 #include "AppPaths.h"
 #include "DevMenu.h"
@@ -1044,6 +1045,9 @@ int main(int argc, const char *argv[]) {
   // arrives before anything this project writes.
   FLAGS_logtostderr = true;
   google::InitGoogleLogging(argv[0]);
+  // Straight after, so a crash between here and the first window still
+  // says where. See core/CrashHandler.h.
+  basalt::installCrashHandler();
 
   @autoreleasepool {
     gHost.bundlePath = argc > 1 ? argv[1] : "build/main.jsbundle.js";

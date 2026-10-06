@@ -37,6 +37,7 @@
 // win32/Win32TextInput.h.
 
 #include "Win32AnimationChoreographer.h"
+#include "CrashHandler.h"
 #include "AppIdentity.h"
 #include "AppPaths.h"
 #include "DevMenu.h"
@@ -2016,6 +2017,9 @@ int main(int argc, char **argv) {
   // arrives before anything this project writes.
   FLAGS_logtostderr = true;
   google::InitGoogleLogging(argv[0]);
+  // Straight after, so a crash between here and the first window still
+  // says where. See core/CrashHandler.h.
+  basalt::installCrashHandler();
 
   gHost.bundlePath = argc > 1 ? argv[1] : "build/main.jsbundle.js";
   // Defaults to the raw-Fabric script, because a React screen needs

@@ -52,6 +52,7 @@ without taking over the machine's cursor.
 import argparse
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -3752,6 +3753,78 @@ def test_turbomodule_proxy(bundle: Path) -> None:
             raise Failure(f"{why}.\nexpected {needle!r} in:\n{tail_text(logged)}")
 
 
+def test_crash_handler(bundle: Path) -> None:
+    """What the host says when it dies.
+
+    It used to say nothing. A reload teardown took SIGSEGV on CI's Mac on
+    2026-10-05, twice, and three attempts produced no address, no stack and no
+    thread: the harness noticed the process was gone and reported "host exited
+    -11", which is the least informative failure there is. The bug was found by
+    reading `ReactHost` instead.
+
+    So this is the handler being exercised deliberately, because a handler is
+    otherwise only ever run on the day it is needed and a handler that has never
+    run is a guess. BASALT_TEST_CRASH raises the signal on purpose; see
+    core/CrashHandler.h for why the signal set excludes SIGTERM, which the
+    harness uses to end a host that is working.
+
+    Three things are asserted, and the third is the one that would break a
+    scenario rather than merely disappoint somebody reading a log:
+
+      the marker    that the handler ran at all
+      a frame       that it produced a stack rather than one line
+      the status    that it still exits with the signal, so every other scenario
+                    that reads a return code is unaffected
+    """
+    env = dict(os.environ)
+    env["BASALT_TEST_CRASH"] = "1"
+    # Nothing else: this never gets as far as a window.
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_QUIT_AFTER_MS"):
+        env.pop(name, None)
+
+    result = subprocess.run(
+        [str(HOST), str(bundle), MODULE],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=60,
+    )
+    logged = result.stdout + result.stderr
+    _remember_output(result.stderr)
+
+    marker = "*** basalt: " + ("exception" if PLATFORM == "windows" else "SIGSEGV")
+    if marker not in logged:
+        raise Failure(
+            f"the crash handler printed nothing. Expected {marker!r}, which is "
+            "the whole point of it: without this line a crash on a platform that "
+            f"only runs in CI is four words and no address.\n{tail_text(logged)}"
+        )
+
+    # A stack, not just a header. Every frame line carries a hex address, and one
+    # frame is not a stack -- the handler asks for up to 64.
+    frames = [line for line in logged.splitlines() if re.search(r"0x[0-9a-f]{6,}", line)]
+    if len(frames) < 3:
+        raise Failure(
+            "the crash handler printed a header and no usable stack "
+            f"({len(frames)} line(s) with an address).\n{tail_text(logged)}"
+        )
+
+    # And the status is still the signal. A handler that swallowed it would make
+    # every scenario reading a return code quietly wrong, which is worse than the
+    # silence this replaced.
+    if PLATFORM == "windows":
+        if result.returncode == 0:
+            raise Failure(
+                "the host exited 0 after an access violation, so the handler "
+                f"swallowed it.\n{tail_text(logged)}"
+            )
+    elif result.returncode != -signal.SIGSEGV:
+        raise Failure(
+            f"the host exited {result.returncode}, not -{int(signal.SIGSEGV)}. The "
+            "handler is meant to re-raise, so that an exit status still says what "
+            f"killed it.\n{tail_text(logged)}"
+        )
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -4168,6 +4241,8 @@ SCENARIOS = [
     ("__turboModuleProxy answers for this platform and for React Native",
      test_turbomodule_proxy),
     ("the desktop says what displays it has", test_displays),
+    ("a crash says where it died, and still exits with the signal",
+     test_crash_handler),
     ("an application can refuse to quit, and then agree", test_quit_request),
     ("DevTools' overlay draws a highlight, and a trace update takes itself down",
      test_debugging_overlay),
