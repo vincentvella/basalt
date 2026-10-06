@@ -101,9 +101,89 @@ env:
   GDK_BACKEND: x11
 
 jobs:
+  # The TypeScript, before anything is compiled. Everything below waits on it.
+  #
+  # It exists because a type error used to cost the whole matrix: on 2026-10-05
+  # one wrong declaration failed all nine shards, each of them after its build,
+  # and the report was nine copies of "make ts failed" with the actual error
+  # thirteen lines up in each. This answers in about a minute, on the cheapest
+  # runner there is, and names the error once.
+  #
+  # It needs no compiler, no Hermes and no third_party: `make ts` wants React
+  # Native's type declarations and a tsc, both of which are in the checkout and
+  # its node_modules. So this skips bootstrap.sh -- which would build Hermes --
+  # and installs React Native's dependencies directly.
+  typecheck:
+    name: the TypeScript, on the pinned React Native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the React Native pin
+        id: pin
+        run: echo "ref=$(grep -v '^#' scripts/react-native.pin | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        with:
+          # Matching the build jobs: ^22.13 || ^24.3 || >= 26, and 25 fails an
+          # engine check in a preinstall hook.
+          node-version: 24
+
+      - name: Fetch React Native at the pinned release
+        # The same shallow single-ref fetch the build jobs do, and in the same
+        # place, so the node_modules cache below is the one they share.
+        run: |
+          mkdir -p react-native-src && cd react-native-src
+          git init -q
+          git remote add origin https://github.com/react/react-native
+          git fetch -q --depth 1 origin refs/tags/${{ steps.pin.outputs.ref }}
+          git checkout -q FETCH_HEAD
+          git log --oneline -1
+
+      - name: Restore React Native's node_modules
+        id: node-modules
+        uses: actions/cache/restore@v6
+        with:
+          path: react-native-src/node_modules
+          # Deliberately the build jobs' key, not one of this job's own: the
+          # tree is the same tree, and whichever job gets there first warms it
+          # for the rest.
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
+
+      - name: Install React Native's dependencies
+        # Only on a miss, and only yarn -- not `make bootstrap`, which would
+        # also build Hermes for a job that never compiles anything.
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        working-directory: react-native-src
+        run: |
+          corepack enable || npm install -g yarn@1.22.22
+          yarn install --network-timeout 600000
+
+      - name: Save React Native's node_modules
+        # A warning rather than a failure when a build job reserved the same key
+        # first, which is the normal race and is fine: the tree is identical.
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: react-native-src/node_modules
+          key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
+
+      - name: Type-check every package and the demo apps
+        # Which React Native type declarations this resolves against depends on
+        # the checkout, and a source checkout at a release tag is the case the
+        # build jobs see too: no types_generated/, so build_ts.sh falls back to
+        # ReactNativeApi.d.ts. That is the half a developer's own checkout does
+        # not exercise, and the reason this job is worth having on top of the
+        # same command running locally. See the comment in build_ts.sh.
+        run: make ts RN_DIR=react-native-src
+
   linux:
     name: build and test (shard ${{ matrix.shard }})
     runs-on: ubuntu-24.04
+    needs: typecheck
     timeout-minutes: 90
     strategy:
       # The end-to-end suite is nine of this job's thirteen minutes, and every
@@ -398,6 +478,7 @@ jobs:
   macos:
     name: the AppKit host (shard ${{ matrix.shard }})
     runs-on: macos-15
+    needs: typecheck
     timeout-minutes: 120
     strategy:
       # Three, as on Linux, and this job has a second thing to split: the
@@ -596,6 +677,7 @@ jobs:
 
   windows-full:
     name: the whole Windows stack (shard ${{ matrix.shard }})
+    needs: typecheck
     # GitHub's image unless a repository variable names something else.
     #
     # `WINDOWS_RUNNER` set to a self-hosted runner's label sends this job to that

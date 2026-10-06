@@ -62,6 +62,19 @@ TSC="$RN_DIR/node_modules/.bin/tsc"
 #
 # A consumer of this package resolves React Native's own types normally and
 # never sees any of this.
+#
+# Which one is picked changes what is declared, so it changes what compiles.
+# `types_generated/` pulls in src/types/globals.d.ts, which hand-declares Blob,
+# File, FileReader and the animation-frame functions; `ReactNativeApi.d.ts` is a
+# flat snapshot that declares no globals and references nothing, so against it
+# those names come from @types/node or from nowhere. A developer who has
+# generated the types is therefore compiling against a different environment
+# from CI, and the `typecheck` job in ci.yml exists because of it.
+#
+# To get CI's answer on a machine that has generated them, move them aside:
+#
+#   mv "$RN_DIR/packages/react-native/types_generated" /tmp/aside && make ts
+#   mv /tmp/aside "$RN_DIR/packages/react-native/types_generated"
 RN_TYPES=""
 for candidate in \
   "$RN_DIR/packages/react-native/types_generated/index.d.ts" \
