@@ -173,9 +173,15 @@ has gone unrecorded until now.
   > thirteen.
 
   What is still open from this entry: checkbox and radio items, dynamic enabling,
-  English-only role labels, and `about` on Linux and Windows. And one thing the
-  work added rather than closed: nothing asserts that a role *changes* anything,
-  on either kind of menu. See the "Not covered" note in that archived change.
+  English-only role labels, and `about` on Linux and Windows.
+
+  The thing the work added rather than closed is now half shut. A role's
+  behaviour is asserted, with `close`, on every host: see "a role in a context
+  menu performs it, not only reports it", which also runs the ordinary item beside
+  it so that a host dying early cannot pass. What is still unasserted is a *text*
+  role, because nothing here can focus a field before a tap opens the menu, and
+  the menu bar's roles are unasserted behaviourally for the same kind of reason.
+  Both are in that archived change's notes, with what was tried.
 - ~~**Native file dialogs.**~~ Done on all three: `useDialog().openFile()`,
   `saveFile()` and `openFolder()`, over `GtkFileDialog`, `NSOpenPanel` /
   `NSSavePanel` and `IFileDialog`. What is left is the rest of what a desktop

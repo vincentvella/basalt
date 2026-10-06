@@ -160,6 +160,11 @@ function Context() {
         // thing most likely to be got wrong, so the suite names 10 on purpose.
         {label: 'About', role: 'about', onSelect: pick('About')}, //   9
         {label: 'Last', onSelect: pick('Last')}, //                    10
+        // A role that acts on the window rather than on whatever has focus,
+        // which is what makes it the one the suite can assert: closing is
+        // visible from outside the process, and no instrument here can give a
+        // text field focus before a tap opens this menu.
+        {label: 'Close Window', role: 'close', onSelect: pick('Close Window')}, // 11
       ],
       where,
     );

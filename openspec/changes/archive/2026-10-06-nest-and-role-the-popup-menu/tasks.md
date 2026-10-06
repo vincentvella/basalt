@@ -64,13 +64,37 @@
       settling at all. It hops with `postToUiThread` now. The three hosts were
       already right, each performing the role inside its own UI-thread block.
 
-## Not covered
+## Covered afterwards
 
-- [ ] That a role actually changes anything. The index and the handler are
-      asserted on all three; the platform's half is not. `selectAll` chosen
-      against this repo's own `<TextInput>` produced no `onSelectionChange`, and
-      the field would not take a typed character either, so what was not
-      established is whether the field was ever focused. The menu bar's roles
-      have never been asserted behaviourally either, only that the menu was
-      installed with them in it, so this is not a new gap -- but it is the gap
-      worth closing next, and closing it needs a scenario that can prove focus.
+- [x] That a role actually changes anything, which this first shipped without.
+      The menu now carries a `close` role at index 11, and the scenario "a role in
+      a context menu performs it, not only reports it" drives it twice: choosing
+      the role ends the host in about two seconds, and choosing the ordinary item
+      beside it leaves it running to the eight-second quit timer. The control run
+      is the half that matters, since a host dying on startup would also exit
+      early.
+
+      Verified by breaking it on purpose: with `performMenuRole` stubbed to
+      return, the scenario fails and says the index came back and the platform did
+      nothing. With it restored it passes. An assertion that has never failed is
+      not known to discriminate.
+
+      What that proves is the path -- `performMenuRole` reaching the platform on
+      the UI thread -- which every role shares.
+
+- [ ] A *text* role's behaviour specifically: `copy`, `selectAll`, `paste`. Those
+      act on whatever has focus, and no instrument here can give a field focus
+      before a tap opens the menu: the host threads one clock through its scripted
+      input and `BASALT_TEST_FOCUS` runs after `BASALT_TEST_TAP`, so the tabs land
+      after the menu has been answered. `autoFocus` looked like the way round it
+      and does nothing at all, which is now its own entry in
+      backlog/textinput.md.
+
+      Two further things found while trying, both worth knowing before anyone
+      tries again: tabbing into a field selects its contents on macOS, so
+      `selectAll` is a no-op there and `onSelectionChange` does not fire for it
+      (the handler drops a selection equal to the last reported one); and the GTK
+      typing instrument inserts at the end through `gtk_editable_insert_text`
+      rather than replacing the selection, so "type over the selection" is not an
+      observable that works on both. The way in is probably a focus instrument
+      that runs before the taps, or an app that opens its menu from `onFocus`.

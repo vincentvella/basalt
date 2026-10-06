@@ -2536,6 +2536,84 @@ def test_dev_menu(bundle: Path) -> None:
             )
 
 
+def test_context_menu_role(bundle: Path) -> None:
+    """That a role *does* something, and not only that it reports an index.
+
+    The gap this closes. The menu scenario above asserts that an item carrying a
+    role comes back with its index and runs its handler, which says the plumbing
+    is connected and nothing about whether the platform did the thing. A role is
+    the Copy that actually copies: the behaviour is the whole reason it exists,
+    and an app cannot implement it itself.
+
+    It is asserted with `close` rather than with `copy` or `selectAll`, and that
+    is a limitation of the instruments rather than a preference. A text role acts
+    on whatever has focus, and nothing here can give a field focus *before* a tap
+    opens the menu: the host threads one clock through its scripted input and
+    BASALT_TEST_FOCUS runs after BASALT_TEST_TAP, so by the time the tabs land the
+    menu has already been answered. `autoFocus` does not stand in for them, which
+    is its own finding and recorded in backlog/textinput.md.
+
+    So: `close` acts on the window, which is observable from outside the process
+    and needs neither focus nor a window manager. What it proves is the path --
+    `performMenuRole` is called on the UI thread and reaches the platform -- which
+    is the same path every other role takes, each over its host's own menu-bar
+    mapping.
+
+    The control run is the point of the pair. A host that died on startup would
+    also "exit early", so the same menu is driven twice: the role closes the
+    window and ends the process in about two seconds, and the ordinary item next
+    to it leaves it running until the quit timer.
+    """
+    app = bundle_app(bundle.parent, "menu")
+
+    def choose(index: str) -> tuple[float, str]:
+        env = dict(os.environ)
+        env["BASALT_QUIT_AFTER_MS"] = "8000"
+        # The button at (134, 70): 24 of padding, a 22-tall label, then a 220x48
+        # button. The same point the menu scenario presses.
+        env["BASALT_TEST_TAP"] = "134,70"
+        env["BASALT_TEST_MENU"] = index
+        for name in ("BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                     "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_CLOSE_WINDOW"):
+            env.pop(name, None)
+        started = time.monotonic()
+        result = subprocess.run(
+            [str(HOST), str(app), "BasaltContextMenu"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        elapsed = time.monotonic() - started
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        return elapsed, result.stdout + result.stderr
+
+    # Entry 11 carries `role: 'close'`.
+    closed, logged = choose("11")
+    if "context menu answered: 11" not in logged:
+        raise Failure(f"the role item was not chosen.\n{tail_text(logged)}")
+    if "context menu selected: Close Window" not in logged:
+        raise Failure(
+            "a role still runs the item's handler, and this one did not.\n"
+            f"{tail_text(logged)}"
+        )
+    if closed > 5.0:
+        raise Failure(
+            f"the `close` role did not close the window: the host ran for "
+            f"{closed:.1f}s against a quit timer of 8s, so it was the timer that "
+            "ended it. The index came back and the handler ran, which means the "
+            "menu reached JavaScript and the platform did nothing.\n"
+            f"{tail_text(logged)}"
+        )
+
+    # And the control: the same menu, an item with no role, which must not end it.
+    survived, logged = choose("10")
+    if survived < 6.0:
+        raise Failure(
+            f"the control run ended after {survived:.1f}s without a role, so the "
+            "timing above says nothing about roles: something else is ending this "
+            f"host early.\n{tail_text(logged)}"
+        )
+
+
 def test_file_dialogs(bundle: Path) -> None:
     """The native file dialogs, which React Native has no API for at all.
 
@@ -4259,6 +4337,8 @@ SCENARIOS = [
     ("the application menu is installed, roles and all", test_application_menu),
     ("a context menu opens where you press, and says what was chosen",
      test_context_menu),
+    ("a role in a context menu performs it, not only reports it",
+     test_context_menu_role),
     ("a second window is a second React tree, and the two stay in step",
      test_windows),
     ("a window can refuse to close, and say so", test_window_close_request),
