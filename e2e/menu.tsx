@@ -136,11 +136,30 @@ function Context() {
 
   const open = async (where: ContextMenuPoint) => {
     const index = await menu.show(
+      // The indexes are a pre-order walk of the whole thing, counting separators
+      // and submenu parents, which is why the numbers in the comments jump the
+      // way they do. Anything added here goes after Delete: the suite names
+      // index 2 for Rename, and renumbering it would be renaming the test.
       [
-        {label: 'Copy', shortcut: 'Cmd+C', onSelect: pick('Copy')},
-        {separator: true},
-        {label: 'Rename', onSelect: pick('Rename')},
-        {label: 'Delete', enabled: false, onSelect: pick('Delete')},
+        {label: 'Copy', shortcut: 'Cmd+C', onSelect: pick('Copy')}, // 0
+        {separator: true}, //                                          1
+        {label: 'Rename', onSelect: pick('Rename')}, //                2
+        {label: 'Delete', enabled: false, onSelect: pick('Delete')}, // 3
+        {separator: true}, //                                          4
+        {
+          label: 'Share', //                                           5
+          submenu: [
+            {label: 'Copy link', onSelect: pick('Copy link')}, //      6
+            {label: 'Email', onSelect: pick('Email')}, //              7
+          ],
+        },
+        // A role: the platform selects the text, and this still hears about it.
+        {label: 'Select All', role: 'selectAll', onSelect: pick('Select All')}, // 8
+        // A role only macOS has. Left out of the menu on Linux and Windows and
+        // still counted, which is what keeps `Last` at 10 everywhere -- the one
+        // thing most likely to be got wrong, so the suite names 10 on purpose.
+        {label: 'About', role: 'about', onSelect: pick('About')}, //   9
+        {label: 'Last', onSelect: pick('Last')}, //                    10
       ],
       where,
     );

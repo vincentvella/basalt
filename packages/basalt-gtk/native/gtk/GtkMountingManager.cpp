@@ -9,6 +9,8 @@
 #include "UIManagerAccess.h"
 #include "PangoTextLayout.h"
 
+#include <cstdint>
+
 #include <react/renderer/components/image/ImageEventEmitter.h>
 #include <react/renderer/components/view/AccessibilityProps.h>
 #include <react/renderer/graphics/Transform.h>

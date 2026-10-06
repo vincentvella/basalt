@@ -2,6 +2,8 @@
 
 #include "PlatformServices.h"
 #include "ShareFallback.h"
+// For `quitHost`, which the `quit` role goes through so a quit handler is asked.
+#include "WindowHost.h"
 
 #include <gtk/gtk.h>
 
@@ -446,10 +448,23 @@ void onMenuItemActivated(GSimpleAction *action, GVariant * /*parameter*/, gpoint
   // GMenu carries no index of its own, and the position in the model is not
   // the position in the vector once separators are sections.
   const char *name = g_action_get_name(G_ACTION(action));
-  finishMenu(pending, name != nullptr ? std::atoi(name + 4) : -1);
+  const int index = name != nullptr ? std::atoi(name + 4) : -1;
+
+  // Down first, then the role, then the answer. `close` and `quit` destroy the
+  // window this popover is parented to, so dismissing it beforehand is not
+  // tidiness; and the platform's half of a role has to be done before
+  // JavaScript's `onSelect`, because an app whose handler reads the clipboard is
+  // reading what this put there.
   if (pending->popover != nullptr) {
     gtk_popover_popdown(GTK_POPOVER(pending->popover));
   }
+  if (index >= 0) {
+    const MenuEntry *entry = menuEntryAt(pending->request.entries, index);
+    if (entry != nullptr && !entry->role.empty()) {
+      performMenuRole(entry->role);
+    }
+  }
+  finishMenu(pending, index);
 }
 
 void onMenuClosed(GtkPopover * /*popover*/, gpointer userData) {
@@ -471,26 +486,31 @@ void onMenuClosed(GtkPopover * /*popover*/, gpointer userData) {
       nullptr);
 }
 
-gboolean showMenuOnMainThread(gpointer userData) {
-  auto *pending = static_cast<PendingMenu *>(userData);
-
-  GtkWindow *window = activeWindow();
-  GtkWidget *anchor = window != nullptr ? gtk_window_get_child(window) : nullptr;
-  if (anchor == nullptr) {
-    finishMenu(pending, -1);
-    delete pending;
-    return G_SOURCE_REMOVE;
-  }
-
-  // Separators are sections rather than entries: a GMenu has no separator item,
-  // and two sections are drawn with a line between them. The indexes the
-  // caller gets back still count them, which is what the action names carry.
+// Builds a GMenu for `entries`, numbering every entry the way `walkMenuEntries`
+// does: pre-order, counting separators and submenu parents, so a flat menu is
+// numbered by position and nothing a caller already relied on moved.
+//
+// Separators are sections rather than entries: a GMenu has no separator item,
+// and two sections are drawn with a line between them. The indexes the caller
+// gets back still count them, which is what the action names carry.
+//
+// A submenu is a model of its own, which GtkPopoverMenu slides to. A disabled
+// parent stays enabled: a GMenu submenu item carries no action to disable, and
+// an app that wants a branch unavailable should leave the branch out.
+GMenu *buildMenuModel(const std::vector<MenuEntry> &entries,
+                      GSimpleActionGroup *actions,
+                      PendingMenu *pending,
+                      int *next) {
   GMenu *model = g_menu_new();
   GMenu *section = g_menu_new();
-  auto *actions = g_simple_action_group_new();
 
-  for (size_t i = 0; i < pending->request.entries.size(); i++) {
-    const MenuEntry &entry = pending->request.entries[i];
+  for (const MenuEntry &entry : entries) {
+    const int index = (*next)++;
+    // Counted above, drawn or not: a role this desktop cannot perform keeps its
+    // index so the ones after it keep theirs. See menuEntryShown.
+    if (!menuEntryShown(entry)) {
+      continue;
+    }
     if (entry.isSeparator()) {
       g_menu_append_section(model, nullptr, G_MENU_MODEL(section));
       g_object_unref(section);
@@ -498,7 +518,14 @@ gboolean showMenuOnMainThread(gpointer userData) {
       continue;
     }
 
-    const std::string name = "item" + std::to_string(i);
+    if (entry.isParent()) {
+      GMenu *submenu = buildMenuModel(entry.submenu, actions, pending, next);
+      g_menu_append_submenu(section, entry.label.c_str(), G_MENU_MODEL(submenu));
+      g_object_unref(submenu);
+      continue;
+    }
+
+    const std::string name = "item" + std::to_string(index);
     auto *action = g_simple_action_new(name.c_str(), nullptr);
     g_simple_action_set_enabled(action, entry.enabled ? TRUE : FALSE);
     g_signal_connect(action, "activate", G_CALLBACK(onMenuItemActivated), pending);
@@ -513,8 +540,26 @@ gboolean showMenuOnMainThread(gpointer userData) {
     g_menu_append_item(section, item);
     g_object_unref(item);
   }
+
   g_menu_append_section(model, nullptr, G_MENU_MODEL(section));
   g_object_unref(section);
+  return model;
+}
+
+gboolean showMenuOnMainThread(gpointer userData) {
+  auto *pending = static_cast<PendingMenu *>(userData);
+
+  GtkWindow *window = activeWindow();
+  GtkWidget *anchor = window != nullptr ? gtk_window_get_child(window) : nullptr;
+  if (anchor == nullptr) {
+    finishMenu(pending, -1);
+    delete pending;
+    return G_SOURCE_REMOVE;
+  }
+
+  auto *actions = g_simple_action_group_new();
+  int next = 0;
+  GMenu *model = buildMenuModel(pending->request.entries, actions, pending, &next);
 
   GtkWidget *popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(model));
   g_object_unref(model);
@@ -544,6 +589,124 @@ void showMenu(const MenuRequest &request, MenuCallback onChosen) {
   // Onto the GTK main thread, for the same reason showAlert is: this can be
   // called from the JavaScript thread, and a widget may only be made here.
   g_idle_add_full(G_PRIORITY_DEFAULT, showMenuOnMainThread, pending, nullptr);
+}
+
+// --- Roles ---------------------------------------------------------------------
+//
+// New ground on Linux: there is no menu bar here to have built these for, so
+// unlike AppKit and Win32 this is not a second caller for an existing mapping.
+// See GtkMenuBar.cpp for why there is no bar.
+//
+// Twelve of the thirteen in kMenuRoles. `about` is the one left out: GTK has
+// GtkAboutDialog but no platform about panel to ask for, so the dialog is the
+// app's to own and its contents are the app's to know. A role that opened an
+// empty one would be worse than the role not existing.
+namespace {
+
+// The action a text widget already has, for the roles that act on a selection.
+// basalt's <TextInput> is a GtkText or a GTK_TYPE_TEXT_VIEW subclass, and both
+// carry these: see GtkTextPeer.cpp.
+const char *textActionForRole(const std::string &role) {
+  if (role == "cut") {
+    return "clipboard.cut";
+  }
+  if (role == "copy") {
+    return "clipboard.copy";
+  }
+  if (role == "paste") {
+    return "clipboard.paste";
+  }
+  if (role == "delete") {
+    return "selection.delete";
+  }
+  if (role == "selectAll") {
+    return "selection.select-all";
+  }
+  if (role == "undo") {
+    return "text.undo";
+  }
+  if (role == "redo") {
+    return "text.redo";
+  }
+  return nullptr;
+}
+
+} // namespace
+
+bool menuRoleSupported(const std::string &role) {
+  if (textActionForRole(role) != nullptr) {
+    return true;
+  }
+  return role == "quit" || role == "close" || role == "minimize" || role == "zoom" ||
+      role == "togglefullscreen";
+}
+
+void performMenuRole(const std::string &role) {
+  GtkWindow *window = activeWindow();
+
+  if (role == "quit") {
+    // An app that registered a quit handler is asked rather than ended, which is
+    // what Cmd-Q and the window's close button already do: a role must not be
+    // the one way out of an app that said it wanted to intervene. See the
+    // "Refusing to quit" note in WindowHost.h.
+    if (hostQuitIntercepted()) {
+      hostQuitRequested();
+      return;
+    }
+    // Not `quitHost()`: that is each host's own, defined in main_gtk.cpp, and
+    // this file is in the mounting library that the test harnesses link without
+    // a main. The application behind the window is the same application.
+    if (window != nullptr) {
+      if (GtkApplication *app = gtk_window_get_application(window); app != nullptr) {
+        g_application_quit(G_APPLICATION(app));
+      }
+    }
+    return;
+  }
+
+  if (window == nullptr) {
+    return;
+  }
+
+  if (const char *action = textActionForRole(role); action != nullptr) {
+    // Whatever has focus, which is what a role means: the Copy in a popup copies
+    // from the field the person was in. `gtk_widget_activate_action` looks the
+    // name up through the widget's muxer, so a GtkText inside one of our views
+    // answers it, and a widget without the action returns FALSE and does
+    // nothing -- which is the right outcome for a popup opened over a view that
+    // holds no text.
+    GtkWidget *focus = gtk_window_get_focus(window);
+    if (focus != nullptr) {
+      gtk_widget_activate_action(focus, action, nullptr);
+    }
+    return;
+  }
+
+  if (role == "close") {
+    gtk_window_close(window);
+    return;
+  }
+  if (role == "minimize") {
+    gtk_window_minimize(window);
+    return;
+  }
+  if (role == "zoom") {
+    // macOS's Zoom is a toggle and so is this: an app offering the role once in
+    // a menu means "the other state", not "bigger every time".
+    if (gtk_window_is_maximized(window)) {
+      gtk_window_unmaximize(window);
+    } else {
+      gtk_window_maximize(window);
+    }
+    return;
+  }
+  if (role == "togglefullscreen") {
+    if (gtk_window_is_fullscreen(window)) {
+      gtk_window_unfullscreen(window);
+    } else {
+      gtk_window_fullscreen(window);
+    }
+  }
 }
 
 void postDelayed(double milliseconds, std::function<void()> work) {

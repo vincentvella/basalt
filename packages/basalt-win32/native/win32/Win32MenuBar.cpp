@@ -349,4 +349,23 @@ bool handleMenuCommand(unsigned int command) {
 }
 
 } // namespace win32
+
+// --- Roles, for a popup menu too ----------------------------------------------
+//
+// `showMenu` in PlatformServicesWin32.cpp performs a role itself rather than
+// letting a WM_COMMAND carry it, because it has a promise to settle with the
+// index chosen. The work is the same work: `handleMenuCommand` above already
+// posts WM_COPY and friends to whatever has focus, so this is a second caller
+// for it rather than a second implementation.
+bool menuRoleSupported(const std::string &role) {
+  return commandForRole(role) != 0;
+}
+
+void performMenuRole(const std::string &role) {
+  const UINT command = commandForRole(role);
+  if (command == 0) {
+    return;
+  }
+  win32::handleMenuCommand(command);
+}
 } // namespace basalt

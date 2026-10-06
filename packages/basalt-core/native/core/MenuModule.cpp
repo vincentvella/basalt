@@ -34,10 +34,15 @@ bool boolProperty(Runtime &runtime, const Object &item, const char *name, bool f
   return value.isBool() ? value.asBool() : fallback;
 }
 
-// A context menu's entries, which are a flatter thing than the application
-// menu's: one level, no roles, no submenus. That is not a simplification -- a
-// popup menu on all three desktops is a list, and the nesting an application
-// menu has is what a menu *bar* is for.
+// A context menu's entries. Nested, and roles too: NSMenu, GMenu and an HMENU
+// all nest, and the reason this was a flat list was never the platforms. It was
+// that `showMenu` answers with an index and a tree has no single position -- see
+// the note on `walkMenuEntries`, which is what settled it.
+//
+// A role an entry names and this desktop cannot perform is dropped here rather
+// than shown, which is the application menu's policy for the same reason: an
+// item that does nothing is worse than one that is not there. Linux drops most
+// of them.
 std::vector<MenuEntry> entriesFrom(Runtime &runtime, const Value &value) {
   std::vector<MenuEntry> entries;
   if (!value.isObject() || !value.asObject(runtime).isArray(runtime)) {
@@ -62,6 +67,17 @@ std::vector<MenuEntry> entriesFrom(Runtime &runtime, const Value &value) {
     entry.label = stringProperty(runtime, item, "label");
     entry.enabled = boolProperty(runtime, item, "enabled", true);
     entry.shortcut = stringProperty(runtime, item, "shortcut");
+    entry.role = stringProperty(runtime, item, "role");
+
+    const Value nested = item.getProperty(runtime, "submenu");
+    if (nested.isObject() && nested.asObject(runtime).isArray(runtime)) {
+      entry.submenu = entriesFrom(runtime, nested);
+    }
+    // Nothing is filtered here, deliberately. An entry naming a role this
+    // desktop cannot perform is not drawn -- `menuEntryShown` says so and each
+    // host skips it -- but it keeps its place in the vector, because the index
+    // that comes back is an index into the list JavaScript passed. Dropping it
+    // here would renumber everything after it onto the wrong handler.
     entries.push_back(std::move(entry));
   }
   return entries;

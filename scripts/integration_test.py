@@ -2791,6 +2791,64 @@ def test_context_menu(bundle: Path) -> None:
             f"the chosen item's onSelect never ran.\n{tail_text(logged)}"
         )
 
+    # An item inside a submenu. Index 6 is "Copy link", the first child of the
+    # "Share" parent at 5, and reaching it says three things at once: the parent
+    # was built as a submenu, the index counts into it, and both halves agree on
+    # the pre-order numbering -- JavaScript's `itemAt` walks the tree it passed
+    # and the native side numbers the tree it was given.
+    logged = run("6")
+    if "context menu answered: 6" not in logged:
+        raise Failure(
+            "choosing entry 6 did not come back as 6. It is the first item of a "
+            "submenu, and an index that counts only the top level would have "
+            f"refused it as past the end.\n{tail_text(logged)}"
+        )
+    if "context menu selected: Copy link" not in logged:
+        raise Failure(
+            "entry 6 is a submenu's first child and its onSelect did not run, so "
+            f"the index was mapped to the wrong item.\n{tail_text(logged)}"
+        )
+
+    # A parent is not a choice. Choosing index 5 opens the submenu rather than
+    # picking anything, so the scripted answer is a dismissal, the same as what
+    # a person clicking "Share" would produce.
+    logged = run("5")
+    if "context menu answered: dismissed" not in logged:
+        raise Failure(
+            "choosing the submenu's parent answered with an index. A parent "
+            f"opens; it is not an item.\n{tail_text(logged)}"
+        )
+
+    # The one most likely to be wrong, and the reason the app has an `About`
+    # item: it names the `about` role, which only macOS can perform, so Linux and
+    # Windows leave it out of the menu. It keeps its index anyway, because the
+    # index is into the list JavaScript passed -- so `Last` is 10 on all three.
+    # Numbering only what each platform drew would make this 9 on two of them,
+    # and every app with a role would silently act on the wrong item there.
+    logged = run("10")
+    if "context menu answered: 10" not in logged:
+        raise Failure(
+            "entry 10 did not come back as 10. It sits after an item carrying a "
+            "role that two of the three desktops leave out, and an index is into "
+            f"the list that was passed, not into what was drawn.\n{tail_text(logged)}"
+        )
+    if "context menu selected: Last" not in logged:
+        raise Failure(
+            "entry 10's onSelect did not run, so an item the platform left out "
+            f"shifted the ones after it.\n{tail_text(logged)}"
+        )
+
+    # A role this desktop cannot perform is not in the menu, so naming it is a
+    # dismissal. macOS has `about` and answers 9; the other two do not.
+    logged = run("9")
+    expected = ("context menu answered: 9" if PLATFORM == "macos"
+                else "context menu answered: dismissed")
+    if expected not in logged:
+        raise Failure(
+            "the `about` role should be choosable on macOS and absent elsewhere. "
+            f"Expected {expected!r}.\n{tail_text(logged)}"
+        )
+
     # A real right-click. The button number reaches `onPointerDown` as W3C's 2,
     # and -- the half that matters -- `onPress` does not fire: the same view is
     # a button and has a context menu, which is what a desktop expects.

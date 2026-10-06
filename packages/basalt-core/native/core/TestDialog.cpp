@@ -83,8 +83,40 @@ void presentMenu(const MenuRequest &request, MenuCallback onChosen) {
   // opposite of what presentAlert does with a button. A menu's entries are not
   // interchangeable -- picking the nearest one would run something the script
   // did not ask for -- whereas an alert's last button is always the way out.
-  const int last = static_cast<int>(request.entries.size()) - 1;
-  const int index = (*scripted < 0 || *scripted > last) ? -1 : *scripted;
+  //
+  // `menuEntryCount` and not `entries.size()`: an index counts every level now,
+  // so the valid range is the whole tree and a script naming a submenu's item
+  // would otherwise be refused for being past the end of the top level.
+  const int count = menuEntryCount(request.entries);
+  int index = (*scripted < 0 || *scripted >= count) ? -1 : *scripted;
+
+  // And a dismissal for anything a person could not have chosen either, so that
+  // what a script can answer is what a real menu can: a parent opens rather than
+  // chooses, a separator is a line, and an entry naming a role this desktop
+  // cannot perform is not in the menu at all.
+  if (index >= 0) {
+    const MenuEntry *entry = menuEntryAt(request.entries, index);
+    if (entry == nullptr || entry->isParent() || entry->isSeparator() ||
+        !menuEntryShown(*entry)) {
+      index = -1;
+    }
+  }
+
+  // The platform's half of a role still happens: this seam exists to skip the
+  // window a person would have clicked, not to skip what choosing the item does.
+  // Without this, `copy` under test would resolve a promise and copy nothing.
+  //
+  // On the UI thread, which this is not. `showContextMenu` is a TurboModule
+  // call, so this runs on the JavaScript thread, and `performMenuRole` touches
+  // the window and the focused control -- AppKit from the wrong thread does not
+  // return. The symptom was the promise never settling at all: `about` opens a
+  // panel, and the call to open it never came back.
+  if (index >= 0) {
+    const MenuEntry *entry = menuEntryAt(request.entries, index);
+    if (entry != nullptr && !entry->role.empty()) {
+      postToUiThread([role = entry->role] { performMenuRole(role); });
+    }
+  }
   onChosen(index);
 }
 

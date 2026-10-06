@@ -88,6 +88,32 @@ export type ContextMenuItem = {
   shortcut?: string;
   enabled?: boolean;
   separator?: boolean;
+  /**
+   * One of the platform roles, in Electron's spelling: `about`, `quit`, `undo`,
+   * `redo`, `cut`, `copy`, `paste`, `delete`, `selectAll`, `minimize`, `zoom`,
+   * `close`, `togglefullscreen`. The platform performs it -- the Copy that
+   * actually copies the field the person was in -- and `onSelect` still runs, so
+   * an app can both get the behaviour and hear about it.
+   *
+   * **A role this desktop cannot perform is left out of the menu**, rather than
+   * shown doing nothing. It keeps its index though: what comes back is an index
+   * into the list you passed, so adding a role that one platform lacks does not
+   * renumber the items after it.
+   *
+   * The three do not agree. macOS has all thirteen; Linux and Windows have
+   * twelve, both missing `about`, neither having a platform about panel to ask
+   * for -- that window is an app's own to show, and an ordinary item with an
+   * `onSelect` is how to open it.
+   */
+  role?: string;
+  /**
+   * Nested items. The parent is not choosable: it opens its children.
+   *
+   * Both a `submenu` and a `role` on one item is a mistake, and the submenu
+   * wins. A parent whose children are all roles this desktop cannot perform is
+   * left out with them, an empty submenu being a dead end rather than an item.
+   */
+  submenu?: ReadonlyArray<ContextMenuItem>;
   onSelect?: () => void;
 };
 
@@ -142,8 +168,47 @@ async function show(
   }
   // Called before the promise settles, so that an app which only wants
   // `onSelect` never has to await anything.
-  items[index]?.onSelect?.();
+  itemAt(items, index)?.onSelect?.();
   return index;
+}
+
+/**
+ * The item an index names, which is its position in a pre-order walk of the
+ * whole menu: an item, then its children, then the next item, counting
+ * separators and parents.
+ *
+ * For a flat list that is the position in the array, which is what this answered
+ * when a popup could only be flat, so an index means what it has always meant.
+ * The native side numbers its items the same way; see `walkMenuEntries` in
+ * core/PlatformServices.h, which is the other half of this contract.
+ *
+ * An item the platform left out still counts, which is what lets both sides
+ * agree without this knowing which roles the platform has: the native side
+ * numbers every entry it was given and draws only the ones it can. See
+ * `menuEntryShown` beside it.
+ */
+function itemAt(
+  items: ReadonlyArray<ContextMenuItem>,
+  index: number,
+): ContextMenuItem | undefined {
+  let next = 0;
+  const walk = (
+    level: ReadonlyArray<ContextMenuItem>,
+  ): ContextMenuItem | undefined => {
+    for (const item of level) {
+      if (next++ === index) {
+        return item;
+      }
+      if (item.submenu != null && item.submenu.length > 0) {
+        const found = walk(item.submenu);
+        if (found != null) {
+          return found;
+        }
+      }
+    }
+    return undefined;
+  };
+  return walk(items);
 }
 
 /**

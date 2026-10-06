@@ -498,6 +498,49 @@ std::wstring withShortcut(const std::string &label, const std::string &shortcut)
   return text;
 }
 
+// Appends `entries` to `menu`, numbering every entry the way `walkMenuEntries`
+// does: pre-order, counting separators and submenu parents, so a flat menu is
+// numbered by position and nothing a caller already relied on moved.
+//
+// The command id is the index plus one, as it was: TrackPopupMenu returns zero
+// for "nothing was chosen", so zero cannot also mean the first item.
+//
+// A submenu is its own popup, handed over with MF_POPUP. Nothing frees it here:
+// DestroyMenu on the root destroys the submenus with it.
+void appendMenuEntries(HMENU menu, const std::vector<MenuEntry> &entries, int *next) {
+  for (const MenuEntry &entry : entries) {
+    const int index = (*next)++;
+    // Counted above, drawn or not: a role this desktop cannot perform keeps its
+    // index so the ones after it keep theirs. See menuEntryShown.
+    if (!menuEntryShown(entry)) {
+      continue;
+    }
+    if (entry.isSeparator()) {
+      AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+      continue;
+    }
+
+    const std::wstring text = withShortcut(entry.label, entry.shortcut);
+    if (entry.isParent()) {
+      HMENU submenu = CreatePopupMenu();
+      if (submenu == nullptr) {
+        continue;
+      }
+      appendMenuEntries(submenu, entry.submenu, next);
+      AppendMenuW(menu,
+                  MF_POPUP | (entry.enabled ? MF_ENABLED : MF_GRAYED),
+                  reinterpret_cast<UINT_PTR>(submenu),
+                  text.c_str());
+      continue;
+    }
+
+    AppendMenuW(menu,
+                MF_STRING | (entry.enabled ? MF_ENABLED : MF_GRAYED),
+                static_cast<UINT_PTR>(index + 1),
+                text.c_str());
+  }
+}
+
 } // namespace
 
 void showMenu(const MenuRequest &request, MenuCallback onChosen) {
@@ -521,20 +564,8 @@ void showMenu(const MenuRequest &request, MenuCallback onChosen) {
       return;
     }
 
-    for (size_t i = 0; i < request.entries.size(); i++) {
-      const MenuEntry &entry = request.entries[i];
-      if (entry.isSeparator()) {
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        continue;
-      }
-      // The command id is the index plus one: TrackPopupMenu returns zero for
-      // "nothing was chosen", so zero cannot also mean the first item.
-      const std::wstring text = withShortcut(entry.label, entry.shortcut);
-      AppendMenuW(menu,
-                  MF_STRING | (entry.enabled ? MF_ENABLED : MF_GRAYED),
-                  static_cast<UINT_PTR>(i + 1),
-                  text.c_str());
-    }
+    int next = 0;
+    appendMenuEntries(menu, request.entries, &next);
 
     POINT at;
     if (request.x >= 0.0 && request.y >= 0.0) {
@@ -562,7 +593,19 @@ void showMenu(const MenuRequest &request, MenuCallback onChosen) {
     PostMessageW(window, WM_NULL, 0, 0);
     DestroyMenu(menu);
 
-    onChosen(chosen > 0 ? chosen - 1 : -1);
+    const int index = chosen > 0 ? chosen - 1 : -1;
+    // The platform's half of a role, before the caller's. `copy` has to have
+    // copied by the time JavaScript's `onSelect` runs, because an app whose
+    // handler reads the clipboard is reading what this just put there. After
+    // DestroyMenu, so `close` is not pulling the window out from under a menu
+    // that is still up.
+    if (index >= 0) {
+      const MenuEntry *entry = menuEntryAt(request.entries, index);
+      if (entry != nullptr && !entry->role.empty()) {
+        performMenuRole(entry->role);
+      }
+    }
+    onChosen(index);
   });
 }
 

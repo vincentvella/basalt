@@ -12,6 +12,8 @@
 #endif
 #include "UIManagerAccess.h"
 
+#include <cstdint>
+
 #include <react/renderer/components/view/AccessibilityProps.h>
 #include <react/renderer/components/image/ImageEventEmitter.h>
 #include <react/renderer/components/image/ImageProps.h>

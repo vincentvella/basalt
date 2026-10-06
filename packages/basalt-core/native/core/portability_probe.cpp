@@ -109,6 +109,13 @@ void showMenu(const MenuRequest &, MenuCallback onChosen) {
     onChosen(-1);
   }
 }
+// And its roles. A platform that cannot show a menu performs nothing in one, so
+// every role is unsupported here and `entriesFrom` drops them all -- which is
+// the same answer this file gives everywhere: no, and in the right shape.
+bool menuRoleSupported(const std::string &) {
+  return false;
+}
+void performMenuRole(const std::string &) {}
 // Added when the gesture recognisers arrived: "run this on the UI thread", now
 // and later. A platform with a run loop has both already; this one has neither
 // and says so.

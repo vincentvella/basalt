@@ -379,6 +379,58 @@ NSString *keyEquivalentFor(const std::string &shortcut, NSEventModifierFlags *ma
   }
 }
 
+// Builds `entries` into `menu`, numbering every entry the way `walkMenuEntries`
+// does: pre-order, counting separators and submenu parents, so a flat menu is
+// numbered by position and nothing a caller already relied on moved.
+//
+// A parent carries no action and no tag. Choosing one is not a choice, it is
+// opening a menu, and AppKit does not call an action for it anyway.
+void addMenuEntries(NSMenu *menu,
+                    const std::vector<MenuEntry> &entries,
+                    RnAppKitMenuTarget *target,
+                    int *next) {
+  for (const MenuEntry &entry : entries) {
+    const int index = (*next)++;
+    // Counted above, drawn or not: a role this desktop cannot perform keeps its
+    // index so the ones after it keep theirs. See menuEntryShown.
+    if (!menuEntryShown(entry)) {
+      continue;
+    }
+    if (entry.isSeparator()) {
+      [menu addItem:[NSMenuItem separatorItem]];
+      continue;
+    }
+
+    NSString *label = [NSString stringWithUTF8String:entry.label.c_str()];
+    if (label == nil) {
+      label = @"";
+    }
+
+    if (entry.isParent()) {
+      NSMenuItem *parent = [menu addItemWithTitle:label action:nullptr keyEquivalent:@""];
+      parent.enabled = entry.enabled;
+      NSMenu *submenu = [[NSMenu alloc] initWithTitle:label];
+      submenu.autoenablesItems = NO;
+      addMenuEntries(submenu, entry.submenu, target, next);
+      parent.submenu = submenu;
+      continue;
+    }
+
+    NSEventModifierFlags mask = 0;
+    NSString *equivalent = keyEquivalentFor(entry.shortcut, &mask);
+    NSMenuItem *item = [menu addItemWithTitle:label
+                                       action:@selector(pick:)
+                                keyEquivalent:equivalent];
+    item.keyEquivalentModifierMask = mask;
+    // Our own target even for a role, unlike the menu bar's `nil`: this has a
+    // promise to settle with the index, so it has to hear about the choice. The
+    // role is performed below, once, before the index is reported.
+    item.target = target;
+    item.enabled = entry.enabled;
+    item.tag = static_cast<NSInteger>(index);
+  }
+}
+
 } // namespace
 
 void showMenu(const MenuRequest &request, MenuCallback onChosen) {
@@ -403,25 +455,8 @@ void showMenu(const MenuRequest &request, MenuCallback onChosen) {
       menu.autoenablesItems = NO;
       RnAppKitMenuTarget *target = [[RnAppKitMenuTarget alloc] init];
 
-      for (size_t i = 0; i < content.entries.size(); i++) {
-        const MenuEntry &entry = content.entries[i];
-        if (entry.isSeparator()) {
-          [menu addItem:[NSMenuItem separatorItem]];
-          continue;
-        }
-        NSEventModifierFlags mask = 0;
-        NSString *equivalent = keyEquivalentFor(entry.shortcut, &mask);
-        NSString *label = [NSString stringWithUTF8String:entry.label.c_str()];
-        NSMenuItem *item = [menu addItemWithTitle:label != nil ? label : @""
-                                           action:@selector(pick:)
-                                    keyEquivalent:equivalent];
-        item.keyEquivalentModifierMask = mask;
-        item.target = target;
-        item.enabled = entry.enabled;
-        // The index the caller gets back, which counts separators -- so it is
-        // the position in the vector rather than in this menu.
-        item.tag = static_cast<NSInteger>(i);
-      }
+      int next = 0;
+      addMenuEntries(menu, content.entries, target, &next);
 
       NSPoint at;
       if (content.x >= 0.0 && content.y >= 0.0) {
@@ -438,7 +473,18 @@ void showMenu(const MenuRequest &request, MenuCallback onChosen) {
       // Blocks until the menu is dismissed, which is what a menu does. Safe
       // here and not on the JavaScript thread; see above.
       [menu popUpMenuPositioningItem:nil atLocation:at inView:anchor];
-      onChosen(static_cast<int>(target.chosen));
+
+      const int chosen = static_cast<int>(target.chosen);
+      // The platform's half of a role, before the caller's. `copy` has to have
+      // copied by the time JavaScript's `onSelect` runs, because an app whose
+      // handler reads the clipboard is reading what this just put there.
+      if (chosen >= 0) {
+        const MenuEntry *entry = menuEntryAt(content.entries, chosen);
+        if (entry != nullptr && !entry->role.empty()) {
+          performMenuRole(entry->role);
+        }
+      }
+      onChosen(chosen);
     }
   });
 }

@@ -16,7 +16,7 @@ is missing", and gains a pointer. Three entries have one today.
 5. Packaging is macOS and Linux only, and shallow
 6. A window cannot be positioned on Linux
 7. A window's lifecycle is an app's to influence now
-8. Menus have no checkbox or radio items, no dynamic enabling, and a popup is flat
+8. Menus have no checkbox or radio items, and no dynamic enabling
 9. A system tray icon
 10. Windows notifications carry no identity of their own
 11. Cursor control
@@ -111,8 +111,8 @@ has gone unrecorded until now.
   transparent full-size-content title bar that keeps the traffic lights, and
   Win32 draws the caption buttons over the app's own header. See the
   `window-title-bar` spec.
-- **Menus have no checkbox or radio items, no dynamic enabling, and a popup is
-  flat.** The application menu itself is done where a platform has one: `<Menu>`
+- **Menus have no checkbox or radio items, and no dynamic enabling.** The
+  application menu itself is done where a platform has one: `<Menu>`
   with `<Menu.Item role="copy" />`, over NSMenu and an HMENU. `Menu.isSupported`
   is false on Linux and is not a gap: GNOME's guidelines have said to use a
   header bar with a menu button since GNOME 3, and GTK4 removed the widget.
@@ -129,13 +129,16 @@ has gone unrecorded until now.
   re-rendering the whole menu; and the role labels are English, because nothing
   here is localised.
 
-  **A popup takes neither a submenu nor a role**, and until 2026-10-05 the
+  ~~**A popup takes neither a submenu nor a role**~~, and until 2026-10-05 the
   TypeScript said otherwise: `ContextMenuItem` declared `role`, `submenu` and
   `accelerator`, while `entriesFrom` in core/MenuModule.cpp read `label`,
   `enabled`, `shortcut` and `separator` and nothing else. Three fields that did
-  nothing, with no error. The type now matches the reader. The two features
-  behind those fields are worth separating, because one is much closer than the
-  other:
+  nothing, with no error. The type was corrected first, in da88247.
+
+  **Both are done**, 2026-10-06. See
+  openspec/changes/archive/2026-10-06-nest-and-role-the-popup-menu. The entry
+  below is left as it was written, because the implementation followed it and
+  because one line of it was wrong in a way worth keeping:
 
   *Submenus are a protocol choice, not a platform limit.* All three popups are
   built from primitives that nest: `NSMenu` has `item.submenu`, GMenu has
@@ -147,6 +150,11 @@ has gone unrecorded until now.
   `MenuEntry` one too is the work, across three hosts and the promise in
   useContextMenu.ts.
 
+  > What it took instead: no id. An index became a position in a pre-order walk
+  > of the whole menu, which for a flat list is the position in the vector, so
+  > nothing a caller relied on moved and the hosts kept the tagging they had.
+  > One numbering, defined once in `walkMenuEntries`.
+
   *Roles in a popup are further off, and may not be wanted.* On AppKit they are
   nearly free, since AppKitMenuBar.mm already maps a role to a selector with a
   `nil` target and that works the same in a popup; Win32 has `commandForRole`
@@ -157,6 +165,17 @@ has gone unrecorded until now.
   to answer "the index chosen, or null if dismissed" has no honest third thing
   to say. That is a decision about what `show()` resolves with, and it should be
   made before any of it is built.
+
+  > The decision: nothing. A role reports its index like any other item, because
+  > the popup performs the role itself rather than handing the item a `nil`
+  > target the way the bar does. Both halves happen and the promise keeps the two
+  > outcomes it had. Linux did need writing from nothing, and got twelve of the
+  > thirteen.
+
+  What is still open from this entry: checkbox and radio items, dynamic enabling,
+  English-only role labels, and `about` on Linux and Windows. And one thing the
+  work added rather than closed: nothing asserts that a role *changes* anything,
+  on either kind of menu. See the "Not covered" note in that archived change.
 - ~~**Native file dialogs.**~~ Done on all three: `useDialog().openFile()`,
   `saveFile()` and `openFolder()`, over `GtkFileDialog`, `NSOpenPanel` /
   `NSSavePanel` and `IFileDialog`. What is left is the rest of what a desktop

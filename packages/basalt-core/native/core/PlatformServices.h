@@ -105,6 +105,17 @@ void showFileDialog(const FileDialogRequest &request, FileDialogCallback onDone)
 
 // --- Menus --------------------------------------------------------------------
 
+// Whether this desktop can perform `role` in a popup menu.
+//
+// False for every role a platform has no implementation for: Linux and Windows
+// both lack `about`, neither having a platform about panel to ask for. Declared
+// here rather than below because MenuEntry asks it.
+bool menuRoleSupported(const std::string &role);
+
+// Performs `role` now, on whatever currently has focus. Called on the UI thread,
+// immediately before the chosen index is reported.
+void performMenuRole(const std::string &role);
+
 // One entry in a popup menu. A separator is an item with an empty label, which
 // is how GMenu, NSMenu and an HMENU each spell it too.
 struct MenuEntry {
@@ -117,12 +128,31 @@ struct MenuEntry {
   // inside it are answered in different places on all three desktops.
   std::string shortcut;
 
+  // One of kMenuRoles in MenuModel.h, or empty for an item the app implements
+  // itself. A role is performed by the platform -- the Copy that actually
+  // copies -- and still reports its index, so a caller's `onSelect` runs too.
+  //
+  // A role this platform cannot perform is dropped rather than shown, the same
+  // policy the menu bar has: an item that does nothing is worse than one that is
+  // not there. `menuRoleSupported` says which, and the three do not agree.
+  std::string role;
+
+  // Nested entries. A parent is not choosable itself: it opens its children.
+  //
+  // Both a submenu and a role on one entry is a caller's mistake; the submenu
+  // wins, because that is the one with something under it to lose.
+  std::vector<MenuEntry> submenu;
+
   static MenuEntry separator() {
     return MenuEntry{.label = {}, .enabled = false, .shortcut = {}};
   }
 
   bool isSeparator() const {
-    return label.empty();
+    return label.empty() && submenu.empty();
+  }
+
+  bool isParent() const {
+    return !submenu.empty();
   }
 };
 
@@ -133,6 +163,86 @@ struct MenuRequest {
   double x{-1.0};
   double y{-1.0};
 };
+
+// --- Indexing a menu that is now a tree ---------------------------------------
+//
+// `showMenu` answers with an index, and did so when a popup was a flat list. The
+// index is an entry's position in a *pre-order* walk of the whole menu, counting
+// separators and submenu parents -- so for a flat list it is still the position
+// in the vector, and every caller that predates nesting means what it always
+// meant.
+//
+// Hosts use `walkMenuEntries` to tag their items and `menuEntryAt` to find what
+// an index named, which is how a role is performed and how a parent is told from
+// a leaf.
+namespace detail {
+
+template <typename Visitor>
+int walkMenuEntriesFrom(const std::vector<MenuEntry> &entries, int next, Visitor &visit) {
+  for (const MenuEntry &entry : entries) {
+    const int index = next++;
+    visit(entry, index);
+    if (entry.isParent()) {
+      next = walkMenuEntriesFrom(entry.submenu, next, visit);
+    }
+  }
+  return next;
+}
+
+} // namespace detail
+
+template <typename Visitor>
+void walkMenuEntries(const std::vector<MenuEntry> &entries, Visitor &&visit) {
+  detail::walkMenuEntriesFrom(entries, 0, visit);
+}
+
+// How many entries a menu has, counting every level. The number of valid
+// indexes, which is not `entries.size()` once anything nests.
+inline int menuEntryCount(const std::vector<MenuEntry> &entries) {
+  int count = 0;
+  walkMenuEntries(entries, [&](const MenuEntry &, int) { ++count; });
+  return count;
+}
+
+inline const MenuEntry *menuEntryAt(const std::vector<MenuEntry> &entries, int index) {
+  const MenuEntry *found = nullptr;
+  walkMenuEntries(entries, [&](const MenuEntry &entry, int at) {
+    if (at == index) {
+      found = &entry;
+    }
+  });
+  return found;
+}
+
+// Whether an entry is drawn at all.
+//
+// False for a role this desktop cannot perform, and for a parent with nothing
+// under it that would be drawn. A dropped entry is still *counted*, which is the
+// part that matters: JavaScript numbers the list it passed, so an entry
+// disappearing from the count would shift every index after it onto the wrong
+// handler. See walkMenuEntries.
+inline bool menuEntryShown(const MenuEntry &entry);
+
+inline bool anyMenuEntryShown(const std::vector<MenuEntry> &entries) {
+  for (const MenuEntry &entry : entries) {
+    if (menuEntryShown(entry)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool menuEntryShown(const MenuEntry &entry) {
+  if (!entry.role.empty() && !menuRoleSupported(entry.role)) {
+    return false;
+  }
+  if (entry.isParent()) {
+    // An empty submenu is a dead end rather than an item, which is what a parent
+    // becomes when every child named a role this desktop does not have.
+    return anyMenuEntryShown(entry.submenu);
+  }
+  return true;
+}
 
 // Shows a popup menu and calls `onChosen` with the index of the entry picked,
 // or -1 when it was dismissed. Indexes count separators, so they line up with

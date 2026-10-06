@@ -113,6 +113,14 @@ SEL selectorForRole(const std::string &role) {
   return nullptr;
 }
 
+// --- Roles, for a popup menu too ----------------------------------------------
+//
+// `showMenu` in PlatformServicesAppKit.mm performs a role itself rather than
+// handing the item a `nil` target the way the bar does. The bar can let AppKit
+// route the action, because nothing is waiting on an answer; a popup resolves a
+// promise with the index chosen, so it has to stay in the conversation. It calls
+// these two, declared in core/PlatformServices.h.
+
 // The shortcut a role brings with it. macOS has a standard one for each, and an
 // app that spelled its own would be fighting the platform.
 NSString *keyEquivalentForRole(const std::string &role, NSEventModifierFlags *mask) {
@@ -327,6 +335,24 @@ MenuModel defaultMenu() {
 }
 
 } // namespace
+
+// Every role in kMenuRoles, which is the whole list: each one is an NSResponder
+// or NSApplication action that macOS has implemented since before this project.
+bool menuRoleSupported(const std::string &role) {
+  return selectorForRole(role) != nullptr;
+}
+
+void performMenuRole(const std::string &role) {
+  SEL selector = selectorForRole(role);
+  if (selector == nullptr) {
+    return;
+  }
+  // `to:nil` is what makes this work without knowing who should answer: AppKit
+  // walks the responder chain from the key window's first responder up to
+  // NSApp, so `copy:` reaches whichever field has focus and `terminate:`
+  // reaches the application. It is the same routing the bar's items get.
+  [NSApp sendAction:selector to:nil from:nil];
+}
 
 bool applicationMenuSupported() {
   return true;
