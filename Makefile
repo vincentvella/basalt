@@ -95,7 +95,7 @@ build: $(BUILD)/CMakeCache.txt ## Build every host this machine can
 	cmake --build $(BUILD) -j $(JOBS)
 
 .PHONY: ts
-ts: ## Compile the TypeScript in packages/
+ts: ## Build the TypeScript packages, then type-check them and e2e/
 	scripts/build_ts.sh $(RN_DIR)
 
 # -- Running something -------------------------------------------------------

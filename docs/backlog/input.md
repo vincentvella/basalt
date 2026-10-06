@@ -10,7 +10,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 4. Wayland input is unverified
 
 - ~~No hover.~~ Done on all three hosts. `onPointerEnter`, `onPointerLeave`,
-  `onPointerOver`, `onPointerOut` and `onPointerMove` fire, and `e2e/hover.js`
+  `onPointerOver`, `onPointerOut` and `onPointerMove` fire, and `e2e/hover.tsx`
   plus a scenario in the end-to-end suite prove it. Worth recording what the
   work turned out to be, because the obvious implementation is wrong: a host
   emits `pointerMove` and nothing else. `PointerEventsProcessor` in ReactCommon

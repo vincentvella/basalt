@@ -82,7 +82,7 @@ and none of it is a missing half.
   need the HWND fragment root and so belong with a later phase of the host.
 - ~~**No input at all.**~~ Phase 44. `Win32TouchDispatcher` turns
   `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` into React Native touches, and
-  `e2e/press.js` counts presses on Windows. What is still missing is what a mouse
+  `e2e/press.tsx` counts presses on Windows. What is still missing is what a mouse
   has and a finger does not: **no right button**; **no keyboard**, which arrives
   with `<TextInput>` because there is nothing yet that focus could belong to. The
   wheel is not among them any more: phase 45 took it, and routed it through

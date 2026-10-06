@@ -12,6 +12,38 @@ arbitrary.
 Not on the documentation site, for the same reason `BACKLOG.md` is not: it is a
 note to whoever picks the work up next, not documentation.
 
+## Type checking, on its own node
+
+The first job in every run, and the three build jobs wait on it. **26 seconds**
+measured on 2026-10-06, with the `node_modules` cache warm: `04:42:58` to
+`04:43:24`, the install and save steps both skipped on a hit.
+
+What it replaces: on 2026-10-05 one wrong type declaration failed all nine
+shards. Each had to build first, so the earliest red arrived about five minutes
+in, and the report was nine copies of `make ts failed` with the actual error
+thirteen lines above each of them. The same error now fails one ubuntu job in
+under half a minute and names itself once.
+
+Gating is what makes it worth the latency. Half a minute on every green push, in
+exchange for spending nothing at all on macOS and Windows when the types are
+broken, which on a private repository is where the money is. `drift` is not
+gated: it builds against React Native `main`, and waiting on a check against the
+pin would tie two unrelated things together.
+
+It needs no compiler, no Hermes and no `third_party`, so it skips
+`bootstrap.sh` -- which would build Hermes -- and runs `yarn install` directly on
+a cache miss. The cache key is the build jobs' own, deliberately: it is the same
+tree, and whichever job reaches it first warms it for the rest. The save is
+`continue-on-error`, because racing a build job for that key is the normal case
+and the loser's warning is not a failure.
+
+The other half of why it exists is not speed. It runs against a *release*
+checkout, which has no generated `types_generated/`, so `build_ts.sh` falls back
+to `ReactNativeApi.d.ts` -- a flat snapshot that declares no globals. A
+developer who has generated the types is compiling against a different
+environment, and this is the only thing that checks the one CI uses. See the
+comment in `scripts/build_ts.sh` for how to reproduce it locally.
+
 ## Sharding, and what it cost to find out
 
 Measured before it was built, because sharding the wrong thing is free to do

@@ -33,7 +33,7 @@ Found by bundling and running a real application.
 
   This entry briefly claimed the flag was needed on `main` too, on the strength
   of `getEnforcing('RNSkiaModule')` failing without it and succeeding with it
-  while bundling `e2e/skia.js`. That was wrong and the reasoning was bad: the two
+  while bundling `e2e/skia.tsx`. That was wrong and the reasoning was bad: the two
   runs differed in another way as well: React was not yet pinned, so Skia had
   its own copy, and once it was pinned the bundle works **with or without the
   flag**. `TurboInterop` does not appear anywhere in this React Native, so the

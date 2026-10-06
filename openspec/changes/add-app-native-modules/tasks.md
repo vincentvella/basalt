@@ -44,7 +44,7 @@
 
 - [x] 4.1 `useReactNativeFetch`: set `EXPO_PUBLIC_USE_RN_FETCH` before the
       bundle, as a default a developer can beat.
-- [x] 4.2 `e2e/expofetch.js` and a scenario asserting the value arrives and
+- [x] 4.2 `e2e/expofetch.tsx` and a scenario asserting the value arrives and
       `fetch` works. Checked against a build with the call neutered: it fails
       there, and the first attempt to check that -- deleting the call -- proved
       nothing, because `-Werror` on the now-unused function meant the test ran

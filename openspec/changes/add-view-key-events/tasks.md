@@ -92,3 +92,15 @@
       both of the above passed every check this project had while no shortcut in
       a real app worked. Until something drives the window server, the suite
       cannot tell a working keyboard from a dead one.
+- [x] `keyDownEvents` worked and could not be written in TypeScript. The override
+      accepts it at run time, and nothing declared it, so a typed app spreading
+      react-native-macos's props got an error on a prop that would have worked.
+      Found on 2026-10-05 by converting the demo apps, which is the first thing
+      here to read these types the way an app does. `src/index.ts` now augments
+      react-native's `ViewProps` with it, because the Metro override puts that
+      prop on every view in every basalt app.
+
+      Only that prop. `onKeyDown` is already declared by react-native with a
+      different event, and an interface augmentation may add members but not
+      retype them, so an app wanting the `{nativeEvent}` shape still casts. If
+      the two spellings ever need to be typed as one, that is the obstacle.

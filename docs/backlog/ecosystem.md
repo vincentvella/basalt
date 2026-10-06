@@ -115,7 +115,7 @@ Done in the shadow node rather than in three mounting managers because the only
 inputs are the child list and one prop, and RN's own
 `YogaLayoutableShadowNode::layout` already writes children's metrics through
 `ensureUnsealed()`, so there was a sanctioned place to do it. Verified on both
-the AppKit and GTK hosts from the same code, by `e2e/screens.js` and the
+the AppKit and GTK hosts from the same code, by `e2e/screens.tsx` and the
 "a screen stack shows its top screen" scenario.
 
 The route that looks right and is not: `activityState`. Basalt hides a screen
