@@ -73,11 +73,12 @@ void showDevMenu(facebook::react::ReactHost *reactHost, double x, double y) {
   request.y = y;
   request.entries.reserve(items->size());
   for (const DevMenuItem &item : *items) {
-    request.entries.push_back(MenuEntry{
-        .label = item.label,
-        .enabled = true,
-        .shortcut = item.shortcut,
-    });
+    // Assigned, not a designated initializer: see MenuEntry::separator for why
+    // naming some fields and not others does not survive a new one.
+    MenuEntry entry;
+    entry.label = item.label;
+    entry.shortcut = item.shortcut;
+    request.entries.push_back(std::move(entry));
   }
 
   // Through presentMenu rather than showMenu, so BASALT_TEST_MENU can answer

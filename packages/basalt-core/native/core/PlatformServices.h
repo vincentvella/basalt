@@ -144,7 +144,14 @@ struct MenuEntry {
   std::vector<MenuEntry> submenu;
 
   static MenuEntry separator() {
-    return MenuEntry{.label = {}, .enabled = false, .shortcut = {}};
+    // Assigned rather than a designated initializer. One that names some fields
+    // and not others is a -Wmissing-field-initializers error under -Werror, which
+    // the GTK build turns on and the AppKit one does not -- so adding `role` and
+    // `submenu` compiled on a Mac and failed all three Linux shards. Written this
+    // way, the next field costs nothing.
+    MenuEntry entry;
+    entry.enabled = false;
+    return entry;
   }
 
   bool isSeparator() const {
