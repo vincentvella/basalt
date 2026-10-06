@@ -273,6 +273,42 @@ class MountingWalk {
     resolveRefreshControls();
   }
 
+  // --- A mount that outlived the instance that made it ----------------------
+  //
+  // `executeMount` is called on the JS thread and every host queues the
+  // transaction to its UI thread, so one can still be waiting there when the
+  // React instance that produced it is torn down. A reload does exactly that,
+  // and `ReactHost::reloadReactInstance` does it on a detached thread: it stops
+  // the surfaces, destroys the Scheduler and the SurfaceManager, and builds new
+  // ones, while the mounting manager survives. Applying a queued transaction
+  // after that walks mutations whose event emitters point into an instance that
+  // is gone, and the host dies in its own UI thread with nothing to say.
+  //
+  // So a pending mount carries these two and drops itself when either says it is
+  // stale. `weak_ptr` rather than testing `use_count()`: several mounts can be
+  // queued at once, and each one's own copy would otherwise look like the
+  // manager still holding its.
+  std::weak_ptr<bool> mountGuard() const {
+    return alive_;
+  }
+
+  std::uint64_t mountEpoch() const {
+    return mountEpoch_;
+  }
+
+  // Called by a host when React Native hands it a null scheduler task executor,
+  // which is what `destroyReactInstance` does and the only notice a mounting
+  // manager gets that the instance is going away.
+  void invalidatePendingMounts() {
+    ++mountEpoch_;
+    // The emitters are the part that points into the dead instance. The views
+    // stay: the surfaces restart with the same ids, the host owns their roots,
+    // and the next transaction replaces what is under them. An event arriving in
+    // the gap now finds no emitter and does nothing, which is the right answer
+    // and was previously a call into freed memory.
+    eventEmitters_.clear();
+  }
+
  protected:
   // Not virtual and not public: this is a mixin, never a base pointer.
   ~MountingWalk() = default;
@@ -515,6 +551,9 @@ class MountingWalk {
   // reason: a delayed callback outlives whatever scheduled it.
   std::uint64_t overlayGeneration_{0};
   std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
+
+  // Bumped when the React instance is torn down; see invalidatePendingMounts.
+  std::uint64_t mountEpoch_{0};
 
   // The main thread, recorded at construction. `executeMount` arrives on the JS
   // thread and marshals here; `applyMutations` asserts it got there.

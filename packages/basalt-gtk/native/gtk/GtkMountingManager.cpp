@@ -141,10 +141,20 @@ struct PendingMount {
   GtkMountingManager *manager;
   SurfaceId surfaceId;
   MountingTransaction transaction;
+  // Whether `manager` is still there, and which instance this came from. See
+  // MountingWalk::mountGuard.
+  std::weak_ptr<bool> alive;
+  std::uint64_t epoch;
 };
 
 gboolean applyPendingMount(gpointer data) {
   auto *pending = static_cast<PendingMount *>(data);
+  // The guard first: dereferencing `manager` to read its epoch is itself the
+  // use-after-free when the host has already torn it down.
+  if (pending->alive.expired() || pending->manager->mountEpoch() != pending->epoch) {
+    delete pending;
+    return G_SOURCE_REMOVE;
+  }
   pending->manager->applyTransaction(pending->surfaceId, std::move(pending->transaction));
   delete pending;
   return G_SOURCE_REMOVE;
@@ -175,7 +185,8 @@ void GtkMountingManager::executeMount(SurfaceId surfaceId, MountingTransaction &
   // Always queue, never invoke directly even when already on the main thread:
   // g_idle sources at equal priority run in the order they were added, which is
   // what keeps mutation ordering intact. iOS and Android marshal here too.
-  auto *pending = new PendingMount{this, surfaceId, std::move(transaction)};
+  auto *pending =
+      new PendingMount{this, surfaceId, std::move(transaction), mountGuard(), mountEpoch()};
   g_idle_add_full(G_PRIORITY_DEFAULT, applyPendingMount, pending, nullptr);
 }
 
@@ -329,6 +340,17 @@ void GtkMountingManager::applyCommand(Tag tag,
 
 void GtkMountingManager::setUIManager(std::weak_ptr<facebook::react::UIManager> uiManager) noexcept {
   setSharedUIManager(std::move(uiManager));
+}
+
+void GtkMountingManager::setSchedulerTaskExecutor(
+    facebook::react::SchedulerTaskExecutor &&schedulerTaskExecutor) noexcept {
+  // A null executor means `destroyReactInstance`: the Scheduler and the
+  // SurfaceManager are about to go, and anything this already queued to the UI
+  // thread would be applied against them. Non-null means a new instance, which
+  // needs nothing from here.
+  if (!schedulerTaskExecutor) {
+    invalidatePendingMounts();
+  }
 }
 
 ComponentRegistryFactory GtkMountingManager::getComponentRegistryFactory() {

@@ -95,8 +95,15 @@ void Win32MountingManager::executeMount(SurfaceId surfaceId, MountingTransaction
   //
   // MountingTransaction is move-only, so it travels in a shared_ptr the lambda
   // can capture -- std::function requires its target to be copyable.
+  //
+  // `alive` and `epoch` are what stop a queued transaction being applied against
+  // an instance that has since been destroyed, which a reload does on a thread of
+  // its own. See MountingWalk::mountGuard.
   auto pending = std::make_shared<MountingTransaction>(std::move(transaction));
-  postToUiThread([this, surfaceId, pending] {
+  postToUiThread([this, surfaceId, pending, alive = mountGuard(), epoch = mountEpoch()] {
+    if (alive.expired() || mountEpoch() != epoch) {
+      return;
+    }
     applyTransaction(surfaceId, std::move(*pending));
   });
 }
@@ -183,6 +190,17 @@ bool Win32MountingManager::hasComponent(const std::string &name) {
 void Win32MountingManager::setUIManager(
     std::weak_ptr<facebook::react::UIManager> uiManager) noexcept {
   setSharedUIManager(std::move(uiManager));
+}
+
+void Win32MountingManager::setSchedulerTaskExecutor(
+    facebook::react::SchedulerTaskExecutor &&schedulerTaskExecutor) noexcept {
+  // A null executor means `destroyReactInstance`: the Scheduler and the
+  // SurfaceManager are about to go, and anything this already queued to the UI
+  // thread would be applied against them. Non-null means a new instance, which
+  // needs nothing from here.
+  if (!schedulerTaskExecutor) {
+    invalidatePendingMounts();
+  }
 }
 
 // ---------------------------------------------------------------------------

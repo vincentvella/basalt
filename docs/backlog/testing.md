@@ -261,11 +261,16 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   delays and assumes the host has caught up, which is a timing assumption rather
   than a synchronisation. Fixing it means waiting on something observable (  the tree, or a log line) instead of on a clock.
 
-  **A second one, and this one crashes.** "the developer menu reloads, and shows
-  the element inspector" failed twice on CI's macOS runner at 6e58901 and then
-  passed on a third attempt with no change, so it is intermittent rather than
-  broken. The two failures were not the same failure, which is the interesting
-  part:
+  **A second one, and this one crashed.** Believed fixed; the mechanism is below
+  and the fix is a mount that cannot be applied after the instance that made it
+  is gone. What cannot be claimed is a reproduction: it never failed on a
+  developer Mac, so the fix is reasoned from the code and from the log, and the
+  evidence that it holds is that CI stops doing it.
+
+  "the developer menu reloads, and shows the element inspector" failed twice on
+  CI's macOS runner at 6e58901 and then passed on a third attempt with no change,
+  so it is intermittent rather than broken. The two failures were not the same
+  failure, which is the interesting part:
 
   | Attempt | Symptom |
   | --- | --- |
@@ -281,11 +286,35 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   It does not reproduce on a developer Mac. Four runs at the same commit passed:
   three of the scenario alone and one of the whole shard, in CI's order
-  (`--platform macos --shard 1/3`, 11/11). So whatever orders those destructors
-  differently is something about that runner, and the next step is a stack from
-  it rather than another local run. The host writes nothing on a signal today,
-  which is its own entry waiting to be written: a crash handler that logs where
-  it died would have answered this in one attempt.
+  (`--platform macos --shard 1/3`, 11/11).
+
+  **What it was.** `executeMount` is called on the JS thread and every host
+  queues the transaction to its UI thread. `ReactHost::reloadReactInstance`
+  starts a detached thread, stops the surfaces, destroys the Scheduler and the
+  SurfaceManager, and builds new ones -- while the mounting manager survives,
+  because React Native keeps that across a reload and only sets its scheduler
+  task executor to null. So a transaction could still be sitting in the UI
+  thread's queue, and be applied against a Scheduler that no longer existed,
+  walking mutations whose event emitters pointed into the dead instance. A hang
+  and a segfault are both what that looks like, which is why the two attempts
+  failed differently.
+
+  A pending mount now carries `MountingWalk::mountGuard()` and the epoch it was
+  queued in, and drops itself when either says it is stale. The hosts bump the
+  epoch from `setSchedulerTaskExecutor(nullptr)`, which is the only notice React
+  Native gives that an instance is going away, and clear the event emitters there
+  for the same reason. The guard is a `weak_ptr` rather than a `use_count()` test
+  because several mounts can be queued at once and each one's own copy would
+  otherwise look like the manager still holding its.
+
+  Checked: the reload scenario still passes, which is the half that would break
+  if the guard dropped a mount it should have applied -- three times on AppKit
+  and once on GTK. Windows is unverified locally, it not compiling on a Mac.
+
+  **Still missing, and it is why two attempts produced no address:** the host
+  writes nothing on a signal. A handler that logged where it died would have
+  answered this in one run instead of three, and would be the difference between
+  confirming the fix and waiting to see whether CI goes quiet.
 
 - **An app build compiles this repository's test suites.** `native/` is packed
   whole, tests included, and nothing gates them, so `react-native run-macos:

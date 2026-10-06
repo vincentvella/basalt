@@ -107,10 +107,22 @@ struct PendingMount {
   AppKitMountingManager *manager;
   SurfaceId surfaceId;
   MountingTransaction transaction;
+  // Whether `manager` is still there, and which instance this came from. See
+  // MountingWalk::mountGuard.
+  std::weak_ptr<bool> alive;
+  std::uint64_t epoch;
 };
 
 void applyPendingMount(void *data) {
   std::unique_ptr<PendingMount> pending{static_cast<PendingMount *>(data)};
+  // The guard first: dereferencing `manager` to read its epoch is itself the
+  // use-after-free when the host has already torn it down.
+  if (pending->alive.expired()) {
+    return;
+  }
+  if (pending->manager->mountEpoch() != pending->epoch) {
+    return;
+  }
   pending->manager->applyTransaction(pending->surfaceId, std::move(pending->transaction));
 }
 
@@ -127,7 +139,8 @@ void AppKitMountingManager::executeMount(SurfaceId surfaceId, MountingTransactio
   // The main queue is FIFO, which is what keeps mutation ordering intact, and
   // running one transaction inline while another is queued would break it. iOS
   // and Android marshal here too.
-  auto *pending = new PendingMount{this, surfaceId, std::move(transaction)};
+  auto *pending =
+      new PendingMount{this, surfaceId, std::move(transaction), mountGuard(), mountEpoch()};
   dispatch_async_f(dispatch_get_main_queue(), pending, applyPendingMount);
 }
 
@@ -202,6 +215,17 @@ void AppKitMountingManager::applyCommand(Tag tag,
 
 void AppKitMountingManager::setUIManager(std::weak_ptr<facebook::react::UIManager> uiManager) noexcept {
   setSharedUIManager(std::move(uiManager));
+}
+
+void AppKitMountingManager::setSchedulerTaskExecutor(
+    facebook::react::SchedulerTaskExecutor &&schedulerTaskExecutor) noexcept {
+  // A null executor means `destroyReactInstance`: the Scheduler and the
+  // SurfaceManager are about to go, and anything this already queued to the main
+  // queue would be applied against them. Non-null means a new instance, which
+  // needs nothing from here.
+  if (!schedulerTaskExecutor) {
+    invalidatePendingMounts();
+  }
 }
 
 ComponentRegistryFactory AppKitMountingManager::getComponentRegistryFactory() {

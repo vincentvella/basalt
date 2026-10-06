@@ -66,6 +66,13 @@ class Win32MountingManager final : public facebook::react::IMountingManager,
   // object is in reach, so this passes it on. See core/UIManagerAccess.h.
   void setUIManager(std::weak_ptr<facebook::react::UIManager> uiManager) noexcept override;
 
+  // React Native hands this a null executor from `destroyReactInstance`, which
+  // is the only notice a mounting manager gets that the instance is going away
+  // -- a reload destroys one and builds another while this object survives. See
+  // MountingWalk::invalidatePendingMounts.
+  void setSchedulerTaskExecutor(
+      facebook::react::SchedulerTaskExecutor &&schedulerTaskExecutor) noexcept override;
+
   // --- Host-facing ----------------------------------------------------------
   //
   // createSurfaceRoot, destroySurfaceRoot, getSurfaceRoot, viewForTag and
