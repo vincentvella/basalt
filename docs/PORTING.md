@@ -138,6 +138,30 @@ toolchain for the whole core build:
 `docs/DECISIONS.md` also prefers clang wherever there is a choice, for
 independent reasons.
 
+## The three hosts are not held to the same warnings
+
+React Native's own build flags carry `-Werror` on Linux and do not on macOS, and
+a header of ours compiled inside those translation units inherits the difference.
+So there is a class of error that **cannot be reproduced on a Mac at all**: the
+same file, the same compiler, different strictness.
+
+The one that caught it, 2026-10-06. `MenuEntry::separator()` in
+core/PlatformServices.h built itself with a designated initializer naming three
+of the struct's fields. Adding two more fields made that incomplete:
+
+    PlatformServices.h:147: error: missing field 'role' initializer
+    [-Werror,-Wmissing-field-initializers]
+
+Clean on AppKit, and all three Linux shards dead at the Build step. The fix was
+to assign the fields instead, which no new field can invalidate, and the lesson
+is narrow and worth keeping: **in anything under core/, do not write a designated
+initializer that names some fields and not others.** It is a Linux build error
+waiting for the next person who extends the struct, and they will not see it
+coming on a Mac.
+
+Running the Linux host under macOS does not help here; it is the same build with
+the same flags this machine uses. Only CI, or a Linux box, applies the other set.
+
 ## Upstream portability bugs this build works around
 
 Both are the same shape (a POSIX assumption in a header) and both are fixed
