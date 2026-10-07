@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (10):**
+**Open (11):**
 
 1. No rendering assertions on GTK
 2. Nothing exercises the JS thread and the main thread concurrently
@@ -14,6 +14,36 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 8. One flaky end-to-end scenario, and a reload teardown that crashes on CI's Mac
 9. An app build compiles this repository's test suites
 10. A cancelled job reads as a job that ran
+11. Three things differ under Xvfb, and one of them is a hang
+
+- **Three things differ under Xvfb, and one of them is a hang.** Found on
+  2026-10-07 while asserting that a text menu role performs. The same scenario
+  passes on GTK against a developer's X server and fails three ways on the Xvfb CI
+  runs on:
+
+  | What | On a real X server | Under Xvfb |
+  | --- | --- | --- |
+  | `Clipboard.getString()` after `setString` | resolves with the string | never resolves |
+  | `autoFocus` on a `<TextInput>` | `onFocus` fires | nothing |
+  | the host after `BASALT_QUIT_AFTER_MS` | exits | prints "quitting" and hangs |
+
+  **The hang is the one that matters.** The host logs
+  `BASALT_QUIT_AFTER_MS elapsed; quitting` and then does not exit, and the harness
+  gives up on it. A pending GDK clipboard read is the obvious suspect, that run
+  being the only one that reads the clipboard, but nothing has been established:
+  the crash handler says nothing because nothing crashes, and a hang needs a
+  different instrument. An app that reads the clipboard and then quits is an
+  ordinary app, so this is not only a test-environment problem.
+
+  The scenario skips rather than fails, and on the conditions rather than on the
+  platform, so GTK keeps the coverage it has where it works. What that costs: a
+  text role is asserted on AppKit and Windows and reported unproven on Linux CI.
+  The `close` role still covers the mechanism on all three.
+
+  Worth knowing separately: **nothing else in the suite exercises `Clipboard` at
+  all**, on any host. It is registered on all three and was never tested until an
+  assertion depended on it, which is how a module that does not work headlessly
+  came to be load-bearing.
 
 - **The `image` comparison flaked once and nobody can say why.** It differed on
   one CI run, passed on a rerun of the same commit, and passes locally: run

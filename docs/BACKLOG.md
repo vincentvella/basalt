@@ -35,7 +35,7 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | [macOS](backlog/platform-macos.md) | 8 | Justified text, fonts, the rest of accessibility. |
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |
-| [Testing](backlog/testing.md) | 10 | What the suites cannot see. Was two sections with the same name, 800 lines apart; merged. |
+| [Testing](backlog/testing.md) | 11 | What the suites cannot see. Was two sections with the same name, 800 lines apart; merged. |
 | [Upstream](backlog/upstream.md) | 13 | Bugs and gaps in React Native and Expo, with the workarounds here. |
 
 ## How to use this
