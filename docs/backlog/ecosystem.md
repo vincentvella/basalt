@@ -179,7 +179,9 @@ as no header rather than as a broken one.
 
   Proposed upstream as
   [software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779),
-  as an opt-in rather than a longer list. Two reasons it is not a longer list,
+  as an opt-in rather than a longer list. Its state is tracked at the top of
+  [upstream.md](upstream.md), with everything else that is waiting on another
+  repository. Two reasons it is not a longer list,
   both found by trying it:
 
   - That const is not "platforms where this could work", it is "platforms this

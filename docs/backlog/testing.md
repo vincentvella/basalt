@@ -537,9 +537,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   The window shrinks from three statements of teardown to the few instructions
   between the question and the call. It does not close. The fix is one line
-  upstream, `~Scheduler` unregistering the mount hook it registers, and both of
-  the bugs left in this file are in that one function, the other being
-  `quitSynchronous` above.
+  upstream, `~Scheduler` unregistering the mount hook it registers, tracked as
+  entry 14 of [upstream.md](upstream.md) along with the decision not to send it,
+  and both of the bugs left in this file are in that one function, the other
+  being `quitSynchronous` above.
 
   **What is not checked, and should be said rather than implied:** nothing in
   the suite asserts that a mount hook ever ran. The call exists for Reanimated,

@@ -2,7 +2,28 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (13):**
+Everything below is a bug or a gap in somebody else's repository. Most of it has
+never been sent anywhere, which is fine and is the point of writing it down, but
+the two that have a decision attached are easy to lose among them. So they are
+here, at the top, rather than only in the area file where each was found.
+
+**Sent, and waiting on someone else:**
+
+- [software-mansion/react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779),
+  the native-screens opt-in: `provideNativeScreens()`, so a platform that
+  registers the components itself can say so. Open and mergeable, every review
+  thread resolved, `kkafar` requested as reviewer, and their CI has not run yet
+  because a fork pull request needs a maintainer to approve the workflow. Nothing
+  is owed from this side. The reasoning lives in
+  [ecosystem.md](ecosystem.md), where it was written, rather than being copied
+  here.
+
+**Found, worked around, and deliberately not sent:** entry 14 below,
+`~Scheduler` leaving a mount hook registered. A one-line fix in React Native
+that is not being offered, by choice. What that choice costs is carrying the
+workaround and the comment explaining it, which is already written.
+
+**Open (14):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -17,6 +38,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 11. Report that ReactCxxPlatform's PlatformConstantsModule hardcodes a React Nativ
 12. Consider upstreaming a Linux entry in getHostPlatform
 13. `ImageLoaderModule` is built with no loader and nothing can supply one
+14. `~Scheduler` leaves a mount hook registered, and the next mount uses it
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -112,3 +134,44 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Worked around here by building the module in each host's own provider, which
   is consulted first. That is a supported seam rather than a trick, but it
   means every host has to know to do it.
+
+- **`~Scheduler` leaves a mount hook registered, and the next mount uses it.**
+  Found 2026-10-07 from a SIGSEGV on CI's Mac, read off the pinned v0.87.1.
+
+  `UIManager::mountHooks_` is a `std::vector<UIManagerMountHook*>`: raw,
+  non-owning pointers, where taking an entry out is the owner's job and
+  `~UIManagerMountHook` does not do it. `Scheduler` puts one in at
+  `Scheduler.cpp:169`, `uiManager->registerMountHook(*eventPerformanceLogger_)`,
+  and `~Scheduler` takes out every *commit* hook at `:197` and never that one.
+  The only `unregisterMountHook` call in the whole tree is in
+  `IntersectionObserverManager`.
+
+  `ReactHost::destroyReactInstance` then frees the Scheduler, and the
+  `EventPerformanceLogger` with it, three statements before it tells a mounting
+  manager anything:
+
+      stopAllSurfaces();                                   // registry will now miss
+      quitSynchronous();
+      surfaceManager_ = nullptr;
+      scheduler_ = nullptr;                                // the hook is freed here
+      schedulerDelegate_ = nullptr;
+      contextContainer->erase(RuntimeSchedulerKey);
+      mountingManager->setSchedulerTaskExecutor(nullptr);  // the only notice given
+
+  A mount applied in that gap calls `reportMount`, which finds no root shadow
+  node for a stopped surface and calls `shadowTreeDidUnmount` virtually on freed
+  memory. The UIManager is still alive throughout, held by `UIManagerBinding` in
+  a runtime destroyed later, so a `weak_ptr` to it is no protection.
+
+  **Not specific to this repository.** Any platform that calls `reportMount`
+  while an instance is going away can reach it, and iOS calls it from
+  `RCTSurfacePresenter`. The fix is one line: `~Scheduler` unregistering the hook
+  it registered.
+
+  Worked around here rather than reported, which is a choice and not an
+  oversight. `reportMountedSurface` in `core/UIManagerAccess.h` asks whether the
+  UIManager still has the surface and refuses if not, which is sound because
+  `stopAllSurfaces()` runs before the Scheduler is freed: the hook being
+  dangling always implies the surface being gone. That narrows the window from
+  three statements to a few instructions and does not close it. See
+  [testing.md](testing.md) for the backtrace and the run it came from.
