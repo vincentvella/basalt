@@ -43,6 +43,42 @@ A parent SHALL NOT be choosable. Choosing it opens its children.
   child
 - **THEN** the call answers with null, as any other dismissal does
 
+### Requirement: An item may carry a tick or a radio mark
+
+The system SHALL draw a mark beside an item that asks for one, on every host, and
+SHALL treat a marked item as an ordinary item in every other respect: drawn,
+choosable, counted in the numbering, and answering with its own index.
+
+The kind SHALL be the caller's to say rather than inferred, because one host
+cannot infer it: a GMenu item carries no mark of its own and GTK draws a tick or a
+circle according to the shape of the action behind it.
+
+A radio group SHALL be a run of adjacent radio items, ended by a separator or by
+any other kind of item, and SHALL need no group name. Exclusivity is the caller's:
+the menu is built fresh each time it opens, so the system draws the marks it was
+given.
+
+The mark for a chosen member of a group MAY differ between desktops. macOS draws a
+tick, `NSMenu` having no radio item and a tick being what its guidance prescribes
+there. The system SHALL NOT refuse either kind anywhere on that account, all three
+being able to mark a chosen item.
+
+Nothing tri-state SHALL be offered, one desktop having a mixed state and the other
+two having none.
+
+#### Scenario: A marked item is still an item
+
+- **WHEN** an app shows a menu whose fourth entry carries a tick
+- **THEN** that entry is drawn with a tick
+- **AND** choosing it answers with 3 and runs its handler, as an unmarked entry
+  would
+
+#### Scenario: A group needs no name
+
+- **WHEN** an app shows three adjacent radio items, the second of them chosen
+- **THEN** they are drawn as one group with the second marked
+- **AND** choosing the third answers with the third's own index
+
 ### Requirement: An item may name a platform role
 
 The system SHALL accept a role on an item, in Electron's spelling, and SHALL

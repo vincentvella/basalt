@@ -535,9 +535,32 @@ void appendMenuEntries(HMENU menu, const std::vector<MenuEntry> &entries, int *n
     }
 
     AppendMenuW(menu,
-                MF_STRING | (entry.enabled ? MF_ENABLED : MF_GRAYED),
+                MF_STRING | (entry.enabled ? MF_ENABLED : MF_GRAYED) |
+                    (entry.mark != MenuEntry::Mark::None && entry.checked ? MF_CHECKED
+                                                                         : 0U),
                 static_cast<UINT_PTR>(index + 1),
                 text.c_str());
+
+    // A bullet rather than a tick, for a radio entry. MFT_RADIOCHECK is not an
+    // AppendMenu flag, so it goes on afterwards by position -- and position is
+    // not the pre-order index, because an entry menuEntryShown drops consumes no
+    // position. GetMenuItemCount after the append is the one that just landed.
+    //
+    // Per item rather than CheckMenuRadioItem over the run: that call insists on
+    // checking one member, so it cannot draw a group with nothing chosen yet,
+    // which is a state a caller is entitled to pass.
+    if (entry.mark == MenuEntry::Mark::Radio) {
+      MENUITEMINFOW info = {};
+      info.cbSize = sizeof(info);
+      info.fMask = MIIM_FTYPE | MIIM_STATE;
+      info.fType = MFT_STRING | MFT_RADIOCHECK;
+      info.fState = entry.checked ? MFS_CHECKED : MFS_UNCHECKED;
+      if (!entry.enabled) {
+        info.fState |= MFS_GRAYED;
+      }
+      // MIIM_STRING is deliberately absent from the mask, so the label survives.
+      SetMenuItemInfoW(menu, GetMenuItemCount(menu) - 1, TRUE, &info);
+    }
   }
 }
 

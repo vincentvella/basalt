@@ -2963,6 +2963,28 @@ def test_context_menu(bundle: Path) -> None:
             f"shifted the ones after it.\n{tail_text(logged)}"
         )
 
+    # A marked item is an ordinary item. A tick or a radio mark is presentational,
+    # so a marked entry is drawn, is choosable, is counted, and answers with its
+    # own index like anything else. 14 is a checkbox and 18 is the middle member of
+    # a radio run, which is also the furthest index the suite names and so the one
+    # that would move first if marks were counted differently.
+    logged = run("14")
+    if "context menu selected: Word wrap" not in logged:
+        raise Failure(
+            f"a checkbox item did not run its own handler.\n{tail_text(logged)}"
+        )
+    logged = run("18")
+    if "context menu answered: 18" not in logged:
+        raise Failure(
+            "the middle member of a radio run did not come back as its own index. "
+            "A run shares one action on GTK and carries the index as a target "
+            f"rather than in the action's name.\n{tail_text(logged)}"
+        )
+    if "context menu selected: Medium" not in logged:
+        raise Failure(
+            f"a radio item did not run its own handler.\n{tail_text(logged)}"
+        )
+
     # A role this desktop cannot perform is not in the menu, so naming it is a
     # dismissal. macOS has `about` and answers 9; the other two do not.
     logged = run("9")

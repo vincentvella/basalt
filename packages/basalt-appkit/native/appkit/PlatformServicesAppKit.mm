@@ -428,6 +428,15 @@ void addMenuEntries(NSMenu *menu,
     item.target = target;
     item.enabled = entry.enabled;
     item.tag = static_cast<NSInteger>(index);
+
+    // Both kinds draw a tick. NSMenu has no radio item, and a tick is what
+    // Apple's guidance puts beside the chosen member of an exclusive group, so
+    // this is the platform's answer rather than a shortfall. NSMenu manages the
+    // indicator column itself, so an unticked item still lines up with a ticked
+    // one and nothing has to reserve space.
+    if (entry.mark != MenuEntry::Mark::None) {
+      item.state = entry.checked ? NSControlStateValueOn : NSControlStateValueOff;
+    }
   }
 }
 

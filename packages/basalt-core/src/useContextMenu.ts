@@ -107,6 +107,25 @@ export type ContextMenuItem = {
    */
   role?: string;
   /**
+   * A tick or a radio mark beside the label.
+   *
+   * `checked` on its own means a checkbox, so the common case is one word. The
+   * kind is a separate field because it has to be: a GMenu item carries no
+   * checked attribute, and GTK picks a tick or a circle from the shape of the
+   * action behind it, which a boolean cannot express.
+   *
+   * `'radio'` is a drawing hint, not a capability. Windows draws a bullet and
+   * Linux a circle; macOS draws a tick, `NSMenu` having no radio item and a tick
+   * being what Apple's guidance prescribes for a chosen member of a group.
+   *
+   * A group is a run of adjacent `'radio'` items, ended by a separator or by any
+   * other kind of item. There is no group name to pass. Exclusivity is yours:
+   * the menu is built fresh each time it opens, so it draws the marks you give
+   * it and keeping one member checked is the caller's.
+   */
+  type?: 'checkbox' | 'radio';
+  checked?: boolean;
+  /**
    * Nested items. The parent is not choosable: it opens its children.
    *
    * Both a `submenu` and a `role` on one item is a mistake, and the submenu

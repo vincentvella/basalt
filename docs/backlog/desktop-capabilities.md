@@ -16,7 +16,7 @@ is missing", and gains a pointer. Three entries have one today.
 5. Packaging is macOS and Linux only, and shallow
 6. A window cannot be positioned on Linux
 7. A window's lifecycle is an app's to influence now
-8. Menus have no checkbox or radio items, and no dynamic enabling
+8. Menus have no dynamic enabling, and a popup's drawing is asserted nowhere
 9. A system tray icon
 10. Windows notifications carry no identity of their own
 11. Cursor control
@@ -111,7 +111,8 @@ has gone unrecorded until now.
   transparent full-size-content title bar that keeps the traffic lights, and
   Win32 draws the caption buttons over the app's own header. See the
   `window-title-bar` spec.
-- **Menus have no checkbox or radio items, and no dynamic enabling.** The
+- **Menus have no dynamic enabling, and a popup's drawing is asserted nowhere.**
+  Checkbox and radio items used to be here too and are done; see below. The
   application menu itself is done where a platform has one: `<Menu>`
   with `<Menu.Item role="copy" />`, over NSMenu and an HMENU. `Menu.isSupported`
   is false on Linux and is not a gap: GNOME's guidelines have said to use a
@@ -172,8 +173,40 @@ has gone unrecorded until now.
   > outcomes it had. Linux did need writing from nothing, and got twelve of the
   > thirteen.
 
-  What is still open from this entry: checkbox and radio items, dynamic enabling,
-  English-only role labels, and `about` on Linux and Windows.
+  **Checkbox and radio items are done**, 2026-10-07, in popups. `type:
+  'checkbox' | 'radio'` and `checked`, two fields because GTK needs two: a GMenu
+  item carries no mark of its own and GTK draws a tick or a circle from whether
+  the action behind it is boolean-stateful or string-stateful with a target, which
+  a single boolean cannot say. A group is a run of adjacent radio items with no
+  group name to pass, which suits all three: Win32 wants a contiguous range, GTK
+  one action per run, AppKit nothing. macOS draws a tick for both kinds, `NSMenu`
+  having no radio item, and that is what Apple's guidance prescribes rather than a
+  shortfall. The menu *bar* still has neither; the popup went first.
+
+  **Dynamic enabling is refused for a popup, deliberately.** A popup is built
+  fresh for one choice and destroyed, and the app knows its state when it calls.
+  Against that: a session handle for a menu that may already be dismissed, and two
+  hosts where delivery is unproven, both AppKit and Win32 running the menu inside
+  a nested modal loop. The platforms' own idiom is pull and synchronous, which
+  cannot be answered from JavaScript on another thread at all.
+
+  The real version of that gap is the menu **bar**, and it is worth doing.
+  `<Menu>`'s effect is keyed on `JSON.stringify` of the whole model, so flipping
+  one item's `enabled` reinstalls the entire NSMenu or HMENU, and the code's own
+  comment notes that reinstalling closes the menu if it happens to be open. A push
+  keyed on the `id` that `MenuItemModel` already carries would do it.
+
+  **And a popup's drawing is asserted nowhere, on any host.** `presentMenu`
+  answers BASALT_TEST_MENU before `showMenu` is reached, so an automated run never
+  builds a native menu: what the suite proves about submenus, roles and marks is
+  the portable numbering and the handler mapping, in core/ and in
+  tests/test_menu_entries.cpp. Whether a tick is drawn, or a submenu nests, is
+  checked by eye. The menu bar has `describeApplicationMenu` for exactly this and
+  reads MIIM_STATE back on Windows already; a popup equivalent, describing the
+  menu it built before showing it, is the way to close it.
+
+  What is still open from this entry: dynamic enabling, English-only role labels,
+  `about` on Linux and Windows, and that drawing assertion.
 
   The thing the work added rather than closed is now shut. A role's behaviour is
   asserted on every host, twice over: `close` for a role that acts on the window,

@@ -54,6 +54,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_backface.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_drag_and_drop.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quit_file.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_menu_entries.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settle.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_key_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_js_runtime_access.cpp

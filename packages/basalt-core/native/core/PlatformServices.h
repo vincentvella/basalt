@@ -11,8 +11,10 @@
 
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace basalt {
@@ -143,6 +145,26 @@ struct MenuEntry {
   // wins, because that is the one with something under it to lose.
   std::vector<MenuEntry> submenu;
 
+  // Whether the entry carries a mark, and which kind.
+  //
+  // Two fields rather than one `checked` bool, and GTK is the reason. A GMenu
+  // item has no checked attribute at all: the mark comes from the shape of the
+  // GAction behind it, and GtkPopoverMenu picks a tick or a circle from whether
+  // that action is boolean-stateful or string-stateful with a target. So a bool
+  // cannot say which to draw, and the kind has to be its own field.
+  //
+  // `Radio` is a drawing hint rather than a capability. Windows draws a bullet
+  // and GTK a circle; NSMenu has no radio item, and the mark macOS puts beside a
+  // selected member of an exclusive group is a tick, which is what Apple's own
+  // guidance prescribes. All three can mark a chosen item, so neither kind is
+  // refused anywhere.
+  //
+  // Nothing tri-state: NSControlStateValueMixed has no counterpart on the other
+  // two, so offering it would be offering something only one desktop has.
+  enum class Mark { None, Check, Radio };
+  Mark mark{Mark::None};
+  bool checked{false};
+
   static MenuEntry separator() {
     // Assigned rather than a designated initializer. One that names some fields
     // and not others is a -Wmissing-field-initializers error under -Werror, which
@@ -201,6 +223,37 @@ int walkMenuEntriesFrom(const std::vector<MenuEntry> &entries, int next, Visitor
 template <typename Visitor>
 void walkMenuEntries(const std::vector<MenuEntry> &entries, Visitor &&visit) {
   detail::walkMenuEntriesFrom(entries, 0, visit);
+}
+
+// The run of consecutive radio entries `index` belongs to, as a half-open range
+// of pre-order indexes, or {index, index} when it is not a radio entry.
+//
+// A group is a maximal run of adjacent radio siblings, ended by a separator, by a
+// non-radio entry, or by the end of the level. That is a positional definition
+// rather than an identifier on each item, and it fits all three: Win32's
+// CheckMenuRadioItem wants a contiguous range, GTK wants one action per run, and
+// AppKit wants nothing. It also cannot straddle a GMenu section, since the GTK
+// builder breaks into a new section at every separator.
+//
+// The cost is that two adjacent groups with no separator between them read as
+// one. A separator is what every desktop draws between two groups anyway.
+inline std::pair<int, int> menuRadioRun(const std::vector<MenuEntry> &siblings,
+                                        int firstIndexOfLevel,
+                                        std::size_t at) {
+  const int index = firstIndexOfLevel + static_cast<int>(at);
+  if (at >= siblings.size() || siblings[at].mark != MenuEntry::Mark::Radio) {
+    return {index, index};
+  }
+  std::size_t begin = at;
+  while (begin > 0 && siblings[begin - 1].mark == MenuEntry::Mark::Radio) {
+    begin--;
+  }
+  std::size_t end = at + 1;
+  while (end < siblings.size() && siblings[end].mark == MenuEntry::Mark::Radio) {
+    end++;
+  }
+  return {firstIndexOfLevel + static_cast<int>(begin),
+          firstIndexOfLevel + static_cast<int>(end)};
 }
 
 // How many entries a menu has, counting every level. The number of valid

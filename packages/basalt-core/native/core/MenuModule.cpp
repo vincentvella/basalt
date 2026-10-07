@@ -69,6 +69,21 @@ std::vector<MenuEntry> entriesFrom(Runtime &runtime, const Value &value) {
     entry.shortcut = stringProperty(runtime, item, "shortcut");
     entry.role = stringProperty(runtime, item, "role");
 
+    // `type` in Electron's spelling, because that is the vocabulary a desktop
+    // developer already has, and the roles above are Electron's for the same
+    // reason. `checked` on its own is read as a checkbox: it is the common case
+    // and making it need two words to work would be a trap.
+    const std::string type = stringProperty(runtime, item, "type");
+    const bool hasChecked = item.hasProperty(runtime, "checked");
+    if (type == "radio") {
+      entry.mark = MenuEntry::Mark::Radio;
+    } else if (type == "checkbox" || hasChecked) {
+      entry.mark = MenuEntry::Mark::Check;
+    }
+    if (entry.mark != MenuEntry::Mark::None) {
+      entry.checked = boolProperty(runtime, item, "checked", false);
+    }
+
     const Value nested = item.getProperty(runtime, "submenu");
     if (nested.isObject() && nested.asObject(runtime).isArray(runtime)) {
       entry.submenu = entriesFrom(runtime, nested);

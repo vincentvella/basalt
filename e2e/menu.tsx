@@ -187,6 +187,18 @@ function Context() {
         // string on the clipboard and never writes it into the field, so the
         // field containing it is the platform's doing and nothing else's.
         {label: 'Paste', role: 'paste', onSelect: pick('Paste')}, //    12
+        {separator: true}, //                                          13
+        // A tick. `checked` on its own is read as a checkbox, which is the
+        // common case and the reason it does not need `type` as well.
+        {label: 'Word wrap', checked: true, onSelect: pick('Word wrap')}, // 14
+        {label: 'Invisibles', checked: false, onSelect: pick('Invisibles')}, // 15
+        {separator: true}, //                                          16
+        // A group, which is a run of adjacent radio items: there is no group
+        // name to pass. The separator above ends the previous run and the end of
+        // the list ends this one.
+        {label: 'Small', type: 'radio', checked: false, onSelect: pick('Small')}, // 17
+        {label: 'Medium', type: 'radio', checked: true, onSelect: pick('Medium')}, // 18
+        {label: 'Large', type: 'radio', checked: false, onSelect: pick('Large')}, // 19
       ],
       where,
     );

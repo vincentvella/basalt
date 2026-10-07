@@ -442,13 +442,30 @@ void finishMenu(PendingMenu *pending, int index) {
   pending->onChosen(index);
 }
 
-void onMenuItemActivated(GSimpleAction *action, GVariant * /*parameter*/, gpointer userData) {
+void onMenuItemActivated(GSimpleAction *action, GVariant *parameter, gpointer userData) {
   auto *pending = static_cast<PendingMenu *>(userData);
-  // The action is named "item<N>", which is where the index comes from: a
-  // GMenu carries no index of its own, and the position in the model is not
-  // the position in the vector once separators are sections.
-  const char *name = g_action_get_name(G_ACTION(action));
-  const int index = name != nullptr ? std::atoi(name + 4) : -1;
+  // Where the index comes from, a GMenu carrying none of its own and the position
+  // in the model not being the position in the vector once separators are
+  // sections.
+  //
+  // Two carriers, because a radio group has to share one action: GTK draws a
+  // circle rather than a tick only when the action is string-stateful and each
+  // item names a target, so every member of a run activates the same action and
+  // the name can no longer say which. The target carries it instead. An ordinary
+  // item still has its own action named "item<N>".
+  int index = -1;
+  if (parameter != nullptr && g_variant_is_of_type(parameter, G_VARIANT_TYPE_STRING)) {
+    index = std::atoi(g_variant_get_string(parameter, nullptr));
+  } else {
+    const char *name = g_action_get_name(G_ACTION(action));
+    index = name != nullptr ? std::atoi(name + 4) : -1;
+  }
+
+  // The group's own state follows the choice, so the mark moves if the menu is
+  // still up. It is closing, so this is for correctness rather than for show.
+  if (parameter != nullptr && g_variant_is_of_type(parameter, G_VARIANT_TYPE_STRING)) {
+    g_simple_action_set_state(action, g_variant_ref(parameter));
+  }
 
   // Down first, then the role, then the answer. `close` and `quit` destroy the
   // window this popover is parented to, so dismissing it beforehand is not
@@ -504,7 +521,12 @@ GMenu *buildMenuModel(const std::vector<MenuEntry> &entries,
   GMenu *model = g_menu_new();
   GMenu *section = g_menu_new();
 
-  for (const MenuEntry &entry : entries) {
+  // Where this level starts, so a radio run can be named after its first member
+  // and each member can carry its own index as a target.
+  const int firstIndex = *next;
+
+  for (std::size_t at = 0; at < entries.size(); at++) {
+    const MenuEntry &entry = entries[at];
     const int index = (*next)++;
     // Counted above, drawn or not: a role this desktop cannot perform keeps its
     // index so the ones after it keep theirs. See menuEntryShown.
@@ -525,14 +547,63 @@ GMenu *buildMenuModel(const std::vector<MenuEntry> &entries,
       continue;
     }
 
-    const std::string name = "item" + std::to_string(index);
-    auto *action = g_simple_action_new(name.c_str(), nullptr);
-    g_simple_action_set_enabled(action, entry.enabled ? TRUE : FALSE);
-    g_signal_connect(action, "activate", G_CALLBACK(onMenuItemActivated), pending);
-    g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(action));
-    g_object_unref(action);
+    // What the item activates, and what that action's shape makes GTK draw. A
+    // GMenu item has no mark of its own: a boolean-stateful action is a tick, a
+    // string-stateful action with a target on the item is a circle, and a
+    // stateless one is a plain item.
+    std::string name;
+    std::string target;
+    if (entry.mark == MenuEntry::Mark::Radio) {
+      // One action for the whole run, named after where the run starts, so every
+      // member activates the same action and the target says which. See
+      // menuRadioRun for what a run is.
+      const auto [runBegin, runEnd] = menuRadioRun(entries, firstIndex, at);
+      (void)runEnd;
+      name = "radio" + std::to_string(runBegin);
+      target = std::to_string(index);
+      if (g_action_map_lookup_action(G_ACTION_MAP(actions), name.c_str()) == nullptr) {
+        // The run's state is whichever member is checked, or no member, which a
+        // caller is entitled to pass and which an empty string stands for.
+        std::string selected;
+        for (std::size_t m = 0; m < entries.size(); m++) {
+          if (entries[m].mark == MenuEntry::Mark::Radio && entries[m].checked &&
+              firstIndex + static_cast<int>(m) >= runBegin) {
+            selected = std::to_string(firstIndex + static_cast<int>(m));
+            break;
+          }
+        }
+        auto *action = g_simple_action_new_stateful(
+            name.c_str(), G_VARIANT_TYPE_STRING, g_variant_new_string(selected.c_str()));
+        g_signal_connect(action, "activate", G_CALLBACK(onMenuItemActivated), pending);
+        g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(action));
+        g_object_unref(action);
+      }
+    } else if (entry.mark == MenuEntry::Mark::Check) {
+      name = "item" + std::to_string(index);
+      auto *action = g_simple_action_new_stateful(
+          name.c_str(), nullptr, g_variant_new_boolean(entry.checked ? TRUE : FALSE));
+      g_simple_action_set_enabled(action, entry.enabled ? TRUE : FALSE);
+      g_signal_connect(action, "activate", G_CALLBACK(onMenuItemActivated), pending);
+      g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(action));
+      g_object_unref(action);
+    } else {
+      name = "item" + std::to_string(index);
+      auto *action = g_simple_action_new(name.c_str(), nullptr);
+      g_simple_action_set_enabled(action, entry.enabled ? TRUE : FALSE);
+      g_signal_connect(action, "activate", G_CALLBACK(onMenuItemActivated), pending);
+      g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(action));
+      g_object_unref(action);
+    }
 
-    GMenuItem *item = g_menu_item_new(entry.label.c_str(), ("menu." + name).c_str());
+    GMenuItem *item = g_menu_item_new(entry.label.c_str(), nullptr);
+    if (target.empty()) {
+      g_menu_item_set_detailed_action(item, ("menu." + name).c_str());
+    } else {
+      // The target is what makes GTK draw a circle, and what tells the shared
+      // action which member was chosen.
+      g_menu_item_set_action_and_target_value(
+          item, ("menu." + name).c_str(), g_variant_new_string(target.c_str()));
+    }
     const std::string accelerator = toGtkAccelerator(entry.shortcut);
     if (!accelerator.empty()) {
       g_menu_item_set_attribute(item, "accel", "s", accelerator.c_str());
