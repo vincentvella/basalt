@@ -175,13 +175,14 @@ has gone unrecorded until now.
   What is still open from this entry: checkbox and radio items, dynamic enabling,
   English-only role labels, and `about` on Linux and Windows.
 
-  The thing the work added rather than closed is now half shut. A role's
-  behaviour is asserted, with `close`, on every host: see "a role in a context
-  menu performs it, not only reports it", which also runs the ordinary item beside
-  it so that a host dying early cannot pass. What is still unasserted is a *text*
-  role, because nothing here can focus a field before a tap opens the menu, and
-  the menu bar's roles are unasserted behaviourally for the same kind of reason.
-  Both are in that archived change's notes, with what was tried.
+  The thing the work added rather than closed is now shut. A role's behaviour is
+  asserted on every host, twice over: `close` for a role that acts on the window,
+  and `paste` for one that acts on the focused field, which became possible once
+  `autoFocus` was fixed. The same scenario runs an ordinary item beside them, so
+  that a host dying early or a field that had the string all along cannot pass.
+  `copy` and `selectAll` are still unasserted, for reasons that are about the
+  observables rather than the mechanism; see that archived change's notes. The
+  menu bar's roles remain unasserted behaviourally.
 - ~~**Native file dialogs.**~~ Done on all three: `useDialog().openFile()`,
   `saveFile()` and `openFolder()`, over `GtkFileDialog`, `NSOpenPanel` /
   `NSSavePanel` and `IFileDialog`. What is left is the rest of what a desktop

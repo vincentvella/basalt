@@ -181,7 +181,29 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
       (props->maxLength > 0 && props->maxLength < 1000000) ? props->maxLength : 0);
 
   if (inserted && props->autoFocus) {
-    gtk_widget_grab_focus(entry.editable);
+    // Recorded, not performed: see flushAutoFocus in the header for why here is
+    // too early. `inserted` is the only moment the prop can be acted on at all,
+    // being the only moment this manager can tell a new widget from an updated
+    // one, so the tag is kept and the focusing happens later.
+    pendingAutoFocus_.push_back(tag);
+  }
+}
+
+void GtkTextInputManager::flushAutoFocus() {
+  if (pendingAutoFocus_.empty()) {
+    return;
+  }
+  const std::vector<facebook::react::Tag> pending = std::move(pendingAutoFocus_);
+  pendingAutoFocus_.clear();
+
+  for (const facebook::react::Tag tag : pending) {
+    const auto it = entries_.find(tag);
+    if (it == entries_.end()) {
+      continue;
+    }
+    // The same call the `focus` command makes, which is known to work because by
+    // the time JavaScript asks, the widget is in a window.
+    gtk_widget_grab_focus(GTK_WIDGET(it->second.editable));
   }
 }
 

@@ -183,8 +183,29 @@ void Win32TextInputManager::update(RnWin32View *view, const ShadowView &shadowVi
   // After the font: the line height is measured against it.
   measureShape(entry, shadowView.layoutMetrics);
 
-  if (inserted && props->autoFocus && entry.control != nullptr) {
-    SetFocus(entry.control);
+  if (inserted && props->autoFocus) {
+    // Recorded, not performed: see flushAutoFocus in the header. Unlike the other
+    // two hosts the control may already be focusable here, but it is not yet
+    // visible, and having the three hosts agree is worth more than the one call
+    // saved.
+    pendingAutoFocus_.push_back(tag);
+  }
+}
+
+void Win32TextInputManager::flushAutoFocus() {
+  if (pendingAutoFocus_.empty()) {
+    return;
+  }
+  const std::vector<facebook::react::Tag> pending = std::move(pendingAutoFocus_);
+  pendingAutoFocus_.clear();
+
+  for (const facebook::react::Tag tag : pending) {
+    const auto it = entries_.find(tag);
+    if (it == entries_.end() || it->second.control == nullptr) {
+      continue;
+    }
+    // The same call the `focus` command makes.
+    SetFocus(it->second.control);
   }
 }
 

@@ -82,19 +82,33 @@
       What that proves is the path -- `performMenuRole` reaching the platform on
       the UI thread -- which every role shares.
 
-- [ ] A *text* role's behaviour specifically: `copy`, `selectAll`, `paste`. Those
-      act on whatever has focus, and no instrument here can give a field focus
-      before a tap opens the menu: the host threads one clock through its scripted
-      input and `BASALT_TEST_FOCUS` runs after `BASALT_TEST_TAP`, so the tabs land
-      after the menu has been answered. `autoFocus` looked like the way round it
-      and does nothing at all, which is now its own entry in
-      backlog/textinput.md.
+- [x] A *text* role's behaviour, 2026-10-07. The way in was not a new instrument:
+      it was fixing `autoFocus`, which had never worked and which gives the field
+      focus at mount, before any tap. See backlog/textinput.md for what was wrong
+      with it.
 
-      Two further things found while trying, both worth knowing before anyone
-      tries again: tabbing into a field selects its contents on macOS, so
-      `selectAll` is a no-op there and `onSelectionChange` does not fire for it
-      (the handler drops a selection equal to the last reported one); and the GTK
-      typing instrument inserts at the end through `gtk_editable_insert_text`
-      rather than replacing the selection, so "type over the selection" is not an
-      observable that works on both. The way in is probably a focus instrument
-      that runs before the taps, or an app that opens its menu from `onFocus`.
+      The observable is `paste`, and it is `paste` for a reason. `selectAll` is
+      unusable: focus already selects the contents on macOS, so the role changes
+      nothing and `onSelectionChange` does not even fire, the handler dropping a
+      selection equal to the last reported one. Typing over a selection is
+      unusable too, the GTK instrument inserting at the end through
+      `gtk_editable_insert_text` rather than replacing. `paste` needs neither: the
+      app puts a string on the clipboard through basalt's own Clipboard module,
+      never writes it into the field, and the field containing it afterwards can
+      only be the platform's doing.
+
+      Asserted as a substring of a `field text:` line rather than an exact match,
+      deliberately: whether a paste replaces or inserts depends on what focus left
+      selected, both hosts here replace, and a freshly focused Windows EDIT has the
+      caret at 0 with nothing selected. The role worked either way.
+
+      Verified by stubbing `performMenuRole` to return: the scenario fails and says
+      the clipboard was seeded and the platform did nothing with it.
+
+- [ ] `copy` and `selectAll` specifically. The mechanism is the same
+      `performMenuRole` the two asserted roles go through, so what is unproven is
+      each one's mapping rather than the path. `copy` would need the suite to read
+      the system clipboard after the host exits, which on X11 dies with the owner
+      unless a clipboard manager is running; `selectAll` needs a field focused
+      *without* its contents selected, which no prop here offers, since
+      `selectTextOnFocus` is handled on none of the three hosts.

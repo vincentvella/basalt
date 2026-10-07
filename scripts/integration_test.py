@@ -2539,30 +2539,28 @@ def test_dev_menu(bundle: Path) -> None:
 def test_context_menu_role(bundle: Path) -> None:
     """That a role *does* something, and not only that it reports an index.
 
-    The gap this closes. The menu scenario above asserts that an item carrying a
-    role comes back with its index and runs its handler, which says the plumbing
-    is connected and nothing about whether the platform did the thing. A role is
-    the Copy that actually copies: the behaviour is the whole reason it exists,
-    and an app cannot implement it itself.
+    A role is the Copy that actually copies: the behaviour is the whole reason it
+    exists, and an app cannot implement it itself. The menu scenario above asserts
+    that a role item comes back with its index and runs its handler, which says
+    the plumbing is connected and nothing about whether the platform acted.
 
-    It is asserted with `close` rather than with `copy` or `selectAll`, and that
-    is a limitation of the instruments rather than a preference. A text role acts
-    on whatever has focus, and nothing here can give a field focus *before* a tap
-    opens the menu: the host threads one clock through its scripted input and
-    BASALT_TEST_FOCUS runs after BASALT_TEST_TAP, so by the time the tabs land the
-    menu has already been answered. `autoFocus` does not stand in for them, which
-    is its own finding and recorded in backlog/textinput.md.
+    Two roles are driven here, because they prove different halves.
 
-    So: `close` acts on the window, which is observable from outside the process
-    and needs neither focus nor a window manager. What it proves is the path --
-    `performMenuRole` is called on the UI thread and reaches the platform -- which
-    is the same path every other role takes, each over its host's own menu-bar
-    mapping.
+    `paste` is the text one, and the interesting one: a role acts on whatever has
+    focus, so there has to be something focused before the tap that opens the
+    menu. `autoFocus` does that, as of 2026-10-07 -- until then it silently did
+    nothing, which is what blocked this assertion and left the gap recorded in the
+    archived change. The app puts a known string on the clipboard, never writes it
+    into the field, and the field containing it afterwards is the platform's doing
+    and nobody else's.
 
-    The control run is the point of the pair. A host that died on startup would
-    also "exit early", so the same menu is driven twice: the role closes the
-    window and ends the process in about two seconds, and the ordinary item next
-    to it leaves it running until the quit timer.
+    `close` is the window one, and needs no focus: choosing it ends the host in
+    about two seconds against an eight-second quit timer.
+
+    The control run is what makes either mean anything. The same menu is driven
+    with an ordinary item, and must leave the host running *and* leave the field
+    alone -- a host that died early, or a field that somehow had the string in it
+    all along, would otherwise pass both assertions above.
     """
     app = bundle_app(bundle.parent, "menu")
 
@@ -2586,31 +2584,60 @@ def test_context_menu_role(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         return elapsed, result.stdout + result.stderr
 
-    # Entry 11 carries `role: 'close'`.
+    # --- a text role: entry 12 carries `role: 'paste'` ------------------------
+    _, logged = choose("12")
+    if "clipboard seeded" not in logged:
+        raise Failure(
+            "the app never put anything on the clipboard, so this says nothing "
+            "about the role. Clipboard.setString is basalt's own module; if it is "
+            f"broken, fix that first.\n{tail_text(logged)}"
+        )
+    if "context menu selected: Paste" not in logged:
+        raise Failure(f"the paste role item was not chosen.\n{tail_text(logged)}")
+    # Any `field text:` line carrying the string, not an exact match on the whole
+    # line. Whether a paste replaces the field's contents or inserts at the caret
+    # depends on what focus left selected, and the three do not agree: both hosts
+    # here replace, and a freshly focused Windows EDIT has the caret at 0 with
+    # nothing selected, so there it will read "PASTEDBYROLEselect me". The role
+    # worked either way, which is what this is asking.
+    pasted = [line for line in logged.splitlines()
+              if "field text: " in line and "PASTEDBYROLE" in line]
+    if not pasted:
+        raise Failure(
+            "the `paste` role did not reach the focused field. The app seeded the "
+            "clipboard and the menu answered, so the menu reached JavaScript and "
+            "the platform did nothing with it. If `field text:` is absent "
+            "entirely, the field never had focus and `autoFocus` has regressed; "
+            f"see docs/backlog/textinput.md.\n{tail_text(logged)}"
+        )
+
+    # --- a window role: entry 11 carries `role: 'close'` ----------------------
     closed, logged = choose("11")
-    if "context menu answered: 11" not in logged:
-        raise Failure(f"the role item was not chosen.\n{tail_text(logged)}")
     if "context menu selected: Close Window" not in logged:
         raise Failure(
-            "a role still runs the item's handler, and this one did not.\n"
-            f"{tail_text(logged)}"
+            f"a role still runs the item's handler, and this one did not.\n{tail_text(logged)}"
         )
     if closed > 5.0:
         raise Failure(
             f"the `close` role did not close the window: the host ran for "
             f"{closed:.1f}s against a quit timer of 8s, so it was the timer that "
-            "ended it. The index came back and the handler ran, which means the "
-            "menu reached JavaScript and the platform did nothing.\n"
-            f"{tail_text(logged)}"
+            f"ended it.\n{tail_text(logged)}"
         )
 
-    # And the control: the same menu, an item with no role, which must not end it.
+    # --- the control: entry 10 carries no role --------------------------------
     survived, logged = choose("10")
     if survived < 6.0:
         raise Failure(
             f"the control run ended after {survived:.1f}s without a role, so the "
-            "timing above says nothing about roles: something else is ending this "
-            f"host early.\n{tail_text(logged)}"
+            "timing above says nothing: something else is ending this host "
+            f"early.\n{tail_text(logged)}"
+        )
+    if "PASTEDBYROLE" in logged:
+        raise Failure(
+            "the field gained the clipboard string without any role being "
+            "performed, so the paste assertion above proves nothing. Note the app "
+            "only ever puts that string on the clipboard, never into the field.\n"
+            f"{tail_text(logged)}"
         )
 
 

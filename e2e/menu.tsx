@@ -31,6 +31,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {Clipboard} from 'react-native';
 import {Menu, useContextMenu} from 'basalt-core';
 import type {ContextMenuPoint} from 'basalt-core';
 
@@ -126,6 +127,14 @@ function Context() {
   const menu = useContextMenu();
   const [chosen, setChosen] = React.useState('nothing yet');
 
+  // Seeded once, for the `paste` role to find. Logged so that a failure can tell
+  // "the clipboard was never set" from "the role did nothing", which are
+  // different bugs in different halves of the project.
+  React.useEffect(() => {
+    Clipboard.setString('PASTEDBYROLE');
+    console.log('clipboard seeded');
+  }, []);
+
   // Logged as well as rendered, because `onSelect` running is the half most
   // callers use and a rendered string is not visible to a run that does not
   // dump the tree.
@@ -165,6 +174,10 @@ function Context() {
         // visible from outside the process, and no instrument here can give a
         // text field focus before a tap opens this menu.
         {label: 'Close Window', role: 'close', onSelect: pick('Close Window')}, // 11
+        // The role that proves a *text* role performs. The app puts a known
+        // string on the clipboard and never writes it into the field, so the
+        // field containing it is the platform's doing and nothing else's.
+        {label: 'Paste', role: 'paste', onSelect: pick('Paste')}, //    12
       ],
       where,
     );
@@ -196,6 +209,17 @@ function Context() {
         <Text style={styles.buttonText}>Open a context menu</Text>
       </Pressable>
       <Text style={styles.chosen}>{`chose: ${chosen}`}</Text>
+      {/* Focused at mount, which is what lets a text role act on something: the
+          suite's focus instrument runs after the taps, so a field focused by tab
+          would be focused only after the menu had already been answered.
+          `autoFocus` works as of 2026-10-07; before that it silently did
+          nothing. */}
+      <TextInput
+        style={styles.field}
+        autoFocus={true}
+        defaultValue="select me"
+        onChangeText={next => console.log(`field text: ${next}`)}
+      />
     </View>
   );
 }

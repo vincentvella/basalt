@@ -198,6 +198,10 @@ void GtkMountingManager::applyTransaction(SurfaceId surfaceId, MountingTransacti
   // operations it calls back into.
   applyMutations(transaction.getMutations());
 
+  // Now that the tree is on screen, anything `autoFocus` asked for can be given
+  // focus. Not before: see GtkTextInput.h.
+  textInputs_.flushAutoFocus();
+
   // Tell the UIManager the transaction is on screen. Anything registered as a
   // mount hook -- Reanimated's is the one that matters here -- is waiting for
   // this, and without it an animated style is computed every frame, committed

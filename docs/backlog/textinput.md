@@ -2,9 +2,9 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (8):**
+**Open (7):**
 
-1. `autoFocus` does nothing, and nothing had ever asked it to
+1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
 3. The synthetic typing instruments cannot observe either event on GTK
 4. No shared focus registry: TextInput
@@ -26,22 +26,30 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   dropped without being forgotten. Nobody had noticed because `e2e/input.tsx`
   asserts on its *controlled* field.
 
-- **`autoFocus` does nothing, and nothing had ever asked it to.** No app in
-  `e2e/` used the prop until 2026-10-06, when one was added to give a role
-  something to act on, and it did not focus the field: `BASALT_TEST_TYPE` reported
-  "no text field has focus", while `BASALT_TEST_FOCUS=tab;tab` focused the same
-  field in the same app. So the prop is read and has no effect.
+- ~~**`autoFocus` does nothing, and nothing had ever asked it to.**~~ Fixed
+  2026-10-07. No app in `e2e/` used the prop until the day before, when one was
+  added to give a menu role something to act on, and it did not focus the field:
+  `BASALT_TEST_TYPE` reported "no text field has focus".
 
-  Suspected rather than established: AppKitTextInput.mm applies it as
-  `[entry.view.window makeFirstResponder:entry.field]` at insert time, and a view
-  being inserted may not be in a window yet, which would make that a message to
-  nil and a silent no-op. The GTK and Win32 paths were not looked at.
+  The cause was worse than the first guess. All three hosts read the prop under
+  `inserted`, which is `try_emplace`'s "first time this manager saw this tag", not
+  "this view was just put in its parent". `MountingWalk::create` applies props
+  immediately after `createView` and before any Insert, so on AppKit
+  `view.window` was nil and `makeFirstResponder:` was a message to nil, and on GTK
+  the widget had no `GtkRoot` for `gtk_widget_grab_focus` to use. And because
+  `inserted` is false by the time the Insert arrives, it never got a second
+  chance. Two independent reasons it could not work.
 
-  It cost an afternoon indirectly, which is the reason it is written down rather
-  than left: the scenario for a role's behaviour wanted a focused field before a
-  tap, `autoFocus` was the obvious way to get one, and its silence sent the work
-  down a path that ended in `close` being the role the suite can assert. See the
-  archived change nest-and-role-the-popup-menu.
+  Each host now records the tag and focuses it from a `flushAutoFocus()` called at
+  the end of the transaction, which is where `resolveRefreshControls` already
+  lives for the same reason: Fabric inserts a subtree bottom-up, so even "just
+  after insertChild" is too early. The call each one makes is the one its `focus`
+  command already made, which worked because JavaScript asks later.
+
+  Windows was the one host where it might have worked by accident, an EDIT being a
+  child of the real top-level window from creation. It is deferred there too, so
+  that the host nobody can test locally is not also the host that does it
+  differently.
 
 - **A controlled field's value is applied by heuristic rather than from state.**
   The fix above works; the shape iOS uses is better. It reads the shadow

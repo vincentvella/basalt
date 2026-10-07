@@ -32,6 +32,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace basalt {
 
@@ -50,6 +51,19 @@ class AppKitTextInputManager {
   void update(RnAppKitView *view, const facebook::react::ShadowView &shadowView);
 
   void remove(facebook::react::Tag tag);
+
+  // Focuses whatever `autoFocus` asked for, once the transaction is on screen.
+  //
+  // It cannot be done where the prop is read. Props are applied by
+  // MountingWalk::create, immediately after `createView` and before any Insert,
+  // so the view has no superview and `view.window` is nil -- and a
+  // `makeFirstResponder:` to nil is a silent no-op. Worse, the flag that guarded
+  // it is `try_emplace`'s "first time this tag was seen", which is false by the
+  // time the Insert arrives, so it never ran twice either. Deferred to the end of
+  // the transaction, which is where resolveRefreshControls already lives for the
+  // same reason: Fabric inserts a subtree bottom-up, so even "just after
+  // insertChild" is too early.
+  void flushAutoFocus();
 
   // focus, blur, and setTextAndSelection. Returns false for anything else.
   bool dispatchCommand(facebook::react::Tag tag,
@@ -74,6 +88,11 @@ class AppKitTextInputManager {
   bool handleKeyDown(void *event);
 
  private:
+  // Set when a field is created with `autoFocus`, cleared by flushAutoFocus.
+  // A list rather than one tag because nothing stops two fields asking; the last
+  // one to be focused wins, which is what AppKit would do anyway.
+  std::vector<facebook::react::Tag> pendingAutoFocus_;
+
   struct Entry {
     // The selection as JavaScript last saw it, so one movement is one event.
     facebook::react::AttributedString::Range lastReportedSelection{0, 0};

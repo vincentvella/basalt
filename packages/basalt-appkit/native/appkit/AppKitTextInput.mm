@@ -321,7 +321,31 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
                          : 0);
 
   if (inserted && props->autoFocus) {
-    [entry.view.window makeFirstResponder:entry.field];
+    // Recorded, not performed: see flushAutoFocus in the header for why here is
+    // too early. `inserted` is the only moment the prop can be acted on at all,
+    // since it is the only moment this manager can tell a new field from an
+    // updated one, so the tag is kept and the focusing happens later.
+    pendingAutoFocus_.push_back(tag);
+  }
+}
+
+void AppKitTextInputManager::flushAutoFocus() {
+  if (pendingAutoFocus_.empty()) {
+    return;
+  }
+  // Taken by value and cleared first, so a field that has since been removed, or
+  // one whose window is still not there, does not leave the list growing.
+  const std::vector<Tag> pending = std::move(pendingAutoFocus_);
+  pendingAutoFocus_.clear();
+
+  for (const Tag tag : pending) {
+    const auto it = entries_.find(tag);
+    if (it == entries_.end()) {
+      continue;
+    }
+    // The same call the `focus` command makes, which is known to work because by
+    // the time JavaScript asks, the view is in a window.
+    [it->second.view.window makeFirstResponder:it->second.field];
   }
 }
 

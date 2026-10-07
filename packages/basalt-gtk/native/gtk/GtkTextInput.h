@@ -30,6 +30,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 namespace basalt {
@@ -46,12 +47,25 @@ class GtkTextInputManager {
 
   void remove(facebook::react::Tag tag);
 
+  // Focuses whatever `autoFocus` asked for, once the transaction is on screen.
+  //
+  // It cannot be done where the prop is read. Props are applied by
+  // MountingWalk::create, immediately after `createView` and before any Insert,
+  // so the widget has no parent and therefore no GtkRoot, and
+  // `gtk_widget_grab_focus` has nothing to set focus on. Deferred to the end of
+  // the transaction, which is where resolveRefreshControls already lives for the
+  // same reason.
+  void flushAutoFocus();
+
   // focus, blur, and setTextAndSelection. Returns false for anything else.
   bool dispatchCommand(facebook::react::Tag tag,
                        const std::string &name,
                        const folly::dynamic &args);
 
  private:
+  // Set when a widget is created with `autoFocus`, cleared by flushAutoFocus.
+  std::vector<facebook::react::Tag> pendingAutoFocus_;
+
   struct Entry {
     RnView *view{nullptr};
     // A GtkText or a GtkTextView; see GtkTextPeer.h.

@@ -125,10 +125,16 @@ void Win32MountingManager::applyTransaction(SurfaceId surfaceId,
   }
 
   // And ask the host to repaint, because on Windows nothing does that on its
-  // own. See setOnDidMount.
+  // own. See setOnDidMount. This also positions and shows the peers through
+  // syncBounds, which is why the autoFocus flush comes after it rather than
+  // before: a control is created without WS_VISIBLE.
   if (onDidMount_) {
     onDidMount_();
   }
+
+  // Now that the tree is on screen, anything `autoFocus` asked for can be given
+  // focus. See Win32TextInput.h.
+  textInputs_.flushAutoFocus();
 }
 
 void Win32MountingManager::setOnDidMount(std::function<void()> onDidMount) {

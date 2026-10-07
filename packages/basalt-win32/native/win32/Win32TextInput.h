@@ -65,6 +65,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 namespace basalt {
@@ -91,6 +92,17 @@ class Win32TextInputManager {
   void update(win32::RnWin32View *view, const facebook::react::ShadowView &shadowView);
 
   void remove(facebook::react::Tag tag);
+
+  // Focuses whatever `autoFocus` asked for, once the transaction is on screen.
+  //
+  // Where the prop is read is too early on the other two hosts, and may be here:
+  // MountingWalk::create applies props straight after `createView`, before any
+  // Insert. An EDIT is a child of the real top-level window from the moment it is
+  // created, so Windows may get away with it, but the control is made without
+  // WS_VISIBLE and is only shown by syncBounds afterwards. Deferred here too, so
+  // all three hosts answer `autoFocus` the same way and the one that differs is
+  // not the one nobody tested.
+  void flushAutoFocus();
 
   // focus, blur, and setTextAndSelection. Returns false for anything else.
   bool dispatchCommand(facebook::react::Tag tag,
@@ -134,6 +146,9 @@ class Win32TextInputManager {
   bool typeIntoFocused(const std::string &text);
 
  private:
+  // Set when a control is created with `autoFocus`, cleared by flushAutoFocus.
+  std::vector<facebook::react::Tag> pendingAutoFocus_;
+
   struct Entry {
     win32::RnWin32View *view{nullptr};
     HWND control{nullptr};
