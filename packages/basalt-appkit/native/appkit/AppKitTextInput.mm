@@ -6,6 +6,8 @@
 
 #include <react/renderer/components/iostextinput/TextInputProps.h>
 
+#include <glog/logging.h>
+
 #include <algorithm>
 #include <cmath>
 #include <string_view>
@@ -343,9 +345,36 @@ void AppKitTextInputManager::flushAutoFocus() {
     if (it == entries_.end()) {
       continue;
     }
-    // The same call the `focus` command makes, which is known to work because by
-    // the time JavaScript asks, the view is in a window.
-    [it->second.view.window makeFirstResponder:it->second.field];
+    // Not silently. `makeFirstResponder:` answers whether it took, messaging a
+    // nil window is a no-op rather than an error, and this used to discard both:
+    // an autoFocus that did nothing looked exactly like one that worked. The
+    // window is non-nil on every path there is today, a view being in the
+    // window's hierarchy from the moment the surface root is set, so these are
+    // claims about what is believed rather than cases anyone has seen.
+    NSWindow *const window = it->second.view.window;
+    if (window == nil) {
+      LOG(WARNING) << "autoFocus: tag " << tag << " is not in a window yet";
+      continue;
+    }
+    if (![window makeFirstResponder:it->second.field]) {
+      LOG(WARNING) << "autoFocus: tag " << tag << " refused first responder";
+      continue;
+    }
+
+    // And then collapse the selection, which is the whole of the bug GTK had.
+    // `NSTextField` installs the window's shared field editor on becoming first
+    // responder and selects all of its text, so autoFocus on a field with a
+    // `defaultValue` armed the next keystroke to replace it. The repository had
+    // already written the symptom down without recognising it: the paste role's
+    // scenario says "both hosts here replace", and a paste replaces what is
+    // selected.
+    //
+    // A caret at the end is what focusing a field is meant to leave, and what
+    // `gtk_text_grab_focus_without_selecting` gives on the other host.
+    // `NSTextView` keeps its own collapsed selection and needs none of this;
+    // setting it anyway costs nothing and keeps the two from drifting.
+    const NSUInteger length = RnPeerText(it->second.field).length;
+    RnPeerSetSelection(it->second.field, NSMakeRange(length, 0));
   }
 }
 

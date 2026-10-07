@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (8):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
@@ -12,6 +12,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored **
 7. src/overrides/TextInput
 8. autoCapitalize, autoCorrect, spellCheck, keyboardType, returnKeyType, clearBut
+9. autoFocus selected the field's text, on two hosts, for the same reason
 
 - ~~**An uncontrolled field loses what was typed into it.**~~ Found on Windows
   in phase 46 and fixed on all three in phase 47. React Native's `TextInput.js`
@@ -99,3 +100,36 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - `autoCapitalize`, `autoCorrect`, `spellCheck`, `keyboardType`,
   `returnKeyType`, `clearButtonMode`, `selectTextOnFocus` and
   `clearTextOnFocus` are ignored.
+
+- ~~**`autoFocus` selected the field's text, on two hosts, for the same
+  reason.**~~ Fixed 2026-10-07, after the fix above and separately from it.
+
+  Focusing a field programmatically is not the same as focusing it. `GtkText`
+  treats a programmatic focus as keyboard focus and selects all of its text;
+  `NSTextField` installs the window's shared field editor on becoming first
+  responder and does the same. So `autoFocus` on a field with a `defaultValue`
+  left every character selected and armed the next keystroke to replace them,
+  which is the opposite of what putting a caret in a field means.
+
+  **The symptom was already written down and nobody had read it as one.** The
+  paste role's scenario carried a comment saying that "both hosts here replace"
+  the field's contents while Windows inserts at the caret, and explained it as
+  the three platforms simply disagreeing. A paste replaces what is selected, so
+  that comment was the bug, recorded as a quirk.
+
+  GTK uses `gtk_text_grab_focus_without_selecting`, which exists for exactly
+  this. AppKit has no equivalent, so it collapses the field editor's selection
+  afterwards, to a caret at the end. Measured rather than assumed: the field now
+  reads `select mePASTEDBYROLE` where it used to read `PASTEDBYROLE`.
+
+  Windows needed nothing. Its `EDIT` is not dialog-managed, select-on-focus
+  being the dialog manager's behaviour, so a bare `SetFocus` leaves the caret at
+  0 and nothing selected.
+
+  Two things found alongside it and worth keeping. **Nothing asserted that
+  `autoFocus` took effect on any host**, and the one scenario that observes focus
+  raised a skip rather than a failure when no field took it, so a regression on
+  any host turned the suite green: that is now a failure, which is safe because
+  all three hosts focus today. And **both hosts failed silently**, AppKit
+  discarding the `BOOL` from `makeFirstResponder:` and messaging a nil window
+  being a no-op; AppKit now says which of the two happened.

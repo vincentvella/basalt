@@ -2923,9 +2923,17 @@ def test_context_menu_role(bundle: Path) -> None:
             "docs/backlog/testing.md"
         )
     if "field focused" not in logged:
-        raise Skipped(
-            "no field took focus in this environment, so a role acting on the "
-            "focused field has nothing to act on. See docs/backlog/testing.md"
+        # A failure, not a skip, since 2026-10-07. autoFocus takes on all three
+        # hosts today -- this scenario passes on Windows and reaches the paste
+        # precondition on Linux, which it could not do without focus -- so there
+        # is no environment left that legitimately cannot focus a field, and a
+        # skip here meant an autoFocus regression on any host turned this green.
+        # That is the same fault as a hang reading as a skip, which this file
+        # already records further down.
+        raise Failure(
+            "no field took focus, so autoFocus did not take. The hosts log a "
+            "reason when they refuse first responder or cannot find a window; "
+            f"this is the whole of what the host said.\n{tail_text(logged)}"
         )
 
     # Three preconditions, each asserted separately and each with its own message.
@@ -2935,11 +2943,18 @@ def test_context_menu_role(bundle: Path) -> None:
     if "context menu selected: Paste" not in logged:
         raise Failure(f"the paste role item was not chosen.\n{tail_text(logged)}")
     # Any `field text:` line carrying the string, not an exact match on the whole
-    # line. Whether a paste replaces the field's contents or inserts at the caret
-    # depends on what focus left selected, and the three do not agree: both hosts
-    # here replace, and a freshly focused Windows EDIT has the caret at 0 with
-    # nothing selected, so there it will read "PASTEDBYROLEselect me". The role
-    # worked either way, which is what this is asking.
+    # line. Whether a paste lands before or after what is already there depends
+    # on where focus left the caret, and the hosts do not agree: AppKit leaves it
+    # at the end, so the field reads "select mePASTEDBYROLE", while a freshly
+    # focused Windows EDIT has it at 0 and reads "PASTEDBYROLEselect me". The
+    # role worked either way, which is what this is asking.
+    #
+    # It used to say that both hosts here *replace* the contents, which was true
+    # and was the bug: replacing means the text was selected, and autoFocus
+    # selecting a field's contents arms the next keystroke to wipe them. Fixed on
+    # GTK by `gtk_text_grab_focus_without_selecting` and on AppKit by collapsing
+    # the field editor's selection afterwards. This comment was the only place
+    # the symptom had been written down.
     pasted = [line for line in logged.splitlines()
               if "field text: " in line and "PASTEDBYROLE" in line]
     if not pasted and PLATFORM == "linux":
