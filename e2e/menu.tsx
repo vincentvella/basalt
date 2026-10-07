@@ -33,6 +33,7 @@ import {
 } from 'react-native';
 import {Clipboard} from 'react-native';
 import {Menu, useContextMenu} from 'basalt-core';
+import {messageOf} from './errors';
 import type {ContextMenuPoint} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
@@ -131,8 +132,16 @@ function Context() {
   // "the clipboard was never set" from "the role did nothing", which are
   // different bugs in different halves of the project.
   React.useEffect(() => {
+    // Seeded, then read straight back. The readback is not paranoia: it is the
+    // only way a failure can tell "the clipboard does not work in this
+    // environment" from "the role did nothing with it", and those are different
+    // bugs in different halves. Nothing else in the suite exercises Clipboard at
+    // all, so this is also the first thing that does.
     Clipboard.setString('PASTEDBYROLE');
-    console.log('clipboard seeded');
+    Clipboard.getString().then(
+      back => console.log(`clipboard reads back: ${back}`),
+      error => console.log(`clipboard readback failed: ${messageOf(error)}`),
+    );
   }, []);
 
   // Logged as well as rendered, because `onSelect` running is the half most
@@ -218,6 +227,7 @@ function Context() {
         style={styles.field}
         autoFocus={true}
         defaultValue="select me"
+        onFocus={() => console.log('field focused')}
         onChangeText={next => console.log(`field text: ${next}`)}
       />
     </View>

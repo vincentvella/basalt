@@ -2585,12 +2585,26 @@ def test_context_menu_role(bundle: Path) -> None:
         return elapsed, result.stdout + result.stderr
 
     # --- a text role: entry 12 carries `role: 'paste'` ------------------------
+    #
+    # Three preconditions, each asserted separately and each with its own message.
+    # The first version of this asked only the last question and could not tell
+    # three different bugs apart: on CI's Linux it reported "the role did nothing"
+    # when the truth was one of the two below.
     _, logged = choose("12")
-    if "clipboard seeded" not in logged:
+    if "clipboard reads back: PASTEDBYROLE" not in logged:
         raise Failure(
-            "the app never put anything on the clipboard, so this says nothing "
-            "about the role. Clipboard.setString is basalt's own module; if it is "
-            f"broken, fix that first.\n{tail_text(logged)}"
+            "the clipboard did not round-trip in this environment, so the role has "
+            "nothing to paste and this says nothing about roles. The app sets a "
+            "string and reads it straight back through basalt's own Clipboard "
+            "module, and nothing else in this suite exercises that module at all.\n"
+            f"{tail_text(logged)}"
+        )
+    if "field focused" not in logged:
+        raise Failure(
+            "the field never took focus, so a role acting on the focused field has "
+            "nothing to act on. It is focused by `autoFocus`, which is the only "
+            "way to have a field focused before the tap that opens the menu; see "
+            f"docs/backlog/textinput.md.\n{tail_text(logged)}"
         )
     if "context menu selected: Paste" not in logged:
         raise Failure(f"the paste role item was not chosen.\n{tail_text(logged)}")
@@ -2604,11 +2618,10 @@ def test_context_menu_role(bundle: Path) -> None:
               if "field text: " in line and "PASTEDBYROLE" in line]
     if not pasted:
         raise Failure(
-            "the `paste` role did not reach the focused field. The app seeded the "
-            "clipboard and the menu answered, so the menu reached JavaScript and "
-            "the platform did nothing with it. If `field text:` is absent "
-            "entirely, the field never had focus and `autoFocus` has regressed; "
-            f"see docs/backlog/textinput.md.\n{tail_text(logged)}"
+            "the `paste` role did not reach the focused field. The clipboard "
+            "round-tripped and the field had focus, both asserted above, and the "
+            "menu answered -- so the menu reached JavaScript and the platform did "
+            f"nothing with it.\n{tail_text(logged)}"
         )
 
     # --- a window role: entry 11 carries `role: 'close'` ----------------------
@@ -2632,11 +2645,17 @@ def test_context_menu_role(bundle: Path) -> None:
             "timing above says nothing: something else is ending this host "
             f"early.\n{tail_text(logged)}"
         )
-    if "PASTEDBYROLE" in logged:
+    # On a `field text:` line specifically. The app logs the string on every run
+    # when it reads the clipboard back, so looking for it anywhere in the output
+    # matches always and asserts nothing -- which is what the first version of
+    # this did, and it failed both hosts the moment the readback was added.
+    leaked = [line for line in logged.splitlines()
+              if "field text: " in line and "PASTEDBYROLE" in line]
+    if leaked:
         raise Failure(
             "the field gained the clipboard string without any role being "
-            "performed, so the paste assertion above proves nothing. Note the app "
-            "only ever puts that string on the clipboard, never into the field.\n"
+            "performed, so the paste assertion above proves nothing. The app only "
+            f"ever puts that string on the clipboard, never into the field.\n"
             f"{tail_text(logged)}"
         )
 
