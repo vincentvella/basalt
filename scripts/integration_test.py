@@ -318,11 +318,20 @@ def run_host(bundle: Path, taps: str = "", run_ms: int = 4000, typing: str = "")
                 if typing:
                     type_with_xdotool(typing)
             finally:
-                _, stderr = process.communicate(timeout=timeout)
+                # The same courtesy `run_host_process` extends, this path having
+                # to open the process itself: xdotool needs it running to click
+                # it. Without this, the one input mode CI's Linux uses would be
+                # the one that reports a hang as four words.
+                try:
+                    _, stderr = process.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    _, stderr = _ask_where_it_was(process)
+                    raise subprocess.TimeoutExpired(
+                        command, timeout, stderr=stderr) from None
             _remember_output(stderr)
             check_output(stderr, process.returncode)
         else:
-            result = subprocess.run(
+            result = run_host_process(
                 command, cwd=REPO, env=env, capture_output=True, text=True, timeout=timeout,
             )
             _remember_output(result.stderr)
@@ -805,6 +814,95 @@ def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
 
 def tail_text(text: str, lines: int = 25) -> str:
     return "\n".join(text.splitlines()[-lines:])
+
+
+# How long a host gets to print a backtrace once it has been asked for one.
+# Generous: it writes with `backtrace_symbols_fd` from inside a signal handler,
+# resolving symbols against a binary that is not small.
+BACKTRACE_GRACE_S = 10.0
+
+# The marker core/CrashHandler.cpp writes before the frames.
+CRASH_MARKER = "*** basalt: "
+
+
+def run_host_process(args: list, *, cwd: Path = REPO, env: dict = None,
+                     capture_output: bool = True, text: bool = True,
+                     timeout: float = None) -> subprocess.CompletedProcess:
+    """`subprocess.run` for a host binary, that asks a hung one where it was.
+
+    Not `run_host` above, which starts a host and gives back its widget tree.
+    This is the layer under that: it is what every scenario that launches the
+    binary itself now goes through.
+
+    A host that stops answering was the least informative failure in this suite.
+    `capture_output` holds the pipes and the harness kills the process, so the
+    report was four words. The hang in `docs/backlog/testing.md` was diagnosed
+    only by which log lines were *missing*, because that was all there was.
+
+    So ask before killing. `SIGABRT` runs the handler in core/CrashHandler.cpp,
+    which writes a marker and up to 64 frames straight to `STDERR_FILENO` and
+    then re-raises, so the frames arrive on the pipe already being read and a
+    hang reads the way a crash does. The timeout still raises `TimeoutExpired`,
+    now carrying that output, so every caller that already catches one keeps
+    working and gets the frames without knowing about any of this.
+
+    POSIX only. Windows has no `SIGABRT` to send from another process, and its
+    half of the crash handler is an unhandled-exception filter rather than a
+    signal handler, so there this stays a kill. The hang it was built for is on
+    GTK.
+
+    **The frames are of whichever thread took the signal, which is not promised
+    to be the stuck one.** `kill` delivers to any thread that has it unblocked,
+    and for a main loop that stopped dispatching that is usually the main
+    thread. A backtrace that looks unrelated to the hang is a reason to suspect
+    this before concluding anything from it.
+    """
+    assert capture_output and text, "a host is always captured, and always text"
+    with subprocess.Popen(args, cwd=cwd, env=env, text=True,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE) as host:
+        try:
+            out, err = host.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            out, err = _ask_where_it_was(host)
+            # `from None`: the chained original would say only that a timeout
+            # caused a timeout, and this one carries output the other lacked.
+            raise subprocess.TimeoutExpired(
+                args, timeout, output=out, stderr=err) from None
+        return subprocess.CompletedProcess(args, host.returncode, out, err)
+
+
+def _ask_where_it_was(host: subprocess.Popen) -> tuple:
+    """`SIGABRT`, a moment to answer, then a kill either way."""
+    if os.name != "nt":
+        try:
+            host.send_signal(signal.SIGABRT)
+        except (ProcessLookupError, OSError):
+            pass  # Gone between the timeout and here, which is its own answer.
+        else:
+            try:
+                return host.communicate(timeout=BACKTRACE_GRACE_S)
+            except subprocess.TimeoutExpired:
+                pass  # Stuck where a signal handler cannot run either.
+    host.kill()
+    try:
+        return host.communicate(timeout=BACKTRACE_GRACE_S)
+    except subprocess.TimeoutExpired:
+        return "", ""
+
+
+def hang_text(stream, lines: int = 20) -> str:
+    """What to show of a hung host: its frames if it managed any, else the tail.
+
+    `tail_text` is wrong for a backtrace. Frames print innermost first, so the
+    last lines of the stream are the ones nearest `main`, and the innermost
+    frames -- where it is actually stuck -- are exactly what a tail discards.
+    """
+    if isinstance(stream, bytes):
+        stream = stream.decode("utf-8", "replace")
+    marker = stream.rfind(CRASH_MARKER)
+    if marker < 0:
+        return tail_text(stream, lines)
+    return "\n".join(stream[marker:].splitlines()[:lines + 1])
 
 
 def is_subsequence(wanted: list, got: list) -> bool:
@@ -1389,7 +1487,7 @@ def test_hover(bundle: Path) -> None:
     env.pop("BASALT_TEST_TAP", None)
     env.pop("BASALT_TEST_TYPE", None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(hover_bundle), "BasaltHover"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
     )
@@ -1495,7 +1593,7 @@ def test_pointer_events(bundle: Path) -> None:
     env.pop("BASALT_TEST_TYPE", None)
     env.pop("BASALT_TEST_HOVER", None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltPointerEvents"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
     )
@@ -1547,7 +1645,7 @@ def test_keyboard_focus(bundle: Path) -> None:
     env.pop("BASALT_TEST_TYPE", None)
     env.pop("BASALT_TEST_HOVER", None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltFocus"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
     )
@@ -1604,7 +1702,7 @@ def _measure_toast(app: Path, label: str) -> tuple:
     with tempfile.TemporaryDirectory() as directory:
         dump = Path(directory) / "tree.txt"
         env["BASALT_DUMP_TREE"] = str(dump)
-        subprocess.run(
+        run_host_process(
             [str(HOST), str(app), "BasaltLogBox"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -1663,7 +1761,7 @@ def test_logbox(bundle: Path) -> None:
     with tempfile.TemporaryDirectory() as directory:
         dump = Path(directory) / "tree.txt"
         env["BASALT_DUMP_TREE"] = str(dump)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltLogBox"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
         )
@@ -1723,7 +1821,7 @@ def test_initial_url(bundle: Path) -> None:
         env.pop("BASALT_TEST_TYPE", None)
         env.pop("BASALT_TEST_HOVER", None)
         env.pop("BASALT_TEST_FOCUS", None)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltModules", *arguments],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -1777,7 +1875,7 @@ def test_share(bundle: Path) -> None:
         for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
                      "BASALT_TEST_FOCUS"):
             env.pop(name, None)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltShare"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -1838,7 +1936,7 @@ def test_alert(bundle: Path) -> None:
         for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
                      "BASALT_TEST_FOCUS"):
             env.pop(name, None)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltAlert"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -1951,6 +2049,8 @@ def packaged_host(build: Path) -> Path:
     if PLATFORM != "macos":
         return HOST
 
+    # Plainly `subprocess.run`: this is node, packaging the host rather than being
+    # it, so there is no crash handler at the other end to ask for a backtrace.
     node = subprocess.run(
         ["node", "-e",
          "const {packageApp} = require(process.argv[1]);"
@@ -2020,14 +2120,14 @@ def test_notifications(bundle: Path) -> None:
         if PLATFORM == "linux" and service.available():
             with service:
                 env["DBUS_SESSION_BUS_ADDRESS"] = service.address or ""
-                result = subprocess.run(
+                result = run_host_process(
                     [str(host), str(app), "BasaltNotifications"],
                     cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
                 )
                 sent = service.saw()
         else:
             sent = ""
-            result = subprocess.run(
+            result = run_host_process(
                 [str(host), str(app), "BasaltNotifications"],
                 cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
             )
@@ -2122,7 +2222,7 @@ def test_macos_key_props(bundle: Path) -> None:
     with tempfile.TemporaryDirectory() as directory:
         dump = Path(directory) / "tree.txt"
         env["BASALT_DUMP_TREE"] = str(dump)
-        result = subprocess.run(
+        result = run_host_process(
             [str(host), str(app), "BasaltMacosKeys"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
         )
@@ -2175,7 +2275,7 @@ def test_subprocess(bundle: Path) -> None:
                  "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(host), str(app), "BasaltSubprocess"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
     )
@@ -2257,7 +2357,7 @@ def test_expo_fetch(bundle: Path) -> None:
                  "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(host), str(app), "BasaltExpoFetch"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
     )
@@ -2341,7 +2441,7 @@ def test_controls(bundle: Path) -> None:
                          "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL"):
                 env.pop(name, None)
             env.update(instruments)
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), "BasaltControls"],
                 cwd=REPO, env=env, capture_output=True, text=True,
                 timeout=run_ms / 1000 + 60,
@@ -2575,7 +2675,7 @@ def test_context_menu_role(bundle: Path) -> None:
                      "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_CLOSE_WINDOW"):
             env.pop(name, None)
         started = time.monotonic()
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltContextMenu"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=timeout,
         )
@@ -2592,20 +2692,25 @@ def test_context_menu_role(bundle: Path) -> None:
     # and fails its preconditions under the Xvfb CI runs on, so a platform check
     # would throw away the coverage that works.
     #
-    # **The first of these skips is wrong and is left here knowingly.** A
-    # clipboard that does not round-trip is a missing capability and a reasonable
-    # skip. A host that does not exit is the serious bug in
-    # docs/backlog/testing.md, and skipping on it means CI goes green while it
-    # happens: that is exactly what a5b6dea did, this scenario skipping here while
-    # the clipboard scenario passed in the same job. Making it fail turns Linux
-    # red until the hang is fixed, which is a call for whoever picks that up.
+    # A missing capability skips; a hang does not. This used to skip on both,
+    # and a5b6dea is what that cost: the host hung here, the scenario skipped,
+    # and the Linux job reported success with the bug in it. A clipboard that
+    # cannot round-trip is a thing this environment does not have. A host that
+    # does not exit is the serious bug in docs/backlog/testing.md, and a suite
+    # that skips on it is the same fault as the cancelled job that reads as a
+    # job that ran, recorded in that same file.
+    #
+    # This is expected to be red on Linux until the hang is fixed, which is the
+    # point of it.
     try:
         _, logged = choose("12", timeout=40)
-    except subprocess.TimeoutExpired:
-        raise Skipped(
-            "the host did not exit after a run that reads the clipboard, so a text "
-            "role cannot be asserted here. That hang is itself a bug; see "
-            "docs/backlog/testing.md"
+    except subprocess.TimeoutExpired as expired:
+        raise Failure(
+            "the host did not exit after a run that reads the clipboard. This is "
+            "the hang in docs/backlog/testing.md, which skipped here until "
+            "2026-10-07 and so went unseen on a green job.\n"
+            + "\n".join(f"        {line}"
+                         for line in hang_text(expired.stderr, 24).splitlines())
         )
     if "clipboard reads back: PASTEDBYROLE" not in logged:
         raise Skipped(
@@ -2729,7 +2834,7 @@ def test_file_dialogs(bundle: Path) -> None:
         for name in ("BASALT_TEST_TYPE", "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS",
                      "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
             env.pop(name, None)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltDialogs"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
         )
@@ -2829,7 +2934,7 @@ def test_window(bundle: Path) -> None:
                  "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltWindow"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
     )
@@ -2920,7 +3025,7 @@ def test_context_menu(bundle: Path) -> None:
                      "BASALT_TEST_CLOSE_WINDOW"):
             if name != variable:
                 env.pop(name, None)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltContextMenu"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -3087,7 +3192,7 @@ def test_animated_scroll(bundle: Path) -> None:
                  "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltScrollAnimated"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
     )
@@ -3144,7 +3249,7 @@ def test_scrollbar_can_be_turned_off(bundle: Path) -> None:
                      "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
             env.pop(name, None)
 
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltScrollBare"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -3194,7 +3299,7 @@ def test_content_inset(bundle: Path) -> None:
                      "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
             env.pop(name, None)
 
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltScrollInset"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -3251,7 +3356,7 @@ def test_press_location(bundle: Path) -> None:
                      "BASALT_TEST_CLOSE_WINDOW"):
             env.pop(name, None)
 
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltPress"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -3300,7 +3405,7 @@ def test_image_get_size(bundle: Path) -> None:
                  "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltImage"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
     )
@@ -3364,7 +3469,7 @@ def test_window_limits(bundle: Path) -> None:
                  "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltWindowLimits"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
     )
@@ -3488,7 +3593,7 @@ def test_application_menu(bundle: Path) -> None:
                      "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
             env.pop(name, None)
 
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltMenu"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
         )
@@ -3559,7 +3664,7 @@ def test_debugging_overlay(bundle: Path) -> None:
             for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
                          "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL"):
                 env.pop(name, None)
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), module],
                 cwd=REPO, env=env, capture_output=True, text=True,
                 timeout=run_ms / 1000 + 90,
@@ -3638,7 +3743,7 @@ def test_windows(bundle: Path) -> None:
             for name in ("BASALT_TEST_TYPE", "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS",
                          "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
                 env.pop(name, None)
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), "BasaltWindows"],
                 cwd=REPO, env=env, capture_output=True, text=True,
                 timeout=run_ms / 1000 + 90,
@@ -3661,7 +3766,7 @@ def test_windows(bundle: Path) -> None:
             for name in ("BASALT_TEST_TYPE", "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS",
                          "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
                 env.pop(name, None)
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), "BasaltWindows"],
                 cwd=REPO, env=env, capture_output=True, text=True,
                 timeout=run_ms / 1000 + 90,
@@ -3755,7 +3860,7 @@ def test_drop_target(bundle: Path) -> None:
                          "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
                 env.pop(name, None)
 
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), "BasaltDrop"],
                 cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
             )
@@ -3822,7 +3927,7 @@ def test_view_key_events(bundle: Path) -> None:
     with tempfile.TemporaryDirectory() as directory:
         dump = Path(directory) / "tree.txt"
         env["BASALT_DUMP_TREE"] = str(dump)
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltKeys"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=150,
         )
@@ -3908,7 +4013,7 @@ def test_turbomodule_proxy(bundle: Path) -> None:
                  "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(app), "BasaltTurboModules"],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
     )
@@ -3965,7 +4070,7 @@ def test_crash_handler(bundle: Path) -> None:
                  "BASALT_TEST_MENU", "BASALT_QUIT_AFTER_MS"):
         env.pop(name, None)
 
-    result = subprocess.run(
+    result = run_host_process(
         [str(HOST), str(bundle), MODULE],
         cwd=REPO, env=env, capture_output=True, text=True, timeout=60,
     )
@@ -4078,16 +4183,19 @@ def test_clipboard(bundle: Path) -> str:
 
     started = time.monotonic()
     try:
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltClipboard"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=45,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as expired:
         raise Failure(
             "the host did not exit after reading the clipboard, against a quit "
             "timer of 7s and a limit of 45. This is the hang recorded in "
-            "docs/backlog/testing.md, reproduced: a pending clipboard read is the "
-            "suspect and nothing yet proves it."
+            "docs/backlog/testing.md, and reaching it here would put the "
+            "clipboard back under suspicion, which one run has already argued "
+            "against.\n"
+            + "\n".join(f"        {line}"
+                         for line in hang_text(expired.stderr, 24).splitlines())
         )
     elapsed = time.monotonic() - started
     logged = result.stdout + result.stderr
@@ -4144,7 +4252,7 @@ def test_displays(bundle: Path) -> None:
                      "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
             env.pop(name, None)
 
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltDisplays"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
         )
@@ -4234,7 +4342,7 @@ def test_quit_request(bundle: Path) -> None:
                 env.pop(name, None)
 
             started = time.monotonic()
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), "BasaltQuit"],
                 cwd=REPO, env=env, capture_output=True, text=True,
                 timeout=run_ms / 1000 + 60,
@@ -4328,7 +4436,7 @@ def test_window_close_request(bundle: Path) -> None:
             for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
                          "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_MENU"):
                 env.pop(name, None)
-            result = subprocess.run(
+            result = run_host_process(
                 [str(HOST), str(app), component],
                 cwd=REPO, env=env, capture_output=True, text=True,
                 timeout=run_ms / 1000 + 90,
@@ -4402,7 +4510,7 @@ def test_screen_stack(bundle: Path) -> None:
         env = dict(os.environ)
         env["BASALT_DUMP_TREE"] = str(dump)
         env["BASALT_QUIT_AFTER_MS"] = "4000"
-        result = subprocess.run(
+        result = run_host_process(
             [str(HOST), str(app), "BasaltScreens"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=64,
         )
@@ -4767,13 +4875,17 @@ def main() -> int:
             # hang is the least informative failure there is -- `capture_output`
             # swallows the pipes, so the report was four words and nothing else,
             # which on a platform that only runs in CI is nothing to work from.
+            #
+            # `run_host_process` asks a stuck host for a backtrace before killing
+            # it, so on POSIX this is usually the frames rather than the tail.
             for stream, label in ((expired.stdout, "stdout"), (expired.stderr, "stderr")):
                 if not stream:
                     continue
-                if isinstance(stream, bytes):
-                    stream = stream.decode("utf-8", "replace")
-                print(f"        --- last of the host's {label} ---")
-                for line in tail_text(stream, 20).splitlines():
+                shown = hang_text(stream, 20)
+                what = ("where the host was"
+                        if CRASH_MARKER in shown else f"last of the host's {label}")
+                print(f"        --- {what} ---")
+                for line in shown.splitlines():
                     print(f"        {line}")
 
     total = len(wanted) - skipped

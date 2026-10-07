@@ -55,14 +55,16 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   same commit, hung again at a5b6dea. Two in three.
 
   **And one of those two hangs reported success.** At a5b6dea it landed in `a role
-  in a context menu performs it`, which skips rather than fails when the host does
-  not exit, so the job was green with the bug in it. The clipboard scenario passed
-  in that same job, its host exiting in 7.2s, which is the clipboard ruled out as
-  the cause on one runner in one run. A skip is right for a clipboard that cannot
-  round-trip and wrong for a host that hangs, and this is the same shape as "a
-  cancelled job reads as a job that ran" further up this file. Fixing it turns
-  Linux red roughly two runs in three until the hang is fixed, so it is a
-  deliberate call rather than an oversight.
+  in a context menu performs it`, which skipped rather than failed when the host
+  did not exit, so the job was green with the bug in it. The clipboard scenario
+  passed in that same job, its host exiting in 7.2s, which is the clipboard ruled
+  out as the cause on one runner in one run.
+
+  That skip is now a failure, as of 2026-10-07. A skip is right for a clipboard
+  this environment cannot round-trip and wrong for a host that hangs, which is
+  the same shape as "a cancelled job reads as a job that ran" further up this
+  file. **Linux is expected to be red here until the hang is fixed**, roughly two
+  runs in three, and that is the point of it rather than a regression to chase.
 
   The 84.6s the passing rerun took is nine hosts against an 8s quit timer, one per
   index the scenario checks, not a slow runner.
@@ -72,13 +74,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   run. What the two hangs share is a host that did not exit, and that may be all
   they share.
 
-  **A hang still has no instrument.** The crash handler says nothing because
-  nothing crashed, and the harness kills the host without asking where it was.
-  Sending `SIGABRT` on timeout would run the crash handler that now exists and
-  name the stuck frame, which is the cheapest next move here.
+  **A hang now has an instrument**, added 2026-10-07. Every scenario that
+  launches a host goes through `run_host_process`, which on a timeout sends
+  `SIGABRT` before killing: that runs core/CrashHandler.cpp, which writes a
+  marker and up to 64 frames to stderr and re-raises, so the frames arrive on the
+  pipe the harness is already reading. A hang now reports the way a crash does.
+  Proven by giving a healthy host a limit below its own quit timer, which
+  produced the main thread parked in the run loop.
+
+  Two things it does not promise. The frames are of whichever thread took the
+  signal, and `kill` may deliver to any thread that has it unblocked, so a
+  backtrace that looks unrelated to the hang is a reason to doubt the thread
+  rather than the reading. And it is POSIX only: Windows has no `SIGABRT` to send
+  from another process and its half of the handler is an unhandled-exception
+  filter, so there a hang is still a kill. The hang this was built for is on GTK.
 
   The scenario's own compromise: the preconditions skip on the conditions rather
-  than the platform, so GTK keeps the coverage it has. The paste itself skips on
+  than the platform, so GTK keeps the coverage it has. The exception is the host
+  not exiting, which fails, for the reason above. The paste itself skips on
   Linux specifically when it does not arrive, which does mean **a regression that
   broke `paste` on Linux would come back as a skip and not a failure.** The hard
   assertion holds on AppKit and Windows, and `close` covers the mechanism on all
