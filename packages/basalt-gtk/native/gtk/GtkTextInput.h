@@ -55,6 +55,15 @@ class GtkTextInputManager {
   // `gtk_widget_grab_focus` has nothing to set focus on. Deferred to the end of
   // the transaction, which is where resolveRefreshControls already lives for the
   // same reason.
+  //
+  // **The end of the transaction is still not late enough**, which cost a day
+  // to find. A parent is not a window on screen: the widget may be unmapped
+  // until GTK's next layout pass, and focusing a GtkText that is not mapped
+  // takes GTK into claiming the PRIMARY selection against a surface that cannot
+  // answer, where `gdk_x11_get_server_time` blocks in `XIfEvent` with no
+  // timeout and the main loop never runs again. That is the stall in
+  // docs/backlog/testing.md, and it was this. So a widget that is not yet
+  // mapped is focused from its own `map` signal instead.
   void flushAutoFocus();
 
   // focus, blur, and setTextAndSelection. Returns false for anything else.
@@ -123,6 +132,11 @@ class GtkTextInputManager {
   static void onSelectionChanged(GObject *object, GParamSpec *pspec, gpointer userData);
   static void onFocusEnter(GtkEventControllerFocus *controller, gpointer userData);
   static void onFocusLeave(GtkEventControllerFocus *controller, gpointer userData);
+
+  // Focuses an `autoFocus` widget that was not mapped when the transaction
+  // ended, then disconnects itself: autoFocus is the first chance, not every
+  // time the widget is shown again.
+  static void focusWhenMapped(GtkWidget *widget, gpointer userData);
 
   // Fills in the parts of Metrics every event carries.
   facebook::react::TextInputEventEmitter::Metrics metricsFor(const Entry &entry) const;

@@ -201,10 +201,30 @@ void GtkTextInputManager::flushAutoFocus() {
     if (it == entries_.end()) {
       continue;
     }
-    // The same call the `focus` command makes, which is known to work because by
-    // the time JavaScript asks, the widget is in a window.
-    gtk_widget_grab_focus(GTK_WIDGET(it->second.editable));
+    GtkWidget *const widget = GTK_WIDGET(it->second.editable);
+
+    // Mapped is the precondition, not parented. The `focus` command gets away
+    // with calling this directly because by the time JavaScript asks, the
+    // widget has been on screen for a frame; a widget created in the
+    // transaction that just ended has not. See the header.
+    if (gtk_widget_get_mapped(widget)) {
+      gtk_widget_grab_focus(widget);
+      continue;
+    }
+
+    // After the default handler, so the widget is mapped by the time this runs
+    // rather than merely about to be. The handler dies with the widget, so a
+    // field that is removed before it is ever shown needs no cleanup here.
+    g_signal_connect_after(widget, "map", G_CALLBACK(focusWhenMapped), nullptr);
   }
+}
+
+void GtkTextInputManager::focusWhenMapped(GtkWidget *widget, gpointer /*userData*/) {
+  // Once. Without this, hiding and showing the field again would steal focus
+  // back, which is not what autoFocus means.
+  g_signal_handlers_disconnect_by_func(
+      widget, reinterpret_cast<gpointer>(focusWhenMapped), nullptr);
+  gtk_widget_grab_focus(widget);
 }
 
 void GtkTextInputManager::remove(Tag tag) {
