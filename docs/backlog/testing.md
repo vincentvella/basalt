@@ -34,21 +34,45 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   never completes fits, there being no clipboard manager and the owner being the
   same process, but nothing was instrumented.
 
-  **And the host has twice not exited at all, possibly for two different
-  reasons.** The first time it logged `BASALT_QUIT_AFTER_MS elapsed; quitting`
-  and then hung until the harness gave up, and the suspect was an unfinished
-  clipboard read. That is the serious half, because an app that reads the
-  clipboard and then quits is an ordinary app.
+  **The host also stops exiting, and that is two bugs, both on the main thread
+  and both named by backtrace on 2026-10-07.** Neither is the clipboard module,
+  which appears in neither stack.
 
-  The second was in CI on 2026-10-07, at f46f2b4, and it does not fit that
-  suspect. `a context menu opens where you press` timed out on Linux having
-  logged neither `BASALT_TEST_TAP: tapping`, which `fireTestTap` prints before it
-  does anything on a timer scheduled 1500ms in, nor the quitting line, whose
-  timer was set for 8s. Both GLib sources failed to fire and the last line is the
-  end of startup, so the main loop stopped dispatching about a second and a half
-  in. That is read off an absence, which is evidence only because the host
-  managed some fifteen lines against a twenty-line tail: the whole of what it
-  said is there, and an older failing Linux tail does carry the tap line.
+  **One: focusing a field claims an X11 selection and blocks.**
+
+      main -> g_application_run -> g_main_context_iteration
+        -> applyPendingMount -> GtkMountingManager::applyTransaction
+          -> GtkTextInputManager::flushAutoFocus
+            -> gdk_clipboard_set_content -> gdk_x11_get_server_time
+              -> XIfEvent -> pthread_cond_wait, for good
+
+  GtkText treats a programmatic focus as keyboard focus and selects all of its
+  text; selected text on X11 is a PRIMARY selection; claiming one needs a server
+  timestamp, and `gdk_x11_get_server_time` does an `XChangeProperty` and then
+  blocks in `XIfEvent` with no timeout. Under CI's display that round trip does
+  not come back. Introduced by 3e75c42 the same day, which is why the hang
+  appeared 45 minutes after it.
+
+  **Two: tearing the host down waits for a JavaScript thread that never quits.**
+
+      main -> g_application_run -> g_signal_emit (shutdown)
+        -> onShutdown -> ~ReactHost -> destroyReactInstance
+          -> MessageQueueThreadImpl::quitSynchronous
+            -> TaskDispatchThread::quit -> std::__basic_future<void>::wait()
+
+  This is the original observation, the one that logged `BASALT_QUIT_AFTER_MS
+  elapsed; quitting` and then hung. Open: why the JS thread does not finish. A
+  task of its own waiting on main-thread work that will never run, the loop
+  having left, is the shape to look for, and proving it wants the *other*
+  thread's stack, which the handler does not dump.
+
+  Together they account for the evidence that was previously read off absences.
+  The first blocks the loop inside a mount, before the 1500ms tap timer and the
+  8s quit timer, which is why neither fired and why there is no quitting line.
+  The second happens after the quit line, which is why the first sighting had
+  one. **What this file used to say, that the main loop "stopped dispatching
+  about a second and a half in", was wrong**: it was dispatching, inside a mount,
+  and blocked there.
 
   It is intermittent but not rare, and the first estimate here was twice too
   kind. Five Linux runs that reached the end-to-end suite on 2026-10-07: hung at
@@ -71,20 +95,42 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   The 84.6s the passing rerun took is nine hosts against an 8s quit timer, one per
   index the scenario checks, not a slow runner.
 
-  So the clipboard is no longer the leading suspect for either. The scenario
-  below writes and reads seven times and exits, on the same runner in the same
-  run. What the two hangs share is a host that did not exit, and that may be all
-  they share.
+  **Three wrong answers, recorded so they are not tried again.** The clipboard
+  module was blamed first; it is in neither stack, and the scenario below writes
+  and reads seven times and exits on the same runner in the same run. Then Xvfb
+  was blamed, and `-noreset` was added as the fix: with the flag confirmed in
+  effect all three shards still stalled on the first attempt, so it is not the
+  environment, though the flag was kept on its own merits. Then the widget was
+  thought to be unmapped when focused; the next frames read `flushAutoFocus`
+  directly rather than the `map` handler, so it was mapped and `grab_focus`
+  blocked anyway.
 
   **A hang now has an instrument**, added 2026-10-07. Every scenario that
   launches a host goes through `run_host_process`, which on a timeout sends
   `SIGABRT` before killing: that runs core/CrashHandler.cpp, which writes a
   marker and up to 64 frames to stderr and re-raises, so the frames arrive on the
   pipe the harness is already reading. A hang now reports the way a crash does.
-  Proven by giving a healthy host a limit below its own quit timer, which
-  produced the main thread parked in the run loop. **Not yet proven against a
-  real hang**, bb47bd6 being clean: what a stalled host's frames look like is
-  still unknown, and the first one to arrive is the thing to read here.
+  It has now read both hangs above, so it is proven rather than plausible, and
+  three things it gained in the reading are worth keeping: 64 frames rather than
+  24, because the first stack was cut off just above `g_closure_invoke` and so
+  did not say whether it reached `main`; the handler stating outright whether the
+  signalled thread is the main thread, `SIGABRT` going to whichever thread has it
+  unblocked; and `addr2line` with an `nm` fallback over our own frames, since
+  `backtrace_symbols_fd` names every library frame and leaves ours as bare
+  offsets, which is backwards for reading a hang.
+
+  **What it still cannot do is dump a thread other than the one that stalled**,
+  which is exactly what the second hang needs. `gdb -p` or `gcore` on the runner
+  is the way in.
+
+  **How both were caught: a `hunt` input on ci.yml's `workflow_dispatch`**, which
+  replaces the end-to-end step with a loop over the two context-menu scenarios
+  until a host does not exit. Waiting for a stall to turn up on an unrelated push
+  wasted the occurrence when it did; looping them back to back stalls on the
+  *first* attempt on all three shards, which is also the sharpest fix test
+  available here. It lives on the `hunt-stall` branch rather than main, and
+  `ci.yml` triggers on a `ci` branch too, so this needs no change to main to run.
+  Delete the input once both hangs are closed.
 
   Two things it does not promise. The frames are of whichever thread took the
   signal, and `kill` may deliver to any thread that has it unblocked, so a
