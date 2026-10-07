@@ -149,16 +149,52 @@ void GtkTouchDispatcher::onCancelled(GtkGesture * /*gesture*/,
   static_cast<GtkTouchDispatcher *>(userData)->dispatchTouchCancel();
 }
 
+namespace {
+
+// Whether `BASALT_TEST_HOVER` is driving the hover state, in which case the real
+// pointer must not touch it.
+//
+// The two share one `HoverTracker` and one entry point, and that was not a
+// theoretical problem. Measured 2026-10-07: with the cursor parked anywhere over
+// the window, GTK re-delivers a motion at the *same* coordinates every time the
+// widget tree changes, which is what crossing detection is supposed to do. The
+// hover app appends a pip to a tally row on every event, so each scripted move
+// mutated the tree, which brought a real motion at the stationary cursor, which
+// hit a view with no hover listeners, which made `HoverTracker::admitMove` send
+// one more move so the processor would learn the pointer had left -- correct
+// behaviour that unwound the path the scripted sequence was in the middle of
+// asserting on.
+//
+// Under Xvfb there is no pointer and none of this ever fired, which is why CI
+// was asserting something real while a developer's Mac was not. AppKit never had
+// the problem: its tracking area is `NSTrackingActiveInKeyWindow`, so a window
+// that is not key delivers no real motion at all.
+//
+// Read once: an instrument is set before the process starts and does not change.
+bool scriptedHoverOwnsTheState() {
+  static const bool scripted = g_getenv("BASALT_TEST_HOVER") != nullptr;
+  return scripted;
+}
+
+} // namespace
+
 void GtkTouchDispatcher::onMotion(GtkEventControllerMotion * /*controller*/,
                                   double x,
                                   double y,
                                   gpointer userData) {
   auto *self = static_cast<GtkTouchDispatcher *>(userData);
   self->dispatchTouchMove(x, y);
-  self->dispatchHover(x, y);
+  // Only the hover half is gated. A real motion still drives a touch move,
+  // because a drag driven by xdotool is real input and wants it.
+  if (!scriptedHoverOwnsTheState()) {
+    self->dispatchHover(x, y);
+  }
 }
 
 void GtkTouchDispatcher::onPointerLeft(GtkEventControllerMotion * /*controller*/, gpointer userData) {
+  if (scriptedHoverOwnsTheState()) {
+    return;
+  }
   static_cast<GtkTouchDispatcher *>(userData)->dispatchHoverLeave();
 }
 

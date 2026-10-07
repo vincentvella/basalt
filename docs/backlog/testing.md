@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (11):**
+**Open (10):**
 
 1. No rendering assertions on GTK
 2. Nothing exercises the JS thread and the main thread concurrently
@@ -10,7 +10,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 4. The GTK `<TextInput>` focus scenario flaked on a Mac, and nothing explains it
 5. Nothing tests tap-to-focus
 6. A `<TextInput>`'s wrapper is still an element of its own on Windows
-7. The hover scenario cannot assert its order on GTK-over-quartz
+7. ~~The hover scenario cannot assert its order on GTK-over-quartz~~
 8. One flaky end-to-end scenario, and a reload teardown that crashes on CI's Mac
 9. An app build compiles this repository's test suites
 10. A cancelled job reads as a job that ran
@@ -443,13 +443,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   GTK is unexamined; its focus controller needs a realised window, which that
   suite has never needed.
 
-- **The hover scenario cannot assert its order on GTK-over-quartz**, and is
-  skipped there with a note rather than loosened. A real cursor sitting over the
-  window when it maps has already entered the card before the first scripted
-  move lands, so the `enter card` the sequence expects in the middle arrives at
-  the start, and again at the end. Deterministic rather than flaky: three runs
-  byte-identical. CI runs this host under Xvfb, which has no pointer, and
-  asserts the full order, so nothing was weakened where it counts.
+- ~~**The hover scenario cannot assert its order on GTK-over-quartz.**~~ Fixed
+  2026-10-07, and the cause recorded here before that was wrong twice over, which
+  is worth keeping rather than quietly replacing.
+
+  It said the scenario "is skipped there with a note rather than loosened" and
+  blamed a real cursor sitting over the card when the window maps, arriving as an
+  extra `enter card` at the start. Neither held. The skip is conditional on the
+  subsequence check failing, so it never covered the failure actually seen, which
+  was a hard red on a developer's Mac. And the observed log had no leading `enter
+  card` at all: it passed the subsequence check and failed the later assertion
+  that crossing between the card's own children must not leave the card.
+
+  **What it was**, measured rather than reasoned about. GTK's real-pointer motion
+  controller was attached with no gate and fed the same single `HoverTracker` the
+  scripted sequence asserts on. Logging both real-pointer paths showed `onMotion`
+  firing at the *same* coordinates over and over, once after each scripted move,
+  with the mouse untouched: GTK re-runs crossing detection when the widget tree
+  changes, and `e2e/hover.tsx` appends a pip to a tally row on every hover event,
+  so each scripted move mutated the tree and brought a real motion at the
+  stationary cursor. That cursor was over the page and below the card, so the hit
+  chain found no hover listeners and `HoverTracker::admitMove` sent one more move
+  to tell the processor the pointer had left, which unwound the path mid-sequence.
+
+  Every step of that is correct in isolation, including React Native's ordering.
+  The fault was the shared state, so the real pointer no longer touches the hover
+  state while `BASALT_TEST_HOVER` is driving it. The touch half is deliberately
+  left alone: an xdotool drag is real input and wants its motion.
+
+  Why it only bit there: Xvfb has no pointer, so none of it ever fired on CI,
+  which is why CI was asserting something real the whole time. AppKit never had
+  it, its tracking area being `NSTrackingActiveInKeyWindow`, so a window that is
+  not key delivers no real motion.
+
+  Checked by running it three times where it had failed three times.
 
 - **One flaky end-to-end scenario.** "focus a TextInput, type, and see it
   round-trip through React" failed once in five consecutive runs of
