@@ -78,8 +78,25 @@ on:
     - cron: "17 6 * * 4"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel superseded runs on a branch, never on main.
+  # One group per commit on main, one group per ref everywhere else.
+  #
+  # The ref alone was not enough, and the reason is worth stating because the
+  # comment below used to get it wrong. `cancel-in-progress: false` protects a
+  # run that is *in progress*; it does nothing for one that is merely queued,
+  # because GitHub keeps a single pending run per group and a new arrival
+  # replaces it. Measured 2026-10-07: the run for 8a60f17 sat queued for
+  # thirteen minutes having started no jobs, and was cancelled five seconds
+  # after the next push. Two pushes in quick succession to main therefore cost a
+  # commit's result, which is the whole thing this is meant to prevent.
+  #
+  # Putting the SHA in the group on main means no two commits ever share one, so
+  # nothing is queued behind anything and nothing is replaced. The bill moves
+  # from patience to concurrency, and what it meets next is the account's own job
+  # limit, which queues without cancelling.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'shared' }}
+  # Cancel superseded runs on a branch. On main this is now moot, each commit
+  # having a group to itself, and it stays spelled out rather than removed
+  # because the two settings together are what make the behaviour readable.
   #
   # Cancelling is right for a branch: nobody needs the result for a commit that
   # has already been replaced, and a held runner delays the commit they do need.

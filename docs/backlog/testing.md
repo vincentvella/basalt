@@ -656,10 +656,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   next one, so the run that did go ahead covered its changes. What is lost in
   general is per-commit attribution, which is the thing this entry is about.
 
-  Closing it properly means each commit on main getting its own concurrency
-  group, by putting the SHA in the group there, so runs go side by side instead
-  of queueing behind one another. Not done: it trades patience for concurrency,
-  and the account's job limit is the next thing it would meet.
+  Closed by grouping on the SHA on main, so no two commits share a group, nothing
+  queues behind anything and nothing is replaced. The bill moves from patience to
+  concurrency, and what it meets next is the account's own job limit, which
+  queues without cancelling. `cancel-in-progress` is moot on main now and is left
+  spelled out, the two settings together being what make the behaviour readable.
 
   And `scripts/ci_status.py` reads the last run that reached a *verdict* per
   job, rather than the last run, with the count of newer runs that did not,
