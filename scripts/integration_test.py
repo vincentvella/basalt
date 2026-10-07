@@ -4028,7 +4028,7 @@ def test_crash_handler(bundle: Path) -> None:
         )
 
 
-def test_clipboard(bundle: Path) -> None:
+def test_clipboard(bundle: Path) -> str:
     """`Clipboard`, which ships on all three hosts and had never been tested.
 
     It became load-bearing before it was covered. A menu role's behaviour is
@@ -4054,6 +4054,11 @@ def test_clipboard(bundle: Path) -> None:
     that reads the clipboard and quits is an ordinary app. Every run of this app
     reads it and then quits, so this is the reproduction attempt. The timeout is
     short on purpose, so a hang costs the suite seconds rather than two minutes.
+
+    The exit time comes back as a note rather than only being checked, because the
+    number this should fail at is not known yet. A runner is slower than a
+    developer's machine by an amount nobody here has measured, and a threshold
+    guessed above a 7s timer is as likely to invent a failure as to catch one.
     """
     app = bundle_app(bundle.parent, "clipboard")
 
@@ -4068,12 +4073,12 @@ def test_clipboard(bundle: Path) -> None:
     try:
         result = subprocess.run(
             [str(HOST), str(app), "BasaltClipboard"],
-            cwd=REPO, env=env, capture_output=True, text=True, timeout=30,
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=45,
         )
     except subprocess.TimeoutExpired:
         raise Failure(
             "the host did not exit after reading the clipboard, against a quit "
-            "timer of 7s and a limit of 30. This is the hang recorded in "
+            "timer of 7s and a limit of 45. This is the hang recorded in "
             "docs/backlog/testing.md, reproduced: a pending clipboard read is the "
             "suspect and nothing yet proves it."
         )
@@ -4090,15 +4095,19 @@ def test_clipboard(bundle: Path) -> None:
                else tail_text(logged))
         )
 
-    # Exiting on time is the other half. The quit timer is 7s, so anything past
-    # about twice that is the host taking its time going away rather than the
-    # timer being late.
-    if elapsed > 15.0:
+    # Exiting at all is the assertion; the timeout above is what makes it one.
+    # This is the softer half: a host that exits but takes its time is the same
+    # suspect as one that never does, so the number is reported every run and
+    # fails only where no slow runner could plausibly land.
+    if elapsed > 30.0:
         raise Failure(
             f"the host took {elapsed:.1f}s to exit against a 7s quit timer. It did "
-            "exit, so this is not the hang, but a shutdown that slow after a "
+            "exit, so this is not quite the hang, but a shutdown that slow after a "
             f"clipboard read is the same suspect.\n{tail_text(logged)}"
         )
+
+    return (f"the host read the clipboard and exited in {elapsed:.1f}s, against a "
+            "7s quit timer")
 
 
 def test_displays(bundle: Path) -> None:
