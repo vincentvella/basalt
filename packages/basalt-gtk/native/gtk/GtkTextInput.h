@@ -138,6 +138,11 @@ class GtkTextInputManager {
   // time the widget is shown again.
   static void focusWhenMapped(GtkWidget *widget, gpointer userData);
 
+  // Focuses without selecting, where the peer has a call for it. See the
+  // definition: selecting on focus is what claimed an X11 PRIMARY selection and
+  // blocked the main loop.
+  static void grabFocusForAutoFocus(GtkWidget *widget);
+
   // Fills in the parts of Metrics every event carries.
   facebook::react::TextInputEventEmitter::Metrics metricsFor(const Entry &entry) const;
 

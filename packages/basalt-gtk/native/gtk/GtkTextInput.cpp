@@ -203,12 +203,10 @@ void GtkTextInputManager::flushAutoFocus() {
     }
     GtkWidget *const widget = GTK_WIDGET(it->second.editable);
 
-    // Mapped is the precondition, not parented. The `focus` command gets away
-    // with calling this directly because by the time JavaScript asks, the
-    // widget has been on screen for a frame; a widget created in the
-    // transaction that just ended has not. See the header.
+    // Mapped first, because focusing a widget that is not on screen is wrong on
+    // its own terms, even though it turned out not to be what hung the host.
     if (gtk_widget_get_mapped(widget)) {
-      gtk_widget_grab_focus(widget);
+      grabFocusForAutoFocus(widget);
       continue;
     }
 
@@ -224,6 +222,27 @@ void GtkTextInputManager::focusWhenMapped(GtkWidget *widget, gpointer /*userData
   // back, which is not what autoFocus means.
   g_signal_handlers_disconnect_by_func(
       widget, reinterpret_cast<gpointer>(focusWhenMapped), nullptr);
+  grabFocusForAutoFocus(widget);
+}
+
+// `gtk_widget_grab_focus` is the wrong call for a single-line field, and this is
+// what hung the host rather than anything to do with mapping. GtkText treats a
+// programmatic focus as keyboard focus and selects all of its text, selected
+// text is an X11 PRIMARY selection, and claiming one needs a server timestamp:
+// `gdk_x11_get_server_time` does an `XChangeProperty` and then blocks in
+// `XIfEvent` with no timeout. Under the display CI runs on that round trip does
+// not come back, inside a mount, so the main loop never runs again. See
+// docs/backlog/testing.md.
+//
+// It is also the better behaviour. autoFocus is meant to put a caret in a field,
+// not to select what is already in it and have the next keystroke replace it.
+void GtkTextInputManager::grabFocusForAutoFocus(GtkWidget *widget) {
+  // Multiline is a GtkTextView, which does not select on focus and has no
+  // equivalent call, so it keeps the ordinary one.
+  if (!rn_peer_is_multiline(widget) && GTK_IS_TEXT(widget)) {
+    gtk_text_grab_focus_without_selecting(GTK_TEXT(widget));
+    return;
+  }
   gtk_widget_grab_focus(widget);
 }
 
