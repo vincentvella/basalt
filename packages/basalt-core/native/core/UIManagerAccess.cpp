@@ -19,6 +19,23 @@ std::shared_ptr<facebook::react::UIManager> sharedUIManager() {
   return held().lock();
 }
 
+bool reportMountedSurface(facebook::react::SurfaceId surfaceId) {
+  const auto uiManager = sharedUIManager();
+  if (!uiManager) {
+    return false;
+  }
+  // `visit` answers false without running the callback when the surface is not
+  // there, and says it is safe from any thread. See the header for why this
+  // question is the one that matters.
+  const bool registered = uiManager->getShadowTreeRegistry().visit(
+      surfaceId, [](const facebook::react::ShadowTree &) {});
+  if (!registered) {
+    return false;
+  }
+  uiManager->reportMount(surfaceId);
+  return true;
+}
+
 namespace {
 
 EventListenerInstaller &installer() {

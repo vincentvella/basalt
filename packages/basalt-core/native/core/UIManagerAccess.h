@@ -24,6 +24,34 @@ namespace basalt {
 void setSharedUIManager(std::weak_ptr<facebook::react::UIManager> uiManager);
 std::shared_ptr<facebook::react::UIManager> sharedUIManager();
 
+// `reportMount`, but only for a surface the UIManager still has, which is a
+// workaround for an upstream use-after-free and not a tidying-up.
+//
+// `UIManager::mountHooks_` holds raw, non-owning pointers and unregistering is
+// the owner's job. `Scheduler` registers one and `~Scheduler` does not take it
+// out again, so from the moment `destroyReactInstance` writes
+// `scheduler_ = nullptr` the list contains a freed `EventPerformanceLogger` --
+// three statements before it tells a mounting manager anything, so the epoch
+// guard in MountingWalk.h cannot help. A mount draining on the main queue in
+// that gap used to walk the list and call a virtual method on freed memory.
+// See docs/backlog/testing.md.
+//
+// What makes a probe enough: `stopAllSurfaces()` runs *before* the Scheduler is
+// freed and takes the shadow trees out of the registry, so "the hook is
+// dangling" always implies "the surface has gone". Asking whether the surface is
+// still registered therefore refuses exactly the dangerous case, and the healthy
+// case is unaffected because a live surface is still in there. It also skips a
+// call that had nothing to report: with no root shadow node `reportMount` only
+// tells every hook the tree unmounted.
+//
+// Not airtight, and it is worth being clear about that. The surface could in
+// principle be stopped between the question and the call, which is a few
+// instructions rather than three statements of teardown. The fix is one line
+// upstream, in `~Scheduler`.
+//
+// Returns whether it reported.
+bool reportMountedSurface(facebook::react::SurfaceId surfaceId);
+
 // Watching every event Fabric dispatches.
 //
 // `Scheduler::addEventListener` is how a library sees events before the

@@ -526,11 +526,28 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   stopped surface and calls `shadowTreeDidUnmount` virtually on freed memory.
   That is the SIGSEGV, and the width of the gap is why it is intermittent.
 
-  **Nothing on this side closes it.** The guard cannot arm earlier because there
-  is no earlier notice, and clearing the shared UIManager would arm at the same
-  too-late point. The fix is one line upstream: `~Scheduler` unregistering the
-  mount hook it registered. Both of the bugs left in this file are in that one
-  function, the other being `quitSynchronous` above.
+  **Worked around on this side, as of 2026-10-07, and the ordering is what makes
+  it possible.** `stopAllSurfaces()` runs before the Scheduler is freed and takes
+  the shadow trees out of the registry, so "the hook is dangling" always implies
+  "the surface has gone". All three hosts now report through
+  `reportMountedSurface` in core/UIManagerAccess.h, which asks whether the
+  UIManager still has the surface and refuses if not: exactly the dangerous case,
+  and a call that had nothing to report anyway, since with no root shadow node
+  `reportMount` only tells every hook the tree unmounted.
+
+  The window shrinks from three statements of teardown to the few instructions
+  between the question and the call. It does not close. The fix is one line
+  upstream, `~Scheduler` unregistering the mount hook it registers, and both of
+  the bugs left in this file are in that one function, the other being
+  `quitSynchronous` above.
+
+  **What is not checked, and should be said rather than implied:** nothing in
+  the suite asserts that a mount hook ever ran. The call exists for Reanimated,
+  the only animation scenario is `scrollTo({animated: true})` which does not go
+  through a hook, and so a probe that wrongly refused a *live* surface would
+  leave the suite green and Reanimated silent. A live surface is in the registry
+  by construction, which is the same question `reportMount` asks itself, and the
+  reload scenario passes on both hosts. That is the argument; it is not a test.
 
   What was ours and is fixed: `mountEpoch_` was a plain `std::uint64_t` written
   from the detached reload thread and read on the main thread, which is a data

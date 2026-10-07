@@ -120,9 +120,9 @@ void Win32MountingManager::applyTransaction(SurfaceId surfaceId,
   // and without it an animated style is computed every frame, committed to the
   // shadow tree, and never resumed, so nothing moves. ReactCxxPlatform calls it
   // nowhere.
-  if (auto uiManager = sharedUIManager()) {
-    uiManager->reportMount(surfaceId);
-  }
+  // Refuses a surface the UIManager no longer has, which is what a reload's
+  // teardown leaves behind. See core/UIManagerAccess.h.
+  reportMountedSurface(surfaceId);
 
   // And ask the host to repaint, because on Windows nothing does that on its
   // own. See setOnDidMount. This also positions and shows the peers through

@@ -211,9 +211,9 @@ void GtkMountingManager::applyTransaction(SurfaceId surfaceId, MountingTransacti
   // manager. ReactCxxPlatform does it nowhere, which is a gap in the shared
   // platform rather than in either host: nothing in it had a mount hook until
   // a third-party library brought one.
-  if (auto uiManager = sharedUIManager()) {
-    uiManager->reportMount(surfaceId);
-  }
+  // Refuses a surface the UIManager no longer has, which is what a reload's
+  // teardown leaves behind. See core/UIManagerAccess.h.
+  reportMountedSurface(surfaceId);
 }
 
 // ---------------------------------------------------------------------------
