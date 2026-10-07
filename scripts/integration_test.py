@@ -4028,6 +4028,79 @@ def test_crash_handler(bundle: Path) -> None:
         )
 
 
+def test_clipboard(bundle: Path) -> None:
+    """`Clipboard`, which ships on all three hosts and had never been tested.
+
+    It became load-bearing before it was covered. A menu role's behaviour is
+    asserted by seeding the clipboard and pasting, and while writing that it turned
+    out the clipboard does not reliably round-trip under the display CI runs on.
+    Nothing in this suite exercised the module, so nobody knew.
+
+    Seven checks, each small enough that a failure names one thing: a round trip,
+    the second write winning, an empty string clearing rather than being ignored,
+    text outside ASCII, 64KB to reach X11's chunked path, whitespace kept as it
+    was, and `getString` answering a string rather than null.
+
+    All of them write before they read, deliberately. On Linux `clipboardText`
+    sees only this application's own clipboard, `GdkClipboard` reading
+    asynchronously and the seam being synchronous, so reading what another
+    application put there is a limit rather than a bug and is already recorded in
+    backlog/desktop-capabilities.md. What is asserted here is the half that is
+    meant to work on all three.
+
+    **And the exit is an assertion too.** A host was once seen to log
+    `BASALT_QUIT_AFTER_MS elapsed; quitting` after a run that read the clipboard
+    and then not exit, which is the serious half of that backlog entry: an app
+    that reads the clipboard and quits is an ordinary app. Every run of this app
+    reads it and then quits, so this is the reproduction attempt. The timeout is
+    short on purpose, so a hang costs the suite seconds rather than two minutes.
+    """
+    app = bundle_app(bundle.parent, "clipboard")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "7000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU"):
+        env.pop(name, None)
+
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            [str(HOST), str(app), "BasaltClipboard"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise Failure(
+            "the host did not exit after reading the clipboard, against a quit "
+            "timer of 7s and a limit of 30. This is the hang recorded in "
+            "docs/backlog/testing.md, reproduced: a pending clipboard read is the "
+            "suspect and nothing yet proves it."
+        )
+    elapsed = time.monotonic() - started
+    logged = result.stdout + result.stderr
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+
+    if "clipboard checks: 7/7" not in logged:
+        failures = [line for line in logged.splitlines() if "FAIL: " in line]
+        raise Failure(
+            "the clipboard did not round-trip.\n"
+            + ("\n".join(f"        {line.strip()}" for line in failures) if failures
+               else tail_text(logged))
+        )
+
+    # Exiting on time is the other half. The quit timer is 7s, so anything past
+    # about twice that is the host taking its time going away rather than the
+    # timer being late.
+    if elapsed > 15.0:
+        raise Failure(
+            f"the host took {elapsed:.1f}s to exit against a 7s quit timer. It did "
+            "exit, so this is not the hang, but a shutdown that slow after a "
+            f"clipboard read is the same suspect.\n{tail_text(logged)}"
+        )
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -4445,6 +4518,8 @@ SCENARIOS = [
      test_view_key_events),
     ("__turboModuleProxy answers for this platform and for React Native",
      test_turbomodule_proxy),
+    ("the clipboard round-trips, and the host still exits afterwards",
+     test_clipboard),
     ("the desktop says what displays it has", test_displays),
     ("a crash says where it died, and still exits with the signal",
      test_crash_handler),

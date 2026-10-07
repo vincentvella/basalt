@@ -47,9 +47,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   assertion holds on AppKit and Windows, and `close` covers the mechanism on all
   three.
 
-  Worth knowing separately: **nothing else in the suite exercises `Clipboard` at
-  all**, on any host. It is registered on all three and was never tested until an
-  assertion depended on it.
+  ~~Worth knowing separately: **nothing else in the suite exercises `Clipboard` at
+  all**, on any host.~~ Covered 2026-10-07 by "the clipboard round-trips, and the
+  host still exits afterwards": a round trip, the second write winning, an empty
+  string clearing rather than being ignored, text outside ASCII, 64KB to reach
+  X11's chunked path, whitespace kept, and `getString` answering a string rather
+  than null. Seven checks on all three hosts.
+
+  That scenario is also the reproduction attempt for the hang above, every run of
+  it reading the clipboard and then quitting, and it asserts the exit rather than
+  only the reading. It does not hang against a developer's X server, so whether
+  the hang returns is something CI will say and this machine will not.
 
 - **The `image` comparison flaked once and nobody can say why.** It differed on
   one CI run, passed on a rerun of the same commit, and passes locally: run

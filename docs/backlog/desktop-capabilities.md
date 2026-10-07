@@ -289,7 +289,12 @@ that boundary to place.
   the demo and a person. Windows needed by far the most code: OLE has no
   simple data object, so one dragged file means a hand-written `IDataObject`,
   an `IDropSource` and `SHCreateStdEnumFmtEtc`.
-- **Clipboard**, *partial*. Text works, through React Native's own `Clipboard`.
+- **Clipboard**, *partial*. Text works, through React Native's own `Clipboard`,
+  and is exercised as of 2026-10-07 by "the clipboard round-trips, and the host
+  still exits afterwards": seven checks on all three hosts, from a plain round
+  trip through 64KB to text outside ASCII. Until then the module shipped on
+  three platforms with nothing running it, which is how a menu role's assertion
+  came to depend on it while it was broken under CI's display.
   Images, HTML, RTF and a list of files are each a separate pasteboard type on
   each platform, and none is carried.
 
