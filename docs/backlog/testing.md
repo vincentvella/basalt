@@ -73,7 +73,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   elapsed; quitting` and then hung. Open: why the JS thread does not finish. A
   task of its own waiting on main-thread work that will never run, the loop
   having left, is the shape to look for, and proving it wants the *other*
-  thread's stack, which the handler does not dump.
+  thread's stack, which the handler does not dump but gdb now does.
+
+  **Not reproduced since, in about 555 teardowns.** Two hunts after the focus
+  hang was fixed: 45 attempts of the context-menu scenarios, which reach
+  `destroyReactInstance` once per host at quit, then 75 of the reload scenario,
+  which reaches it twice, at the reload and at the quit. No stall of any kind.
+
+  Worth noticing and not worth believing yet: **every sighting of this one
+  predates the focus fix.** Both were before e13a649, and a main thread stuck in
+  a blocking X round trip inside a mount is exactly the shape that leaves a
+  JavaScript thread waiting on UI work that never completes. But it was seen
+  twice in a small sample and has been absent from a large one, and absence of a
+  rare thing is weak, so this is recorded as a correlation rather than a cause.
+
+  Not hunted further. The instrument is on main now, gdb included, so the next
+  occurrence on any run dumps every thread by itself, which is the one piece of
+  evidence that has always been missing. Grinding runner time at something seen
+  twice has worse odds than waiting for it.
 
   Together they account for the evidence that was previously read off absences.
   The first blocks the loop inside a mount, before the 1500ms tap timer and the
