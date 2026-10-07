@@ -640,8 +640,26 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `cancel-in-progress` is now `${{ github.ref != 'refs/heads/main' }}`:
   cancelling is right for a branch, where nobody needs the result for a commit
   that has been replaced, and wrong for main, where it loses the only record
-  that a commit was tested. The cost is that quick pushes to main queue instead
-  of cancelling, which on a public repository is patience rather than money.
+  that a commit was tested.
+
+  **One sentence here was wrong and is worth correcting rather than deleting.**
+  It said the cost on main is that quick pushes "queue instead of cancelling,
+  which on a public repository is patience rather than money". They do not.
+  `cancel-in-progress` protects a run that is *in progress*; a run that is merely
+  *queued* is still cancelled, because GitHub keeps one pending run per
+  concurrency group and a new arrival replaces it. Measured 2026-10-07: the run
+  for 8a60f17 sat queued for thirteen minutes with zero jobs started and was
+  cancelled five seconds after the next push created its run. So the cost is a
+  lost run, not patience.
+
+  What saved it from mattering that day: the lost commit was an ancestor of the
+  next one, so the run that did go ahead covered its changes. What is lost in
+  general is per-commit attribution, which is the thing this entry is about.
+
+  Closing it properly means each commit on main getting its own concurrency
+  group, by putting the SHA in the group there, so runs go side by side instead
+  of queueing behind one another. Not done: it trades patience for concurrency,
+  and the account's job limit is the next thing it would meet.
 
   And `scripts/ci_status.py` reads the last run that reached a *verdict* per
   job, rather than the last run, with the count of newer runs that did not,
@@ -651,3 +669,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   not a tested commit. `scripts/test_ci_status.py` checks that logic against the
   exact history above, because a bug in this tool would point the same
   comfortable way the original problem did.
+
+  A lesson from using it in anger, 2026-10-07: the temporary hunt described
+  further up this file reused the `build and test` job name, so a hunt run's
+  verdict read as an ordinary suite verdict even though the job had run a loop of
+  two scenarios instead of the suite. `ci_status.py` was right that the job
+  reached a verdict; it had no way to know the job had been swapped out from
+  under the name. A temporary job wants a temporary name.
