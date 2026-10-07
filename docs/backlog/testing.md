@@ -18,7 +18,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 - **GTK's clipboard paste does not complete under the display CI runs on, and
   once the host hung instead.** Found 2026-10-07 while asserting that a text menu
-  role performs. The same scenario pastes on GTK against a developer's X server.
+  role performs. The same scenario pastes on the GTK host on a developer's Mac,
+  which is not an X server at all but the quartz backend, as recorded below.
 
   The first diagnosis was wrong and is worth recording as wrong. One run showed
   three failures at once, and the conclusion drawn was that the clipboard did not
@@ -33,12 +34,38 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   never completes fits, there being no clipboard manager and the owner being the
   same process, but nothing was instrumented.
 
-  **And once, the host did not exit at all.** It logged
-  `BASALT_QUIT_AFTER_MS elapsed; quitting` and then hung until the harness gave
-  up. Seen once, not reproduced since, and the suspect is the same unfinished
-  read. That one is the serious half if it returns, because an app that reads the
-  clipboard and then quits is an ordinary app. The crash handler says nothing,
-  nothing having crashed; a hang wants a different instrument.
+  **And the host has twice not exited at all, possibly for two different
+  reasons.** The first time it logged `BASALT_QUIT_AFTER_MS elapsed; quitting`
+  and then hung until the harness gave up, and the suspect was an unfinished
+  clipboard read. That is the serious half, because an app that reads the
+  clipboard and then quits is an ordinary app.
+
+  The second was in CI on 2026-10-07, at f46f2b4, and it does not fit that
+  suspect. `a context menu opens where you press` timed out on Linux having
+  logged neither `BASALT_TEST_TAP: tapping`, which `fireTestTap` prints before it
+  does anything on a timer scheduled 1500ms in, nor the quitting line, whose
+  timer was set for 8s. Both GLib sources failed to fire and the last line is the
+  end of startup, so the main loop stopped dispatching about a second and a half
+  in. That is read off an absence, which is evidence only because the host
+  managed some fifteen lines against a twenty-line tail: the whole of what it
+  said is there, and an older failing Linux tail does carry the tap line.
+
+  It is intermittent, which is the awkward part. A rerun of that same commit
+  passed, and the two commits before it were green with it. The scenario starts
+  nine hosts, one per index it checks, so the rate is one stalled startup in
+  dozens rather than one run in three, and a green Linux job is not evidence it
+  has gone. The 84.6s the passing rerun took is those nine hosts against an 8s
+  quit timer, not a slow runner.
+
+  So the clipboard is no longer the leading suspect for either. The scenario
+  below writes and reads seven times and exits, on the same runner in the same
+  run. What the two hangs share is a host that did not exit, and that may be all
+  they share.
+
+  **A hang still has no instrument.** The crash handler says nothing because
+  nothing crashed, and the harness kills the host without asking where it was.
+  Sending `SIGABRT` on timeout would run the crash handler that now exists and
+  name the stuck frame, which is the cheapest next move here.
 
   The scenario's own compromise: the preconditions skip on the conditions rather
   than the platform, so GTK keeps the coverage it has. The paste itself skips on
@@ -56,8 +83,15 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   That scenario is also the reproduction attempt for the hang above, every run of
   it reading the clipboard and then quitting, and it asserts the exit rather than
-  only the reading. It does not hang against a developer's X server, so whether
-  the hang returns is something CI will say and this machine will not.
+  only the reading. It passed on Linux CI, which is what moved the suspicion off
+  the clipboard.
+
+  Passing locally says less than it looks like, and the commit that added it
+  claimed more: `build/basalt_gtk` on a developer's Mac is a Mach-O binary
+  against Homebrew's GTK4, which links no X11 at all. There is no X server in
+  that run and never was. The local GTK host is quartz-only and cannot reach the
+  Xvfb path CI uses, which is the GTK-over-quartz caveat recorded further down
+  and is why neither this nor the paste problem reproduces here.
 
 - **The `image` comparison flaked once and nobody can say why.** It differed on
   one CI run, passed on a rerun of the same commit, and passes locally: run
