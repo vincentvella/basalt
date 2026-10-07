@@ -14,36 +14,42 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 8. One flaky end-to-end scenario, and a reload teardown that crashes on CI's Mac
 9. An app build compiles this repository's test suites
 10. A cancelled job reads as a job that ran
-11. Three things differ under Xvfb, and one of them is a hang
+11. GTK's clipboard paste does not complete under CI's display
 
-- **Three things differ under Xvfb, and one of them is a hang.** Found on
-  2026-10-07 while asserting that a text menu role performs. The same scenario
-  passes on GTK against a developer's X server and fails three ways on the Xvfb CI
-  runs on:
+- **GTK's clipboard paste does not complete under the display CI runs on, and
+  once the host hung instead.** Found 2026-10-07 while asserting that a text menu
+  role performs. The same scenario pastes on GTK against a developer's X server.
 
-  | What | On a real X server | Under Xvfb |
-  | --- | --- | --- |
-  | `Clipboard.getString()` after `setString` | resolves with the string | never resolves |
-  | `autoFocus` on a `<TextInput>` | `onFocus` fires | nothing |
-  | the host after `BASALT_QUIT_AFTER_MS` | exits | prints "quitting" and hangs |
+  The first diagnosis was wrong and is worth recording as wrong. One run showed
+  three failures at once, and the conclusion drawn was that the clipboard did not
+  round-trip, that `autoFocus` did not take, and that the host hung. The next run
+  showed the first two working and only the paste missing, so two of those three
+  were timing rather than capability: the readback is itself asynchronous and had
+  not arrived before it was looked for.
 
-  **The hang is the one that matters.** The host logs
-  `BASALT_QUIT_AFTER_MS elapsed; quitting` and then does not exit, and the harness
-  gives up on it. A pending GDK clipboard read is the obvious suspect, that run
-  being the only one that reads the clipboard, but nothing has been established:
-  the crash handler says nothing because nothing crashes, and a hang needs a
-  different instrument. An app that reads the clipboard and then quits is an
-  ordinary app, so this is not only a test-environment problem.
+  What is left, and is reproducible: `gtk_widget_activate_action(focus,
+  "clipboard.paste")` does not deliver under that display. The preconditions pass,
+  the menu answers, and the text never arrives. Not established: why. A read that
+  never completes fits, there being no clipboard manager and the owner being the
+  same process, but nothing was instrumented.
 
-  The scenario skips rather than fails, and on the conditions rather than on the
-  platform, so GTK keeps the coverage it has where it works. What that costs: a
-  text role is asserted on AppKit and Windows and reported unproven on Linux CI.
-  The `close` role still covers the mechanism on all three.
+  **And once, the host did not exit at all.** It logged
+  `BASALT_QUIT_AFTER_MS elapsed; quitting` and then hung until the harness gave
+  up. Seen once, not reproduced since, and the suspect is the same unfinished
+  read. That one is the serious half if it returns, because an app that reads the
+  clipboard and then quits is an ordinary app. The crash handler says nothing,
+  nothing having crashed; a hang wants a different instrument.
+
+  The scenario's own compromise: the preconditions skip on the conditions rather
+  than the platform, so GTK keeps the coverage it has. The paste itself skips on
+  Linux specifically when it does not arrive, which does mean **a regression that
+  broke `paste` on Linux would come back as a skip and not a failure.** The hard
+  assertion holds on AppKit and Windows, and `close` covers the mechanism on all
+  three.
 
   Worth knowing separately: **nothing else in the suite exercises `Clipboard` at
   all**, on any host. It is registered on all three and was never tested until an
-  assertion depended on it, which is how a module that does not work headlessly
-  came to be load-bearing.
+  assertion depended on it.
 
 - **The `image` comparison flaked once and nobody can say why.** It differed on
   one CI run, passed on a rerun of the same commit, and passes locally: run
