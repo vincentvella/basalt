@@ -26,6 +26,15 @@ constexpr std::size_t kFatalSignalCount = sizeof(kFatalSignals) / sizeof(kFatalS
 // empty slot is one this never touched.
 struct sigaction gPrevious[kFatalSignalCount];
 
+// The thread that installed the handler, which is the main thread: the handler
+// runs on whichever thread took the signal, and for a hang that is the first
+// thing a reader needs to know. A backtrace that cannot be told apart from the
+// JS thread's is half a diagnosis, which cost a round trip here once already.
+// Recorded rather than derived, because `pthread_main_np` is not portable and
+// `gettid`-style checks say nothing on a host whose main thread is not tid 1.
+pthread_t gMainThread = {};
+bool gMainThreadKnown = false;
+
 int slotFor(int signalNumber) {
   for (std::size_t i = 0; i < kFatalSignalCount; i++) {
     if (kFatalSignals[i] == signalNumber) {
@@ -95,6 +104,14 @@ void onFatalSignal(int signalNumber, siginfo_t *info, void * /*context*/) {
   if (info != nullptr) {
     writeText(" at ");
     writeHex(reinterpret_cast<std::uintptr_t>(info->si_addr));
+  }
+  // Said plainly, because the whole point is telling the loop apart from JS.
+  // `pthread_equal` on two stored values is a comparison and nothing more, so
+  // it is safe enough here even though it is not on the promised list.
+  if (gMainThreadKnown) {
+    writeText(::pthread_equal(::pthread_self(), gMainThread) != 0
+                  ? ", the main thread"
+                  : ", NOT the main thread");
   }
   writeText(", thread ");
   // The id rather than the name: `pthread_getname_np` takes no lock on either
@@ -209,6 +226,10 @@ void installCrashHandler() {
   // libgcc, and a handler is not the place to find that out.
   void *warm[1];
   (void)::backtrace(warm, 1);
+
+  // Called from main() on every host, so this is the main thread.
+  gMainThread = ::pthread_self();
+  gMainThreadKnown = true;
 
   struct sigaction action = {};
   action.sa_sigaction = onFatalSignal;

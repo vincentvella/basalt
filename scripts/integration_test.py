@@ -890,19 +890,74 @@ def _ask_where_it_was(host: subprocess.Popen) -> tuple:
         return "", ""
 
 
-def hang_text(stream, lines: int = 20) -> str:
+def hang_text(stream, lines: int = 64) -> str:
     """What to show of a hung host: its frames if it managed any, else the tail.
 
     `tail_text` is wrong for a backtrace. Frames print innermost first, so the
     last lines of the stream are the ones nearest `main`, and the innermost
     frames -- where it is actually stuck -- are exactly what a tail discards.
+
+    The default is the handler's own 64 frames rather than a round number. A
+    first reading of real frames was cut at 24 and stopped just above
+    `g_closure_invoke`, which left the one question that mattered unanswered:
+    whether the stack reached `main`, and so whether the stalled thread was the
+    loop or JavaScript.
     """
     if isinstance(stream, bytes):
         stream = stream.decode("utf-8", "replace")
     marker = stream.rfind(CRASH_MARKER)
     if marker < 0:
         return tail_text(stream, lines)
-    return "\n".join(stream[marker:].splitlines()[:lines + 1])
+    return symbolised("\n".join(stream[marker:].splitlines()[:lines + 1]))
+
+
+# `basalt_gtk(+0x87685c)[0x5611...]`: the offset is what addr2line wants, and
+# the absolute address is useless once the process is gone.
+FRAME = re.compile(r"^(?P<path>\S+)\(\+(?P<offset>0x[0-9a-fA-F]+)\)\[0x[0-9a-fA-F]+\]$")
+
+
+def symbolised(frames: str) -> str:
+    """Puts names on our own frames, where the platform can.
+
+    `backtrace_symbols_fd` allocates nothing, which is why the handler uses it,
+    and the price is that a static function in our own binary prints as a bare
+    offset while every library frame comes out named. That asymmetry is exactly
+    backwards for reading a hang: the library frames say GTK was in a clipboard
+    call, and the unnamed ones are the code that asked it to be.
+
+    Best effort. No addr2line, or an addr2line that cannot read the binary, and
+    the frames come back as they were rather than the function failing.
+    """
+    if not shutil.which("addr2line"):
+        return frames
+
+    lines = frames.splitlines()
+    wanted = {}
+    for index, line in enumerate(lines):
+        found = FRAME.match(line.strip())
+        if found and Path(found.group("path")).name.startswith("basalt_"):
+            wanted.setdefault(found.group("path"), []).append(
+                (index, found.group("offset")))
+
+    for binary, entries in wanted.items():
+        if not Path(binary).exists():
+            continue
+        try:
+            named = subprocess.run(
+                ["addr2line", "-C", "-f", "-p", "-e", binary,
+                 *(offset for _, offset in entries)],
+                capture_output=True, text=True, timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        answers = named.stdout.splitlines()
+        if len(answers) != len(entries):
+            continue
+        for (index, offset), answer in zip(entries, answers):
+            if "??" in answer:
+                continue
+            lines[index] = f"{offset}  {answer.strip()}"
+    return "\n".join(lines)
 
 
 def is_subsequence(wanted: list, got: list) -> bool:
@@ -2710,7 +2765,7 @@ def test_context_menu_role(bundle: Path) -> None:
             "the hang in docs/backlog/testing.md, which skipped here until "
             "2026-10-07 and so went unseen on a green job.\n"
             + "\n".join(f"        {line}"
-                         for line in hang_text(expired.stderr, 24).splitlines())
+                         for line in hang_text(expired.stderr).splitlines())
         )
     if "clipboard reads back: PASTEDBYROLE" not in logged:
         raise Skipped(
@@ -4195,7 +4250,7 @@ def test_clipboard(bundle: Path) -> str:
             "clipboard back under suspicion, which one run has already argued "
             "against.\n"
             + "\n".join(f"        {line}"
-                         for line in hang_text(expired.stderr, 24).splitlines())
+                         for line in hang_text(expired.stderr).splitlines())
         )
     elapsed = time.monotonic() - started
     logged = result.stdout + result.stderr
@@ -4881,7 +4936,7 @@ def main() -> int:
             for stream, label in ((expired.stdout, "stdout"), (expired.stderr, "stderr")):
                 if not stream:
                     continue
-                shown = hang_text(stream, 20)
+                shown = hang_text(stream)
                 what = ("where the host was"
                         if CRASH_MARKER in shown else f"last of the host's {label}")
                 print(f"        --- {what} ---")
