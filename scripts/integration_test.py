@@ -50,6 +50,7 @@ without taking over the machine's cursor.
 """
 
 import argparse
+import bisect
 import os
 import re
 import signal
@@ -953,11 +954,61 @@ def symbolised(frames: str) -> str:
         answers = named.stdout.splitlines()
         if len(answers) != len(entries):
             continue
+        unresolved = []
         for (index, offset), answer in zip(entries, answers):
             if "??" in answer:
+                unresolved.append((index, offset))
                 continue
             lines[index] = f"{offset}  {answer.strip()}"
+        # addr2line reads DWARF, so it answers for our own sources and says `??`
+        # for everything linked in without `-g`. That is most of the interesting
+        # frames: the first real hang bottomed out in React Native's code, where
+        # every frame came back unnamed while basalt's own resolved. Those
+        # functions are still in the symbol table, which is what nm reads.
+        if unresolved:
+            for index, name in nearest_symbols(binary, unresolved):
+                lines[index] = name
     return "\n".join(lines)
+
+
+def nearest_symbols(binary: str, wanted: list) -> list:
+    """Names frames from the symbol table: the nearest symbol at or below each.
+
+    Nearest-preceding rather than exact, because a return address points into
+    the middle of a function. The offset is kept alongside so a reader can tell
+    a confident hit from a frame that landed a long way past its symbol.
+    """
+    if not shutil.which("nm"):
+        return []
+    try:
+        listed = subprocess.run(
+            ["nm", "-C", "--defined-only", "--numeric-sort", binary],
+            capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+    table = []
+    for line in listed.stdout.splitlines():
+        parts = line.split(" ", 2)
+        if len(parts) == 3 and parts[1].upper() in ("T", "W"):
+            try:
+                table.append((int(parts[0], 16), parts[2]))
+            except ValueError:
+                continue
+    if not table:
+        return []
+    table.sort()
+
+    named = []
+    for index, offset in wanted:
+        address = int(offset, 16)
+        at = bisect.bisect_right(table, (address, chr(0x10FFFF))) - 1
+        if at < 0:
+            continue
+        start, name = table[at]
+        named.append((index, f"{offset}  {name} + {address - start}"))
+    return named
 
 
 def is_subsequence(wanted: list, got: list) -> bool:
