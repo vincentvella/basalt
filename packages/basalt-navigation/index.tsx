@@ -32,8 +32,19 @@
  * ## When this stops being necessary
  *
  * software-mansion/react-native-screens#4779 proposes letting a platform that
- * supplies the components say so with `enableScreens()`. If that lands, this
- * package becomes one line in an application instead, and the provider can go.
+ * supplies the components say so, with `provideNativeScreens()`. If that lands,
+ * this package becomes two calls in an application instead, and the provider can
+ * go:
+ *
+ *     provideNativeScreens();  // basalt registers RNSScreen and the rest
+ *     enableScreens();         // use them
+ *
+ * It was `enableScreens()` alone in an earlier revision of that pull request, and
+ * the review was right to refuse it: that call is unconditional in most
+ * applications and on a platform without native screens it has always meant "use
+ * them where they exist". Overloading it would have made react-native-macos,
+ * which has no implementation there either, start mounting components that are
+ * not registered.
  *
  * @format
  */

@@ -45,9 +45,20 @@ native component everywhere already.
 ## When you will not need it
 
 [react-native-screens#4779](https://github.com/software-mansion/react-native-screens/pull/4779)
-proposes letting a platform that supplies the components say so with
-`enableScreens()`. If it lands, this package becomes one line in your
-application and can go.
+proposes letting a platform that supplies the components say so. If it lands,
+this package becomes two calls in your application and can go:
+
+```ts
+provideNativeScreens(); // basalt registers RNSScreen and the rest
+enableScreens(); // use them
+```
+
+Two calls rather than one, and that is the point of them. An earlier revision of
+that pull request reused `enableScreens()` for both, and the review was right to
+refuse it: applications call it unconditionally, and on a platform with no native
+screens it has always meant "use them where they exist" and kept the fallback.
+Reusing it would have made react-native-macos, which has no implementation there
+either, mount components that are not registered.
 
 ## The one wart
 

@@ -193,6 +193,16 @@ as no header rather than as a broken one.
     keeping an unsupported platform off the native components. Measured, not
     reasoned about: the first patch hid the covered screen even with no
     `enableScreens()` call, which is how it was caught.
+  - And the opt-in cannot be `enableScreens()` itself, which the third revision
+    tried and the review refused, correctly. Applications call that
+    unconditionally, and on a platform with no native screens it has always meant
+    "use them where they exist" and left the fallback alone. Reusing it as a
+    capability assertion would have made react-native-macos, which reports `macos`
+    and has no implementation there either, mount components that are not
+    registered. That is the same platform the first reason above is about, broken a
+    second time from the other direction: the list was left alone and the gate was
+    widened instead, which reached it just the same. The opt-in is
+    `provideNativeScreens()` now, a call of its own.
 
   Forking `core.ts` through a Metro override would work today and is not worth
   it: metro-config.ts argues that the library fallback "cannot be a list of
