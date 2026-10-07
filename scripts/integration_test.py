@@ -356,6 +356,22 @@ def expect_logged(needle: str, why: str) -> None:
         raise Failure(f"{why}: expected {needle!r} in the host's output")
 
 
+def expect_not_logged(needle: str, why: str) -> None:
+    """The other half of `expect_logged`, for a line that means something broke.
+
+    Asserting an *absence* is weak on its own, since a line can go missing because
+    nothing logged it. It earns its place next to an `expect_logged` for the
+    matching success, which is what makes the pair say the thing is working
+    rather than merely quiet.
+    """
+    if needle in LAST_HOST_OUTPUT:
+        line = next(
+            (one.strip() for one in LAST_HOST_OUTPUT.splitlines() if needle in one),
+            needle,
+        )
+        raise Failure(f"{why}\n        {line}")
+
+
 def expect_contains(tree: str, needle: str, why: str) -> None:
     if needle not in tree:
         raise Failure(f"{why}: expected to find {needle!r} in the widget tree")
@@ -515,6 +531,26 @@ def test_initial_render(bundle: Path) -> None:
         f"Platform.OS is {PLATFORM}",
         f"the app did not see Platform.OS === {PLATFORM!r}; was it bundled for {PLATFORM}?",
     )
+    # The mount-report guard, in the one direction nothing else can see. Every
+    # host reports a finished transaction to the UIManager for the benefit of a
+    # mount hook, and core/UIManagerAccess.cpp refuses to do it for a surface
+    # the UIManager has already lost, which is a workaround for an upstream
+    # use-after-free. Nothing in this suite asserts that a mount hook ever ran,
+    # so a guard that refused *every* surface would stop Reanimated and leave the
+    # whole suite green. These two lines are the cheapest thing that notices:
+    # the report has to happen at least once, and in a run that tears nothing
+    # down it must never be refused.
+    expect_logged(
+        "mount reported to the UIManager",
+        "no transaction was reported to the UIManager, so a mount hook would "
+        "never run and an animation driven by one would never resume",
+    )
+    expect_not_logged(
+        "mount report refused",
+        "a mount report was refused in a run that stops no surface, so the "
+        "guard in core/UIManagerAccess.cpp is asking the wrong question",
+    )
+
     expect_contains(tree, "texture=160x100", "the image never loaded or decoded")
     expect_contains(tree, 'text="row 0"', "the list did not render")
     expect_contains(tree, 'text="row 23"', "the list is short of rows")

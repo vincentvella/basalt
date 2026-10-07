@@ -1,5 +1,9 @@
 #include "UIManagerAccess.h"
 
+#include <glog/logging.h>
+
+#include <mutex>
+
 namespace basalt {
 
 namespace {
@@ -30,8 +34,23 @@ bool reportMountedSurface(facebook::react::SurfaceId surfaceId) {
   const bool registered = uiManager->getShadowTreeRegistry().visit(
       surfaceId, [](const facebook::react::ShadowTree &) {});
   if (!registered) {
+    // Every time, because this should be rare: it means a transaction was
+    // applied after its surface had gone, which is the race this guards. A run
+    // that logs this in quantity is saying the refusal is not rare, and a
+    // *healthy* run that logs it at all is saying the question is wrong.
+    LOG(WARNING) << "mount report refused: surface " << surfaceId
+                 << " is no longer registered";
     return false;
   }
+  // Once per process, so that a suite can tell "the guard is letting mounts
+  // through" from "the guard refuses everything". Refusing everything is the
+  // failure this has no other way of noticing: nothing asserts that a mount
+  // hook ran, so an over-eager refusal would stop Reanimated silently and leave
+  // every test green. See docs/backlog/testing.md.
+  static std::once_flag reported;
+  std::call_once(reported, [surfaceId] {
+    LOG(INFO) << "mount reported to the UIManager, surface " << surfaceId;
+  });
   uiManager->reportMount(surfaceId);
   return true;
 }
