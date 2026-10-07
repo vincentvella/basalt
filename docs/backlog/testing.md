@@ -53,6 +53,15 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   not come back. Introduced by 3e75c42 the same day, which is why the hang
   appeared 45 minutes after it.
 
+  **Fixed** by e13a649: single-line fields focus through
+  `gtk_text_grab_focus_without_selecting`, so nothing is selected, no PRIMARY
+  claim is made and no server timestamp is needed. Measured rather than
+  asserted: four hunts in a row stalled on the first attempt on every shard, and
+  the hunt after the fix ran eight attempts on each of three runners with no
+  stall and no frames. Multiline keeps the ordinary call, GtkTextView not
+  selecting on focus. It is also the better behaviour, autoFocus being meant to
+  leave a caret rather than to select what is already there.
+
   **Two: tearing the host down waits for a JavaScript thread that never quits.**
 
       main -> g_application_run -> g_signal_emit (shutdown)
@@ -89,8 +98,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   That skip is now a failure, as of 2026-10-07. A skip is right for a clipboard
   this environment cannot round-trip and wrong for a host that hangs, which is
   the same shape as "a cancelled job reads as a job that ran" further up this
-  file. **Linux is expected to be red here until the hang is fixed**, on the runs
-  where it stalls, and that is the point of it rather than a regression to chase.
+  file. It was expected to be red on the runs where it stalled, which is what a
+  failure is for. With the focus hang fixed, what is left to redden it is the
+  teardown hang, which is rarer: it was seen once, and did not reappear in the
+  24 attempts that cleared the other, so that is not evidence it has gone.
 
   The 84.6s the passing rerun took is nine hosts against an 8s quit timer, one per
   index the scenario checks, not a slow runner.
