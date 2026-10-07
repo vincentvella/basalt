@@ -346,7 +346,15 @@ jobs:
         run: |
           # Redirected and disowned: a step that leaves a process holding its
           # stdout open can make the runner wait for it forever.
-          Xvfb :99 -screen 0 1400x1000x24 > /tmp/xvfb.log 2>&1 &
+          # -noreset because this suite is dozens of short-lived clients, one at
+          # a time. An X server resets when its last client disconnects, so
+          # without this the server tore itself down and came back between
+          # every host, and a host connecting into that window can lose the
+          # PropertyNotify that GTK's clipboard claim is blocked on:
+          # gdk_clipboard_set_content -> gdk_x11_get_server_time -> XIfEvent,
+          # which has no timeout and parks the main loop for good. See the
+          # stall in docs/backlog/testing.md.
+          Xvfb :99 -screen 0 1400x1000x24 -noreset > /tmp/xvfb.log 2>&1 &
           disown
           for _ in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.5; done
           xdpyinfo -display :99 | grep -m1 dimensions
@@ -1076,7 +1084,15 @@ jobs:
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DRN_DIR=react-native-src/packages/react-native
           cmake --build build -j "$(nproc)"
-          Xvfb :99 -screen 0 1400x1000x24 > /tmp/xvfb.log 2>&1 &
+          # -noreset because this suite is dozens of short-lived clients, one at
+          # a time. An X server resets when its last client disconnects, so
+          # without this the server tore itself down and came back between
+          # every host, and a host connecting into that window can lose the
+          # PropertyNotify that GTK's clipboard claim is blocked on:
+          # gdk_clipboard_set_content -> gdk_x11_get_server_time -> XIfEvent,
+          # which has no timeout and parks the main loop for good. See the
+          # stall in docs/backlog/testing.md.
+          Xvfb :99 -screen 0 1400x1000x24 -noreset > /tmp/xvfb.log 2>&1 &
           disown
           for _ in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.5; done
           ./build/basalt_gtk_tests
