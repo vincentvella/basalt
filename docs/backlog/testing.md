@@ -487,6 +487,25 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   So if this scenario fails again, the next run says where. Which is what it
   should have said the first time.
 
+  **It failed again, at 1162ced, and the next run did say where.** The guard
+  above is therefore incomplete:
+
+      UIManager::reportMount(int) + 264
+        <- AppKitMountingManager::applyTransaction
+          <- applyPendingMount <- _dispatch_main_queue_drain
+
+  `host exited -11` on CI's macOS runner, the same scenario, while every Linux
+  and Windows shard passed. Not caused by the commit it failed on, which touched
+  GTK's focus call, the crash handler's thread note and the harness.
+
+  What it narrows: the crash is *inside* `reportMount`, not on the way to it.
+  `sharedUIManager()` is a `weak_ptr::lock()` and the call site checks what it
+  returns, so the UIManager was alive and something it reached into was not. A
+  mount hook is the first place to look, the comment at that call naming
+  Reanimated's as the one that matters, and a hook destroyed without
+  unregistering leaves exactly this. The epoch guard drops a stale *mount*; it
+  says nothing about a UIManager that is alive but half torn down.
+
 - **An app build compiles this repository's test suites.** `native/` is packed
   whole, tests included, and nothing gates them, so `react-native run-macos:
   build` in someone's app builds `basalt_appkit_tests`,
