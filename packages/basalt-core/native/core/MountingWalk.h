@@ -52,6 +52,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -293,14 +294,14 @@ class MountingWalk {
   }
 
   std::uint64_t mountEpoch() const {
-    return mountEpoch_;
+    return mountEpoch_.load(std::memory_order_relaxed);
   }
 
   // Called by a host when React Native hands it a null scheduler task executor,
   // which is what `destroyReactInstance` does and the only notice a mounting
   // manager gets that the instance is going away.
   void invalidatePendingMounts() {
-    ++mountEpoch_;
+    mountEpoch_.fetch_add(1, std::memory_order_relaxed);
     // The emitters are the part that points into the dead instance. The views
     // stay: the surfaces restart with the same ids, the host owns their roots,
     // and the next transaction replaces what is under them. An event arriving in
@@ -553,7 +554,15 @@ class MountingWalk {
   std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
 
   // Bumped when the React instance is torn down; see invalidatePendingMounts.
-  std::uint64_t mountEpoch_{0};
+  //
+  // Atomic because the two ends are different threads: `destroyReactInstance`
+  // runs on a detached thread and bumps this, while `applyPendingMount` reads it
+  // on the main thread to decide whether to drop itself. A plain integer there is
+  // a data race on the guard that exists to prevent a use-after-free, which is
+  // the wrong place to have one. Relaxed ordering is enough: the only question
+  // asked of it is whether the value still equals the one a mount was queued
+  // with, and a mount that reads a stale epoch is dropped by the next one.
+  std::atomic<std::uint64_t> mountEpoch_{0};
 
   // The main thread, recorded at construction. `executeMount` arrives on the JS
   // thread and marshals here; `applyMutations` asserts it got there.

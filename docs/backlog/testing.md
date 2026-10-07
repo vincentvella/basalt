@@ -498,13 +498,43 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and Windows shard passed. Not caused by the commit it failed on, which touched
   GTK's focus call, the crash handler's thread note and the harness.
 
-  What it narrows: the crash is *inside* `reportMount`, not on the way to it.
-  `sharedUIManager()` is a `weak_ptr::lock()` and the call site checks what it
-  returns, so the UIManager was alive and something it reached into was not. A
-  mount hook is the first place to look, the comment at that call naming
-  Reanimated's as the one that matters, and a hook destroyed without
-  unregistering leaves exactly this. The epoch guard drops a stale *mount*; it
-  says nothing about a UIManager that is alive but half torn down.
+  **What it is, read off the pinned React Native (v0.87.1) rather than guessed.**
+  A mount hook destroyed without unregistering, and not one of ours.
+
+  `UIManager::mountHooks_` is a `std::vector<UIManagerMountHook*>`: raw,
+  non-owning pointers, where unregistering is the owner's job and
+  `~UIManagerMountHook` does not do it. `Scheduler` registers one at
+  `Scheduler.cpp:169`, `uiManager->registerMountHook(*eventPerformanceLogger_)`,
+  and `~Scheduler` unregisters every *commit* hook at `:197` and never that. The
+  only `unregisterMountHook` call in the whole tree is in
+  `IntersectionObserverManager`.
+
+  `ReactHost::destroyReactInstance` then reads, in order:
+
+      stopAllSurfaces();                                   // the registry will now miss
+      quitSynchronous();                                   // where the teardown hang blocks
+      surfaceManager_ = nullptr;
+      scheduler_ = nullptr;                                // EventPerformanceLogger freed here
+      schedulerDelegate_ = nullptr;
+      contextContainer->erase(RuntimeSchedulerKey);
+      mountingManager->setSchedulerTaskExecutor(nullptr);  // our guard arms here
+
+  So the dangling pointer appears three statements before we are told anything.
+  A mount draining on the main queue in that gap passes both checks honestly, the
+  UIManager still being alive because `UIManagerBinding` holds it in a runtime
+  that is destroyed later, and `reportMount` finds no root shadow node for a
+  stopped surface and calls `shadowTreeDidUnmount` virtually on freed memory.
+  That is the SIGSEGV, and the width of the gap is why it is intermittent.
+
+  **Nothing on this side closes it.** The guard cannot arm earlier because there
+  is no earlier notice, and clearing the shared UIManager would arm at the same
+  too-late point. The fix is one line upstream: `~Scheduler` unregistering the
+  mount hook it registered. Both of the bugs left in this file are in that one
+  function, the other being `quitSynchronous` above.
+
+  What was ours and is fixed: `mountEpoch_` was a plain `std::uint64_t` written
+  from the detached reload thread and read on the main thread, which is a data
+  race in the guard that exists to prevent a use-after-free. It is atomic now.
 
 - **An app build compiles this repository's test suites.** `native/` is packed
   whole, tests included, and nothing gates them, so `react-native run-macos:
