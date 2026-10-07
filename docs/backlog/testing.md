@@ -156,9 +156,27 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   until a host does not exit. Waiting for a stall to turn up on an unrelated push
   wasted the occurrence when it did; looping them back to back stalls on the
   *first* attempt on all three shards, which is also the sharpest fix test
-  available here. It lives on the `hunt-stall` branch rather than main, and
-  `ci.yml` triggers on a `ci` branch too, so this needs no change to main to run.
-  Delete the input once both hangs are closed.
+  available here.
+
+  The branch it lived on is deleted, so it is written down instead. `ci.yml`
+  takes a boolean `hunt` input on its `workflow_dispatch`, the end-to-end step
+  gets `if: ${{ !inputs.hunt }}`, and a step before it gets
+  `if: ${{ inputs.hunt }}` and this, which all three shards run as three
+  independent sets of hosts:
+
+      for i in $(seq 1 25); do
+        echo "=== attempt $i of 25"
+        if ! python3 scripts/integration_test.py \
+             --platform linux --build-dir build -k "developer menu reloads"; then
+          echo "=== caught a stall on attempt $i"
+          exit 1
+        fi
+      done
+
+  `ci.yml` triggers on a `ci` branch as well as main, so a hunt needs no change
+  to main to run. Pick the scenario for the teardown being chased: `-k "context
+  menu"` starts nine hosts an attempt and reaches `destroyReactInstance` once
+  each, `-k "developer menu reloads"` starts one and reaches it twice.
 
   Two things it does not promise. The frames are of whichever thread took the
   signal, and `kill` may deliver to any thread that has it unblocked, so a
