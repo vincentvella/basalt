@@ -50,9 +50,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   managed some fifteen lines against a twenty-line tail: the whole of what it
   said is there, and an older failing Linux tail does carry the tap line.
 
-  It is intermittent but not rare, and the first estimate here was far too kind.
-  Three Linux runs on 2026-10-07 went: hung at f46f2b4, clean on a rerun of that
-  same commit, hung again at a5b6dea. Two in three.
+  It is intermittent but not rare, and the first estimate here was twice too
+  kind. Five Linux runs that reached the end-to-end suite on 2026-10-07: hung at
+  f46f2b4, clean on a rerun of that commit, hung at a5b6dea, hung at 5ef9faf,
+  clean at bb47bd6. Three in five. Counting runs is the wrong instinct anyway,
+  since a run starts the host a dozen times over and only one of them stalls.
 
   **And one of those two hangs reported success.** At a5b6dea it landed in `a role
   in a context menu performs it`, which skipped rather than failed when the host
@@ -63,8 +65,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   That skip is now a failure, as of 2026-10-07. A skip is right for a clipboard
   this environment cannot round-trip and wrong for a host that hangs, which is
   the same shape as "a cancelled job reads as a job that ran" further up this
-  file. **Linux is expected to be red here until the hang is fixed**, roughly two
-  runs in three, and that is the point of it rather than a regression to chase.
+  file. **Linux is expected to be red here until the hang is fixed**, on the runs
+  where it stalls, and that is the point of it rather than a regression to chase.
 
   The 84.6s the passing rerun took is nine hosts against an 8s quit timer, one per
   index the scenario checks, not a slow runner.
@@ -80,7 +82,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   marker and up to 64 frames to stderr and re-raises, so the frames arrive on the
   pipe the harness is already reading. A hang now reports the way a crash does.
   Proven by giving a healthy host a limit below its own quit timer, which
-  produced the main thread parked in the run loop.
+  produced the main thread parked in the run loop. **Not yet proven against a
+  real hang**, bb47bd6 being clean: what a stalled host's frames look like is
+  still unknown, and the first one to arrive is the thing to read here.
 
   Two things it does not promise. The frames are of whichever thread took the
   signal, and `kill` may deliver to any thread that has it unblocked, so a
