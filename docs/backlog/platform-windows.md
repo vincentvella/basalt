@@ -2,14 +2,15 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
 3. `BASALT_SNAPSHOT` cannot see a `<TextInput>` on Windows
 4. A `<TextInput>` on Windows is always on top of everything
 5. The Windows choreographer is a 16ms timer
-6. `scripts/integration_test.py` skips Fast Refresh on Windows
+6. ~~`scripts/integration_test.py` skips Fast Refresh on Windows~~; what is
+   left of it is an open entry in testing.md
 7. Nothing makes a red build hard to ignore
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every

@@ -7,7 +7,7 @@ An entry here is a gap, not a plan. When one is picked up it becomes a change in
 then on: the entry stays, so the catalogue remains a complete answer to "what
 is missing", and gains a pointer. Three entries have one today.
 
-**Open (32):**
+**Open (31):**
 
 1. A second window's children do not see React context
 2. `useWindow()` inside a second window reports the active window
