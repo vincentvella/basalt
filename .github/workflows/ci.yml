@@ -219,7 +219,7 @@ jobs:
             libgtk-4-dev libpango1.0-dev libglib2.0-dev \
             libgoogle-glog-dev libboost-dev libboost-regex-dev libfmt-dev \
             libdouble-conversion-dev libgflags-dev libssl-dev libcurl4-openssl-dev \
-            libgl1-mesa-dri xvfb xdotool x11-utils
+            libgl1-mesa-dri xvfb xdotool x11-utils gdb
 
       - uses: actions/setup-node@v7
         with:
@@ -339,6 +339,20 @@ jobs:
         with:
           path: ~/.cache/ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
+
+      - name: Let the harness read a stuck host's threads
+        # `run_host_process` asks gdb for every thread before it kills a host
+        # that stopped answering, which is the only way to see a deadlock: the
+        # signal handler reports the thread that took the signal, and in a
+        # deadlock the interesting one is the thread it is waiting for.
+        #
+        # gdb runs as a sibling of the host, both being children of the harness,
+        # and Ubuntu's default ptrace_scope of 1 lets a process attach only to
+        # its own descendants. Without this the dump is one line saying
+        # "Operation not permitted".
+        run: |
+          sudo sysctl -w kernel.yama.ptrace_scope=0
+          gdb --version | head -1
 
       - name: Start a display
         # Both suites need one. No window manager is involved: the tests map
@@ -1064,7 +1078,7 @@ jobs:
             libgtk-4-dev libpango1.0-dev libglib2.0-dev \
             libgoogle-glog-dev libboost-dev libboost-regex-dev libfmt-dev \
             libdouble-conversion-dev libgflags-dev libssl-dev libcurl4-openssl-dev \
-            libgl1-mesa-dri xvfb xdotool x11-utils
+            libgl1-mesa-dri xvfb xdotool x11-utils gdb
 
       - uses: actions/setup-node@v7
         with:

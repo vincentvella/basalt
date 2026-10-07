@@ -825,6 +825,12 @@ BACKTRACE_GRACE_S = 10.0
 # The marker core/CrashHandler.cpp writes before the frames.
 CRASH_MARKER = "*** basalt: "
 
+# What `_ask_where_it_was` writes before gdb's output, and how much of it to
+# show. Ten threads of a Fabric host is a few hundred lines; the cap is there so
+# one hang cannot bury the rest of a job's log.
+THREADS_MARKER = "--- every thread, from gdb ---"
+MAX_THREAD_LINES = 400
+
 
 def run_host_process(args: list, *, cwd: Path = REPO, env: dict = None,
                      capture_output: bool = True, text: bool = True,
@@ -872,8 +878,51 @@ def run_host_process(args: list, *, cwd: Path = REPO, env: dict = None,
         return subprocess.CompletedProcess(args, host.returncode, out, err)
 
 
+def all_thread_stacks(pid: int) -> str:
+    """Every thread's stack, which the signal handler cannot give.
+
+    `SIGABRT` is delivered to one thread, so the handler reports one stack. That
+    is enough for a host blocked in its own main loop and useless for a deadlock,
+    where the interesting thread is the one the stalled thread waits for:
+    docs/backlog/testing.md has a teardown hang whose main thread sits in
+    `future::wait()` for a JavaScript thread nobody has seen the stack of.
+
+    Best effort, and it says why when it cannot. Attaching needs ptrace, which a
+    runner may restrict to a direct parent (`kernel.yama.ptrace_scope`), and gdb
+    is not installed everywhere. Linux only: lldb on a Mac wants codesigning this
+    does not have, and the hang this is for is on GTK.
+    """
+    if sys.platform != "linux":
+        return ""
+    if not shutil.which("gdb"):
+        return "(no gdb here, so no other thread's stack)"
+    try:
+        asked = subprocess.run(
+            ["gdb", "-p", str(pid), "-batch", "-nx",
+             "-ex", "set pagination off",
+             "-ex", "thread apply all bt"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "(gdb did not answer)"
+    if not asked.stdout.strip():
+        # Printed rather than swallowed: "ptrace: Operation not permitted" is the
+        # usual reason and is fixed in the workflow, not here.
+        return f"(gdb could not attach: {tail_text(asked.stderr, 2).strip() or 'no output'})"
+    return asked.stdout
+
+
 def _ask_where_it_was(host: subprocess.Popen) -> tuple:
-    """`SIGABRT`, a moment to answer, then a kill either way."""
+    """Every thread if gdb can give it, then `SIGABRT`, then a kill either way."""
+    # Before the signal, because SIGABRT ends the process and a deadlock needs
+    # the thread that is *not* stalled.
+    threads = all_thread_stacks(host.pid)
+
+    def answered(out: str, err: str) -> tuple:
+        if not threads:
+            return out, err
+        return out, f"{err}\n--- every thread, from gdb ---\n{threads}"
+
     if os.name != "nt":
         try:
             host.send_signal(signal.SIGABRT)
@@ -881,14 +930,14 @@ def _ask_where_it_was(host: subprocess.Popen) -> tuple:
             pass  # Gone between the timeout and here, which is its own answer.
         else:
             try:
-                return host.communicate(timeout=BACKTRACE_GRACE_S)
+                return answered(*host.communicate(timeout=BACKTRACE_GRACE_S))
             except subprocess.TimeoutExpired:
                 pass  # Stuck where a signal handler cannot run either.
     host.kill()
     try:
-        return host.communicate(timeout=BACKTRACE_GRACE_S)
+        return answered(*host.communicate(timeout=BACKTRACE_GRACE_S))
     except subprocess.TimeoutExpired:
-        return "", ""
+        return "", threads
 
 
 def hang_text(stream, lines: int = 64) -> str:
@@ -906,10 +955,23 @@ def hang_text(stream, lines: int = 64) -> str:
     """
     if isinstance(stream, bytes):
         stream = stream.decode("utf-8", "replace")
+
+    # gdb's dump is appended after the host's own output and gets its own budget.
+    # Sharing one would be the worst of both: a signal handler's 64 frames and
+    # ten threads of gdb do not fit in the same cut, and the second is the half
+    # that exists for deadlocks.
+    threads = ""
+    split = stream.find(THREADS_MARKER)
+    if split >= 0:
+        threads = "\n".join(stream[split:].splitlines()[:MAX_THREAD_LINES])
+        stream = stream[:split]
+
     marker = stream.rfind(CRASH_MARKER)
     if marker < 0:
-        return tail_text(stream, lines)
-    return symbolised("\n".join(stream[marker:].splitlines()[:lines + 1]))
+        shown = tail_text(stream, lines)
+    else:
+        shown = symbolised("\n".join(stream[marker:].splitlines()[:lines + 1]))
+    return f"{shown}\n{threads}" if threads else shown
 
 
 # `basalt_gtk(+0x87685c)[0x5611...]`: the offset is what addr2line wants, and
