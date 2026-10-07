@@ -50,12 +50,22 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   managed some fifteen lines against a twenty-line tail: the whole of what it
   said is there, and an older failing Linux tail does carry the tap line.
 
-  It is intermittent, which is the awkward part. A rerun of that same commit
-  passed, and the two commits before it were green with it. The scenario starts
-  nine hosts, one per index it checks, so the rate is one stalled startup in
-  dozens rather than one run in three, and a green Linux job is not evidence it
-  has gone. The 84.6s the passing rerun took is those nine hosts against an 8s
-  quit timer, not a slow runner.
+  It is intermittent but not rare, and the first estimate here was far too kind.
+  Three Linux runs on 2026-10-07 went: hung at f46f2b4, clean on a rerun of that
+  same commit, hung again at a5b6dea. Two in three.
+
+  **And one of those two hangs reported success.** At a5b6dea it landed in `a role
+  in a context menu performs it`, which skips rather than fails when the host does
+  not exit, so the job was green with the bug in it. The clipboard scenario passed
+  in that same job, its host exiting in 7.2s, which is the clipboard ruled out as
+  the cause on one runner in one run. A skip is right for a clipboard that cannot
+  round-trip and wrong for a host that hangs, and this is the same shape as "a
+  cancelled job reads as a job that ran" further up this file. Fixing it turns
+  Linux red roughly two runs in three until the hang is fixed, so it is a
+  deliberate call rather than an oversight.
+
+  The 84.6s the passing rerun took is nine hosts against an 8s quit timer, one per
+  index the scenario checks, not a slow runner.
 
   So the clipboard is no longer the leading suspect for either. The scenario
   below writes and reads seven times and exits, on the same runner in the same

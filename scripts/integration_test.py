@@ -2588,12 +2588,17 @@ def test_context_menu_role(bundle: Path) -> None:
     #
     # Skipped where its preconditions are not met, rather than failed, and on the
     # conditions themselves rather than on the platform: GTK passes this on a
-    # developer's X server and fails all three preconditions under the Xvfb CI
-    # runs on, so a platform check would throw away the coverage that works.
+    # developer's Mac, which is the quartz backend and not an X server at all,
+    # and fails its preconditions under the Xvfb CI runs on, so a platform check
+    # would throw away the coverage that works.
     #
-    # On that Xvfb the clipboard readback never resolves, the field never reports
-    # focus, and the host prints "quitting" and then does not exit. All three are
-    # in docs/backlog/testing.md, the last being the serious one.
+    # **The first of these skips is wrong and is left here knowingly.** A
+    # clipboard that does not round-trip is a missing capability and a reasonable
+    # skip. A host that does not exit is the serious bug in
+    # docs/backlog/testing.md, and skipping on it means CI goes green while it
+    # happens: that is exactly what a5b6dea did, this scenario skipping here while
+    # the clipboard scenario passed in the same job. Making it fail turns Linux
+    # red until the hang is fixed, which is a call for whoever picks that up.
     try:
         _, logged = choose("12", timeout=40)
     except subprocess.TimeoutExpired:
@@ -4055,10 +4060,12 @@ def test_clipboard(bundle: Path) -> str:
     reads it and then quits, so this is the reproduction attempt. The timeout is
     short on purpose, so a hang costs the suite seconds rather than two minutes.
 
-    The exit time comes back as a note rather than only being checked, because the
-    number this should fail at is not known yet. A runner is slower than a
-    developer's machine by an amount nobody here has measured, and a threshold
-    guessed above a 7s timer is as likely to invent a failure as to catch one.
+    The exit time comes back as a note rather than only being checked, because a
+    threshold guessed above a 7s timer is as likely to invent a failure as to
+    catch one. Measured since: 7.2s on CI's Linux, against 7.3s here, so the host
+    costs nothing over its timer and the 17.7s the whole scenario took on that
+    runner was bundling. The limit below stays well clear of both rather than
+    being tightened onto one reading.
     """
     app = bundle_app(bundle.parent, "clipboard")
 
