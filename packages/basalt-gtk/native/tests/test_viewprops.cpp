@@ -56,8 +56,39 @@ int clipNodesIn(GskRenderNode *node) {
     }
     case GSK_TRANSFORM_NODE:
       return clipNodesIn(gsk_transform_node_get_child(node));
+    case GSK_BLUR_NODE:
+      return clipNodesIn(gsk_blur_node_get_child(node));
     case GSK_OPACITY_NODE:
       return clipNodesIn(gsk_opacity_node_get_child(node));
+    default:
+      return 0;
+  }
+}
+
+// Blur nodes anywhere in the tree, counted the same way and for the same reason
+// as the clip ones: where GSK nests one is its business.
+int blurNodesIn(GskRenderNode *node) {
+  if (node == nullptr) {
+    return 0;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_BLUR_NODE:
+      return 1 + blurNodesIn(gsk_blur_node_get_child(node));
+    case GSK_CLIP_NODE:
+      return blurNodesIn(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return blurNodesIn(gsk_rounded_clip_node_get_child(node));
+    case GSK_CONTAINER_NODE: {
+      int found = 0;
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        found += blurNodesIn(gsk_container_node_get_child(node, i));
+      }
+      return found;
+    }
+    case GSK_TRANSFORM_NODE:
+      return blurNodesIn(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return blurNodesIn(gsk_opacity_node_get_child(node));
     default:
       return 0;
   }
@@ -341,5 +372,75 @@ TEST(a_clipped_paragraph_paints_through_a_clip_node) {
   }
   g_object_unref(text);
   g_object_unref(context);
+  g_object_unref(view);
+}
+
+// `blurRadius` on an <Image>. GSK has a blur node, so what the prop does is
+// directly observable in the render tree rather than only on screen, which is
+// the difference between a test that holds and one that looks like it does.
+//
+// The blur wraps the image alone and not the view: a blurred photograph behind
+// sharp text is the usual reason to ask for it.
+
+TEST(a_blur_radius_puts_a_blur_node_around_the_image) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+  layout(view, 100, 100);
+
+  // A one-pixel texture is enough: what is asserted is the node around it.
+  GBytes *pixel = g_bytes_new_static("\xff\x00\x00\xff", 4);
+  GdkTexture *texture = gdk_memory_texture_new(1, 1, GDK_MEMORY_R8G8B8A8, pixel, 4);
+  rn_view_set_texture(view, texture, RN_IMAGE_FIT_STRETCH);
+
+  GskRenderNode *sharp = paintedNode(view);
+  EXPECT(sharp != nullptr);
+  EXPECT_EQ(blurNodesIn(sharp), 0);
+
+  rn_view_set_image_blur(view, 8.0F);
+  GskRenderNode *blurred = paintedNode(view);
+  EXPECT(blurred != nullptr);
+  EXPECT_EQ(blurNodesIn(blurred), 1);
+
+  // And back to nothing, because a prop that stops being set has to stop
+  // applying: an image whose blurRadius returns to zero is a sharp image.
+  rn_view_set_image_blur(view, 0.0F);
+  GskRenderNode *again = paintedNode(view);
+  EXPECT_EQ(blurNodesIn(again), 0);
+
+  if (sharp != nullptr) {
+    gsk_render_node_unref(sharp);
+  }
+  if (blurred != nullptr) {
+    gsk_render_node_unref(blurred);
+  }
+  if (again != nullptr) {
+    gsk_render_node_unref(again);
+  }
+  g_object_unref(texture);
+  g_bytes_unref(pixel);
+  g_object_unref(view);
+}
+
+TEST(a_negative_blur_radius_is_no_blur_rather_than_a_crash) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+  layout(view, 100, 100);
+
+  GBytes *pixel = g_bytes_new_static("\xff\x00\x00\xff", 4);
+  GdkTexture *texture = gdk_memory_texture_new(1, 1, GDK_MEMORY_R8G8B8A8, pixel, 4);
+  rn_view_set_texture(view, texture, RN_IMAGE_FIT_STRETCH);
+
+  // Nothing stops an app sending one, and GSK would take it.
+  rn_view_set_image_blur(view, -4.0F);
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT_EQ(blurNodesIn(painted), 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(texture);
+  g_bytes_unref(pixel);
   g_object_unref(view);
 }

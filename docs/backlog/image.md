@@ -4,7 +4,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 **Open (4):**
 
-1. blurRadius, overlayColor, fadeDuration and progressiveRenderingEnabled are ign
+1. overlayColor, fadeDuration and progressiveRenderingEnabled are ignored; blurRadius is done on GTK
 2. Assets are never fetched over the network, so a dev server's assets do not wor
 3. Nothing caches a downloaded asset, which is right for a local file and will no
 4. onProgress and onPartialLoad are never emitted
@@ -58,8 +58,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   assertions: cross-host parity now compares the tint the way it compares the
   fit.
 
-- `blurRadius`, `overlayColor`, `fadeDuration` and
-  `progressiveRenderingEnabled` are ignored.
+- `overlayColor`, `fadeDuration` and `progressiveRenderingEnabled` are ignored.
+  **`blurRadius` is done on GTK**, 2026-10-07.
+
+  GSK has a blur node, so the prop is a `gtk_snapshot_push_blur` around the
+  image, inside the clip and the tiling: a blurred `cover` image is still cut to
+  its box and a blurred `repeat` blurs each tile alike. Around the tint as well,
+  so the blur applies to what is drawn rather than to the silhouette it is
+  masked from. The image alone and not the view, which is what the prop means,
+  since a blurred photograph behind sharp text is the usual reason to ask.
+
+  Worth noting for the three still open: a blur node made this *directly
+  observable*, so the tests walk the render tree and count blur nodes rather than
+  asserting a radius was stored. A negative radius is no blur rather than a
+  crash, which nothing stops an app sending and GSK would otherwise take.
+
+  AppKit is not done. Its image path is a layer, so the equivalent is
+  `layer.filters` with a CIFilter, which is a different shape of change and is
+  not reachable from the render-node tests that cover the GTK side.
 - ~~A `require()`d image drew nothing.~~ It laid out at the right size and had
   no pixels, and the reason was neither the loader nor the mounting manager:
   Metro's `build` command has no `--assets-dest`, so the files were never copied

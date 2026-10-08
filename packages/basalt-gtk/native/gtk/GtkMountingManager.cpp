@@ -410,6 +410,10 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
   facebook::react::ImageSource source{};
   // `tintColor` on React Native's <Image>, and the same prop on expo-image.
   facebook::react::SharedColor tint{};
+  // blurRadius alongside it, captured the same way: both props are read in
+  // branches that each know their own props type, and applied together below.
+  // expo-image has no blur prop, so that branch leaves this at zero.
+  float blurRadius = 0.0F;
 
   if (isExpoImage) {
     const auto props = std::dynamic_pointer_cast<const facebook::react::ExpoImageProps>(shadowView.props);
@@ -431,6 +435,7 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
     // both spell "no tint" as a falsy SharedColor once unwrapped.
     if (props->tintColor) {
       tint = *props->tintColor;
+    blurRadius = static_cast<float>(props->blurRadius);
     }
     if (!props->sources.empty()) {
       source = props->sources.front();
@@ -448,6 +453,10 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
     } else {
       rn_view_set_image_tint(tinted, FALSE, nullptr);
     }
+    // blurRadius, for the same reason the tint is here: it is a prop rather than
+    // a loader's answer, so a re-render that changes only the radius repaints
+    // without touching the image.
+    rn_view_set_image_blur(tinted, blurRadius);
   }
 
   const std::string uri = source.uri;

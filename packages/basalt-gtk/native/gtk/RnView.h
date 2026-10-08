@@ -376,6 +376,16 @@ void rn_view_set_accessible_value(RnView *self, int min, int max, int now, const
 // a description identical to its own role would be noise.
 void rn_view_set_accessible_role_description(RnView *self, const char *description);
 
+// `blurRadius` on an `<Image>`, in points. Zero or less is no blur, which is
+// also the default React Native sends, so an ordinary image pays nothing.
+//
+// Applied to the image alone rather than to the view, which is what the prop
+// means: a blurred photograph behind sharp text is the usual reason to ask for
+// it, and blurring the whole view would take the text with it. It therefore sits
+// inside the clip and the tiling, so a blurred `cover` image is still cut to its
+// box and a blurred `repeat` blurs each tile the same way.
+void rn_view_set_image_blur(RnView *self, float radius);
+
 void rn_view_set_accessible_state(RnView *self,
                                   RnAccessibleFlag disabled,
                                   RnAccessibleFlag checked,

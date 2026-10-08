@@ -178,6 +178,7 @@ struct _RnView {
   double indicator_h_offset;
   double indicator_h_length;
   gboolean has_image_tint;
+  float image_blur;
   GdkRGBA image_tint;
   char *role_name;
   // The app's `nativeID`. Read only by the hidden title bar's drag-region hit
@@ -364,6 +365,13 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       area.size.height = viewHeight;
       gtk_snapshot_push_repeat(snapshot, &area, &destination);
     }
+    // Inside the tiling so each tile blurs alike, and around the tint so the
+    // blur applies to what is drawn rather than to the silhouette it is masked
+    // from.
+    const gboolean blurs = self->image_blur > 0.0f;
+    if (blurs) {
+      gtk_snapshot_push_blur(snapshot, self->image_blur);
+    }
     if (self->has_image_tint) {
       // The image becomes a stencil and the colour is what is actually drawn.
       // GskMaskNode records the mask first and the source second, which is why
@@ -378,6 +386,9 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       gtk_snapshot_pop(snapshot);
     } else {
       gtk_snapshot_append_texture(snapshot, self->texture, &destination);
+    }
+    if (blurs) {
+      gtk_snapshot_pop(snapshot);
     }
     if (tiles) {
       gtk_snapshot_pop(snapshot);
@@ -813,6 +824,17 @@ static void rn_view_apply_flag(RnView *self, GtkAccessibleState state, RnAccessi
     return;
   }
   gtk_accessible_update_state(GTK_ACCESSIBLE(self), state, value, -1);
+}
+
+void rn_view_set_image_blur(RnView *self, float radius) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const float wanted = radius > 0.0f ? radius : 0.0f;
+  if (self->image_blur == wanted) {
+    return;
+  }
+  self->image_blur = wanted;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
 void rn_view_set_accessible_role_description(RnView *self, const char *description) {
