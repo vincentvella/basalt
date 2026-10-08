@@ -79,12 +79,21 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   asking to be clipped and only the line-limit guard stops it. A comment in that
   file used to say the default was Tail, wrong in the direction that matters.
 
-  Not covered: the clip node itself, because no GTK test walks a render-node
-  tree, so sabotaging the `gtk_snapshot_push_clip` call is caught by nothing.
-  No e2e case either, `e2e/text.tsx` using the default mode. And a clipped
-  paragraph's measured *width* still comes from every line including the hidden
-  ones, which shows only on text with an explicit newline whose longest line is
-  below the cut.
+  The clip node is covered as of the same day, which it was not when this was
+  first written. `a_clipped_paragraph_paints_through_a_clip_node` in
+  test_viewprops.cpp allocates an RnView, calls its snapshot vfunc directly and
+  counts the clip nodes in the render tree it produces, against the same
+  paragraph with no limit. Two things made that possible without a window: an
+  allocated widget snapshots to a real node where an unallocated one snapshots
+  to nothing, and the vfunc can be called directly where
+  `gtk_widget_snapshot_child` wants a realized parent. It counts clip nodes
+  anywhere in the tree rather than asserting their position, since where GSK
+  nests one is its business.
+
+  Still not covered: there is no e2e case, `e2e/text.tsx` using the default
+  mode. And a clipped paragraph's measured *width* still comes from every line
+  including the hidden ones, which shows only on text with an explicit newline
+  whose longest line is below the cut.
 - Ignored: `adjustsFontSizeToFit`, `textBreakStrategy`, hyphenation,
   `textShadow*`, `textTransform`, `fontVariant`, `fontVariationSettings`.
 - One PangoLayout is rebuilt per Paragraph per mutation, including

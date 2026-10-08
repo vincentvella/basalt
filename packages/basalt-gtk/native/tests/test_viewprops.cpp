@@ -21,6 +21,48 @@ void layout(RnView *root, int width, int height) {
   gtk_widget_allocate(GTK_WIDGET(root), width, height, -1, nullptr);
 }
 
+// The render node a widget paints, so a test can assert what is in it rather
+// than only what the widget was told. `gtk_widget_allocate` above is what makes
+// this possible without a window: an unallocated widget snapshots to nothing.
+//
+// The class vfunc is called directly rather than through
+// `gtk_widget_snapshot_child`, which wants a realized parent.
+GskRenderNode *paintedNode(RnView *view) {
+  GtkSnapshot *snapshot = gtk_snapshot_new();
+  GTK_WIDGET_GET_CLASS(GTK_WIDGET(view))->snapshot(GTK_WIDGET(view), snapshot);
+  return gtk_snapshot_free_to_node(snapshot);
+}
+
+// How many clip nodes are anywhere in that tree. Counted rather than located,
+// because where GSK puts one inside a container is its business and an assertion
+// on the shape of the tree would break on a GTK upgrade that said the same thing
+// differently.
+int clipNodesIn(GskRenderNode *node) {
+  if (node == nullptr) {
+    return 0;
+  }
+  const GskRenderNodeType type = gsk_render_node_get_node_type(node);
+  switch (type) {
+    case GSK_CLIP_NODE:
+      return 1 + clipNodesIn(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return 1 + clipNodesIn(gsk_rounded_clip_node_get_child(node));
+    case GSK_CONTAINER_NODE: {
+      int found = 0;
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        found += clipNodesIn(gsk_container_node_get_child(node, i));
+      }
+      return found;
+    }
+    case GSK_TRANSFORM_NODE:
+      return clipNodesIn(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return clipNodesIn(gsk_opacity_node_get_child(node));
+    default:
+      return 0;
+  }
+}
+
 RnView *addChild(RnView *parent, int tag, float x, float y, float width, float height) {
   RnView *child = rn_view_new(tag);
   g_object_ref_sink(child);
@@ -251,4 +293,53 @@ TEST(z_index_reorders_painting_not_the_child_list) {
   EXPECT_EQ(rn_view_get_tag(RN_VIEW(gtk_widget_get_last_child(GTK_WIDGET(root)))), 31);
 
   g_object_unref(root);
+}
+
+// The clip node that hides the lines `numberOfLines` with `ellipsizeMode: 'clip'`
+// cut. Pango leaves those lines in the layout, so the measurement reports a
+// shorter box and the widget has to stop painting at the same height; without
+// the clip the hidden lines are still drawn and spill past the view. Nothing
+// covered this, so sabotaging the clip was caught by no test at all. See
+// backlog/text.md.
+
+TEST(a_clipped_paragraph_paints_through_a_clip_node) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 200.0F);
+  layout(view, 200, 200);
+
+  // A paragraph of several lines limited to two, with no ellipsis, which is the
+  // one combination Pango does not truncate itself.
+  PangoContext *context = gtk_widget_create_pango_context(GTK_WIDGET(view));
+  PangoLayout *text = pango_layout_new(context);
+  pango_layout_set_text(text, "one two three four five six seven eight nine ten", -1);
+  pango_layout_set_width(text, 60 * PANGO_SCALE);
+  pango_layout_set_wrap(text, PANGO_WRAP_WORD_CHAR);
+  pango_layout_set_ellipsize(text, PANGO_ELLIPSIZE_NONE);
+  pango_layout_set_height(text, -2);
+
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_text_layout(view, text, &black);
+
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT(painted != nullptr);
+  const int clipped = clipNodesIn(painted);
+
+  // And the same paragraph with no limit, which must not be clipped.
+  pango_layout_set_height(text, 0);
+  rn_view_set_text_layout(view, text, &black);
+  GskRenderNode *whole = paintedNode(view);
+  const int unclipped = clipNodesIn(whole);
+
+  EXPECT(clipped > unclipped);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  if (whole != nullptr) {
+    gsk_render_node_unref(whole);
+  }
+  g_object_unref(text);
+  g_object_unref(context);
+  g_object_unref(view);
 }
