@@ -111,6 +111,58 @@
   return CGSizeMake(std::ceil(width), height);
 }
 
+- (CGRect)frameForCharacterIndex:(NSUInteger)index width:(CGFloat)maxWidth {
+  NSMutableArray *lines = [NSMutableArray array];
+  [self linesForWidth:maxWidth outLines:lines];
+
+  // Walked the same way `sizeForWidth:` sums it, so a view's y agrees with the
+  // paragraph height the same layout reported. Duplicating the accumulation
+  // rather than sharing it would be the way these two drift apart.
+  CGFloat top = 0;
+  for (id item in lines) {
+    CTLineRef line = (__bridge CTLineRef)item;
+    CGFloat ascent = 0, descent = 0, leading = 0;
+    (void)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+    const CGFloat lineHeight = std::ceil(ascent + descent + leading);
+
+    const CFRange range = CTLineGetStringRange(line);
+    const auto start = static_cast<NSUInteger>(range.location);
+    const auto length = static_cast<NSUInteger>(range.length);
+    if (index >= start && index < start + length) {
+      const CGFloat x = CTLineGetOffsetForStringIndex(line, static_cast<CFIndex>(index), nullptr);
+
+      // The run's own ascent and descent, not the line's: a short view on a line
+      // of tall text is its own height, and asking the line would give it the
+      // tallest thing on it. Found by the run whose range contains the index.
+      CGFloat runAscent = ascent;
+      CGFloat runDescent = descent;
+      CFArrayRef runs = CTLineGetGlyphRuns(line);
+      for (CFIndex r = 0; r < CFArrayGetCount(runs); r++) {
+        CTRunRef run = static_cast<CTRunRef>(CFArrayGetValueAtIndex(runs, r));
+        const CFRange runRange = CTRunGetStringRange(run);
+        const auto runStart = static_cast<NSUInteger>(runRange.location);
+        const auto runLength = static_cast<NSUInteger>(runRange.length);
+        if (index >= runStart && index < runStart + runLength) {
+          CTRunGetTypographicBounds(run, CFRangeMake(0, 0), &runAscent, &runDescent, nullptr);
+          break;
+        }
+      }
+
+      // Top-left, from a baseline-anchored box: the baseline sits `ascent` below
+      // the line's top, and the run rises `runAscent` above the baseline.
+      return CGRectMake(x,
+                        top + (ascent - runAscent),
+                        0,
+                        runAscent + runDescent);
+    }
+
+    top += lineHeight;
+  }
+
+  // Past the end, or dropped by a truncation.
+  return CGRectNull;
+}
+
 // How far along the line the text sits: 0 left, 0.5 centred, 1 right.
 //
 // Taken from the first fragment, because React Native resolves alignment onto

@@ -212,6 +212,48 @@ void applyFragmentAttributes(PangoAttrList *attributes,
   }
 }
 
+// An inline `<View>` inside a `<Text>`, which React Native represents as one
+// fragment holding U+FFFC, the object replacement character.
+//
+// Without this the character is in the string and reserves whatever width the
+// font happens to give a missing glyph, so a 40x20 view inside a sentence took
+// about a space and the view itself was reported at zero size. A shape attribute
+// is Pango's way to say "this range is not text, it occupies this box": the glyph
+// is not drawn, the line reserves the space, and wrapping and alignment treat it
+// as one unbreakable run.
+//
+// The size comes from React Native, not from here. `ParagraphShadowNode`
+// measures each attachment's own shadow node and writes the result into the
+// fragment's `parentShadowView.layoutMetrics` before calling `measure`, so by
+// now it is known and this only has to honour it.
+//
+// Both rects are the same box. The ink rect is what would be painted and the
+// logical rect is what the line reserves; for a view they are the same thing,
+// and anchoring at the baseline (y from -height to 0) is what makes a tall view
+// sit on the line rather than hang below it.
+void applyAttachmentShape(PangoAttrList *attributes,
+                          const AttributedString::Fragment &fragment,
+                          guint startIndex,
+                          guint endIndex) {
+  const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
+  if (size.width <= 0 || size.height <= 0) {
+    // Nothing measured it, so there is no box to reserve and a shape of zero
+    // would hide the character without putting anything in its place.
+    return;
+  }
+
+  PangoRectangle box = {};
+  box.x = 0;
+  box.y = -static_cast<int>(size.height * PANGO_SCALE);
+  box.width = static_cast<int>(size.width * PANGO_SCALE);
+  box.height = static_cast<int>(size.height * PANGO_SCALE);
+
+  PangoAttribute *shape = pango_attr_shape_new(&box, &box);
+  shape->start_index = startIndex;
+  shape->end_index = endIndex;
+  pango_attr_list_insert(attributes, shape);
+}
+
 } // namespace
 
 PangoLayout *buildTextLayout(const AttributedString &attributedString,
@@ -231,6 +273,9 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
     const auto end = static_cast<guint>(text.size());
     if (end > start) {
       applyFragmentAttributes(attributes, fragment.textAttributes, start, end);
+    }
+    if (fragment.isAttachment() && end > start) {
+      applyAttachmentShape(attributes, fragment, start, end);
     }
   }
 
@@ -280,6 +325,57 @@ PangoAttrList *buildTextAttributes(const TextAttributes &textAttributes) {
   // types and the string it covers grows.
   applyFragmentAttributes(attributes, textAttributes, 0, G_MAXUINT);
   return attributes;
+}
+
+std::vector<facebook::react::Rect> attachmentFrames(
+    PangoLayout *layout,
+    const facebook::react::AttributedString &attributedString) {
+  std::vector<facebook::react::Rect> frames;
+  if (layout == nullptr) {
+    return frames;
+  }
+
+  const std::lock_guard<std::mutex> lock(pangoMutex());
+
+  std::size_t at = 0;
+  for (const auto &fragment : attributedString.getFragments()) {
+    const std::size_t start = at;
+    at += fragment.string.size();
+    if (!fragment.isAttachment()) {
+      continue;
+    }
+
+    const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
+    if (size.width <= 0 || size.height <= 0) {
+      frames.push_back(facebook::react::Rect{});
+      continue;
+    }
+
+    // Where the shape sits on the line. `index_to_pos` answers in Pango units
+    // and returns the *logical* rect of the run, which for a shaped range is the
+    // box the attribute asked for, so the height comes back as the child's.
+    PangoRectangle position = {};
+    pango_layout_index_to_pos(layout, static_cast<int>(start), &position);
+
+    // A right-to-left run is reported with a negative width, growing leftwards
+    // from x. Normalising keeps the origin the left edge, which is what a frame
+    // means to everything above this.
+    if (position.width < 0) {
+      position.x += position.width;
+      position.width = -position.width;
+    }
+
+    frames.push_back(facebook::react::Rect{
+        .origin = {.x = static_cast<facebook::react::Float>(position.x) / PANGO_SCALE,
+                   .y = static_cast<facebook::react::Float>(position.y) / PANGO_SCALE},
+        // The size React Native measured, not the one Pango echoes back, so a
+        // rounding difference in the shape cannot move the view a fraction of a
+        // point away from the box its own layout used.
+        .size = size,
+    });
+  }
+
+  return frames;
 }
 
 void textLayoutSize(PangoLayout *layout, float *outWidth, float *outHeight) {

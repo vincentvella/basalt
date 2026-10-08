@@ -101,6 +101,9 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
     float width = 0;
     float height = 0;
     basalt::textLayoutSize(layout, &width, &height);
+    // Before the layout goes: the attachment positions are only knowable from
+    // it, and it used to be dropped on the line above.
+    const auto attachmentRects = basalt::attachmentFrames(layout, attributedString);
     g_object_unref(layout);
 
     // Pango can report a line slightly wider than the width it was given, for
@@ -111,19 +114,21 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
         .height = static_cast<Float>(height),
     };
 
-    // Inline views (`<Text><View/></Text>`) reach here as attachment fragments.
-    // Reporting a zero frame for each keeps the count right, which is what
-    // ParagraphShadowNode iterates over, but they are not positioned yet: doing
-    // that properly needs PangoAttrShape placeholders sized from the child's
-    // own measurement. See docs/BACKLOG.md.
+    // Inline views (`<Text><View/></Text>`) reach here as attachment fragments,
+    // one per view, and `ParagraphShadowNode` pairs them back up by order. The
+    // layout reserved a box for each through a shape attribute, so these are the
+    // boxes it put them in rather than the zeroes this used to report.
+    //
+    // isClipped stays false. It would mean the view fell outside the paragraph
+    // after `numberOfLines` truncated it, which is a question about a line limit
+    // this host does not enforce yet; see backlog/text.md.
     TextMeasurement::Attachments attachments;
-    for (const auto &fragment : attributedString.getFragments()) {
-      if (fragment.isAttachment()) {
-        attachments.push_back(TextMeasurement::Attachment{
-            .frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 0, .height = 0}},
-            .isClipped = false,
-        });
-      }
+    attachments.reserve(attachmentRects.size());
+    for (const auto &frame : attachmentRects) {
+      attachments.push_back(TextMeasurement::Attachment{
+          .frame = frame,
+          .isClipped = false,
+      });
     }
 
     return TextMeasurement{.size = layoutConstraints.clamp(measured), .attachments = attachments};

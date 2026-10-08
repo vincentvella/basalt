@@ -114,14 +114,52 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
     // Reporting a zero frame for each keeps the count right, which is what
     // ParagraphShadowNode iterates over, but they are not positioned yet --
     // the same gap the GTK side has, for the same reason.
+    // Inline views (`<Text><View/></Text>`), one attachment per view and in
+    // fragment order, which is how ParagraphShadowNode pairs them back up. A run
+    // delegate reserved each box during layout, so these are where the paragraph
+    // put them rather than the zeroes this used to report. See backlog/text.md.
+    //
+    // The index arithmetic is the part to be careful about: fragment strings are
+    // UTF-8 and measured in bytes, while NSAttributedString counts UTF-16, so the
+    // offset is accumulated in UTF-16 units as each fragment is appended. Using
+    // byte offsets here would be right for ASCII and wrong the moment a paragraph
+    // contains an emoji before the view.
     TextMeasurement::Attachments attachments;
+    NSUInteger utf16At = 0;
     for (const auto &fragment : attributedString.getFragments()) {
-      if (fragment.isAttachment()) {
-        attachments.push_back(TextMeasurement::Attachment{
-            .frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 0, .height = 0}},
-            .isClipped = false,
-        });
+      NSString *text = [NSString stringWithUTF8String:fragment.string.c_str()];
+      const NSUInteger start = utf16At;
+      utf16At += text == nil ? 0 : text.length;
+
+      if (!fragment.isAttachment()) {
+        continue;
       }
+
+      const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
+      if (size.width <= 0 || size.height <= 0) {
+        // Nothing measured it, so there is no box and no position to invent.
+        attachments.push_back(TextMeasurement::Attachment{.frame = {}, .isClipped = false});
+        continue;
+      }
+
+      const CGRect box = [layout frameForCharacterIndex:start width:maxWidth];
+      if (CGRectIsNull(box)) {
+        // Off the end of a truncated paragraph, which is what isClipped is for.
+        attachments.push_back(TextMeasurement::Attachment{.frame = {}, .isClipped = true});
+        continue;
+      }
+
+      attachments.push_back(TextMeasurement::Attachment{
+          .frame =
+              {
+                  .origin = {.x = static_cast<Float>(box.origin.x),
+                             .y = static_cast<Float>(box.origin.y)},
+                  // The size React Native measured, so a rounding difference in
+                  // the delegate cannot move the view off its own layout's box.
+                  .size = size,
+              },
+          .isClipped = false,
+      });
     }
 
     measured = TextMeasurement{.size = layoutConstraints.clamp(natural), .attachments = attachments};

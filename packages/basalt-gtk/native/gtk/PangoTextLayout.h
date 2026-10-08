@@ -18,6 +18,9 @@
 #include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
 #include <react/renderer/attributedstring/TextAttributes.h>
+#include <react/renderer/graphics/Rect.h>
+
+#include <vector>
 
 namespace basalt {
 
@@ -50,5 +53,20 @@ PangoAttrList *buildTextAttributes(const facebook::react::TextAttributes &textAt
 // The size of a laid-out paragraph, in points. Pango reports 1/1024ths of a
 // pixel, and forgetting to divide by PANGO_SCALE is the classic bug here.
 void textLayoutSize(PangoLayout *layout, float *outWidth, float *outHeight);
+
+// Where each inline view ended up, in paragraph coordinates and in points, one
+// entry per attachment fragment and in fragment order, which is the order
+// `ParagraphShadowNode` pairs them back up in.
+//
+// Must be given the same `attributedString` the layout was built from: the byte
+// offsets are recomputed by walking the fragments the same way, because Pango
+// indexes by byte into the concatenated string and nothing else here remembers
+// where a fragment started.
+//
+// A fragment whose child measured to nothing gets a zero rect, which is what it
+// had before any of this and the only honest answer when no size was given.
+std::vector<facebook::react::Rect> attachmentFrames(
+    PangoLayout *layout,
+    const facebook::react::AttributedString &attributedString);
 
 } // namespace basalt

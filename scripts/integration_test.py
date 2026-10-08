@@ -4444,6 +4444,115 @@ def test_clipboard(bundle: Path) -> str:
             "7s quit timer")
 
 
+def test_inline_views(bundle: Path) -> str:
+    """An inline `<View>` inside a `<Text>`, which both text engines used to drop.
+
+    React Native gives a text engine one fragment holding U+FFFC and the size it
+    measured for the view, and expects back a box reserved in the line and the
+    frame that box ended up in. Neither host did either: the character reserved
+    whatever width the font gives a missing glyph, and every attachment was
+    reported at the origin with no size, so a view inside a sentence rendered as
+    a dot in the corner.
+
+    Pango reserves it with a shape attribute and Core Text with a run delegate.
+    What is asserted here is the half that is the same on both: the size comes
+    from React Native, so it must match exactly, and the position comes from the
+    font, so only its relationships can be.
+
+    Three cases, each on a line of its own in e2e/inline.tsx so a failure names
+    one of them rather than "inline views are wrong".
+    """
+    app = bundle_app(bundle.parent, "inline")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_WHEN_SETTLED"] = SETTLE_MS
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_MENU"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltInline"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("the host wrote no widget tree")
+        tree = dump.read_text()
+
+    # Found by background colour, which is what the app gives each one for the
+    # purpose: a tag would change the moment the app grows another view.
+    wanted = {
+        "2f6fed": ("the view between two runs of text", 48.0, 24.0),
+        "e0484d": ("the view taller than its line", 24.0, 64.0),
+        "1f9d55": ("the view before any text", 32.0, 16.0),
+    }
+    found = {}
+    for body, (x, y), (width, height) in _views(tree):
+        for colour in wanted:
+            if colour in body:
+                found[colour] = (x, y, width, height)
+
+    missing = [wanted[c][0] for c in wanted if c not in found]
+    if missing:
+        raise Failure(
+            "not every inline view reached the tree, so this is about mounting "
+            f"rather than about text: {missing}\n{tree[-1200:]}"
+        )
+
+    # The size is React Native's own measurement of the view, rounded up to the
+    # pixel grid by ParagraphShadowNode, so it is exact rather than approximate
+    # and the same on both hosts. A size that came from the font instead would be
+    # a glyph's width, which is nothing like 48 points.
+    for colour, (what, width, height) in wanted.items():
+        x, y, measuredWidth, measuredHeight = found[colour]
+        if not (width <= measuredWidth <= width + 1 and height <= measuredHeight <= height + 1):
+            raise Failure(
+                f"{what} measured {measuredWidth}x{measuredHeight}, and it asked "
+                f"for {width}x{height}. A box reserved from the font rather than "
+                f"from the view looks exactly like this.\n{tree[-1200:]}"
+            )
+
+    # Position, in the only terms that survive two different shapers over two
+    # different system fonts.
+    #
+    # Against the paragraphs' own left edge, not against zero: `_views` reports
+    # absolute coordinates, so every one of these carries the page's padding, and
+    # asserting x == 0 for the view that starts its line fails for a reason that
+    # has nothing to do with text. The three <Text> rows are siblings of the same
+    # width, so they share one left edge and it is the thing to measure from.
+    edges = {round(x) for body, (x, _y), _size in _views(tree) if "role=text" in body}
+    if len(edges) != 1:
+        raise Failure(
+            "the three paragraphs do not share a left edge, so there is nothing "
+            f"to measure an inline view against: {sorted(edges)}\n{tree[-1200:]}"
+        )
+    left = edges.pop()
+
+    midX = found["2f6fed"][0]
+    tallX = found["e0484d"][0]
+    leadingX = found["1f9d55"][0]
+
+    if midX <= left or tallX <= left:
+        raise Failure(
+            "an inline view with text before it sits at its paragraph's left "
+            f"edge ({left}), so the frame did not come from the layout: mid at "
+            f"x={midX}, tall at x={tallX}.\n{tree[-1200:]}"
+        )
+    if round(leadingX) != left:
+        raise Failure(
+            "the inline view that starts its line is not at its paragraph's left "
+            f"edge: x={leadingX} against {left}. Nothing precedes it, so nothing "
+            f"should offset it.\n{tree[-1200:]}"
+        )
+
+    return (f"inline views {midX - left:.0f} and {tallX - left:.0f} points into "
+            "their lines, and the third at the start of its own")
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -4861,6 +4970,8 @@ SCENARIOS = [
      test_view_key_events),
     ("__turboModuleProxy answers for this platform and for React Native",
      test_turbomodule_proxy),
+    ("an inline view inside a Text is given a box and told where it is",
+     test_inline_views),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),

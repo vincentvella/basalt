@@ -208,6 +208,40 @@ NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttribute
   return attributes;
 }
 
+// The callbacks a run delegate answers with. CoreText asks for three numbers and
+// the box is anchored on the baseline, so the whole height is ascent and the
+// descent is zero, which puts the view sitting on the line rather than straddling
+// it. That matches the shape attribute on GTK, where the rect runs from -height
+// to 0.
+//
+// The context is a heap-allocated Size owned by the delegate: `dealloc` frees it,
+// and CoreText guarantees it is called once the delegate goes.
+CGFloat attachmentAscent(void *context) {
+  return static_cast<CGFloat>(static_cast<facebook::react::Size *>(context)->height);
+}
+
+CGFloat attachmentDescent(void * /*context*/) {
+  return 0;
+}
+
+CGFloat attachmentWidth(void *context) {
+  return static_cast<CGFloat>(static_cast<facebook::react::Size *>(context)->width);
+}
+
+void attachmentDealloc(void *context) {
+  delete static_cast<facebook::react::Size *>(context);
+}
+
+CTRunDelegateRef makeAttachmentDelegate(const facebook::react::Size &size) {
+  CTRunDelegateCallbacks callbacks = {};
+  callbacks.version = kCTRunDelegateCurrentVersion;
+  callbacks.dealloc = attachmentDealloc;
+  callbacks.getAscent = attachmentAscent;
+  callbacks.getDescent = attachmentDescent;
+  callbacks.getWidth = attachmentWidth;
+  return CTRunDelegateCreate(&callbacks, new facebook::react::Size{size});
+}
+
 RnTextLayout *buildTextLayout(const AttributedString &attributedString,
                               const ParagraphAttributes &paragraphAttributes) {
   NSMutableAttributedString *string = [[NSMutableAttributedString alloc] init];
@@ -220,9 +254,28 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
     if (text == nil) {
       continue;
     }
-    [string appendAttributedString:[[NSAttributedString alloc]
-                                       initWithString:text
-                                           attributes:buildTextAttributes(fragment.textAttributes)]];
+
+    NSMutableDictionary *attributes =
+        [buildTextAttributes(fragment.textAttributes) mutableCopy];
+
+    // An inline `<View>`: one fragment holding U+FFFC, whose own size React
+    // Native has already measured into the fragment. A run delegate is
+    // CoreText's way to say "this character is this big", the counterpart of
+    // Pango's shape attribute on the other host. Without it the character
+    // reserves whatever the font gives a missing glyph and the view is reported
+    // at zero. See backlog/text.md.
+    if (fragment.isAttachment()) {
+      const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
+      if (size.width > 0 && size.height > 0) {
+        if (CTRunDelegateRef delegate = makeAttachmentDelegate(size)) {
+          attributes[(__bridge NSString *)kCTRunDelegateAttributeName] =
+              (__bridge_transfer id)delegate;
+        }
+      }
+    }
+
+    [string appendAttributedString:[[NSAttributedString alloc] initWithString:text
+                                                                  attributes:attributes]];
   }
 
   CTLineTruncationType truncation = kCTLineTruncationEnd;
