@@ -5,7 +5,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 **Open (4):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
-2. No baseline, so alignItems: 'baseline' is wrong for text
+2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
+   upstream's
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
 4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, textShadow*, te
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
@@ -70,9 +71,49 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   height and baseline React Native measured, and `HitTestTextPosition` to read
   the box back afterwards. The same shape as the other two, which is the useful
   part of having done them first.
-- No baseline, so `alignItems: 'baseline'` is wrong for text.
-  `pango_layout_get_baseline` is the value; plumbing it needs
-  `TextLayoutManagerExtended`.
+- **No baseline, so `alignItems: 'baseline'` is wrong for text, and the plumbing
+  is not ours to add.** Measured 2026-10-08 rather than reasoned about, and the
+  entry used to make it sound like local work.
+
+  What a run does. A row with `alignItems: 'baseline'` holding a 40pt box, a 32pt
+  `<Text>` and a 12pt one lays out as
+
+      view tag=2  frame=(20,20 40x40)   bg=#ff0000ff
+      view tag=6  frame=(60,60 46x33)   text="Big"
+      view tag=10 frame=(106,60 29x13)  text="small"
+
+  with both paragraphs at y=60, which is the box's *bottom*. React Native says why
+  itself, three times over, once per measure pass:
+
+      W ParagraphShadowNode.cpp:294] Baseline alignment is not supported by the
+      current platform
+
+  Yoga uses a node's height as its baseline when it has no baseline function, so
+  the box's baseline is 40 and the text's is 0 -- the top of each paragraph is
+  aligned with the bottom of the box, which is as wrong as it can be while still
+  being deterministic.
+
+  **The gate is a compile-time check against a header this project does not
+  own.** `ParagraphShadowNode::baseline` asks
+  `TextLayoutManagerExtended::supportsLineMeasurement()`, which is a `requires`
+  expression on the platform's `TextLayoutManager` type: it is true when that
+  class declares `measureLines(AttributedStringBox, ParagraphAttributes, Size)`.
+  Android's and iOS's do. The cxx platform's declares `measure` and nothing else,
+  so the answer is false for every ReactCxxPlatform app before a host writes a
+  line of code.
+
+  This host replaces the *definition* of that class -- see the top of
+  `PangoTextLayoutManager.cpp` -- and deliberately leaves the header alone, which
+  is what keeps the arrangement maintainable. A subclass does not help: the
+  concept is checked on the static type. So the fix is one declaration and one
+  stub upstream, recorded in [upstream.md](upstream.md), and after it lands this
+  side is small: `pango_layout_get_baseline` and `CTLineGetTypographicBounds`
+  already have the number.
+
+  The same gate takes `onTextLayout` with it, which is the other half worth
+  knowing: a `<Text onTextLayout>` gets "onTextLayout is not supported by the
+  current platform" from the same file for the same reason, so an app cannot
+  measure its own lines either.
 - ~~**`numberOfLines` with `ellipsizeMode: 'clip'` does not truncate.**~~ Done
   2026-10-07, on GTK. **AppKit already did it** and needed no change: it maps
   Clip to `truncates:NO` and applies the line limit independently of whether it

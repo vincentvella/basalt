@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (16):**
+**Open (17):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -41,6 +41,8 @@ workaround and the comment explaining it, which is already written.
 14. `~Scheduler` leaves a mount hook registered, and the next mount uses it
 15. `CursorValue` is two keywords where the C++ parses thirty-four
 16. `gtk_accessible_list_new_from_array` refuses every non-empty array
+17. The cxx `TextLayoutManager` has no `measureLines`, so baseline alignment and
+    `onTextLayout` cannot work for any ReactCxxPlatform app
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -209,3 +211,29 @@ workaround and the comment explaining it, which is already written.
   Worth sending, and the smallest possible patch -- one operator in one guard.
   Both functions arrived together in 4.14, which suggests nobody has called the
   array one since.
+
+- **The cxx `TextLayoutManager` has no `measureLines`.** Two React Native
+  features are gated on one declaration that the cxx platform variant does not
+  have, so no host using it can implement either, whatever it does.
+
+  `ParagraphShadowNode::baseline` and the `onTextLayout` event both go through
+  `TextLayoutManagerExtended`, whose `supportsLineMeasurement()` is a `requires`
+  expression: true when the platform's `TextLayoutManager` declares
+  `measureLines(AttributedStringBox, ParagraphAttributes, Size)`. Android's and
+  iOS's do. `platform/cxx/.../TextLayoutManager.h` declares `measure` and nothing
+  else, so both features log "not supported by the current platform" and return 0
+  or nothing.
+
+  Measured on 2026-10-08: a row with `alignItems: 'baseline'` holding a 40pt box
+  and two paragraphs puts both paragraphs' *tops* at the box's bottom, with
+  `W ParagraphShadowNode.cpp:294] Baseline alignment is not supported by the
+  current platform` logged once per measure pass. Yoga falls back to a node's
+  height as its baseline, so the result is deterministic and wrong.
+
+  The fix is a declaration and a stub definition beside the existing `measure`,
+  which every host already replaces for its own text engine; this one would then
+  implement it with `pango_layout_get_baseline` and `CTLineGetTypographicBounds`,
+  both of which already have the number. Not worked around here, because there is
+  no local workaround that does not mean shadowing an upstream header -- which is
+  the one thing the text-measurement arrangement in `PangoTextLayoutManager.cpp`
+  is careful not to do. See [text.md](text.md).
