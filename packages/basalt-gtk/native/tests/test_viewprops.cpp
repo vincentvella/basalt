@@ -594,6 +594,40 @@ TEST(a_dotted_border_is_also_a_stroke) {
   g_object_unref(view);
 }
 
+// And the style is in the tree dump, which is the other half: these tests set it
+// on the widget by hand, so they all passed while the mounting manager read the
+// wrong field and no React app ever got a dashed border. The dump is what an
+// end-to-end run can read.
+TEST(a_border_style_is_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+
+  const float widths[4] = {3.0F, 3.0F, 3.0F, 3.0F};
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  const GdkRGBA colors[4] = {black, black, black, black};
+  rn_view_set_borders(view, widths, colors);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string solid(text);
+  g_free(text);
+  EXPECT(solid.find("border-style=") == std::string::npos);
+
+  rn_view_set_border_style(view, RN_BORDER_DASHED);
+  text = rn_view_describe_tree(view);
+  const std::string dashed(text);
+  g_free(text);
+  EXPECT(dashed.find("border-style=dashed") != std::string::npos);
+
+  rn_view_set_border_style(view, RN_BORDER_DOTTED);
+  text = rn_view_describe_tree(view);
+  const std::string dotted(text);
+  g_free(text);
+  EXPECT(dotted.find("border-style=dotted") != std::string::npos);
+
+  g_object_unref(view);
+}
+
 TEST(a_border_style_on_a_view_with_no_border_draws_nothing) {
   RnView *view = rn_view_new(1);
   g_object_ref_sink(view);

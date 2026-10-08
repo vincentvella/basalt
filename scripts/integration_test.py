@@ -3715,6 +3715,63 @@ def test_image_tint_and_blur(bundle: Path) -> None:
         )
 
 
+def test_border_style(bundle: Path) -> None:
+    """`borderStyle: 'dashed'` and `'dotted'` reach the view.
+
+    Both hosts draw those as one stroked outline rather than four filled edges,
+    and the switch is invisible in every other line of a tree dump: same widths,
+    same colours, same frame. So each prints the style, and this reads it.
+
+    It exists because the prop never arrived. React Native's `borderStyles` is a
+    cascade of optionals with a slot per spelling -- `left`, `top`, `start`,
+    `horizontal`, `all` -- and a style written once for the whole border lands in
+    `all`. Both hosts read the four sides directly and found nothing, so every
+    dashed border in a React app drew solid, while the unit tests on both sides
+    set the style on the widget by hand and passed. `resolveBorderMetrics` does
+    the cascade; reading its answer is the fix.
+
+    Runs e2e/views.js, the app scripts/compare_hosts.sh diffs between desktops,
+    which is where a prop that arrives on one and not the other belongs.
+    """
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    bordered = [line for line in tree.splitlines() if "borderw=" in line]
+    if len(bordered) != 2:
+        raise Failure(
+            f"the app draws two bordered views and {len(bordered)} have a border "
+            f"width.\n{tree}"
+        )
+    for style in ("dashed", "dotted"):
+        if not any(f"border-style={style}" in line for line in bordered):
+            raise Failure(
+                f"no view reports border-style={style}, so the prop did not reach "
+                "the view layer. The usual cause is reading props->borderStyles "
+                "rather than the resolved metrics: a style written once lands in "
+                "the cascade's `all` slot and in none of the four sides.\n"
+                + "\n".join(bordered)
+            )
+
+
 def test_window_limits(bundle: Path) -> None:
     """How big the window may be, and the fact that it is not the same list
     everywhere.
@@ -5025,6 +5082,7 @@ SCENARIOS = [
      test_press_location),
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
     ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
+    ("borderStyle reaches the view, dashed and dotted", test_border_style),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

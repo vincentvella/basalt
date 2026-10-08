@@ -294,6 +294,28 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 - (void)setRnBorderWidths:(nullable const CGFloat *)widths
                    colors:(nullable const CGFloat *)colors;
 
+// `borderStyle`, for the two values that are not solid.
+typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
+  RnAppKitBorderStyleSolid = 0,
+  RnAppKitBorderStyleDotted,
+  RnAppKitBorderStyleDashed,
+};
+
+// A dotted or dashed border is drawn differently from a solid one: one stroked
+// path around the view's own rounded rectangle, with a dash pattern scaled to
+// the border width the way every browser does it, since a fixed pattern looks
+// like a hairline on a thick border and like a solid line on a thin one.
+//
+// It replaces the four-edge fill rather than joining it, or the outline would be
+// painted twice and the dashes would sit on a solid line.
+//
+// One style for the whole outline rather than one per side, which is the limit of
+// this and is the limit on the other hosts for the same reason: a stroked path
+// carries one dash pattern, and React Native's per-side `borderStyles` would need
+// four paths with the corners divided between them. The first side that asks for
+// something other than solid decides the outline, and the backlog records that.
+- (void)setRnBorderStyle:(RnAppKitBorderStyle)style;
+
 // Fabric's Insert and Remove carry an index into the parent's child list, so
 // that list has to stay in mutation order.
 - (void)insertRnChild:(RnAppKitView *)child atIndex:(NSInteger)index;

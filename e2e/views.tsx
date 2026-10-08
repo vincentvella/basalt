@@ -73,6 +73,25 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#1f2129',
   },
+  // borderStyle, which is the one border prop that changes how a border is
+  // drawn rather than what colour it is: both hosts stroke a dashed outline
+  // instead of filling four edges. Here rather than in a host-specific app
+  // because the two trees are diffed, and a style that arrived on one desktop
+  // and not the other is exactly what that diff is for.
+  dashed: {
+    width: 40,
+    height: 40,
+    borderWidth: 3,
+    borderColor: '#1f2129',
+    borderStyle: 'dashed',
+  },
+  dotted: {
+    width: 40,
+    height: 40,
+    borderWidth: 3,
+    borderColor: '#1f2129',
+    borderStyle: 'dotted',
+  },
 });
 
 function App() {
@@ -86,7 +105,8 @@ function App() {
       </View>
       <View style={styles.footer}>
         <View style={styles.dot} />
-        <View style={styles.dot} />
+        <View style={styles.dashed} />
+        <View style={styles.dotted} />
         <View style={styles.dot} />
       </View>
     </View>

@@ -290,6 +290,7 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // Four RGBA quadruples, in the same edge order.
   CGFloat _borderColors[16];
   BOOL _hasBorders;
+  RnAppKitBorderStyle _borderStyle;
   CATransform3D _transform;
   BOOL _hasTransform;
   BOOL _hidesBackFace;
@@ -931,6 +932,57 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   CGPathRelease(path);
 }
 
+// A dotted or dashed border: one stroked path instead of four filled edges.
+//
+// The same shape of drawing as the GTK side's, down to the dash pattern, because
+// a dashed border that started its dashes in a different place on each desktop
+// would be a difference nobody asked for. The top edge's width and colour decide
+// the stroke: a stroked path has one pen.
+- (void)rnStrokeDashedBorderInContext:(CGContextRef)context size:(NSSize)size {
+  const CGFloat width = _borderWidths[0] > 0 ? _borderWidths[0] : 1.0;
+
+  // Inset by half the width, because a stroke straddles its path while the
+  // filled edges sit inside the box. Without that a 4pt dashed border would
+  // paint two points outside the view and over its neighbour.
+  //
+  // The corner radii are left as they are rather than shrunk by the inset, which
+  // is what GSK's own inset does on the other host: it pulls the corners in by
+  // about a third of the inset, and matching it keeps the two drawing one shape.
+  const CGRect centred = CGRectInset(CGRectMake(0, 0, size.width, size.height),
+                                     width / 2.0, width / 2.0);
+  if (centred.size.width <= 0 || centred.size.height <= 0) {
+    return;
+  }
+  CGPathRef path = RnAppKitCreateRoundedPath(centred, _borderRadii);
+
+  CGContextSaveGState(context);
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  const CGFloat components[4] = {_borderColors[0], _borderColors[1], _borderColors[2],
+                                 _borderColors[3]};
+  CGColorRef color = CGColorCreate(space, components);
+  CGContextSetStrokeColorWithColor(context, color);
+  CGContextSetLineWidth(context, width);
+
+  // Scaled to the width, the way a browser does it. Dotted is round caps on a
+  // zero-length dash, which is what makes a dot round rather than a short dash.
+  if (_borderStyle == RnAppKitBorderStyleDotted) {
+    const CGFloat dots[2] = {0, width * 2.0};
+    CGContextSetLineCap(context, kCGLineCapRound);
+    CGContextSetLineDash(context, 0, dots, 2);
+  } else {
+    const CGFloat dashes[2] = {width * 3.0, width * 2.0};
+    CGContextSetLineDash(context, 0, dashes, 2);
+  }
+
+  CGContextAddPath(context, path);
+  CGContextStrokePath(context);
+
+  CGColorRelease(color);
+  CGColorSpaceRelease(space);
+  CGContextRestoreGState(context);
+  CGPathRelease(path);
+}
+
 // The four edges, each its own width and colour.
 //
 // This is CSS's own algorithm rather than a stroke: an edge is the region
@@ -940,6 +992,10 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
 // cannot do it -- which matters as soon as one edge differs, and is invisible
 // until then.
 - (void)rnDrawBordersInContext:(CGContextRef)context size:(NSSize)size {
+  if (_borderStyle != RnAppKitBorderStyleSolid) {
+    [self rnStrokeDashedBorderInContext:context size:size];
+    return;
+  }
   const CGFloat w = size.width;
   const CGFloat h = size.height;
   const CGFloat top = _borderWidths[0];
@@ -1279,6 +1335,14 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   self.needsDisplay = YES;
 }
 
+- (void)setRnBorderStyle:(RnAppKitBorderStyle)style {
+  if (_borderStyle == style) {
+    return;
+  }
+  _borderStyle = style;
+  self.needsDisplay = YES;
+}
+
 - (void)insertRnChild:(RnAppKitView *)child atIndex:(NSInteger)index {
   NSArray<NSView *> *children = self.subviews;
   if (index >= (NSInteger)children.count) {
@@ -1368,6 +1432,13 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
                         (unsigned)(_borderColors[edge * 4 + 3] * 255.0 + 0.5)];
     }
     [out appendString:@")"];
+    // The style, when it is not solid. Printed for the same reason the widths
+    // are: a dashed border and a solid one are the same four widths and the same
+    // four colours, and this is the only thing that can say the prop arrived.
+    if (_borderStyle != RnAppKitBorderStyleSolid) {
+      [out appendFormat:@" border-style=%s",
+                        _borderStyle == RnAppKitBorderStyleDotted ? "dotted" : "dashed"];
+    }
   }
   if (_hasTransform) {
     // The 2D affine part, which is all either platform draws, in the order

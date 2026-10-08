@@ -1451,6 +1451,13 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
                              static_cast<unsigned>(self->border_colors[i].alpha * 255.0 + 0.5));
     }
     g_string_append(out, ")");
+    // The style, when it is not solid. Printed for the same reason the widths
+    // are: a dashed border and a solid one are the same four widths and the same
+    // four colours, and this is the only thing that can say the prop arrived.
+    if (self->border_style != RN_BORDER_SOLID) {
+      g_string_append_printf(
+          out, " border-style=%s", self->border_style == RN_BORDER_DOTTED ? "dotted" : "dashed");
+    }
   }
   if (self->has_transform) {
     // The 2D affine part, in the order CSS writes a matrix(): a, b, c, d, tx,

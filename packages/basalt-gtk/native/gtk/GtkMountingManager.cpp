@@ -1093,20 +1093,23 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // one dash pattern, so the first side that asks for something other than
   // solid decides the whole outline. A border with different styles per side is
   // rare enough to be worth that; see backlog/correctness.md.
+  //
+  // From the *resolved* metrics, like the widths and the colours above. The raw
+  // `props->borderStyles` is a cascade of optionals with a slot per spelling,
+  // and `borderStyle: 'dashed'` sets the `all` slot: reading the four sides
+  // directly found nothing, so every dashed border in a React app drew solid
+  // while the tests that set the style on the widget by hand passed.
   {
-    const auto styles = props->borderStyles;
+    const auto &styles = borders.borderStyles;
     RnBorderStyle style = RN_BORDER_SOLID;
-    const std::optional<facebook::react::BorderStyle> sides[4] = {
+    const facebook::react::BorderStyle sides[4] = {
         styles.top, styles.right, styles.bottom, styles.left};
     for (const auto &side : sides) {
-      if (!side.has_value()) {
-        continue;
-      }
-      if (*side == facebook::react::BorderStyle::Dotted) {
+      if (side == facebook::react::BorderStyle::Dotted) {
         style = RN_BORDER_DOTTED;
         break;
       }
-      if (*side == facebook::react::BorderStyle::Dashed) {
+      if (side == facebook::react::BorderStyle::Dashed) {
         style = RN_BORDER_DASHED;
         break;
       }

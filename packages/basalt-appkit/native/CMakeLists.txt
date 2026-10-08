@@ -149,6 +149,9 @@ set(BASALT_APPKIT_TEST_SOURCES
   # The resize modes, against a real bitmap. No React Native, so these run in
   # the toolkit-only build too.
   tests/test_appkit_image.mm
+  # Dotted and dashed borders, also against a bitmap: what a border is drawn as
+  # rather than what the view was told.
+  tests/test_appkit_borders.mm
   # The overlay scrollbar's platform half: that it is a view above the content
   # rather than paint behind it. No React Native, so these run in the
   # toolkit-only build too.

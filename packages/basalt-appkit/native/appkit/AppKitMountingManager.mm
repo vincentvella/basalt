@@ -810,6 +810,34 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       view.rnPointerEvents = RnAppKitPointerEventsAuto;
       break;
   }
+
+  // borderStyle. React Native carries one per side and a stroked path carries
+  // one dash pattern, so the first side that asks for something other than solid
+  // decides the whole outline, exactly as on GTK. A border with different styles
+  // per side is rare enough to be worth that; see backlog/correctness.md.
+  //
+  // From the *resolved* metrics, like the widths and the colours: the raw
+  // `props->borderStyles` is a cascade of optionals with a slot per spelling, and
+  // `borderStyle: 'dashed'` sets the `all` slot rather than the four sides. The
+  // GTK side read the sides and so drew every dashed border solid.
+  {
+    const auto &styles =
+        props->resolveBorderMetrics(shadowView.layoutMetrics).borderStyles;
+    RnAppKitBorderStyle style = RnAppKitBorderStyleSolid;
+    const facebook::react::BorderStyle sides[4] = {
+        styles.top, styles.right, styles.bottom, styles.left};
+    for (const auto &side : sides) {
+      if (side == facebook::react::BorderStyle::Dotted) {
+        style = RnAppKitBorderStyleDotted;
+        break;
+      }
+      if (side == facebook::react::BorderStyle::Dashed) {
+        style = RnAppKitBorderStyleDashed;
+        break;
+      }
+    }
+    [view setRnBorderStyle:style];
+  }
 }
 
 namespace {

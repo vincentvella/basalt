@@ -2,14 +2,15 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (3):**
+**Open (2):**
 
-1. ~~borderStyles, dashed and dotted borders~~ (GTK done; AppKit open)
+1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
 
-- ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07, with
-  one limitation that is structural rather than unfinished.
+- ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
+  on AppKit 2026-10-08, with one limitation that is structural rather than
+  unfinished.
 
   GTK's border node paints solid only, as the entry said, so dotted and dashed
   are a stroked path around the view's own rounded rectangle instead, and the
@@ -36,9 +37,32 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   border width draws nothing, which would otherwise put a line around every view
   that mentioned `borderStyle` and set no width.
 
-  AppKit is not done. Its borders are layer properties, and a dashed layer border
-  needs a `CAShapeLayer` rather than a `borderWidth`, which is a different shape
-  of change.
+  AppKit the next day, and the entry was wrong about what stood in the way. It
+  said the borders are layer properties, so a dashed one would need a
+  `CAShapeLayer`. They are not: they are drawn in `drawRect:` with CSS's own
+  wedge algorithm, four filled edges clipped to the sectors they own. So the
+  dashed case is one stroked path with the same dash pattern GTK uses, inset by
+  half the width for the same reason, replacing the four fills rather than
+  joining them. The corner radii are left unshrunk by the inset, matching what
+  GSK's own inset does, so the two hosts stroke one shape.
+
+  Six tests, against a bitmap rather than against what the view stored, counting
+  runs of ink along the top edge: solid is one run corner to corner, dashed is
+  several, and dotted is more of them than dashed at the same width because the
+  pattern scales with the width in both cases. Sabotaging the branch fails three
+  of them; giving dotted the dashed pattern fails one.
+
+  **And the prop had never arrived, on either host.** React Native's
+  `borderStyles` is a cascade of optionals with a slot per spelling, and
+  `borderStyle: 'dashed'` written once for the whole border lands in `all`. Both
+  hosts read `top`, `right`, `bottom` and `left` directly, found nothing, and drew
+  solid: GTK's half had shipped the day before in exactly that state, with four
+  render-node tests passing because each set the style on the widget by hand.
+  `resolveBorderMetrics` already does the cascade, as it does for the widths and
+  the colours, so both now read its answer. Both hosts print `border-style=` in
+  the tree dump, there is a unit test per host that the dump says it, and an
+  end-to-end scenario reads it out of e2e/views.js, which is also the app
+  `compare_hosts.sh` diffs between desktops.
 - `pointScaleFactor`, fractional scaling under Wayland.
 - ~~`transformOrigin` is passed through but never exercised; the default centre
   anchor is.~~ Exercised now, in all three mounting suites with the same two
