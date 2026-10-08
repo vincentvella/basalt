@@ -94,6 +94,47 @@ int blurNodesIn(GskRenderNode *node) {
   }
 }
 
+// Which of the two border nodes a view painted. A solid border is GTK's border
+// node and a dotted or dashed one is a stroked path, so the pair says both that
+// the style took effect and that the other kind was not drawn as well.
+struct BorderNodes {
+  int borders;
+  int strokes;
+};
+
+void countBorderNodes(GskRenderNode *node, BorderNodes *found) {
+  if (node == nullptr) {
+    return;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_BORDER_NODE:
+      found->borders++;
+      return;
+    case GSK_STROKE_NODE:
+      found->strokes++;
+      return;
+    case GSK_CONTAINER_NODE:
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        countBorderNodes(gsk_container_node_get_child(node, i), found);
+      }
+      return;
+    case GSK_CLIP_NODE:
+      countBorderNodes(gsk_clip_node_get_child(node), found);
+      return;
+    case GSK_ROUNDED_CLIP_NODE:
+      countBorderNodes(gsk_rounded_clip_node_get_child(node), found);
+      return;
+    case GSK_TRANSFORM_NODE:
+      countBorderNodes(gsk_transform_node_get_child(node), found);
+      return;
+    case GSK_OPACITY_NODE:
+      countBorderNodes(gsk_opacity_node_get_child(node), found);
+      return;
+    default:
+      return;
+  }
+}
+
 RnView *addChild(RnView *parent, int tag, float x, float y, float width, float height) {
   RnView *child = rn_view_new(tag);
   g_object_ref_sink(child);
@@ -442,5 +483,105 @@ TEST(a_negative_blur_radius_is_no_blur_rather_than_a_crash) {
   }
   g_object_unref(texture);
   g_bytes_unref(pixel);
+  g_object_unref(view);
+}
+
+// `borderStyle`. GTK's border node paints solid only, so dotted and dashed are
+// a stroked path instead, and which node a view painted is visible in the render
+// tree. That is what these assert: not that a style was stored, but that the
+// drawing changed and that the solid border was not drawn as well.
+
+TEST(a_solid_border_is_a_border_node) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+  layout(view, 100, 100);
+
+  const float widths[4] = {4.0F, 4.0F, 4.0F, 4.0F};
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  const GdkRGBA colors[4] = {black, black, black, black};
+  rn_view_set_borders(view, widths, colors);
+
+  GskRenderNode *painted = paintedNode(view);
+  BorderNodes found{0, 0};
+  countBorderNodes(painted, &found);
+  EXPECT_EQ(found.borders, 1);
+  EXPECT_EQ(found.strokes, 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(a_dashed_border_is_a_stroke_instead) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+  layout(view, 100, 100);
+
+  const float widths[4] = {4.0F, 4.0F, 4.0F, 4.0F};
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  const GdkRGBA colors[4] = {black, black, black, black};
+  rn_view_set_borders(view, widths, colors);
+  rn_view_set_border_style(view, RN_BORDER_DASHED);
+
+  GskRenderNode *painted = paintedNode(view);
+  BorderNodes found{0, 0};
+  countBorderNodes(painted, &found);
+  // The stroke replaces the border rather than joining it: two would paint the
+  // outline twice and the dashes would sit on a solid line.
+  EXPECT_EQ(found.strokes, 1);
+  EXPECT_EQ(found.borders, 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(a_dotted_border_is_also_a_stroke) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+  layout(view, 100, 100);
+
+  const float widths[4] = {2.0F, 2.0F, 2.0F, 2.0F};
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  const GdkRGBA colors[4] = {black, black, black, black};
+  rn_view_set_borders(view, widths, colors);
+  rn_view_set_border_style(view, RN_BORDER_DOTTED);
+
+  GskRenderNode *painted = paintedNode(view);
+  BorderNodes found{0, 0};
+  countBorderNodes(painted, &found);
+  EXPECT_EQ(found.strokes, 1);
+  EXPECT_EQ(found.borders, 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(a_border_style_on_a_view_with_no_border_draws_nothing) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+  layout(view, 100, 100);
+
+  // A style without a width is not a border. Stroking here would put a line
+  // around every view that mentioned borderStyle and set no borderWidth.
+  rn_view_set_border_style(view, RN_BORDER_DASHED);
+
+  GskRenderNode *painted = paintedNode(view);
+  BorderNodes found{0, 0};
+  countBorderNodes(painted, &found);
+  EXPECT_EQ(found.strokes, 0);
+  EXPECT_EQ(found.borders, 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
   g_object_unref(view);
 }

@@ -4,12 +4,41 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 **Open (3):**
 
-1. borderStyles, dashed and dotted borders
+1. ~~borderStyles, dashed and dotted borders~~ (GTK done; AppKit open)
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
 
-- `borderStyles`, dashed and dotted borders. GTK's border node paints solid
-  only, so these need a custom path.
+- ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07, with
+  one limitation that is structural rather than unfinished.
+
+  GTK's border node paints solid only, as the entry said, so dotted and dashed
+  are a stroked path around the view's own rounded rectangle instead, and the
+  stroke replaces the border rather than joining it: two would paint the outline
+  twice and leave dashes sitting on a solid line. Inset by half the width,
+  because a stroke straddles its path while a border node sits inside the box,
+  and without that a 4pt dashed border would paint two points outside the view.
+
+  The dash pattern is scaled to the border width the way a browser does it, since
+  a fixed pattern reads as a hairline on a thick border and as a solid line on a
+  thin one. Dotted is round caps on a zero-length dash, which is what makes a dot
+  round rather than a short dash.
+
+  **One style for the whole outline, not one per side.** A stroked path carries
+  one dash pattern, so React Native's per-side `borderStyles` would need four
+  paths and four strokes with the corners divided between them. The first side
+  that asks for something other than solid decides the outline. A border with
+  different styles per side is rare enough to be worth that, and saying so is
+  better than four paths nobody asked for.
+
+  Four tests, which walk the render tree and count border against stroke nodes,
+  so they assert what was drawn rather than what was stored. Two of them are
+  controls: a solid border is still a border node, and a style on a view with no
+  border width draws nothing, which would otherwise put a line around every view
+  that mentioned `borderStyle` and set no width.
+
+  AppKit is not done. Its borders are layer properties, and a dashed layer border
+  needs a `CAShapeLayer` rather than a `borderWidth`, which is a different shape
+  of change.
 - `pointScaleFactor`, fractional scaling under Wayland.
 - ~~`transformOrigin` is passed through but never exercised; the default centre
   anchor is.~~ Exercised now, in all three mounting suites with the same two

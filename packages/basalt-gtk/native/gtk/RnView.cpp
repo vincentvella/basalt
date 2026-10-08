@@ -192,6 +192,7 @@ struct _RnView {
   graphene_size_t border_radii[4];
   gboolean has_border_radii;
   float border_widths[4];
+  RnBorderStyle border_style;
   GdkRGBA border_colors[4];
   gboolean has_borders;
 
@@ -510,7 +511,44 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
 
   // Borders paint over the content, as they do on every other platform.
   if (self->has_borders) {
-    gtk_snapshot_append_border(snapshot, &box, self->border_widths, self->border_colors);
+    if (self->border_style == RN_BORDER_SOLID) {
+      gtk_snapshot_append_border(snapshot, &box, self->border_widths, self->border_colors);
+    } else {
+      // Dotted and dashed are stroked, GTK's border node painting solid only.
+      // One path around the rounded rectangle and one stroke, which is why the
+      // style is a property of the whole outline rather than of a side: a
+      // stroked path carries one dash pattern.
+      //
+      // Inset by half the width, because a stroke straddles its path while a
+      // border node sits inside the box. Without that a 4pt dashed border would
+      // paint two points outside the view and overlap its neighbour.
+      const float width = self->border_widths[0] > 0.0f ? self->border_widths[0] : 1.0f;
+      GskRoundedRect centred = box;
+      graphene_rect_inset(&centred.bounds, width / 2.0f, width / 2.0f);
+
+      GskPathBuilder *builder = gsk_path_builder_new();
+      gsk_path_builder_add_rounded_rect(builder, &centred);
+      GskPath *path = gsk_path_builder_free_to_path(builder);
+
+      GskStroke *stroke = gsk_stroke_new(width);
+      // Scaled to the width, the way a browser does it: a fixed pattern reads as
+      // a hairline on a thick border and as a solid line on a thin one. Dotted
+      // is round caps on a zero-length dash, which is what makes a dot a dot
+      // rather than a short dash.
+      if (self->border_style == RN_BORDER_DOTTED) {
+        const float dots[2] = {0.0f, width * 2.0f};
+        gsk_stroke_set_line_cap(stroke, GSK_LINE_CAP_ROUND);
+        gsk_stroke_set_dash(stroke, dots, 2);
+      } else {
+        const float dashes[2] = {width * 3.0f, width * 2.0f};
+        gsk_stroke_set_dash(stroke, dashes, 2);
+      }
+
+      gtk_snapshot_append_stroke(snapshot, path, stroke, &self->border_colors[0]);
+
+      gsk_stroke_free(stroke);
+      gsk_path_unref(path);
+    }
   }
 
   // React DevTools' overlay, over everything including the border. Above the
@@ -1129,6 +1167,16 @@ void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]) {
     }
   }
   self->has_border_radii = any;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void rn_view_set_border_style(RnView *self, RnBorderStyle style) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  if (self->border_style == style) {
+    return;
+  }
+  self->border_style = style;
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 

@@ -1089,7 +1089,30 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
       break;
   }
 
-  // TODO(props): borderStyles (dashed/dotted).
+  // borderStyle. React Native carries one per side and a stroked path carries
+  // one dash pattern, so the first side that asks for something other than
+  // solid decides the whole outline. A border with different styles per side is
+  // rare enough to be worth that; see backlog/correctness.md.
+  {
+    const auto styles = props->borderStyles;
+    RnBorderStyle style = RN_BORDER_SOLID;
+    const std::optional<facebook::react::BorderStyle> sides[4] = {
+        styles.top, styles.right, styles.bottom, styles.left};
+    for (const auto &side : sides) {
+      if (!side.has_value()) {
+        continue;
+      }
+      if (*side == facebook::react::BorderStyle::Dotted) {
+        style = RN_BORDER_DOTTED;
+        break;
+      }
+      if (*side == facebook::react::BorderStyle::Dashed) {
+        style = RN_BORDER_DASHED;
+        break;
+      }
+    }
+    rn_view_set_border_style(view, style);
+  }
 }
 
 void GtkMountingManager::applyLayoutMetrics(RnView *view, const ShadowView &shadowView) {

@@ -63,6 +63,26 @@ void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]);
 // the order GTK's border node wants and the order CSS names them in.
 void rn_view_set_borders(RnView *self, const float widths[4], const GdkRGBA colors[4]);
 
+// `borderStyle`, for the two values that are not solid.
+typedef enum {
+  RN_BORDER_SOLID = 0,
+  RN_BORDER_DOTTED,
+  RN_BORDER_DASHED,
+} RnBorderStyle;
+
+// A dotted or dashed border is a different node from a solid one. GTK's border
+// node paints solid only, so these are stroked: a path around the view's own
+// rounded rectangle, with a dash pattern scaled to the border width the way
+// every browser does it, since a fixed pattern looks like a hairline on a thick
+// border and like a solid line on a thin one.
+//
+// One style for the whole outline rather than one per side, which is the limit
+// of this: a stroked path has one dash pattern, and React Native's per-side
+// `borderStyles` would need four paths and four strokes with the corners divided
+// between them. A border with different styles per side is rare enough that the
+// first style set wins, and the backlog records that.
+void rn_view_set_border_style(RnView *self, RnBorderStyle style);
+
 // BaseViewProps::transform, already resolved by React Native.
 //
 // Applied in the layout manager rather than at paint time, so that GTK's own
