@@ -909,6 +909,16 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // assigned. Rebuilding it here at that width is what makes the painted lines
   // break where the measured ones did.
   const float width = static_cast<float>(shadowView.layoutMetrics.frame.size.width);
+  // On the main thread, and this is the one assertion the per-thread Pango
+  // context rests on. Each thread lays out against its own context and font map,
+  // which is what removed the process-wide mutex, and the price is that a layout
+  // must be painted by the thread that built it. This one is handed to a widget
+  // and painted during a snapshot, so it has to be built here. The condition
+  // holds today, every mutation arriving through the main queue, but it holds
+  // incidentally, and a future change that built a layout on the layout thread
+  // and gave it to a widget would be a silent race rather than a failure. See
+  // threadPangoContext in PangoTextLayout.cpp.
+  assert(onMainThread() && "a painted PangoLayout must be built on the GTK main thread");
   PangoLayout *layout = basalt::buildTextLayout(data.attributedString, data.paragraphAttributes, width);
 
   // Fragments carry their own colours as Pango attributes; this is the fallback

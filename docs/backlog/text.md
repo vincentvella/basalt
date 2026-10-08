@@ -2,16 +2,16 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (6):**
+**Open (4):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
 4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, textShadow*, te
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
-6. All measurement serialises on one mutex; see docs/DECISIONS.md
+6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
-8. The mutex covering Pango is not held while text is drawn
+8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
   Done 2026-10-07, on both hosts.
@@ -91,7 +91,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   layout-only updates that did not change the text.
 - All measurement serialises on one mutex; see `docs/DECISIONS.md`.
 
-- **The mutex covering Pango is not held while text is drawn.** Found
+- ~~**The mutex covering Pango is not held while text is drawn.**~~ Fixed
+  2026-10-07, by deleting the mutex rather than widening it. Found
   2026-10-07 while reading backtraces for the GTK main-loop stall, and not the
   cause of it: nothing in either of those stacks goes near Pango. It is a
   separate latent race, recorded because looking for one bug found it.
@@ -142,6 +143,21 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   races live inside Homebrew's prebuilt Pango, which it would not instrument.
   The testable thing is the fix: record the owning thread on each context and
   assert it.
+
+  **What was done.** `threadPangoContext()` gives each thread its own context,
+  rebuilt when `fontGeneration` changes so a runtime-registered font is not
+  invisible to a thread that measured before it appeared, and `pangoMutex()` is
+  gone along with its four lock sites. `GtkMountingManager` now asserts the main
+  thread where it hands a layout to a widget, which is the one condition the
+  arrangement rests on and which previously held only incidentally.
+
+  Three tests: two threads get different contexts, one thread reuses its own
+  rather than building one per layout, and measuring from two threads at once
+  does not deadlock. The first fails if the context is shared again. None of them
+  can show the race itself, which is the honest limit, and the font-reload path
+  is untestable here for want of a font fixture and because `registerFont` is
+  inert on macOS anyway, the CoreText map failing the `PANGO_IS_FC_FONT_MAP`
+  guard.
 
   **A second bug, from the same fact.** `FontRegistryFontconfig.cpp:87`
   invalidates `pango_cairo_font_map_get_default()`, whichever thread's map that

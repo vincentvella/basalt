@@ -146,9 +146,16 @@ computed one way and the widget would paint text laid out another way, and the
 result is clipped or overlapping text that looks like a rendering bug rather
 than a measurement one. Sharing the builder makes that class of bug impossible.
 
-Pango's font map is not documented as reentrant and this is reached from Fabric's
-layout thread and the GTK main thread, so a single mutex covers every use. That
-serialises all text measurement, which the `textMeasureCache_` mostly hides.
+Pango hands each thread its own default font map, since 1.32.6, precisely so that
+no lock is needed, so each thread lays out against its own context and there is
+no mutex. This used to be one shared context behind a single mutex, on the
+grounds that the font map is not documented as reentrant; that was true and the
+conclusion was backwards, because sharing the map was what created the problem
+the lock then had to solve. The lock was also never complete, covering building
+and measuring but not painting, which is where a layout is actually shaped. The
+price of not sharing is that a runtime-registered font invalidates each thread's
+map separately, which `fontGeneration` makes detectable, and that a layout must
+be painted by the thread that built it, which `GtkMountingManager` asserts.
 
 ## Font sizes are absolute, not points (2026-09-09)
 `pango_font_description_set_size` takes points and resolves them against the

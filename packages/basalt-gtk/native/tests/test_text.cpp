@@ -16,6 +16,7 @@
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
 
 #include <sstream>
+#include <thread>
 
 using facebook::react::AttributedString;
 using facebook::react::EllipsizeMode;
@@ -351,4 +352,60 @@ TEST(an_unmeasured_inline_view_is_reported_as_zero_rather_than_guessed) {
 TEST(a_paragraph_with_no_inline_views_reports_none) {
   const auto frames = attachments(makeText("just text"), -1.0F);
   EXPECT(frames.empty());
+}
+
+// The per-thread Pango context, which is what replaced a process-wide mutex.
+// Pango hands each thread its own default font map precisely so that no lock is
+// needed; a single shared context opted out of that and then had to lock to put
+// it back. These assert the arrangement rather than the absence of a race, which
+// no test here could show: see backlog/text.md.
+
+TEST(each_thread_lays_out_against_its_own_context) {
+  PangoLayout *here = basalt::buildTextLayout(makeText("Hello"), ParagraphAttributes{}, -1.0F);
+  PangoContext *hereContext = pango_layout_get_context(here);
+
+  PangoContext *thereContext = nullptr;
+  std::thread worker([&thereContext] {
+    PangoLayout *there = basalt::buildTextLayout(makeText("Hello"), ParagraphAttributes{}, -1.0F);
+    // Read, not kept: the layout owns its context and this only needs identity.
+    thereContext = pango_layout_get_context(there);
+    g_object_unref(there);
+  });
+  worker.join();
+
+  EXPECT(hereContext != nullptr);
+  EXPECT(thereContext != nullptr);
+  // The whole point. Share one context between the two and this is equality.
+  EXPECT(hereContext != thereContext);
+
+  g_object_unref(here);
+}
+
+TEST(a_thread_keeps_one_context_rather_than_building_one_per_layout) {
+  PangoLayout *first = basalt::buildTextLayout(makeText("one"), ParagraphAttributes{}, -1.0F);
+  PangoLayout *second = basalt::buildTextLayout(makeText("two"), ParagraphAttributes{}, -1.0F);
+
+  // A context per call would mean a font map per call, which is the expensive
+  // way to be correct and would throw away every glyph cache between paragraphs.
+  EXPECT(pango_layout_get_context(first) == pango_layout_get_context(second));
+
+  g_object_unref(first);
+  g_object_unref(second);
+}
+
+TEST(measuring_from_two_threads_at_once_does_not_deadlock) {
+  // With the mutex gone there is nothing left to deadlock on, which is worth one
+  // test because the mutex used to be taken on both of these paths. It proves
+  // only that: a race would not show up here.
+  std::thread worker([] {
+    for (int i = 0; i < 40; i++) {
+      const auto measured = measure(makeText(kLongText), ParagraphAttributes{}, 180.0F);
+      EXPECT(measured.height > 0.0F);
+    }
+  });
+  for (int i = 0; i < 40; i++) {
+    const auto measured = measure(makeText(kLongText), ParagraphAttributes{}, 220.0F);
+    EXPECT(measured.height > 0.0F);
+  }
+  worker.join();
 }

@@ -11,7 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <mutex>
+#include <thread>
 #include <string>
 
 namespace basalt {
@@ -112,22 +112,58 @@ PangoEllipsizeMode toPangoEllipsize(EllipsizeMode mode) {
   return PANGO_ELLIPSIZE_NONE;
 }
 
-// A PangoContext to lay out against. Created from the default cairo font map,
-// not from a GtkWidget: measurement happens on Fabric's layout thread, where
-// there is no widget, and painting must use the same font map or the two would
-// disagree about metrics.
+// A PangoContext to lay out against, one per thread.
 //
-// Pango's font map is not documented as reentrant, and this is reached from the
-// layout thread and the GTK main thread, so one mutex covers every use.
-std::mutex &pangoMutex() {
-  static std::mutex mutex;
-  return mutex;
-}
+// Created from the default cairo font map rather than from a GtkWidget, because
+// measurement happens on Fabric's layout thread where there is no widget, and
+// painting must resolve the same families at the same metrics or Yoga would allot
+// a box computed one way and the widget would paint text laid out another.
+//
+// **Per thread, and that is the whole of the thread safety here.** This used to
+// be one `static` context guarded by a mutex, on the stated grounds that Pango's
+// font map is not documented as reentrant. The premise was wrong in a way that
+// made the code less safe rather than more: Pango's own answer to this question
+// is isolation, not locking. From its documentation, "since Pango 1.32.6, the
+// default fontmap is per-thread. Each thread gets its own default fontmap. In
+// this way, PangoCairo can be used safely from multiple threads." A single
+// static context, built from whichever thread reached it first, opted out of
+// that and then needed a lock to put back what it had given away. The shared
+// font map the mutex protected was self-inflicted.
+//
+// The lock was also never complete. It covered building and measuring and not
+// painting, and painting is where the work actually happens: a layout handed to
+// a widget has not been laid out yet, so `gtk_snapshot_append_layout` is what
+// itemises, resolves fonts and shapes, on the main thread, outside any lock. See
+// backlog/text.md.
+//
+// What this costs: one font map, glyph cache and face set per thread, bounded at
+// two. What it buys, besides correctness, is that text measurement no longer
+// serialises on a process-wide mutex.
+//
+// What it requires, and `buildTextLayout` asserts it: a layout must be painted by
+// the thread that built it. That holds today because `GtkMountingManager` builds
+// its layouts on the main thread and the measuring path never lets one escape the
+// function, but it holds incidentally rather than by construction.
+PangoContext *threadPangoContext() {
+  // Reloaded when a font is registered at runtime. Each thread's map is
+  // invalidated separately, which is the price of not sharing one, and
+  // `fontGeneration` is what makes that detectable here. Without this a family
+  // that appeared after a thread's first measurement would be missing from that
+  // thread's map for the life of the process.
+  static thread_local PangoContext *context = nullptr;
+  static thread_local unsigned long generation = 0;
 
-PangoContext *sharedPangoContext() {
-  static PangoContext *context = pango_font_map_create_context(pango_cairo_font_map_get_default());
+  const unsigned long current = basalt::fontGeneration();
+  if (context != nullptr && current != generation) {
+    g_clear_object(&context);
+  }
+  if (context == nullptr) {
+    context = pango_font_map_create_context(pango_cairo_font_map_get_default());
+    generation = current;
+  }
   return context;
 }
+
 
 void applyFragmentAttributes(PangoAttrList *attributes,
                              const TextAttributes &textAttributes,
@@ -264,9 +300,8 @@ void applyAttachmentShape(PangoAttrList *attributes,
 PangoLayout *buildTextLayout(const AttributedString &attributedString,
                              const ParagraphAttributes &paragraphAttributes,
                              float maxWidth) {
-  const std::lock_guard<std::mutex> lock(pangoMutex());
 
-  PangoLayout *layout = pango_layout_new(sharedPangoContext());
+  PangoLayout *layout = pango_layout_new(threadPangoContext());
   PangoAttrList *attributes = pango_attr_list_new();
 
   // Fragment ranges are byte offsets into the concatenated UTF-8 string, which
@@ -342,7 +377,6 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
 }
 
 PangoAttrList *buildTextAttributes(const TextAttributes &textAttributes) {
-  const std::lock_guard<std::mutex> lock(pangoMutex());
 
   PangoAttrList *attributes = pango_attr_list_new();
   // G_MAXUINT is Pango's "to the end", so the list stays correct as the user
@@ -359,7 +393,6 @@ std::vector<facebook::react::Rect> attachmentFrames(
     return frames;
   }
 
-  const std::lock_guard<std::mutex> lock(pangoMutex());
 
   std::size_t at = 0;
   for (const auto &fragment : attributedString.getFragments()) {
@@ -403,7 +436,6 @@ std::vector<facebook::react::Rect> attachmentFrames(
 }
 
 void textLayoutSize(PangoLayout *layout, float *outWidth, float *outHeight) {
-  const std::lock_guard<std::mutex> lock(pangoMutex());
 
   int width = 0;
   int height = 0;

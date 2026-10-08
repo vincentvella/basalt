@@ -19,7 +19,7 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | Area | Open | What is left there |
 | --- | --- | --- |
 | [Input](backlog/input.md) | 4 | Multi-touch is not modelled, Wayland input is unverified, `setIsJSResponder` is a no-op. |
-| [Text](backlog/text.md) | 6 | Measurement and layout gaps. |
+| [Text](backlog/text.md) | 4 | Measurement and layout gaps. |
 | [TextInput](backlog/textinput.md) | 8 | Keyboard types, spell check, the placeholder and selection colours. |
 | [Image](backlog/image.md) | 4 | Decorative props, and assets over the network: fetching, caching, progress. |
 | [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
