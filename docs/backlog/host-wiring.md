@@ -2,9 +2,9 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
-1. Scheduler::reportMount is never called
+1. ~~Scheduler::reportMount is never called~~
 2. IDevUIDelegate / LogBox: JS errors currently go to g_warning and nothing else,
 3. Dev support is tied to the dev server, so an offline `__DEV__` bundle cannot run
 4. TurboModules the demo's own JavaScript asked for and did not get, none fatal t
@@ -12,10 +12,23 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. The linux platform redirects nine React Native shims to their 
 7. Nothing checks that the shim list in metro-config
 
-- `Scheduler::reportMount` is never called. It only drives mount hooks (perf
-  tooling, Fantom's test observation), so nothing renders wrongly without it,
-  but a real host reports. Needs the mounting manager to hold a
-  `SchedulerTaskExecutor`, as `TesterAppDelegate` does.
+- ~~**`Scheduler::reportMount` is never called.**~~ Done, and this entry was
+  stale by the time it was read: all three hosts report a finished transaction,
+  through `reportMountedSurface` in core/UIManagerAccess.h.
+
+  Not through the Scheduler, which is what the entry asked for and is not
+  needed. `Scheduler::reportMount` is a one-line forward to
+  `uiManager_->reportMount`, and a mounting manager is handed the UIManager
+  directly through `IMountingManager::setUIManager`, so it can call the same
+  thing without holding a `SchedulerTaskExecutor` at all. Reaching the Scheduler
+  would be a longer road to the same line.
+
+  What that call needed turned out to be the interesting part, and it is written
+  up in backlog/testing.md: `UIManager::mountHooks_` holds raw pointers that the
+  owner must unregister, `~Scheduler` does not unregister the one it registers,
+  and reporting a mount for a surface that has been stopped therefore calls a
+  virtual method on freed memory. So the report is guarded by asking whether the
+  UIManager still has the surface.
 - `IDevUIDelegate` / LogBox: JS errors currently go to `g_warning` and nothing
   else, so a mistake in an app is a log line and a window that keeps sitting
   there. Cheaper than it sounds: ReactCxxPlatform already *has* a `LogBox`
