@@ -446,8 +446,16 @@ jobs:
         # platform, and running it twice would be the same answer twice. What
         # it guards against is platform-shaped all the same: a header reaching
         # <cstdint> through windows.h took this job down for twenty-three
-        # commits, and nobody developing on Windows could see it. See the file.
-        run: node scripts/check_includes.js
+        # commits, and nobody developing on Windows could see it, and `M_PI` in
+        # a shared header took the Windows job down again on 2026-10-08. See the
+        # file.
+        #
+        # Its own tests first. The spellings it refuses are unused on purpose, so
+        # nothing in the tree would notice if the rules stopped matching, and the
+        # walk would keep reporting none of them.
+        run: |
+          node --test scripts/test_check_includes.js
+          node scripts/check_includes.js
 
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src

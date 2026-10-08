@@ -146,7 +146,10 @@ if command -v node >/dev/null 2>&1; then
   # basalt-core's JavaScript that needs no React Native to run.
   step "platform javascript" node --test scripts/test_platform_js.js
   # A header reaching <cstdint> through windows.h took CI down for twenty-three
-  # commits and nobody developing on Windows could see it. See the file.
+  # commits and nobody developing on Windows could see it, and `M_PI` in a shared
+  # header did it again on a smaller scale. See the file. Its own tests run
+  # first, a guard that has stopped matching being worse than no guard.
+  step "include hygiene tests" node --test scripts/test_check_includes.js
   step "include hygiene" node scripts/check_includes.js
 else
   skip "node suites" "node is not installed"

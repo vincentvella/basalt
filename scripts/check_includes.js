@@ -1,5 +1,10 @@
 /**
- * Finds a standard header a file uses and does not include.
+ * Finds a standard header a file uses and does not include, and a spelling that
+ * does not exist on all three toolchains.
+ *
+ * Two checks, one walk, because they are the same idea: a compiler nobody here
+ * can run would have caught both, so this is the stand-in that runs in a second
+ * on a laptop.
  *
  * This exists because of one bug that took CI down for twenty-three commits.
  * `core/DevBundle.h` declared a function taking a `uint32_t` and included
@@ -96,6 +101,82 @@ const RULES = [
   },
 ];
 
+/**
+ * Spellings that do not exist on all three toolchains, with what to do instead.
+ *
+ * The rule above is "you used something and forgot its header". This one is
+ * "there is no header": the name is a POSIX or compiler extension that one of
+ * the three toolchains does not have, so the fix is to write something else.
+ *
+ * `M_PI` is here because it cost a red Windows build on 2026-10-08. MSVC's
+ * <cmath> defines the POSIX math constants only behind `_USE_MATH_DEFINES`,
+ * which `core/cmake/ReactNativeCore.cmake` sets for React Native's own targets
+ * and deliberately not for this project's -- so `core/Gradients.h` compiled on
+ * the two hosts its author could build and not on the third. Everything else
+ * here is unused in the tree today and is listed so that the first person to
+ * reach for it is told in a second rather than in a twenty-minute CI round trip.
+ *
+ * Each of these is legitimate inside a platform branch, which is why a file that
+ * mentions `_WIN32` anywhere is skipped: it has already thought about the
+ * question. `core/CrashHandler.cpp` is the case -- `pthread.h`, `unistd.h` and
+ * `ssize_t` under `#if !defined(_WIN32)` -- and a check that flagged it would be
+ * noise rather than a finding.
+ */
+const UNPORTABLE = [
+  {
+    what: 'a POSIX math constant',
+    use: /\bM_(?:PI|PI_2|PI_4|1_PI|2_PI|2_SQRTPI|E|LOG2E|LOG10E|LN2|LN10|SQRT2|SQRT1_2)\b/,
+    instead: 'declare the constant yourself; MSVC has these only behind _USE_MATH_DEFINES, '
+      + 'which this project does not set for its own sources',
+  },
+  {
+    what: 'a POSIX string comparison',
+    use: /\b(?:strcasecmp|strncasecmp)\s*\(/,
+    instead: 'compare case by case yourself; MSVC spells it _stricmp',
+  },
+  {
+    what: "a compiler's own function-name macro",
+    use: /\b__PRETTY_FUNCTION__\b/,
+    instead: 'use __func__, which is standard; MSVC spells the decorated one __FUNCSIG__',
+  },
+  {
+    what: 'a POSIX time function',
+    use: /\b(?:localtime_r|gmtime_r|asctime_r|ctime_r)\s*\(/,
+    instead: 'MSVC has only the _s forms; branch on _WIN32 or use <chrono>',
+  },
+  {
+    what: 'a stack allocation that is not standard',
+    use: /\balloca\s*\(/,
+    instead: 'use a std::vector or a fixed-size array',
+  },
+  {
+    what: 'a POSIX environment call',
+    use: /(?<![_\w])(?:setenv|unsetenv)\s*\(/,
+    instead: 'MSVC has _putenv_s; branch on _WIN32 as core/tests/test_settle.cpp does',
+  },
+];
+
+/**
+ * The same text with its comments taken out.
+ *
+ * Needed only by the unportable check, and needed badly: the comment explaining
+ * why not to use `M_PI` contains `M_PI`, and so does this file. A string
+ * literal holding `//` loses its tail, which does not matter -- nothing here
+ * looks for anything that could live in a URL.
+ */
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+}
+
+/** Every unportable spelling in one file's own text. */
+function unportableIn(text) {
+  if (text.includes('_WIN32')) {
+    return [];
+  }
+  const code = stripComments(text);
+  return UNPORTABLE.filter(rule => rule.use.test(code));
+}
+
 const SOURCE = /\.(?:h|hpp|cpp|mm|m)$/;
 
 /**
@@ -145,6 +226,7 @@ function findByName(name) {
 
 function main() {
   const findings = [];
+  const unportable = [];
   let checked = 0;
 
   for (const root of ROOTS) {
@@ -169,16 +251,29 @@ function main() {
         }
         findings.push(`${path.join(root, entry)}: uses ${rule.what} without ${rule.headers[0]}`);
       }
+
+      for (const rule of unportableIn(own)) {
+        unportable.push(
+          `${path.join(root, entry)}: uses ${rule.what}, which one toolchain lacks -- ${rule.instead}`,
+        );
+      }
     }
   }
 
-  for (const finding of findings) {
+  for (const finding of findings.concat(unportable)) {
     console.log(finding);
   }
   console.log(
-    `${checked} files checked, ${findings.length} missing include${findings.length === 1 ? '' : 's'}`,
+    `${checked} files checked, ${findings.length} missing include${findings.length === 1 ? '' : 's'}`
+      + `, ${unportable.length} unportable spelling${unportable.length === 1 ? '' : 's'}`,
   );
-  return findings.length === 0 ? 0 : 1;
+  return findings.length === 0 && unportable.length === 0 ? 0 : 1;
 }
 
-process.exitCode = main();
+// Required by scripts/test_check_includes.js, which feeds text through the two
+// checks directly: a guard with no test of its own can stop guarding quietly.
+module.exports = {RULES, UNPORTABLE, stripComments, unportableIn};
+
+if (require.main === module) {
+  process.exitCode = main();
+}

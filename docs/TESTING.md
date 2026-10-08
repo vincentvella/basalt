@@ -86,7 +86,8 @@ make e2e                            # end to end, on whichever host is built
 make compare-hosts                  # every host built, same app, diffed
 make compare                        # every app in e2e/, through every host
 node --test scripts/test_cli.js     # run-linux, run-macos and run-windows
-node scripts/check_includes.js      # a header used and not included
+node scripts/check_includes.js      # a header used and not included, and a
+                                    # spelling one toolchain lacks
 ```
 
 The last two need nothing built, and run in both CI jobs. `check_includes.js`
@@ -94,6 +95,19 @@ exists because a header that reached `<cstdint>` through windows.h took the
 Linux job down for twenty-three commits and could not be seen from the machine the
 work was on; it reads text, so it cannot fail on one platform and pass on
 another.
+
+It does two things now, for the same reason. The second is a short list of
+spellings that one of the three toolchains does not have, `M_PI` first among
+them: MSVC defines the POSIX math constants only behind `_USE_MATH_DEFINES`,
+which `core/cmake/ReactNativeCore.cmake` sets for React Native's targets and
+deliberately not for this project's, so a shared header using it compiled on the
+two hosts its author could build and took the Windows job down. A file that
+mentions `_WIN32` is skipped, having already thought about the question.
+
+Those spellings are all unused in the tree on purpose, which means nothing here
+would notice if the rules stopped matching. So the guard has its own tests,
+`node --test scripts/test_check_includes.js`, which feed text through the rules
+directly and run before it in both places.
 
 `integration_test.py` picks whichever host it finds and runs the same scenarios
 against it, because they are about React and Fabric rather than about a
