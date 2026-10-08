@@ -8,6 +8,9 @@
 #include "TestHarness.h"
 
 #include "PangoTextLayout.h"
+// For rn_pango_clip_height, the contract between measuring a clipped paragraph
+// and painting one. It lives in the widget layer; see the comment there.
+#include "RnView.h"
 
 #include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
@@ -84,6 +87,14 @@ std::vector<facebook::react::Rect> attachments(const AttributedString &text, flo
   return frames;
 }
 
+// `numberOfLines={lines}` with one of the four `ellipsizeMode` values.
+ParagraphAttributes limitedTo(int lines, EllipsizeMode mode) {
+  ParagraphAttributes attributes;
+  attributes.maximumNumberOfLines = lines;
+  attributes.ellipsizeMode = mode;
+  return attributes;
+}
+
 const char *kLongText =
     "Yoga asked Pango how wide this paragraph wants to be, and Pango answered in "
     "1024ths of a pixel, which is a unit nobody enjoys debugging.";
@@ -138,6 +149,104 @@ TEST(default_ellipsize_mode_does_not_collapse_a_paragraph) {
   const auto oneLineTall = measure(makeText("Hello"), ParagraphAttributes{}, -1.0F);
 
   EXPECT(measured.height > oneLineTall.height * 1.5F);
+}
+
+// `numberOfLines` with `ellipsizeMode: 'clip'`, which asks for a cut and no
+// ellipsis. Pango acts on a line limit only while it is ellipsizing, so this is
+// the one mode whose truncation the platform has to carry out itself: the
+// measurement reports the height of the lines that stay, and the widget clips
+// its painting to the same height. See backlog/text.md.
+
+TEST(clip_truncates_the_way_the_ellipsizing_modes_do) {
+  const auto unlimited = measure(makeText(kLongText), ParagraphAttributes{}, 200.0F);
+  const auto clipped = measure(makeText(kLongText), limitedTo(2, EllipsizeMode::Clip), 200.0F);
+  const auto ellipsized = measure(makeText(kLongText), limitedTo(2, EllipsizeMode::Tail), 200.0F);
+
+  // The bug: clip was the only mode that did not truncate at all, so the
+  // paragraph measured its full height and nothing was ever hidden.
+  EXPECT(clipped.height < unlimited.height);
+
+  // Clip hides exactly the lines tail replaces with an ellipsis, so the two
+  // occupy the same box. Which of the two it is becomes a question about the
+  // glyphs on the last line rather than about the paragraph's size. The
+  // tolerance is a fraction of a line rather than a fraction of a point,
+  // because the ellipsis can come from a fallback face whose metrics are a
+  // little taller than the one the text is set in.
+  EXPECT_NEAR(clipped.height, ellipsized.height, 2.0);
+}
+
+TEST(clip_keeps_exactly_the_number_of_lines_it_was_given) {
+  const auto one = measure(makeText(kLongText), limitedTo(1, EllipsizeMode::Clip), 200.0F);
+  const auto two = measure(makeText(kLongText), limitedTo(2, EllipsizeMode::Clip), 200.0F);
+  const auto three = measure(makeText(kLongText), limitedTo(3, EllipsizeMode::Clip), 200.0F);
+
+  // An off-by-one would be invisible to the test above: keeping one line too
+  // few or too many still measures shorter than the whole paragraph. The
+  // multiples hold because every line here is set in one size, which is also
+  // why the cut is read off the lines themselves rather than computed this way.
+  EXPECT(two.height > one.height);
+  EXPECT(three.height > two.height);
+  EXPECT_NEAR(two.height, one.height * 2.0F, 1.0);
+  EXPECT_NEAR(three.height, one.height * 3.0F, 1.5);
+}
+
+TEST(a_clip_limit_no_line_reaches_changes_nothing) {
+  const auto unlimited = measure(makeText(kLongText), ParagraphAttributes{}, 200.0F);
+  const auto limited = measure(makeText(kLongText), limitedTo(50, EllipsizeMode::Clip), 200.0F);
+
+  // A limit the text never reaches has to leave the paragraph exactly as it
+  // was. The widget asks the same question before it clips, so a mistake here
+  // would also cut a paragraph that had nothing to hide.
+  EXPECT_NEAR(limited.height, unlimited.height, 0.51);
+  EXPECT_NEAR(limited.width, unlimited.width, 0.51);
+}
+
+TEST(a_clipped_paragraph_tells_the_widget_where_to_cut) {
+  const auto whole = measure(makeText(kLongText), ParagraphAttributes{}, 200.0F);
+
+  PangoLayout *layout =
+      basalt::buildTextLayout(makeText(kLongText), limitedTo(2, EllipsizeMode::Clip), 200.0F);
+  float clipHeight = 0.0F;
+  const gboolean clips = rn_pango_clip_height(layout, &clipHeight);
+  g_object_unref(layout);
+
+  // This is the number the widget builds its clip node from, which is what
+  // makes the painted paragraph the one that was measured rather than a second
+  // guess at it.
+  EXPECT(clips);
+  EXPECT(clipHeight > 0.0F);
+  EXPECT(clipHeight < whole.height);
+}
+
+TEST(only_clip_asks_the_widget_for_a_clip) {
+  const auto needsClip = [](EllipsizeMode mode) {
+    PangoLayout *layout = basalt::buildTextLayout(makeText(kLongText), limitedTo(2, mode), 200.0F);
+    float clipHeight = 0.0F;
+    const gboolean clips = rn_pango_clip_height(layout, &clipHeight);
+    g_object_unref(layout);
+    return clips;
+  };
+
+  // Pango drops the surplus lines itself as soon as it is ellipsizing, so for
+  // head, middle and tail there is nothing left over to hide, and a clip
+  // applied anyway would shave the bottom off a line Pango meant to keep.
+  EXPECT(!needsClip(EllipsizeMode::Head));
+  EXPECT(!needsClip(EllipsizeMode::Middle));
+  EXPECT(!needsClip(EllipsizeMode::Tail));
+  EXPECT(needsClip(EllipsizeMode::Clip));
+}
+
+TEST(a_paragraph_with_no_line_limit_asks_for_no_clip) {
+  // ParagraphAttributes defaults ellipsizeMode to Clip, that being the first
+  // name in React Native's enum, so a paragraph that never mentioned
+  // numberOfLines arrives here as a clipped one with no limit. If the widget
+  // clipped that it would cut every ordinary wrapping paragraph on the screen.
+  PangoLayout *layout = basalt::buildTextLayout(makeText(kLongText), ParagraphAttributes{}, 200.0F);
+  float clipHeight = 0.0F;
+  const gboolean clips = rn_pango_clip_height(layout, &clipHeight);
+  g_object_unref(layout);
+
+  EXPECT(!clips);
 }
 
 TEST(font_size_is_absolute_not_points) {

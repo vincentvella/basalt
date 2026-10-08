@@ -1,6 +1,11 @@
 #include "PangoTextLayout.h"
 
 #include "FontRegistry.h"
+// For rn_pango_clip_height, which is how much of a paragraph `numberOfLines`
+// leaves visible. It lives with the widgets because the widget layer has no
+// React Native in it and so cannot include this header; the dependency only
+// runs this way round. See the comment on it in RnView.h.
+#include "RnView.h"
 
 #include <react/renderer/graphics/Color.h>
 
@@ -303,15 +308,34 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // without one does not mean "ellipsize if it overflows" -- with no height
   // set, Pango ellipsizes to a *single* line, which silently collapses every
   // wrapping paragraph to one line. React Native's ellipsizeMode defaults to
-  // Tail, so this guard is what lets ordinary text wrap at all.
+  // Clip, the first name in its enum, so every ordinary paragraph arrives here
+  // asking to be clipped and this guard is what lets text wrap at all. It used
+  // to say the default was Tail, which is wrong in the direction that matters:
+  // Tail would be harmless here, and Clip is the one the whole screen depends
+  // on this guard refusing.
   if (paragraphAttributes.maximumNumberOfLines > 0) {
     pango_layout_set_ellipsize(layout, toPangoEllipsize(paragraphAttributes.ellipsizeMode));
-    // A negative height is Pango's way of expressing a line count. It only
-    // truncates when ellipsization is on, so numberOfLines with ellipsizeMode
-    // 'clip' still overflows; that wants a clip in the widget instead.
+    // A negative height is Pango's way of expressing a line count, and Pango
+    // acts on it only while it is ellipsizing. For 'clip', which asks for a cut
+    // and no ellipsis, this therefore records the limit without enforcing it,
+    // and the two readers of the layout enforce it between them: textLayoutSize
+    // below reports a box only as tall as the lines that will show, and the
+    // widget clips its painting to the same height.
+    //
+    // Setting it anyway, rather than carrying the count alongside the layout,
+    // is what lets both of them read the limit off the layout they were handed.
+    // The widget layer has no React Native in it and never sees a
+    // ParagraphAttributes, so a layout that did not say how many lines it may
+    // show would leave it with nothing to go on.
     pango_layout_set_height(layout, -paragraphAttributes.maximumNumberOfLines);
   } else {
     pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_NONE);
+    // Explicitly, because Pango's default height is -1 rather than 0, and -1 is
+    // indistinguishable from the `numberOfLines={1}` a limit of one line would
+    // set. `rn_pango_clip_height` reads the limit back off the layout and has
+    // nothing else to go on, so a paragraph that never asked for a limit has to
+    // say so in the one field that carries the answer.
+    pango_layout_set_height(layout, 0);
   }
 
   return layout;
@@ -386,6 +410,24 @@ void textLayoutSize(PangoLayout *layout, float *outWidth, float *outHeight) {
   pango_layout_get_size(layout, &width, &height);
   *outWidth = fromPangoUnits(width);
   *outHeight = fromPangoUnits(height);
+
+  // `numberOfLines` with `ellipsizeMode: 'clip'`: the lines over the limit are
+  // still in the layout, so what Pango just reported is the height of the whole
+  // text and Yoga would hand out a box tall enough to show all of it. Reporting
+  // only the part that will be painted is half of what makes the limit real;
+  // the other half is the widget clipping to this same number, which it gets
+  // from this same function.
+  //
+  // The width is left as Pango gave it, measured across every line including
+  // the hidden ones. A wrapped paragraph's lines are all about as wide as the
+  // width it was given, so this only shows up on text that was not wrapped at
+  // all -- an explicit newline, with a longer line below the cut -- and the
+  // alternative is a union of line extents that has to get alignment offsets
+  // right before it is any more accurate than this.
+  float visibleHeight = 0.0F;
+  if (rn_pango_clip_height(layout, &visibleHeight)) {
+    *outHeight = visibleHeight;
+  }
 }
 
 } // namespace basalt

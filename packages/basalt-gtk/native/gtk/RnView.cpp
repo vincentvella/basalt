@@ -390,7 +390,35 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   // Text sits above the background and below any children, which is the order
   // <Text> with nested views expects.
   if (self->text_layout != nullptr) {
+    // `numberOfLines` with `ellipsizeMode: 'clip'` is the one truncation Pango
+    // leaves to its caller, because a line limit only takes effect while Pango
+    // is ellipsizing and clip asks for no ellipsis. The surplus lines are
+    // therefore still in this layout, and this is where they are hidden; the
+    // measurement reported a box exactly this tall, from the same function, so
+    // the cut lands on the edge of the paragraph rather than part way into a
+    // line. See rn_pango_clip_height in RnView.h.
+    float clip_height = 0.0f;
+    const gboolean clips_text = rn_pango_clip_height(self->text_layout, &clip_height);
+    if (clips_text) {
+      // Vertically only. A line wider than its own box overflows today, for
+      // every paragraph on this platform, and a limit on the number of lines is
+      // not a reason to start cutting one sideways as well -- so the clip is
+      // made wide enough to hold whichever of the two is wider.
+      int layout_width = 0;
+      int layout_height = 0;
+      pango_layout_get_pixel_size(self->text_layout, &layout_width, &layout_height);
+
+      graphene_rect_t text_bounds;
+      text_bounds.origin.x = 0.0f;
+      text_bounds.origin.y = 0.0f;
+      text_bounds.size.width = MAX(bounds.size.width, static_cast<float>(layout_width));
+      text_bounds.size.height = clip_height;
+      gtk_snapshot_push_clip(snapshot, &text_bounds);
+    }
     gtk_snapshot_append_layout(snapshot, self->text_layout, &self->text_color);
+    if (clips_text) {
+      gtk_snapshot_pop(snapshot);
+    }
   }
 
   // zIndex only reorders painting. The child list itself stays in mutation
@@ -865,6 +893,62 @@ void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *c
   }
 
   gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+gboolean rn_pango_clip_height(PangoLayout *layout, float *out_height) {
+  g_return_val_if_fail(out_height != nullptr, FALSE);
+
+  if (layout == nullptr) {
+    return FALSE;
+  }
+
+  // An ellipsizing layout has already been cut by Pango itself, which is why
+  // head, middle and tail have never needed any of this. Clipping one a second
+  // time could only shave the bottom off a line Pango meant to keep.
+  if (pango_layout_get_ellipsize(layout) != PANGO_ELLIPSIZE_NONE) {
+    return FALSE;
+  }
+
+  // A negative height is how the layout carries `numberOfLines`, and zero means
+  // no limit was asked for.
+  //
+  // Zero is not Pango's default, which is the trap here: a fresh layout answers
+  // -1, measured rather than assumed, and -1 is also exactly what a
+  // `numberOfLines={1}` layout carries. The two are indistinguishable from the
+  // layout alone, so buildTextLayout sets the height to zero explicitly when
+  // there is no limit. Without that this reads every ordinary paragraph as a
+  // one-line one and cuts the whole screen down to its first line.
+  const int height = pango_layout_get_height(layout);
+  if (height >= 0) {
+    return FALSE;
+  }
+
+  const int limit = -height;
+  if (pango_layout_get_line_count(layout) <= limit) {
+    // Fewer lines than it is allowed, so nothing is being hidden and the
+    // paragraph must be left exactly as it would be with no limit at all.
+    return FALSE;
+  }
+
+  // The bottom edge of the last line that stays, taken from the layout's own
+  // iterator rather than by multiplying one line's height by the limit: a
+  // paragraph whose fragments set different fontSizes or lineHeights has lines
+  // of different heights, and that arithmetic would land part way into a glyph.
+  PangoLayoutIter *iter = pango_layout_get_iter(layout);
+  int line_top = 0;
+  int line_bottom = 0;
+  for (int line = 0; line < limit; line++) {
+    pango_layout_iter_get_line_yrange(iter, &line_top, &line_bottom);
+    if (!pango_layout_iter_next_line(iter)) {
+      break;
+    }
+  }
+  pango_layout_iter_free(iter);
+
+  // Pango answers in 1/1024ths of a pixel, and everything above this line is in
+  // React Native's points.
+  *out_height = static_cast<float>(line_bottom) / PANGO_SCALE;
+  return TRUE;
 }
 
 void rn_view_set_role_name(RnView *self, const char *name) {

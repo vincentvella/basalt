@@ -136,6 +136,33 @@ gboolean rn_view_get_focusable(RnView *self);
 // glyphs that carry no foreground attribute of their own.
 void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *color);
 
+// How much of a laid-out paragraph its own `numberOfLines` leaves visible, in
+// points.
+//
+// Returns TRUE when the layout holds more lines than it is allowed to show, so
+// that something has to hide the rest, and writes the height to keep into
+// `out_height`. Returns FALSE when every line it has is a line it may show, and
+// leaves `out_height` alone.
+//
+// This exists because of the one gap between Pango's text model and React
+// Native's. A line limit is expressed to Pango by setting a negative height,
+// and Pango acts on that only while it is ellipsizing: with `ellipsizeMode` of
+// head, middle or tail the surplus lines are already gone from the layout that
+// arrives here, and with 'clip', which asks for a cut and no ellipsis, every
+// line is still in it. So clip is the one mode whose truncation has to be
+// carried out by whoever holds the layout, and there are two of those -- the
+// measurement, which must report a box only as tall as the lines that will
+// show, and the widget, which must paint no further than that box. Both read
+// the answer from here so that the box and the ink inside it cannot disagree,
+// which would be a worse bug than no truncation at all.
+//
+// It lives on this side of the GTK layer, among the widgets, because the
+// widgets may not depend on React Native and PangoTextLayout.h does. The
+// measuring half already links this library and can reach across to it; the
+// other direction would drag Fabric into a target that deliberately builds
+// without it.
+gboolean rn_pango_clip_height(PangoLayout *layout, float *out_height);
+
 // How an image fills its frame. Mirrors React Native's ImageResizeMode, minus
 // Repeat, which needs a repeating pattern node rather than one texture draw.
 typedef enum {

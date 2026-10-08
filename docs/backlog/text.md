@@ -2,11 +2,11 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text
-3. numberOfLines with ellipsizeMode: 'clip' does not truncate
+3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
 4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, textShadow*, te
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. All measurement serialises on one mutex; see docs/DECISIONS.md
@@ -52,8 +52,39 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - No baseline, so `alignItems: 'baseline'` is wrong for text.
   `pango_layout_get_baseline` is the value; plumbing it needs
   `TextLayoutManagerExtended`.
-- `numberOfLines` with `ellipsizeMode: 'clip'` does not truncate. Pango only
-  honours a line limit when ellipsizing, so clip needs a clip node in the widget.
+- ~~**`numberOfLines` with `ellipsizeMode: 'clip'` does not truncate.**~~ Done
+  2026-10-07, on GTK. **AppKit already did it** and needed no change: it maps
+  Clip to `truncates:NO` and applies the line limit independently of whether it
+  is ellipsizing, so the measured box, the inline-view frames and the drawn ink
+  all already stopped at line N. It got tests to hold that.
+
+  Pango is the one that needed work, because a line limit is expressed as a
+  negative height and acted on only while ellipsizing, so for clip the surplus
+  lines stayed in the layout. `rn_pango_clip_height` now derives the cut from
+  `pango_layout_iter_get_line_yrange`, the bottom edge of the last line kept
+  rather than N times one line's height, so a paragraph with mixed font sizes is
+  cut on a line edge. Both readers use it: `textLayoutSize` reports a box only as
+  tall as the visible lines, and `rn_view_snapshot` pushes a clip node so the
+  hidden lines are not painted.
+
+  **The trap, which cost the first attempt.** Pango's default layout height is
+  **-1**, not 0, measured rather than read from documentation. And -1 is exactly
+  what a `numberOfLines={1}` layout carries, so the two cannot be told apart from
+  the layout alone. The first version read every ordinary paragraph as a one-line
+  one and cut the whole screen to its first line. Three pre-existing tests caught
+  it. `buildTextLayout` now says "no limit" by setting the height to zero.
+
+  The same shape, worth knowing: **React Native's `ellipsizeMode` defaults to
+  `Clip`**, the first name in its enum, so every ordinary paragraph arrives
+  asking to be clipped and only the line-limit guard stops it. A comment in that
+  file used to say the default was Tail, wrong in the direction that matters.
+
+  Not covered: the clip node itself, because no GTK test walks a render-node
+  tree, so sabotaging the `gtk_snapshot_push_clip` call is caught by nothing.
+  No e2e case either, `e2e/text.tsx` using the default mode. And a clipped
+  paragraph's measured *width* still comes from every line including the hidden
+  ones, which shows only on text with an explicit newline whose longest line is
+  below the cut.
 - Ignored: `adjustsFontSizeToFit`, `textBreakStrategy`, hyphenation,
   `textShadow*`, `textTransform`, `fontVariant`, `fontVariationSettings`.
 - One PangoLayout is rebuilt per Paragraph per mutation, including
@@ -78,9 +109,45 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   map to shape and load glyphs. So a draw on the main thread can run against a
   font map that Fabric's layout thread is using under the lock.
 
-  Not observed failing. What a draw actually touches inside the shared context,
-  and whether Pango's own internal locking already covers it, is the thing to
-  establish before deciding whether this wants the lock on the draw side or a
-  context per thread. The honest summary is that the invariant the file states
-  is not the invariant the code keeps.
+  **Established 2026-10-07, and the answer inverts the question.** Pango's own
+  documentation, in the version installed here, says the default font map is
+  **per-thread**: "since Pango 1.32.6, the default fontmap is per-thread. Each
+  thread gets its own default fontmap. In this way, PangoCairo can be used safely
+  from multiple threads." Its answer to cross-thread use is isolation, not
+  locking, and `libpangocairo` imports the `GPrivate` that implements it.
+
+  `sharedPangoContext()` opts out of that with a function-local static, so one
+  context, built from the font map of whichever thread got there first, is used
+  from both. **The shared font map this mutex exists to protect is
+  self-inflicted.** So the fix is to stop sharing rather than to extend the lock,
+  and that also closes entry 6, measurement no longer serialising on a
+  process-wide mutex.
+
+  The race is also worse than this entry assumed. The drawn layout has not been
+  laid out when it reaches the draw site: `GtkMountingManager` builds it and only
+  sets properties, nothing queries its size, so `gtk_snapshot_append_layout` is
+  what performs the itemisation, font resolution and shaping, on the main thread,
+  unlocked. That is the same work the measuring path deliberately serialises.
+
+  One argument against simply locking the draw, flagged as reasoning rather than
+  read from source: GSK rasterises glyphs during `gsk_renderer_render`, after the
+  snapshot call returns, still reading shared `PangoFont` objects. If that holds,
+  a lock around the append covers shaping and leaves rasterisation exposed, which
+  makes it a narrowing rather than a fix. Worth checking against GTK's source,
+  which is not on this machine, before acting.
+
+  Not demonstrable by a unit test: the GTK suite is single-threaded and nothing
+  in it touches a snapshot. A stress loop would prove the bug when it fired and
+  nothing when it did not. ThreadSanitizer would be largely blind, since the
+  races live inside Homebrew's prebuilt Pango, which it would not instrument.
+  The testable thing is the fix: record the owning thread on each context and
+  assert it.
+
+  **A second bug, from the same fact.** `FontRegistryFontconfig.cpp:87`
+  invalidates `pango_cairo_font_map_get_default()`, whichever thread's map that
+  is, which need not be the one behind `sharedPangoContext()`. So a
+  runtime-registered font can be invisible to the layouts that matter. On macOS
+  it is inert regardless: the backend here is `PangoCoreTextFontMap`, so the
+  `PANGO_IS_FC_FONT_MAP` guard is false and an app font never reaches Pango at
+  all.
 - Text is not selectable and reports nothing to AT-SPI.

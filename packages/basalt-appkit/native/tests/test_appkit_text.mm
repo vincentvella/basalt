@@ -37,6 +37,16 @@ RnTextLayout *layoutFor(NSString *text, CGFloat size, NSInteger lines) {
                                         truncates:YES];
 }
 
+// The same paragraph under `ellipsizeMode: 'clip'`, which asks for the line
+// limit and no ellipsis. `truncates:NO` is what CoreTextLayout.mm builds for it,
+// and the truncation type it is given is then never consulted.
+RnTextLayout *clippedLayoutFor(NSString *text, CGFloat size, NSInteger lines) {
+  return [RnTextLayout layoutWithAttributedString:styled(text, size, NSTextAlignmentNatural)
+                             maximumNumberOfLines:lines
+                                   truncationType:kCTLineTruncationEnd
+                                        truncates:NO];
+}
+
 // A sentence with an inline view in the middle, built the way CoreTextLayout.mm
 // builds one: the U+FFFC character carrying a run delegate that reports the box.
 // Constructed here rather than going through buildTextLayout so the test does not
@@ -163,6 +173,49 @@ TEST(a_line_limit_that_fits_is_not_truncated) {
   }
 }
 
+// `numberOfLines` with `ellipsizeMode: 'clip'`: cut to the limit, with no
+// ellipsis on the last line that stays.
+//
+// The reason to assert this on a host that already does it is that the line
+// limit and the ellipsis are two separate decisions, and a text engine that
+// only truncates in order to place an ellipsis puts them back together. Pango
+// is exactly that engine -- a line limit there is a negative height it consults
+// only while ellipsizing -- so the GTK side had to grow the cut by hand, and
+// these are the tests that say Core Text must never acquire the same coupling.
+// See backlog/text.md.
+
+TEST(a_line_limit_applies_without_an_ellipsis_too) {
+  @autoreleasepool {
+    const CGSize unlimited = [layoutFor(kLong, 16, 0) sizeForWidth:200];
+    const CGSize ellipsized = [layoutFor(kLong, 16, 2) sizeForWidth:200];
+    const CGSize clipped = [clippedLayoutFor(kLong, 16, 2) sizeForWidth:200];
+
+    // Shorter than the whole paragraph: the limit is honoured even though
+    // nothing is being replaced by an ellipsis.
+    EXPECT(clipped.height < unlimited.height);
+
+    // And the same height as the ellipsizing one, because the two keep the same
+    // two lines and differ only in what the second one ends with.
+    EXPECT_NEAR(clipped.height, ellipsized.height, 1.0);
+  }
+}
+
+TEST(clipping_keeps_exactly_the_number_of_lines_it_was_given) {
+  @autoreleasepool {
+    const CGSize one = [clippedLayoutFor(kLong, 16, 1) sizeForWidth:200];
+    const CGSize two = [clippedLayoutFor(kLong, 16, 2) sizeForWidth:200];
+    const CGSize three = [clippedLayoutFor(kLong, 16, 3) sizeForWidth:200];
+
+    // Keeping one line too few or too many would still measure shorter than the
+    // whole paragraph, which is what the test above checks, so the count itself
+    // is asserted here.
+    EXPECT(two.height > one.height);
+    EXPECT(three.height > two.height);
+    EXPECT_NEAR(two.height, one.height * 2, 2.0);
+    EXPECT_NEAR(three.height, one.height * 3, 3.0);
+  }
+}
+
 // Alignment changes where a line is drawn, never how big it is. A paragraph
 // that measured differently when centred would make Yoga lay it out wrong.
 TEST(alignment_does_not_change_the_measured_size) {
@@ -281,4 +334,27 @@ TEST(a_wrapped_inline_view_sits_lower) {
 TEST(a_character_past_the_end_has_no_frame) {
   const CGRect box = [inlineLayout(40, 20) frameForCharacterIndex:9999 width:-1];
   EXPECT(CGRectIsNull(box));
+}
+
+TEST(an_inline_view_below_a_clip_has_no_frame) {
+  @autoreleasepool {
+    // At width 60 "before " fills the first line and the box is pushed onto the
+    // second, which is what `a_wrapped_inline_view_sits_lower` above relies on.
+    // A one-line limit then hides that second line, so there is no position to
+    // report and CoreTextLayoutManager turns the null rect into `isClipped`.
+    // That is the one place a line limit without an ellipsis is visible to
+    // React Native rather than only to the eye.
+    RnTextLayout *clipped = [RnTextLayout layoutWithAttributedString:withInlineView(40, 20)
+                                               maximumNumberOfLines:1
+                                                     truncationType:kCTLineTruncationEnd
+                                                          truncates:NO];
+
+    const CGRect hidden = [clipped frameForCharacterIndex:kAttachmentIndex width:60];
+    EXPECT(CGRectIsNull(hidden));
+
+    // The same paragraph with room for both lines does place it, so the null
+    // above is the limit at work and not the query failing.
+    const CGRect placed = [inlineLayout(40, 20) frameForCharacterIndex:kAttachmentIndex width:60];
+    EXPECT(!CGRectIsNull(placed));
+  }
 }

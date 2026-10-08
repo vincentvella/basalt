@@ -120,8 +120,15 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
     // boxes it put them in rather than the zeroes this used to report.
     //
     // isClipped stays false. It would mean the view fell outside the paragraph
-    // after `numberOfLines` truncated it, which is a question about a line limit
-    // this host does not enforce yet; see backlog/text.md.
+    // after `numberOfLines` truncated it, and the limit is enforced now, for
+    // 'clip' as well as for the three ellipsizing modes. What is still missing
+    // is a way to tell that one particular attachment is on a line that went.
+    // For clip the position can be compared with the visible height, because
+    // the line is still in the layout; for head, middle and tail Pango has
+    // already dropped the line, and what index_to_pos answers for a byte offset
+    // inside a dropped one is documented nowhere. One answer covering all four
+    // modes is worth more than a half-answer covering one, so this is left as
+    // it was. See backlog/text.md.
     TextMeasurement::Attachments attachments;
     attachments.reserve(attachmentRects.size());
     for (const auto &frame : attachmentRects) {
