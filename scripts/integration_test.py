@@ -3601,6 +3601,70 @@ def test_press_location(bundle: Path) -> None:
         raise Failure(f"the press landed at {x},{y} inside the button; expected about 76,36")
 
 
+def test_hit_slop(bundle: Path) -> None:
+    """`hitSlop` grows what a press can land on, and only that.
+
+    The prop exists because a small target is hard to aim at: e2e/press.js has a
+    24pt square with 16 points of slop on every side, absolutely positioned so
+    its box is at (300,300) whatever the rest of the app does.
+
+    Two taps in one run, which is what makes this an assertion rather than an
+    anecdote. The first lands 28 points left of the box, outside the slop, and
+    must do nothing; the second lands 12 points left of it, inside the slop, and
+    must press it. A host that ignored the prop fails the second; one that
+    treated any nearby point as a hit fails the first.
+
+    Through BASALT_TEST_TAP, so the press goes through the host's own hit test
+    and React Native's responder rather than past them.
+
+    Windows does not read the prop yet, so it is skipped by name: a known gap on
+    one host is not a red tick on every commit.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("the Win32 hit test does not read hitSlop yet")
+
+    app = bundle_app(bundle.parent, "press")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "4000"
+    env["BASALT_TEST_TAP"] = "272,312;288,312"
+    for name in ("BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_MENU",
+                 "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltPress"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        logged = result.stdout + result.stderr
+        tree = dump.read_text() if dump.exists() else ""
+
+    # The prop arrived, which is worth separating from the behaviour: a host that
+    # never read it fails here and says so, rather than failing a tap.
+    if "hit-slop=(16,16,16,16)" not in tree:
+        raise Failure(
+            f"the view does not report its hitSlop, so the prop never arrived.\n{tree}"
+        )
+
+    presses = logged.count("slop pressed")
+    if presses == 0:
+        raise Failure(
+            "a tap 12 points outside a 24pt box with 16 points of slop pressed "
+            f"nothing, so the slop is not part of the hit test.\n{tail_text(logged)}"
+        )
+    if presses > 1:
+        raise Failure(
+            "both taps pressed it, including one 28 points outside a 16 point "
+            f"slop: the target is bigger than it was asked to be.\n{tail_text(logged)}"
+        )
+
+
 def test_image_get_size(bundle: Path) -> None:
     """`Image.getSize` answers, and a missing file rejects.
 
@@ -5340,6 +5404,7 @@ SCENARIOS = [
      test_content_inset),
     ("locationX and locationY are relative to the view that was pressed",
      test_press_location),
+    ("hitSlop grows what a press can land on", test_hit_slop),
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
     ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
     ("borderStyle reaches the view, dashed and dotted", test_border_style),

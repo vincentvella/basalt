@@ -195,6 +195,9 @@ struct _RnView {
   graphene_size_t border_radii[4];
   gboolean has_border_radii;
   float border_widths[4];
+  // `hitSlop`, top, right, bottom, left. Read only by rn_view_contains.
+  float hit_slop[4];
+  gboolean has_hit_slop;
   RnBorderStyle border_style;
   // The `boxShadow` list, in the order the app wrote it. NULL for none rather
   // than an empty array, so a view with no shadow allocates nothing.
@@ -755,12 +758,34 @@ static void rn_view_dispose(GObject *object) {
   G_OBJECT_CLASS(rn_view_parent_class)->dispose(object);
 }
 
+// `hitSlop`: the widget answers for points outside its own allocation.
+//
+// `contains` is what `gtk_widget_pick` asks of each widget, so widening it is
+// the whole implementation -- and it is the reason the slop applies to a hover
+// and a drop as well as to a press, all three going through one pick. The
+// parent's answer is unchanged, so a slop that reaches outside the parent is
+// only reachable where the parent is: GTK picks children of a widget it is
+// already inside, which is the same bound iOS has.
+static gboolean rn_view_contains(GtkWidget *widget, double x, double y) {
+  RnView *self = RN_VIEW(widget);
+  if (self->has_hit_slop) {
+    const double width = gtk_widget_get_width(widget);
+    const double height = gtk_widget_get_height(widget);
+    if (x >= -self->hit_slop[3] && x < width + self->hit_slop[1] &&
+        y >= -self->hit_slop[0] && y < height + self->hit_slop[2]) {
+      return TRUE;
+    }
+  }
+  return GTK_WIDGET_CLASS(rn_view_parent_class)->contains(widget, x, y);
+}
+
 static void rn_view_class_init(RnViewClass *klass) {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
 
   object_class->dispose = rn_view_dispose;
   widget_class->snapshot = rn_view_snapshot;
+  widget_class->contains = rn_view_contains;
 
   gtk_widget_class_set_layout_manager_type(widget_class, RN_TYPE_LAYOUT);
 }
@@ -790,6 +815,10 @@ static void rn_view_init(RnView *self) {
   }
   self->has_border_radii = FALSE;
   self->has_borders = FALSE;
+  self->has_hit_slop = FALSE;
+  for (int edge = 0; edge < 4; edge++) {
+    self->hit_slop[edge] = 0.0f;
+  }
   graphene_matrix_init_identity(&self->transform);
   self->has_transform = FALSE;
   self->z_index = 0;
@@ -1456,6 +1485,21 @@ int rn_view_get_box_shadow_count(RnView *self) {
   return self->box_shadows != nullptr ? static_cast<int>(self->box_shadows->len) : 0;
 }
 
+void rn_view_set_hit_slop(RnView *self, const float insets[4]) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  gboolean any = FALSE;
+  for (int edge = 0; edge < 4; edge++) {
+    self->hit_slop[edge] = insets != nullptr ? insets[edge] : 0.0f;
+    if (self->hit_slop[edge] != 0.0f) {
+      any = TRUE;
+    }
+  }
+  self->has_hit_slop = any;
+  // Nothing to queue: the prop moves no pixels. Picking asks `contains` fresh
+  // on every event.
+}
+
 void rn_view_set_border_style(RnView *self, RnBorderStyle style) {
   g_return_if_fail(RN_IS_VIEW(self));
 
@@ -1822,6 +1866,16 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // picture, so a dump is the only thing that can say it arrived on both hosts.
   if (self->cursor_name != nullptr) {
     g_string_append_printf(out, " cursor=%s", self->cursor_name);
+  }
+  // `hitSlop`, which is invisible in every other line of this dump: a view with
+  // a bigger target is drawn exactly like one without.
+  if (self->has_hit_slop) {
+    g_string_append_printf(out,
+                           " hit-slop=(%g,%g,%g,%g)",
+                           static_cast<double>(self->hit_slop[0]),
+                           static_cast<double>(self->hit_slop[1]),
+                           static_cast<double>(self->hit_slop[2]),
+                           static_cast<double>(self->hit_slop[3]));
   }
   // The resolved LABELLED_BY relation, by tag. The ids the app wrote are in its
   // own source; what is worth reporting is that they were resolved, and the tags

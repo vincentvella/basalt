@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (9):**
+**Open (10):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -15,6 +15,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 8. An inline `<View>` inside a `<Text>` is not positioned
 9. Five style props the other two hosts draw and this one ignores
 10. `accessibilityLabelledBy` sets no relation
+11. `hitSlop` is not part of the hit test
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -235,3 +236,13 @@ and none of it is a missing half.
   `UIA_LabeledByPropertyId`, so the Win32 host's provider answers it with the
   resolved view's provider; GTK sets an AT-SPI relation and macOS an
   `accessibilityTitleUIElement`. The end-to-end scenario is skipped here by name.
+
+- **`hitSlop` is not part of the hit test.** The other two hosts grow the box
+  their picking accepts -- GTK by widening `contains`, AppKit by widening the
+  rect at the top of its own walk -- so a 24pt target can answer for 56pt.
+  `RnWin32View`'s `hitTest` walks `childrenInPaintOrder` comparing against each
+  child's frame, which is the same shape, so this is the same one-line change
+  against the insets the props already carry. The end-to-end scenario taps twice
+  in one run and is skipped here by name; when it is unskipped it will say which
+  half is missing, because it reads `hit-slop=` out of the tree before it taps
+  anything.

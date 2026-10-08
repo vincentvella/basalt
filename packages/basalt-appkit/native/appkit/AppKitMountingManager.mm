@@ -921,6 +921,18 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
     [view setRnBoxShadows:shadows.data() count:(NSInteger)shadows.size()];
   }
 
+  // hitSlop, which grows what a press can land on without moving a pixel.
+  // RnAppKitHitTest is the only reader; see -rnHitArea.
+  {
+    const CGFloat insets[4] = {
+        (CGFloat)props->hitSlop.top,
+        (CGFloat)props->hitSlop.right,
+        (CGFloat)props->hitSlop.bottom,
+        (CGFloat)props->hitSlop.left,
+    };
+    [view setRnHitSlop:insets];
+  }
+
   // The `cursor` style property, as a CSS keyword. core/CursorNames.h is shared
   // with the GTK host, which hands the same keyword to GDK; what macOS has no
   // cursor for is decided in the view layer, beside the NSCursors.

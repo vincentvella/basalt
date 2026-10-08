@@ -361,6 +361,25 @@ typedef struct {
 // what macOS composites rather than anything this code draws.
 @property(nonatomic, readonly) NSArray<CALayer *> *rnBoxShadowLayers;
 
+// `hitSlop`: how far outside its own box this view answers a press, in the order
+// top, right, bottom, left -- the order CSS names edges and the order the border
+// widths arrive in. Null or all zeroes is no slop.
+//
+// Positive values grow the target. A 44pt row with a 20pt icon in it is the
+// reason the prop exists: the icon is what the eye aims at and the finger, or on
+// a desktop a hurried cursor, misses it.
+//
+// It changes hit testing and nothing else: the view is drawn in its own frame,
+// and `RnAppKitHitTest` is the only reader. That also means it applies to hover
+// and to a drop as well as to a press, which is what iOS does, those all going
+// through one hit test.
+- (void)setRnHitSlop:(nullable const CGFloat *)insets;
+
+// The box a press has to land in: the bounds, grown by `hitSlop`. Read by
+// `RnAppKitHitTest` and by the tests, which is why it is here rather than in the
+// implementation.
+@property(nonatomic, readonly) NSRect rnHitArea;
+
 // `borderStyle`, for the two values that are not solid.
 typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
   RnAppKitBorderStyleSolid = 0,

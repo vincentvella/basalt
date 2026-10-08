@@ -1199,6 +1199,18 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
     rn_view_set_box_shadows(view, shadows.data(), static_cast<int>(shadows.size()));
   }
 
+  // hitSlop, which grows what a press can land on without moving a pixel. The
+  // widget layer answers picking with it; see rn_view_contains.
+  {
+    const float insets[4] = {
+        static_cast<float>(props->hitSlop.top),
+        static_cast<float>(props->hitSlop.right),
+        static_cast<float>(props->hitSlop.bottom),
+        static_cast<float>(props->hitSlop.left),
+    };
+    rn_view_set_hit_slop(view, insets);
+  }
+
   // The `cursor` style property, as a CSS keyword. GDK's names are CSS's, so the
   // keyword goes straight through; core/CursorNames.h is shared with the AppKit
   // host so the two cannot disagree about what a value is called.

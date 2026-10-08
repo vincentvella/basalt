@@ -41,6 +41,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#59cc8c',
   },
   inner: {width: 64, height: 64, borderRadius: 8, backgroundColor: '#e6eeff'},
+  // A target too small to aim at, which is what `hitSlop` is for. Absolutely
+  // positioned so its box is in a known place whatever the tally above it does,
+  // and well clear of the big button so a tap can only be about this one.
+  tiny: {
+    position: 'absolute',
+    left: 300,
+    top: 300,
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: '#f2c14d',
+  },
 });
 
 function App() {
@@ -67,6 +79,18 @@ function App() {
         }}>
         <View style={styles.inner} />
       </Pressable>
+      {/*
+        hitSlop: 16 points on every side, so the box is 24pt and the target is
+        56pt. The end-to-end suite taps 12 points outside the box, which is
+        inside the slop, and then 28 points outside it, which is not.
+      */}
+      <Pressable
+        style={styles.tiny}
+        hitSlop={16}
+        onPress={() => {
+          console.log('slop pressed');
+        }}
+      />
       <View style={styles.tally}>
         {Array.from({length: count}, (_, index) => (
           <View key={index} style={styles.pip} />

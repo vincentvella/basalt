@@ -7,8 +7,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
-4. Seven view style props that no host reads, and nothing said so (box shadows
-   and linear gradients are done on GTK and AppKit)
+4. Six view style props that no host reads, and nothing said so (box shadows,
+   linear gradients and hitSlop are done on GTK and AppKit)
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -106,7 +106,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   tests having shown how to reach one. Hit testing is the wrong instrument and
   cannot answer it.
 
-- **Seven view style props that no host reads, and nothing said so.** Counted
+- **Six view style props that no host reads, and nothing said so.** Counted
   2026-10-08 by going through `BaseViewProps` field by field and grepping all
   three hosts for each, after `cursor` and `borderStyle` both turned out to be
   props the backlog thought were handled. These are the ones no host mentions
@@ -127,9 +127,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     outline, which unlike a border takes no layout space and is drawn outside the
     box. The focus ring each host draws is the same idea and is hard-coded.
   - `mixBlendMode` and `isolation`.
-  - `hitSlop`: a pressable's touch target extended past its frame. Less urgent
-    with a cursor than with a thumb, but it is behaviour rather than decoration,
-    so an app that relies on it is wrong rather than plain. See [input.md](input.md).
+  - ~~`hitSlop`~~, **done on GTK and AppKit 2026-10-08**. The one of the nine
+    that is behaviour rather than decoration, so an app relying on it was wrong
+    rather than plain. What the work turned out to be is at the end of this
+    entry.
   - `shouldRasterize` and `removeClippedSubviews`: performance hints, and the
     only two of the nine where ignoring them is arguably correct.
 
@@ -230,3 +231,29 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Graphics both have the node for it. `backgroundSize`, `backgroundPosition` and
   `backgroundRepeat` have nothing to act on until an image can be a background,
   which is a loader question rather than a drawing one.
+
+  **`hitSlop`, done on GTK and AppKit 2026-10-08.** Four insets that grow what a
+  press can land on without moving a pixel, and each host already had one place
+  to put them.
+
+  GTK widens `GtkWidget`'s `contains`, which is what `gtk_widget_pick` asks of
+  each widget, so the slop applies wherever picking does: a press, a hover and a
+  drop all go through one answer. AppKit widens the box at the top of
+  `RnAppKitHitTest`, which recurses with each view's own coordinates, so each
+  view's slop is applied to its own box on the way down. Neither host touches
+  drawing, and both report `hit-slop=` in the tree dump, that being the only way
+  to see a prop which by definition changes no pixels.
+
+  The bound is the same on both and is the same as iOS's: a slop reaching outside
+  the *parent* is only reachable where the parent is, because each host picks
+  among the children of a view it is already inside. A slop that overlaps a
+  sibling drawn on top loses to it, which is what stops an enlarged target
+  stealing presses meant for something visible.
+
+  Five tests per host, deliberately the same five in the same order over the same
+  geometry, since the two hit tests are separate code answering one contract.
+  Each edge is asserted on its own, four numbers in one struct being four chances
+  to read one into the wrong side: sabotaging left into right fails two tests on
+  each host and would pass any symmetric check. End to end, e2e/press.js gets a
+  24pt square with 16 points of slop and the scenario taps twice in one run --
+  28 points out, which must do nothing, and 12 points out, which must press it.

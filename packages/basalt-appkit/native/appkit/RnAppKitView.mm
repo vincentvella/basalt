@@ -59,7 +59,10 @@ RnAppKitView *RnAppKitHitTest(RnAppKitView *root, CGFloat x, CGFloat y) {
   const CGFloat bx = x + bounds.origin.x;
   const CGFloat by = y + bounds.origin.y;
 
-  if (!NSPointInRect(NSMakePoint(bx, by), bounds)) {
+  // `hitSlop` grows the box this test accepts, and only this test: the view is
+  // still drawn in its own frame. Children are reached through their own call,
+  // so each view's slop is applied to its own box on the way down.
+  if (!NSPointInRect(NSMakePoint(bx, by), [root rnHitArea])) {
     return nil;
   }
 
@@ -439,6 +442,9 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // Four RGBA quadruples, in the same edge order.
   CGFloat _borderColors[16];
   BOOL _hasBorders;
+  // `hitSlop`, top, right, bottom, left. Read only by the hit test.
+  CGFloat _hitSlop[4];
+  BOOL _hasHitSlop;
   RnAppKitBorderStyle _borderStyle;
   std::vector<RnAppKitBoxShadow> _boxShadows;
   // The `backgroundImage` gradients, each with its own stops.
@@ -1895,6 +1901,32 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   }
 }
 
+- (void)setRnHitSlop:(const CGFloat *)insets {
+  BOOL any = NO;
+  for (int edge = 0; edge < 4; edge++) {
+    _hitSlop[edge] = insets != nullptr ? insets[edge] : 0;
+    if (_hitSlop[edge] != 0) {
+      any = YES;
+    }
+  }
+  _hasHitSlop = any;
+  // Nothing to redraw: the prop moves no pixels.
+}
+
+// The box a press has to land in, which is the bounds unless `hitSlop` says
+// otherwise. In the view's own coordinates, so a scrolled view's offset is
+// already in `bounds`.
+- (NSRect)rnHitArea {
+  const NSRect bounds = self.bounds;
+  if (!_hasHitSlop) {
+    return bounds;
+  }
+  return NSMakeRect(bounds.origin.x - _hitSlop[3],
+                    bounds.origin.y - _hitSlop[0],
+                    bounds.size.width + _hitSlop[1] + _hitSlop[3],
+                    bounds.size.height + _hitSlop[0] + _hitSlop[2]);
+}
+
 - (void)setRnBorderStyle:(RnAppKitBorderStyle)style {
   if (_borderStyle == style) {
     return;
@@ -2074,6 +2106,15 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   // say it arrived on both hosts.
   if (_cursorName != nil) {
     [out appendFormat:@" cursor=%@", _cursorName];
+  }
+  // `hitSlop`, which is invisible in every other line of this dump: a view with
+  // a bigger target is drawn exactly like one without.
+  if (_hasHitSlop) {
+    [out appendFormat:@" hit-slop=(%g,%g,%g,%g)",
+                      (double)_hitSlop[0],
+                      (double)_hitSlop[1],
+                      (double)_hitSlop[2],
+                      (double)_hitSlop[3]];
   }
   // The resolved labelled-by relation, by tag, spelled as GTK spells it. Every
   // tag that resolved, not only the one AppKit could use, so the two hosts print

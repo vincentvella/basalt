@@ -850,3 +850,96 @@ TEST(focus_activating_nothing_is_not_a_click) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// `hitSlop`: how far outside its own box a view answers a press.
+//
+// Deliberately the same four questions the GTK suite asks of it, in the same
+// order and with the same geometry, because the two hit tests are separate code
+// answering one contract -- the day they disagree, these fail here rather than
+// in an app. Asserted through the hit test rather than against the stored
+// insets: a view that remembered its slop and did not widen its box would leave
+// every target the size it was.
+TEST(appkit_hit_slop_grows_the_target_outside_the_box) {
+  @autoreleasepool {
+    RnAppKitView *root = box(1, 0, 0, 400, 400);
+    RnAppKitView *icon = box(60, 100, 100, 20, 20);
+    [root insertRnChild:icon atIndex:0];
+    const CGFloat insets[4] = {12, 12, 12, 12};
+    [icon setRnHitSlop:insets];
+
+    EXPECT_EQ((long)hit(root, 110, 110), 60L);
+    EXPECT_EQ((long)hit(root, 92, 110), 60L);
+    EXPECT_EQ((long)hit(root, 128, 110), 60L);
+    EXPECT_EQ((long)hit(root, 110, 92), 60L);
+    EXPECT_EQ((long)hit(root, 110, 128), 60L);
+    EXPECT_EQ((long)hit(root, 80, 110), 1L);
+  }
+}
+
+// Each edge on its own: four numbers in one struct is four chances to read one
+// into the wrong side, and a slop that grew the top when the app asked for the
+// bottom would pass any symmetric test.
+TEST(appkit_hit_slop_applies_each_edge_where_it_was_asked_for) {
+  @autoreleasepool {
+    RnAppKitView *root = box(1, 0, 0, 400, 400);
+    RnAppKitView *view = box(61, 100, 100, 20, 20);
+    [root insertRnChild:view atIndex:0];
+
+    const CGFloat top[4] = {15, 0, 0, 0};
+    [view setRnHitSlop:top];
+    EXPECT_EQ((long)hit(root, 110, 90), 61L);
+    EXPECT_EQ((long)hit(root, 110, 130), 1L);
+    EXPECT_EQ((long)hit(root, 90, 110), 1L);
+    EXPECT_EQ((long)hit(root, 130, 110), 1L);
+
+    const CGFloat bottom[4] = {0, 0, 15, 0};
+    [view setRnHitSlop:bottom];
+    EXPECT_EQ((long)hit(root, 110, 130), 61L);
+    EXPECT_EQ((long)hit(root, 110, 90), 1L);
+  }
+}
+
+TEST(appkit_hit_slop_can_be_taken_away_again) {
+  @autoreleasepool {
+    RnAppKitView *root = box(1, 0, 0, 400, 400);
+    RnAppKitView *view = box(62, 100, 100, 20, 20);
+    [root insertRnChild:view atIndex:0];
+    const CGFloat insets[4] = {12, 12, 12, 12};
+    [view setRnHitSlop:insets];
+    EXPECT_EQ((long)hit(root, 92, 110), 62L);
+
+    [view setRnHitSlop:nullptr];
+    EXPECT_EQ((long)hit(root, 92, 110), 1L);
+    EXPECT_EQ((long)hit(root, 110, 110), 62L);
+  }
+}
+
+// A slop that overlaps a sibling does not win over it: the sibling is drawn on
+// top, and a target reaching under something visible would take presses meant
+// for it.
+TEST(appkit_hit_slop_does_not_beat_a_view_drawn_over_it) {
+  @autoreleasepool {
+    RnAppKitView *root = box(1, 0, 0, 400, 400);
+    RnAppKitView *first = box(63, 100, 100, 20, 20);
+    [root insertRnChild:first atIndex:0];
+    const CGFloat insets[4] = {0, 40, 0, 0};
+    [first setRnHitSlop:insets];
+
+    RnAppKitView *second = box(64, 130, 100, 20, 20);
+    [root insertRnChild:second atIndex:1];
+
+    EXPECT_EQ((long)hit(root, 125, 110), 63L);
+    EXPECT_EQ((long)hit(root, 140, 110), 64L);
+  }
+}
+
+TEST(appkit_hit_slop_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *view = box(1, 0, 0, 20, 20);
+    EXPECT(![[view describeTree] containsString:@"hit-slop="]);
+
+    const CGFloat insets[4] = {1, 2, 3, 4};
+    [view setRnHitSlop:insets];
+    EXPECT([[view describeTree] containsString:@"hit-slop=(1,2,3,4)"]);
+  }
+}

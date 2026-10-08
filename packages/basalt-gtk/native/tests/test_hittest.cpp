@@ -240,3 +240,110 @@ TEST(pointer_events_box_only_swallows_presses_meant_for_its_children) {
   EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 50.0, 50.0)), 67);
   EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 200.0, 200.0)), 67);
 }
+
+// `hitSlop`: how far outside its own box a view answers a press.
+//
+// The prop that exists because a 20pt icon in a 44pt row is what the eye aims
+// at and the cursor misses. Asserted through the same hit test every press goes
+// through, rather than against the stored insets: a view that remembered its
+// slop and did not widen `contains` would leave every target the size it was.
+
+TEST(hit_slop_grows_the_target_outside_the_box) {
+  Scene scene(400, 400);
+  RnView *icon = addChild(scene.root, 60, 100.0F, 100.0F, 20.0F, 20.0F);
+  const float insets[4] = {12.0F, 12.0F, 12.0F, 12.0F};
+  rn_view_set_hit_slop(icon, insets);
+  scene.show();
+
+  // Inside the box, as before.
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 110.0)), 60);
+  // Ten points outside it on each side, which is inside the slop.
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 92.0, 110.0)), 60);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 128.0, 110.0)), 60);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 92.0)), 60);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 128.0)), 60);
+  // And past it, which is the root again.
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 80.0, 110.0)), 1);
+}
+
+// Each edge on its own, because four numbers in one struct is four chances to
+// read one into the wrong side: a slop that grew the top when the app asked for
+// the bottom would pass any symmetric test.
+TEST(hit_slop_applies_each_edge_where_it_was_asked_for) {
+  Scene scene(400, 400);
+  RnView *view = addChild(scene.root, 61, 100.0F, 100.0F, 20.0F, 20.0F);
+  // Top only.
+  const float top[4] = {15.0F, 0.0F, 0.0F, 0.0F};
+  rn_view_set_hit_slop(view, top);
+  scene.show();
+
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 90.0)), 61);
+  // Not the other three.
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 130.0)), 1);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 90.0, 110.0)), 1);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 130.0, 110.0)), 1);
+
+  // And the opposite edge, through the same view: the prop can change.
+  const float bottom[4] = {0.0F, 0.0F, 15.0F, 0.0F};
+  rn_view_set_hit_slop(view, bottom);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 130.0)), 61);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 90.0)), 1);
+}
+
+// Taken away again. A slop left behind is a view that swallows presses meant for
+// its neighbour, which is harder to notice than a target that is too small.
+TEST(hit_slop_can_be_taken_away_again) {
+  Scene scene(400, 400);
+  RnView *view = addChild(scene.root, 62, 100.0F, 100.0F, 20.0F, 20.0F);
+  const float insets[4] = {12.0F, 12.0F, 12.0F, 12.0F};
+  rn_view_set_hit_slop(view, insets);
+  scene.show();
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 92.0, 110.0)), 62);
+
+  rn_view_set_hit_slop(view, nullptr);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 92.0, 110.0)), 1);
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 110.0, 110.0)), 62);
+}
+
+// A slop that overlaps a sibling does not win over it: the sibling is drawn on
+// top, and a target that reached under something visible would take presses
+// meant for it.
+TEST(hit_slop_does_not_beat_a_view_drawn_over_it) {
+  Scene scene(400, 400);
+  RnView *first = addChild(scene.root, 63, 100.0F, 100.0F, 20.0F, 20.0F);
+  const float insets[4] = {0.0F, 40.0F, 0.0F, 0.0F};
+  rn_view_set_hit_slop(first, insets);
+
+  RnView *second = rn_view_new(64);
+  g_object_ref_sink(second);
+  rn_view_set_frame(second, 130.0F, 100.0F, 20.0F, 20.0F);
+  rn_view_insert_child(scene.root, second, 1);
+  scene.show();
+
+  // Inside the slop and outside the sibling: the slop answers.
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 125.0, 110.0)), 63);
+  // Inside both: the sibling, which is on top.
+  EXPECT_EQ(static_cast<int>(basalt::hitTestTag(scene.root, 140.0, 110.0)), 64);
+}
+
+// And it is in the tree dump, which is the only way to see it: a view with a
+// bigger target is drawn exactly like one without.
+TEST(hit_slop_is_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 20.0F, 20.0F);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string none(text);
+  g_free(text);
+  EXPECT(none.find("hit-slop=") == std::string::npos);
+
+  const float insets[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+  rn_view_set_hit_slop(view, insets);
+  text = rn_view_describe_tree(view);
+  const std::string dumped(text);
+  g_free(text);
+  EXPECT(dumped.find("hit-slop=(1,2,3,4)") != std::string::npos);
+
+  g_object_unref(view);
+}

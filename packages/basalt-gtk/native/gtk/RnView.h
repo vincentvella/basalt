@@ -127,6 +127,19 @@ void rn_view_set_box_shadows(RnView *self, const RnBoxShadow *shadows, int count
 // How many are set, for the tests and the tree dump.
 int rn_view_get_box_shadow_count(RnView *self);
 
+// `hitSlop`: how far outside its own box this view answers a press, in the order
+// top, right, bottom, left -- the order CSS names edges and the order the border
+// widths arrive in. NULL or all zeroes is no slop.
+//
+// Positive values grow the target. A 44pt row with a 20pt icon in it is the
+// reason the prop exists: the icon is what the eye aims at and the cursor misses
+// it.
+//
+// Implemented by widening GtkWidget's `contains`, which is what
+// `gtk_widget_pick` asks, so it applies wherever picking does: a press, a hover
+// and a drop all go through one answer. Nothing about drawing reads it.
+void rn_view_set_hit_slop(RnView *self, const float insets[4]);
+
 // `borderStyle`, for the two values that are not solid.
 typedef enum {
   RN_BORDER_SOLID = 0,
