@@ -13,6 +13,7 @@
 
 #include "TestHarness.h"
 
+#import "CoreTextLayout.h"
 #import "RnTextLayout.h"
 
 #include <algorithm>
@@ -493,5 +494,83 @@ TEST(text_the_last_justified_line_is_not_stretched) {
     // paragraph would read as a bug rather than as a choice.
     EXPECT(bands.front() >= 195);
     EXPECT(bands.back() < 190);
+  }
+}
+
+// `textTransform`, the same four questions the GTK suite asks, over the same
+// cases: the two hosts use their own toolkit's Unicode case mapping -- NSString's
+// here, GLib's there -- and the point of asking twice is that they agree.
+namespace {
+
+std::string transformedText(const std::string &text, facebook::react::TextTransform transform) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.textTransform = transform;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  RnTextLayout *layout = basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+  NSString *laid = layout.attributedString.string;
+  return laid != nil ? std::string(laid.UTF8String) : std::string();
+}
+
+} // namespace
+
+TEST(appkit_text_transform_uppercases_and_lowercases) {
+  @autoreleasepool {
+    using facebook::react::TextTransform;
+    EXPECT_EQ(transformedText("shout", TextTransform::Uppercase), std::string("SHOUT"));
+    EXPECT_EQ(transformedText("WHISPER", TextTransform::Lowercase), std::string("whisper"));
+    EXPECT_EQ(transformedText("As Written", TextTransform::None), std::string("As Written"));
+  }
+}
+
+TEST(appkit_text_transform_knows_unicode_rather_than_bytes) {
+  @autoreleasepool {
+    using facebook::react::TextTransform;
+    EXPECT_EQ(transformedText("café", TextTransform::Uppercase), std::string("CAFÉ"));
+    // One character in, two out, which a byte-wise transform cannot do.
+    EXPECT_EQ(transformedText("straße", TextTransform::Uppercase), std::string("STRASSE"));
+  }
+}
+
+TEST(appkit_text_transform_capitalize_follows_react_natives_rule) {
+  @autoreleasepool {
+    using facebook::react::TextTransform;
+    EXPECT_EQ(transformedText("hello wide world", TextTransform::Capitalize),
+              std::string("Hello Wide World"));
+    EXPECT_EQ(transformedText("iOS and Android", TextTransform::Capitalize),
+              std::string("Ios And Android"));
+    EXPECT_EQ(transformedText("3rd place", TextTransform::Capitalize), std::string("3rd Place"));
+  }
+}
+
+// And it reaches the measurement, not only the drawing: "shout" and "SHOUT" are
+// different widths, so a host that transformed at paint time would wrap in the
+// wrong place.
+TEST(appkit_text_transform_changes_what_the_paragraph_measures) {
+  @autoreleasepool {
+    using facebook::react::TextTransform;
+    const auto widthOf = [](facebook::react::TextTransform transform) {
+      facebook::react::TextAttributes attributes;
+      attributes.fontSize = 16.0F;
+      attributes.textTransform = transform;
+      facebook::react::AttributedString::Fragment fragment;
+      fragment.string = "shout";
+      fragment.textAttributes = attributes;
+      facebook::react::AttributedString string;
+      string.appendFragment(std::move(fragment));
+
+      RnTextLayout *layout =
+          basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+      return [layout sizeForWidth:-1].width;
+    };
+
+    EXPECT(widthOf(TextTransform::Uppercase) > widthOf(TextTransform::None));
   }
 }

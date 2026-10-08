@@ -35,6 +35,11 @@ const styles = StyleSheet.create({
   underlined: {fontSize: 16, textDecorationLine: 'underline', color: '#2563eb'},
   struck: {fontSize: 16, textDecorationLine: 'line-through', color: '#b91c1c'},
   clipped: {fontSize: 16, color: '#2b3445'},
+  // textTransform, which changes the string the engine lays out rather than how
+  // it is drawn: the tree dump shows the transformed text, so both hosts can be
+  // asked whether they transformed it and whether they agree.
+  shouted: {fontSize: 16, textTransform: 'uppercase', color: '#2b3445'},
+  titled: {fontSize: 16, textTransform: 'capitalize', color: '#2b3445'},
   emphasis: {fontWeight: '700', color: '#b45309'},
   italic: {fontStyle: 'italic', color: '#047857'},
 });
@@ -58,6 +63,11 @@ function App() {
         <Text style={styles.right}>Right aligned</Text>
         <Text style={styles.spaced}>Letter spaced</Text>
         <Text style={styles.tall}>Line height thirty two</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.shouted}>shout quietly</Text>
+        <Text style={styles.titled}>iOS and android</Text>
       </View>
 
       <View style={styles.card}>

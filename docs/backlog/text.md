@@ -8,7 +8,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
    upstream's
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
-4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, textShadow*, te
+4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, textShadow*,
+   fontVariant, fontVariationSettings (~~textTransform~~ is done on GTK and
+   AppKit)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
@@ -157,7 +159,39 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   including the hidden ones, which shows only on text with an explicit newline
   whose longest line is below the cut.
 - Ignored: `adjustsFontSizeToFit`, `textBreakStrategy`, hyphenation,
-  `textShadow*`, `textTransform`, `fontVariant`, `fontVariationSettings`.
+  `textShadow*`, `fontVariant`, `fontVariationSettings`.
+
+  **`textTransform` is done on GTK and AppKit, 2026-10-08**, and it is the one of
+  that list that is not a drawing question at all: an uppercase label is a
+  different string, so the transform has to happen before anything measures it or
+  the paragraph wraps in the wrong place. Both hosts apply it where they build
+  their layout, which is the one place both measurement and drawing go through.
+
+  **Not shared, deliberately.** Unicode case mapping belongs to the toolkit:
+  `g_utf8_strup` knows that ß uppercases to SS and that an accented letter has a
+  case at all, and NSString's `uppercaseString` knows the same, where a byte-wise
+  `std::toupper` looks right in English and silently leaves both alone. So each
+  host uses its own, and the two are asserted against the same cases -- "café"
+  and "straße" are in both suites, and sabotaging GTK's to a byte-wise loop gives
+  "CAFé" and "STRAßE" while every ASCII case still passes.
+
+  `capitalize` follows React Native's own rule, from `RCTAttributedTextUtils.mm`:
+  split on single spaces, and a word whose first character is not a digit is
+  capitalised, which lowercases the rest of it -- so "iOS" becomes "Ios". That is
+  surprising, it is what the other platforms do, and both suites pin it.
+
+  **The part that was nearly a bug.** Both hosts index into the laid-out string
+  to place inline views: GTK by byte offset, AppKit by UTF-16 offset, each
+  accumulated fragment by fragment. A transform can change the length -- ß to SS
+  -- so the offsets had to be taken from the transformed text as well, which is
+  why the helper is shared between each host's layout and its layout manager
+  rather than living inside the former.
+
+  Four tests per host over the same cases, and a scenario that reads
+  `text="SHOUT QUIETLY"` and `text="Ios And Android"` out of e2e/text.js on both
+  while asserting the untransformed strings are *gone* -- which is what says the
+  engine laid out the transformed text rather than drawing over the original.
+  Windows is skipped by name.
 - One PangoLayout is rebuilt per Paragraph per mutation, including
   layout-only updates that did not change the text.
 - All measurement serialises on one mutex; see `docs/DECISIONS.md`.

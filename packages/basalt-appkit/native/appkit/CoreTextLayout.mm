@@ -242,6 +242,49 @@ CTRunDelegateRef makeAttachmentDelegate(const facebook::react::Size &size) {
   return CTRunDelegateCreate(&callbacks, new facebook::react::Size{size});
 }
 
+// `textTransform`, applied before anything measures or draws the text.
+//
+// NSString's case mapping rather than a shared one, for the reason the GTK host
+// uses GLib's: Unicode case mapping is the toolkit's, and a byte-wise transform
+// would leave ß and every accented letter alone while looking right in English.
+// The two hosts are asserted against the same cases.
+//
+// `capitalize` is React Native's own rule, from RCTAttributedTextUtils.mm: split
+// on single spaces, and a word whose first character is not a digit is
+// capitalised -- which lowercases the rest of it, so "iOS" becomes "Ios". That
+// is surprising and is what the other platforms do.
+NSString *transformedFragmentText(const AttributedString::Fragment &fragment, NSString *text) {
+  const auto transform = fragment.textAttributes.textTransform;
+  if (!transform.has_value()) {
+    return text;
+  }
+  switch (*transform) {
+    case facebook::react::TextTransform::Uppercase:
+      return text.uppercaseString;
+    case facebook::react::TextTransform::Lowercase:
+      return text.lowercaseString;
+    case facebook::react::TextTransform::Capitalize: {
+      NSMutableArray<NSString *> *words = [NSMutableArray array];
+      for (NSString *word in [text componentsSeparatedByString:@" "]) {
+        if (word.length == 0) {
+          [words addObject:word];
+          continue;
+        }
+        NSRange first = [word rangeOfComposedCharacterSequenceAtIndex:0];
+        NSString *lead = [word substringWithRange:first];
+        const BOOL isDigit = [lead rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet]
+                                 .location != NSNotFound;
+        [words addObject:isDigit ? word.lowercaseString : word.capitalizedString];
+      }
+      return [words componentsJoinedByString:@" "];
+    }
+    case facebook::react::TextTransform::None:
+    case facebook::react::TextTransform::Unset:
+      break;
+  }
+  return text;
+}
+
 RnTextLayout *buildTextLayout(const AttributedString &attributedString,
                               const ParagraphAttributes &paragraphAttributes) {
   NSMutableAttributedString *string = [[NSMutableAttributedString alloc] init];
@@ -254,6 +297,7 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
     if (text == nil) {
       continue;
     }
+    text = transformedFragmentText(fragment, text);
 
     NSMutableDictionary *attributes =
         [buildTextAttributes(fragment.textAttributes) mutableCopy];

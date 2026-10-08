@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (12):**
+**Open (13):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -18,6 +18,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 11. `hitSlop` is not part of the hit test
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
 13. `filter` is not applied
+14. `textTransform` is ignored, so an uppercase label is not uppercase
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -267,3 +268,12 @@ and none of it is a missing half.
   `CLSID_D2D1GaussianBlur` the blur -- so this host needs an effect graph over
   the view's layer rather than any new maths. The end-to-end scenario is skipped
   here by name.
+
+- **`textTransform` is ignored, so an uppercase label is not uppercase.** The
+  other two hosts apply it where they build their text layout, before anything
+  measures the string, because the transformed text is a different width. The
+  Win32 host has the same seam -- `DirectWriteLayout.cpp` builds its runs from
+  the fragments -- and the case mapping is the platform's own: `LCMapStringEx`
+  with `LCMAP_UPPERCASE` is the Unicode-aware one, where `_wcsupr` is not.
+  backlog/text.md has the rule for `capitalize` and the two non-ASCII cases both
+  other suites assert. The end-to-end scenario is skipped here by name.

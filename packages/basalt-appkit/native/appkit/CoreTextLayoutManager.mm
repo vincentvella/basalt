@@ -128,6 +128,10 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
     NSUInteger utf16At = 0;
     for (const auto &fragment : attributedString.getFragments()) {
       NSString *text = [NSString stringWithUTF8String:fragment.string.c_str()];
+      // The transformed text, because that is what was laid out: a
+      // `textTransform` that changes the length would otherwise put every
+      // attachment after it at the wrong index.
+      text = text != nil ? basalt::transformedFragmentText(fragment, text) : nil;
       const NSUInteger start = utf16At;
       utf16At += text == nil ? 0 : text.length;
 

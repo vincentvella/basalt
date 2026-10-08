@@ -22,6 +22,7 @@ using facebook::react::FontStyle;
 using facebook::react::FontWeight;
 using facebook::react::ParagraphAttributes;
 using facebook::react::TextAlignment;
+using facebook::react::TextTransform;
 using facebook::react::TextAttributes;
 using facebook::react::TextDecorationLineType;
 
@@ -297,6 +298,71 @@ void applyAttachmentShape(PangoAttrList *attributes,
 
 } // namespace
 
+// `textTransform`, applied before anything measures or draws the text.
+//
+// Here rather than in a shared header because Unicode case mapping is the
+// toolkit's: `g_utf8_strup` knows that ß uppercases to SS and that an accented
+// letter has a case at all, where a byte-wise `std::toupper` would leave both
+// alone and look right in English. The AppKit host uses NSString's for the same
+// reason, and the two are asserted against the same cases.
+//
+// `capitalize` follows React Native's own rule, from
+// RCTAttributedTextUtils.mm: split on single spaces, and a word whose first
+// character is not a digit is capitalised -- which lowercases the rest of it, so
+// "iOS" becomes "Ios". That is surprising and is what the other platforms do.
+static std::string transformedFragmentText(const AttributedString::Fragment &fragment) {
+  const auto transform = fragment.textAttributes.textTransform;
+  if (!transform.has_value() || fragment.string.empty()) {
+    return fragment.string;
+  }
+  switch (*transform) {
+    case TextTransform::Uppercase: {
+      char *upper = g_utf8_strup(fragment.string.c_str(), -1);
+      std::string result(upper != nullptr ? upper : fragment.string.c_str());
+      g_free(upper);
+      return result;
+    }
+    case TextTransform::Lowercase: {
+      char *lower = g_utf8_strdown(fragment.string.c_str(), -1);
+      std::string result(lower != nullptr ? lower : fragment.string.c_str());
+      g_free(lower);
+      return result;
+    }
+    case TextTransform::Capitalize: {
+      std::string result;
+      gchar **words = g_strsplit(fragment.string.c_str(), " ", -1);
+      for (int i = 0; words != nullptr && words[i] != nullptr; i++) {
+        if (i > 0) {
+          result += " ";
+        }
+        if (*words[i] == '\0') {
+          continue;
+        }
+        const gunichar first = g_utf8_get_char(words[i]);
+        char *lower = g_utf8_strdown(words[i], -1);
+        const char *body = lower != nullptr ? lower : words[i];
+        if (g_unichar_isdigit(first)) {
+          result += body;
+        } else {
+          // The first character uppercased and the rest left lowered, which is
+          // what NSString's capitalizedString does word by word.
+          char *firstUpper = g_utf8_strup(body, g_utf8_next_char(body) - body);
+          result += firstUpper != nullptr ? firstUpper : "";
+          result += g_utf8_next_char(body);
+          g_free(firstUpper);
+        }
+        g_free(lower);
+      }
+      g_strfreev(words);
+      return result;
+    }
+    case TextTransform::None:
+    case TextTransform::Unset:
+      break;
+  }
+  return fragment.string;
+}
+
 PangoLayout *buildTextLayout(const AttributedString &attributedString,
                              const ParagraphAttributes &paragraphAttributes,
                              float maxWidth) {
@@ -309,7 +375,7 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   std::string text;
   for (const auto &fragment : attributedString.getFragments()) {
     const auto start = static_cast<guint>(text.size());
-    text += fragment.string;
+    text += transformedFragmentText(fragment);
     const auto end = static_cast<guint>(text.size());
     if (end > start) {
       applyFragmentAttributes(attributes, fragment.textAttributes, start, end);
@@ -397,7 +463,10 @@ std::vector<facebook::react::Rect> attachmentFrames(
   std::size_t at = 0;
   for (const auto &fragment : attributedString.getFragments()) {
     const std::size_t start = at;
-    at += fragment.string.size();
+    // The transformed length, because that is what went into the layout: a
+    // `textTransform` that changes the byte count -- ß to SS -- would otherwise
+    // put every attachment after it at the wrong index.
+    at += transformedFragmentText(fragment).size();
     if (!fragment.isAttachment()) {
       continue;
     }

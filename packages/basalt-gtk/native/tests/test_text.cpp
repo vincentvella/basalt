@@ -479,3 +479,84 @@ TEST(text_justified_lines_reach_both_edges) {
   // Stretched to the edge of the 200 point box.
   EXPECT(justified >= 190);
 }
+
+// `textTransform`, which was in the ignored list and is what an uppercase button
+// label is made of.
+//
+// Applied before measurement, not at paint time, which is the part worth
+// asserting: "shout" and "SHOUT" are different widths, so a host that
+// transformed only on the way to the screen would lay the paragraph out at the
+// wrong size and wrap in the wrong place.
+//
+// The non-ASCII cases are deliberate. `std::toupper` over bytes looks right in
+// English and leaves "é" alone, and "straße" has no single-character uppercase at
+// all -- the correct answer is longer than the input, which is also what makes
+// the attachment-offset arithmetic worth having a case for.
+namespace {
+
+std::string transformedText(const std::string &text, facebook::react::TextTransform transform) {
+  TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.textTransform = transform;
+
+  AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+
+  AttributedString result;
+  result.appendFragment(std::move(fragment));
+
+  PangoLayout *layout = basalt::buildTextLayout(result, ParagraphAttributes{}, -1.0F);
+  const char *laid = pango_layout_get_text(layout);
+  std::string answer(laid != nullptr ? laid : "");
+  g_object_unref(layout);
+  return answer;
+}
+
+} // namespace
+
+TEST(text_transform_uppercases_and_lowercases) {
+  using facebook::react::TextTransform;
+  EXPECT_EQ(transformedText("shout", TextTransform::Uppercase), std::string("SHOUT"));
+  EXPECT_EQ(transformedText("WHISPER", TextTransform::Lowercase), std::string("whisper"));
+  // Untouched without the prop, and with it set to none.
+  EXPECT_EQ(transformedText("As Written", TextTransform::None), std::string("As Written"));
+}
+
+TEST(text_transform_knows_unicode_rather_than_bytes) {
+  using facebook::react::TextTransform;
+  EXPECT_EQ(transformedText("café", TextTransform::Uppercase), std::string("CAFÉ"));
+  // One character in, two out: a byte-wise transform leaves this as "STRAßE".
+  EXPECT_EQ(transformedText("straße", TextTransform::Uppercase), std::string("STRASSE"));
+}
+
+// Capitalize follows React Native's rule, surprising parts included: each word
+// is capitalised *and lowered*, so "iOS" becomes "Ios", and a word starting with
+// a digit is only lowered.
+TEST(text_transform_capitalize_follows_react_natives_rule) {
+  using facebook::react::TextTransform;
+  EXPECT_EQ(transformedText("hello wide world", TextTransform::Capitalize),
+            std::string("Hello Wide World"));
+  EXPECT_EQ(transformedText("iOS and Android", TextTransform::Capitalize),
+            std::string("Ios And Android"));
+  EXPECT_EQ(transformedText("3rd place", TextTransform::Capitalize), std::string("3rd Place"));
+}
+
+// And it changes the measurement, which is the half a paint-time transform would
+// get wrong.
+TEST(text_transform_changes_what_the_paragraph_measures) {
+  using facebook::react::TextTransform;
+  const auto widthOf = [](facebook::react::TextTransform transform) {
+    TextAttributes attributes;
+    attributes.fontSize = 16.0F;
+    attributes.textTransform = transform;
+    AttributedString::Fragment fragment;
+    fragment.string = "shout";
+    fragment.textAttributes = attributes;
+    AttributedString text;
+    text.appendFragment(std::move(fragment));
+    return measure(text, ParagraphAttributes{}, -1.0F).width;
+  };
+
+  EXPECT(widthOf(TextTransform::Uppercase) > widthOf(TextTransform::None));
+}

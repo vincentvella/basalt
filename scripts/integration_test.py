@@ -4138,6 +4138,66 @@ def test_filter(bundle: Path) -> None:
         )
 
 
+def test_text_transform(bundle: Path) -> None:
+    """`textTransform` changes the string the engine lays out.
+
+    Not a paint-time effect: "shout" and "SHOUT" are different widths, so the
+    transform has to happen before measurement or the paragraph wraps in the
+    wrong place. That also makes it visible in the tree dump, which prints the
+    text each host actually laid out -- so this reads it back on both.
+
+    Both hosts use their own toolkit's Unicode case mapping, GLib's and
+    NSString's, because a byte-wise transform looks right in English and leaves
+    every accented letter alone. The unit tests on each side check that against
+    "café" and "straße"; what this checks is that the prop arrives and that the
+    two agree.
+
+    `capitalize` is asserted too, surprising parts included: React Native's rule
+    lowercases the rest of each word, so "iOS" becomes "Ios" on every platform.
+
+    Windows does not transform text yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("DirectWrite is handed the untransformed string")
+
+    app = bundle_app(bundle.parent, "text")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltText"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    for needle, why in (
+        ('text="SHOUT QUIETLY"', "textTransform: 'uppercase' did not reach the text engine"),
+        ('text="Ios And Android"', "textTransform: 'capitalize' did not reach the text engine"),
+    ):
+        if needle not in tree:
+            raise Failure(f"{why}; expected {needle}.\n{tree}")
+    # And the untransformed strings are gone, which is what says the engine laid
+    # out the transformed text rather than drawing over the original.
+    for leftover in ('text="shout quietly"', 'text="iOS and android"'):
+        if leftover in tree:
+            raise Failure(
+                f"{leftover} is still in the tree, so the transform happens after "
+                f"layout rather than before it.\n{tree}"
+            )
+
+
 def test_cursor_style(bundle: Path) -> None:
     """The `cursor` style property reaches the view.
 
@@ -5526,6 +5586,7 @@ SCENARIOS = [
     ("boxShadow reaches the view, inset and all", test_box_shadow),
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("a filter list reaches the view, composed", test_filter),
+    ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),
     ("a window reports its own size, and the state changes that are not resizes",

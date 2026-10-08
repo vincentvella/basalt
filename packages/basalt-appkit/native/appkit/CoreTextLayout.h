@@ -34,6 +34,14 @@ namespace basalt {
 RnTextLayout *buildTextLayout(const facebook::react::AttributedString &attributedString,
                               const facebook::react::ParagraphAttributes &paragraphAttributes);
 
+// One fragment's text with its `textTransform` applied, which has to happen
+// before anything measures the string *and* before anything indexes into it: a
+// transform can change the length -- ß uppercases to SS -- so an attachment
+// after one would otherwise be looked up at the wrong offset. Shared with
+// CoreTextLayoutManager.mm for exactly that reason.
+NSString *transformedFragmentText(const facebook::react::AttributedString::Fragment &fragment,
+                                  NSString *text);
+
 // The attributes for a whole string, for anything that holds its own text
 // rather than a layout built here -- the equivalent of Pango's
 // buildTextAttributes, and what a <TextInput> will need.
