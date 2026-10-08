@@ -2,11 +2,12 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (2):**
+**Open (3):**
 
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
+4. Nine view style props that no host reads, and nothing said so
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -103,3 +104,42 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   the render node a transformed view produces, which is now possible, the clip
   tests having shown how to reach one. Hit testing is the wrong instrument and
   cannot answer it.
+
+- **Nine view style props that no host reads, and nothing said so.** Counted
+  2026-10-08 by going through `BaseViewProps` field by field and grepping all
+  three hosts for each, after `cursor` and `borderStyle` both turned out to be
+  props the backlog thought were handled. These are the ones no host mentions
+  anywhere, and which nothing in this backlog mentioned either:
+
+  - `boxShadow`, and the older `shadowColor`, `shadowOffset`, `shadowOpacity`
+    and `shadowRadius` beside it. The most visible of the nine: a card, a menu
+    and a dialog all read as flat without one. GSK has shadow nodes, CALayer has
+    shadow properties, and Direct2D has a shadow effect, so every host has a
+    primitive and none is wired to it.
+  - `backgroundImage`, with `backgroundSize`, `backgroundPosition` and
+    `backgroundRepeat`. This is where React Native put CSS gradients, so
+    `linear-gradient(...)` in a style reaches the host and is dropped. GSK has
+    linear, radial and conic gradient nodes; Core Graphics has `CGGradient`.
+  - `filter`: the CSS filter functions on a view rather than on an image. Partly
+    answerable with what the blur work already built: GSK has a blur node and a
+    colour matrix, and Core Image has the rest.
+  - `outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`. CSS's
+    outline, which unlike a border takes no layout space and is drawn outside the
+    box. The focus ring each host draws is the same idea and is hard-coded.
+  - `mixBlendMode` and `isolation`.
+  - `hitSlop`: a pressable's touch target extended past its frame. Less urgent
+    with a cursor than with a thumb, but it is behaviour rather than decoration,
+    so an app that relies on it is wrong rather than plain. See [input.md](input.md).
+  - `shouldRasterize` and `removeClippedSubviews`: performance hints, and the
+    only two of the nine where ignoring them is arguably correct.
+
+  Not one list of work. Each is its own entry waiting to be written, and the
+  count above treats them as one until somebody picks one up. What this entry is
+  for is that none of them was written down at all, which is how `cursor` stayed
+  missing while the backlog described it as covered.
+
+  **The lesson that generalises** is in the two that were fixed: a prop with no
+  line in the tree dump cannot be seen to arrive, and a unit test that sets the
+  value on the widget by hand passes whether or not the prop path works. Every
+  one of the nine needs its dump line and an end-to-end assertion, not only a
+  drawing.
