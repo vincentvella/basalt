@@ -39,6 +39,13 @@
 
 namespace basalt {
 
+// Not the POSIX M_PI, which MSVC's <cmath> only defines behind
+// `_USE_MATH_DEFINES`. That flag is applied to React Native's own targets in
+// core/cmake/ReactNativeCore.cmake and deliberately not to this project's
+// sources, and reaching for it here cost a red Windows build: the GTK and AppKit
+// halves compiled and the shared header did not.
+inline constexpr double kPi = 3.14159265358979323846;
+
 // One stop, in the terms a toolkit takes: an offset along the gradient line and
 // a straight sRGB colour.
 struct GradientStop {
@@ -74,7 +81,7 @@ struct GradientLine {
 inline float gradientAngleForKeyword(facebook::react::GradientKeyword keyword,
                                      float width,
                                      float height) {
-  const double degrees = 180.0 / M_PI;
+  const double degrees = 180.0 / kPi;
   switch (keyword) {
     case facebook::react::GradientKeyword::ToTopRight:
       return static_cast<float>(90.0 - std::atan(width / height) * degrees);
@@ -114,7 +121,7 @@ inline GradientLine linearGradientLineForAngle(float angle, float width, float h
     return GradientLine{width, 0.0F, 0.0F, 0.0F};
   }
 
-  const double radians = (90.0 - degrees) * M_PI / 180.0;
+  const double radians = (90.0 - degrees) * kPi / 180.0;
   const double slope = std::tan(radians);
   const double perpendicular = -1.0 / slope;
   const double halfWidth = width / 2.0;

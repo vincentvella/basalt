@@ -89,7 +89,8 @@ TEST(gradient_forty_five_degrees_on_a_square_is_the_diagonal) {
 TEST(gradient_forty_five_degrees_on_a_wide_box_is_not_the_diagonal) {
   const GradientLine line = linearGradientLineForAngle(45, 200, 100);
   const float diagonal = std::sqrt(200.0F * 200.0F + 100.0F * 100.0F);
-  const float expected = (200.0F + 100.0F) * std::sin(static_cast<float>(M_PI) / 4.0F);
+  const float expected =
+      (200.0F + 100.0F) * std::sin(static_cast<float>(basalt::kPi) / 4.0F);
   EXPECT(near(line.length(), expected, 0.1F));
   EXPECT(line.length() < diagonal);
 
