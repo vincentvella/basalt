@@ -86,6 +86,23 @@ function App() {
         </View>
       </View>
 
+      {/*
+        accessibilityLabelledBy: the field's name lives on the caption after it,
+        named by nativeID. Deliberately in this order -- the field first -- because
+        that is the ordering that makes the relation hard: Fabric mounts in tree
+        order, so the field is on screen before the view it names exists.
+      */}
+      <View style={styles.row}>
+        <View
+          style={styles.hidden}
+          accessibilityRole="button"
+          accessibilityLabelledBy="save-caption"
+        />
+        <Text style={styles.note} nativeID="save-caption">
+          Save the document
+        </Text>
+      </View>
+
       <Text style={styles.note}>A plain View is scenery and stays out of the tree.</Text>
     </View>
   );

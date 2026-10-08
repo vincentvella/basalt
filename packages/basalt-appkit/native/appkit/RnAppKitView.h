@@ -437,6 +437,20 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
                             expanded:(RnAppKitAccessibleFlag)expanded
                                 busy:(RnAppKitAccessibleFlag)busy;
 
+// `accessibilityLabelledBy`, already resolved: the views whose text names this
+// one. Pass nil or an empty array to take the relation off again.
+//
+// The prop names other views by their `nativeID`, and the resolution -- and
+// above all *when* to resolve, Fabric mounting a field before the label that
+// follows it -- is shared with the GTK host in core/LabelRegistry.h. This layer
+// is handed the answer.
+//
+// **AppKit takes one.** `accessibilityTitleUIElement` is a single element where
+// the prop is a list and GTK's relation is a list, so the first is used and the
+// rest are kept only for the tree dump, which reports what was resolved on both
+// hosts. backlog/accessibility.md records that.
+- (void)setRnLabelledBy:(nullable NSArray<RnAppKitView *> *)labels;
+
 // Hidden from assistive technology, for accessible={false} and
 // accessibilityElementsHidden.
 - (void)setRnAccessibleHidden:(BOOL)hidden;

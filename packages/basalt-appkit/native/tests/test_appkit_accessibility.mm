@@ -258,3 +258,49 @@ TEST(a_role_can_change_after_the_view_is_mounted) {
     EXPECT([view.accessibilityRole isEqual:NSAccessibilityCheckBoxRole]);
   }
 }
+
+// `accessibilityLabelledBy`: another view, named by its `nativeID`, whose text
+// names this one.
+//
+// The first half is the mapping, which is this file's business and is one
+// property: AppKit's `accessibilityTitleUIElement` is a single element where the
+// prop and GTK's relation are both lists, so the first is used.
+//
+// The second half -- resolving a `nativeID` to a view, and resolving it *late*,
+// since Fabric mounts a field before the label that follows it -- is in
+// core/LabelRegistry.h with its own tests, and the mounting manager's use of it
+// is checked through a real transaction in test_appkit_mounting.mm.
+TEST(accessibility_labelled_by_points_at_the_labelling_view) {
+  @autoreleasepool {
+    RnAppKitView *field = [RnAppKitView viewWithTag:10];
+    RnAppKitView *label = [RnAppKitView viewWithTag:20];
+
+    EXPECT(field.accessibilityTitleUIElement == nil);
+    [field setRnLabelledBy:@[label]];
+    EXPECT(field.accessibilityTitleUIElement == label);
+    // And it is worth announcing now: its name lives on another view, so a field
+    // left out of the tree would be unreachable with the label read out beside
+    // nothing.
+    EXPECT(field.isAccessibilityElement);
+
+    // Taken off again, which is what an unmounted label leaves behind.
+    [field setRnLabelledBy:@[]];
+    EXPECT(field.accessibilityTitleUIElement == nil);
+  }
+}
+
+// Several labels: AppKit takes the first and the rest are still reported, so the
+// two hosts' dumps match and the difference stays in what each platform does.
+TEST(accessibility_labelled_by_takes_the_first_of_several) {
+  @autoreleasepool {
+    RnAppKitView *field = [RnAppKitView viewWithTag:10];
+    RnAppKitView *heading = [RnAppKitView viewWithTag:20];
+    RnAppKitView *hint = [RnAppKitView viewWithTag:30];
+
+    [field setRnLabelledBy:@[heading, hint]];
+    EXPECT(field.accessibilityTitleUIElement == heading);
+
+    const std::string described = [field describeTree].UTF8String;
+    EXPECT(described.find("labelled-by=20,30") != std::string::npos);
+  }
+}

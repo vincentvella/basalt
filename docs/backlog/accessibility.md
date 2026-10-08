@@ -2,12 +2,13 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (3):**
 
 1. Not tested against a real screen reader
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
-4. accessibilityLiveRegion, accessibilityLabelledBy and accessibilityActions are ignored
+4. accessibilityLiveRegion and accessibilityActions are ignored
+   (~~accessibilityLabelledBy~~ is done on GTK and AppKit)
 
 - Not tested against a real screen reader. GTK's assertions say the properties
   are set; Orca on the Linux box is the check that matters.
@@ -60,14 +61,55 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   decides that. There is a test pinning it, because the ordering is the whole of
   the guarantee.
 
-  The two still open are open for different reasons, neither of them effort.
-  `accessibilityLiveRegion` has no property to map onto: GTK models it as
-  `gtk_accessible_announce` at a moment rather than as a state of a view, so
-  honouring it means noticing that a view's content changed and announcing the
-  new text, which is change detection rather than prop plumbing.
-  `accessibilityLabelledBy` names another view by its `nativeID`, and nothing
-  here can resolve a `nativeID` to a view: the registry is keyed by tag.
   `accessibilityActions` has its own entry above.
+
+  **`accessibilityLiveRegion`** has no property to map onto: GTK models it as
+  `gtk_accessible_announce` at a moment rather than as a state of a view, and
+  AppKit as an `NSAccessibilityAnnouncementRequested` notification, so honouring
+  it means noticing that a view's content changed and announcing the new text.
+  That is change detection rather than prop plumbing: the mounting manager would
+  have to keep the last announced string per live region and compare it after
+  each transaction, which is the same shape as the label registry below and is
+  the reason that one was written first.
+
+  **`accessibilityLabelledBy` is done on GTK and AppKit, 2026-10-08**, and the
+  reason it was open was wrong: the entry said nothing here can resolve a
+  `nativeID` to a view, which was true, and treated that as the obstacle. The
+  obstacle is *when*.
+
+  Both hosts already store a view's `nativeID` -- drag and drop marks its targets
+  that way -- but nothing could look one up, because the registry in
+  `core/MountingWalk.h` is keyed by tag and the drag code walks *up* from a hit
+  test. So `core/LabelRegistry.h` is the missing half, shared, and it holds both
+  sides of the relation rather than resolving on sight. Fabric mounts in tree
+  order, so a field labelled by the caption after it is mounted before its label
+  exists: resolving as the props arrive finds nothing and stays wrong for the
+  life of the screen. The registry is asked after each transaction instead, and
+  answers only the relations whose resolution *changed* -- applying an unchanged
+  one again would tell assistive technology that something happened when nothing
+  did. A label that is unmounted empties the relation, because a reference left
+  behind would have a screen reader read a view that is no longer on screen.
+
+  GTK gets a real AT-SPI relation, `GTK_ACCESSIBLE_RELATION_LABELLED_BY`, which
+  is a list of references rather than a copied string, so a caption that changes
+  its text does not leave a stale copy behind. **AppKit takes one**:
+  `accessibilityTitleUIElement` is a single element where the prop is a list, so
+  the first is used and the dump still reports every tag that resolved, which
+  keeps the two hosts' trees identical and the difference in what each platform
+  does with the answer.
+
+  Ten tests in core for the ordering, five on GTK through real transactions using
+  GTK's own relation assertions, four on AppKit, and a scenario that reads the
+  relation out of e2e/a11y.tsx -- where the field is deliberately written before
+  its caption. Sabotaged by moving the resolution to where the props arrive,
+  which is the obvious implementation: four of the five GTK tests and two of the
+  four AppKit ones fail.
+
+  One thing found on the way, in GTK rather than here:
+  `gtk_accessible_list_new_from_array` is unusable, its guard reading
+  `accessibles == NULL || n_accessibles == 0` so that every non-empty array is
+  refused with a Gtk-CRITICAL and a NULL return. Measured on 4.22.4 and recorded
+  in [upstream.md](upstream.md); `new_from_list` has the right guard.
 - ~~No keyboard focus model, so nothing is reachable by Tab.~~ Done on both:
   Tab visits focusable views in tree order and wraps, Shift-Tab goes back, and
   what counts as focusable is what `accessible` marks, six tests on GTK

@@ -201,6 +201,9 @@ struct _RnView {
   GArray *box_shadows;
   // The `backgroundImage` gradients, each owning its own stops. NULL for none.
   GArray *gradients;
+  // The tags of the views in this one's LABELLED_BY relation, for the tree dump:
+  // GTK holds the references itself and will not say what they are.
+  GArray *labelled_by;
   GdkRGBA border_colors[4];
   gboolean has_borders;
 
@@ -747,6 +750,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->cursor_name, g_free);
   g_clear_pointer(&self->box_shadows, g_array_unref);
   g_clear_pointer(&self->gradients, g_array_unref);
+  g_clear_pointer(&self->labelled_by, g_array_unref);
 
   G_OBJECT_CLASS(rn_view_parent_class)->dispose(object);
 }
@@ -775,6 +779,7 @@ static void rn_view_init(RnView *self) {
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
   self->gradients = nullptr;
+  self->labelled_by = nullptr;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
@@ -982,6 +987,65 @@ void rn_view_set_image_blur(RnView *self, float radius) {
   }
   self->image_blur = wanted;
   gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void rn_view_set_labelled_by(RnView *self, RnView **labels, int count) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const guint wanted = labels != nullptr && count > 0 ? static_cast<guint>(count) : 0;
+  if (wanted == 0) {
+    g_clear_pointer(&self->labelled_by, g_array_unref);
+    gtk_accessible_reset_relation(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_RELATION_LABELLED_BY);
+    return;
+  }
+
+  if (self->labelled_by == nullptr) {
+    self->labelled_by = g_array_sized_new(FALSE, FALSE, sizeof(int), wanted);
+  } else {
+    g_array_set_size(self->labelled_by, 0);
+  }
+  for (guint i = 0; i < wanted; i++) {
+    const int tag = rn_view_get_tag(labels[i]);
+    g_array_append_val(self->labelled_by, tag);
+  }
+
+#if GTK_CHECK_VERSION(4, 14, 0)
+  // A GtkAccessibleList, which is the only way to pass a list whose length is
+  // not known where the call is written: `gtk_accessible_update_relation` takes
+  // its references as varargs.
+  //
+  // Built from a GList rather than from the array already in hand, because
+  // `gtk_accessible_list_new_from_array` is unusable: its guard reads
+  // `accessibles == NULL || n_accessibles == 0`, so every non-empty array is
+  // refused with a Gtk-CRITICAL and a NULL return. Measured on GTK 4.22.4, and
+  // recorded in backlog/upstream.md -- `new_from_list` has the right guard and
+  // the same effect.
+  GList *references = nullptr;
+  for (guint i = wanted; i > 0; i--) {
+    references = g_list_prepend(references, labels[i - 1]);
+  }
+  GtkAccessibleList *list = gtk_accessible_list_new_from_list(references);
+  g_list_free(references);
+  GValue value = G_VALUE_INIT;
+  g_value_init(&value, GTK_ACCESSIBLE_LIST);
+  // Taken rather than set: a boxed value copies what it is given, and
+  // GtkAccessibleList has no unref of its own to pair with that copy. The
+  // g_value_unset below is what frees it.
+  g_value_take_boxed(&value, list);
+  GtkAccessibleRelation relation = GTK_ACCESSIBLE_RELATION_LABELLED_BY;
+  gtk_accessible_update_relation_value(GTK_ACCESSIBLE(self), 1, &relation, &value);
+  g_value_unset(&value);
+#else
+  // GTK 4.10 to 4.13, which this project still supports: GtkAccessibleList
+  // arrived in 4.14, and the varargs form can only carry a list written out in
+  // full. The first reference is taken and the rest are dropped, one label being
+  // what the prop almost always carries.
+  gtk_accessible_update_relation(GTK_ACCESSIBLE(self),
+                                 GTK_ACCESSIBLE_RELATION_LABELLED_BY,
+                                 labels[0],
+                                 nullptr,
+                                 -1);
+#endif
 }
 
 void rn_view_set_accessible_role_description(RnView *self, const char *description) {
@@ -1758,6 +1822,16 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // picture, so a dump is the only thing that can say it arrived on both hosts.
   if (self->cursor_name != nullptr) {
     g_string_append_printf(out, " cursor=%s", self->cursor_name);
+  }
+  // The resolved LABELLED_BY relation, by tag. The ids the app wrote are in its
+  // own source; what is worth reporting is that they were resolved, and the tags
+  // are Fabric's, so the two hosts print the same ones.
+  if (self->labelled_by != nullptr && self->labelled_by->len > 0) {
+    g_string_append(out, " labelled-by=");
+    for (guint i = 0; i < self->labelled_by->len; i++) {
+      g_string_append_printf(
+          out, "%s%d", i == 0 ? "" : ",", g_array_index(self->labelled_by, int, i));
+    }
   }
   if (self->texture != nullptr) {
     // The fit is here because it is the only thing about a drawn image that a

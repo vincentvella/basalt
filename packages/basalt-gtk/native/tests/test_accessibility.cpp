@@ -380,3 +380,157 @@ TEST(a_role_that_does_not_change_describes_itself_as_nothing) {
 
   manager.destroySurfaceRoot(kSurfaceId);
 }
+
+// `accessibilityLabelledBy`: another view, named by its `nativeID`, whose text
+// names this one. GTK models it as a relation, which is what it is, and ships an
+// assertion helper for relations.
+//
+// Two views per test, mounted in both orders, because the order is the whole
+// difficulty: Fabric mounts in tree order, so a field labelled by the text after
+// it is mounted before its label exists. See core/LabelRegistry.h.
+namespace {
+
+// Two views in one transaction: the first is the field, the second its label.
+// `mountOne` mounts one and hands back a widget; this hands back both.
+void mountPair(basalt::GtkMountingManager &manager,
+               const ShadowView &first,
+               const ShadowView &second,
+               int transaction) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(first));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, first, 0));
+  mutations.push_back(ShadowViewMutation::CreateMutation(second));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, second, 1));
+  manager.applyTransaction(
+      kSurfaceId,
+      MountingTransaction(kSurfaceId, transaction, std::move(mutations), TransactionTelemetry{}));
+}
+
+} // namespace
+
+TEST(accessibility_labelled_by_resolves_a_native_id_to_a_relation) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  const ShadowView field = makeAccessibleView(10, [](ViewProps &props) {
+    props.accessibilityLabelledBy.value = {"name-label"};
+  });
+  const ShadowView label =
+      makeAccessibleView(20, [](ViewProps &props) { props.nativeId = "name-label"; });
+  mountPair(manager, field, label, 1);
+
+  RnView *view = manager.viewForTag(10);
+  EXPECT(view != nullptr);
+  EXPECT(gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                          GTK_ACCESSIBLE_RELATION_LABELLED_BY));
+  // And it points at the right view, which the helper compares by reference.
+  char *mismatch = gtk_test_accessible_check_relation(
+      GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_RELATION_LABELLED_BY, manager.viewForTag(20), nullptr);
+  EXPECT(mismatch == nullptr);
+  g_free(mismatch);
+
+  // The dump says so too, by tag, which is what the end-to-end run reads.
+  char *tree = rn_view_describe_tree(manager.getSurfaceRoot(kSurfaceId));
+  const std::string dumped(tree);
+  g_free(tree);
+  EXPECT(dumped.find("labelled-by=20") != std::string::npos);
+}
+
+// The label mounted in the same transaction but *after* the field, which is the
+// ordinary case: a field followed by its caption. A resolution done as the props
+// arrived would find nothing here.
+TEST(accessibility_labelled_by_waits_for_a_label_that_mounts_later) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  // The field alone in the first transaction, so the id does not exist yet.
+  const ShadowView field = makeAccessibleView(10, [](ViewProps &props) {
+    props.accessibilityLabelledBy.value = {"name-label"};
+  });
+  mountOne(manager, field);
+  RnView *view = manager.viewForTag(10);
+  EXPECT(!gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                           GTK_ACCESSIBLE_RELATION_LABELLED_BY));
+
+  // The label in a second one, which is what resolves it.
+  const ShadowView label =
+      makeAccessibleView(20, [](ViewProps &props) { props.nativeId = "name-label"; });
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(label));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, label, 1));
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 2, std::move(mutations), TransactionTelemetry{}));
+
+  EXPECT(gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                          GTK_ACCESSIBLE_RELATION_LABELLED_BY));
+}
+
+// Several labels, in the order the app wrote them: a field named by a heading
+// and a hint is read in that order, and sorting them would change what is said.
+TEST(accessibility_labelled_by_keeps_every_label_in_order) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  const ShadowView field = makeAccessibleView(10, [](ViewProps &props) {
+    props.accessibilityLabelledBy.value = {"heading", "hint"};
+  });
+  const ShadowView heading =
+      makeAccessibleView(20, [](ViewProps &props) { props.nativeId = "heading"; });
+  mountPair(manager, field, heading, 1);
+
+  const ShadowView hint =
+      makeAccessibleView(30, [](ViewProps &props) { props.nativeId = "hint"; });
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(hint));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, hint, 2));
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 2, std::move(mutations), TransactionTelemetry{}));
+
+  char *tree = rn_view_describe_tree(manager.getSurfaceRoot(kSurfaceId));
+  const std::string dumped(tree);
+  g_free(tree);
+  EXPECT(dumped.find("labelled-by=20,30") != std::string::npos);
+}
+
+// A label that is unmounted takes the relation with it. A reference left behind
+// would have a screen reader read a view that is no longer on screen.
+TEST(accessibility_labelled_by_comes_apart_when_the_label_goes_away) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  const ShadowView field = makeAccessibleView(10, [](ViewProps &props) {
+    props.accessibilityLabelledBy.value = {"name-label"};
+  });
+  const ShadowView label =
+      makeAccessibleView(20, [](ViewProps &props) { props.nativeId = "name-label"; });
+  mountPair(manager, field, label, 1);
+  RnView *view = manager.viewForTag(10);
+  EXPECT(gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                          GTK_ACCESSIBLE_RELATION_LABELLED_BY));
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::RemoveMutation(kSurfaceId, label, 1));
+  mutations.push_back(ShadowViewMutation::DeleteMutation(label));
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 2, std::move(mutations), TransactionTelemetry{}));
+
+  EXPECT(!gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                           GTK_ACCESSIBLE_RELATION_LABELLED_BY));
+  char *tree = rn_view_describe_tree(manager.getSurfaceRoot(kSurfaceId));
+  const std::string dumped(tree);
+  g_free(tree);
+  EXPECT(dumped.find("labelled-by=") == std::string::npos);
+}
+
+// An id that names nothing is not a relation. A view labelled by a typo should
+// announce itself as it would have anyway, not point at nothing.
+TEST(accessibility_labelled_by_an_id_that_names_nothing_is_no_relation) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                            props.accessibilityLabelledBy.value = {"no-such-view"};
+                          }));
+  EXPECT(!gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                           GTK_ACCESSIBLE_RELATION_LABELLED_BY));
+}

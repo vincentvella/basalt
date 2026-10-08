@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (15):**
+**Open (16):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -40,6 +40,7 @@ workaround and the comment explaining it, which is already written.
 13. `ImageLoaderModule` is built with no loader and nothing can supply one
 14. `~Scheduler` leaves a mount hook registered, and the next mount uses it
 15. `CursorValue` is two keywords where the C++ parses thirty-four
+16. `gtk_accessible_list_new_from_array` refuses every non-empty array
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -191,3 +192,20 @@ workaround and the comment explaining it, which is already written.
 
   Worth sending, and small: the type is one line, and the list to widen it to is
   the one the C++ already accepts. Nothing here is blocked on it.
+
+- **`gtk_accessible_list_new_from_array` refuses every non-empty array.** GTK,
+  not React Native. The function allocates a `GtkAccessibleList` from an array of
+  accessibles, and its guard reads
+
+      g_return_val_if_fail (accessibles == NULL || n_accessibles == 0, NULL);
+
+  which is the condition for an *empty* array, inverted. So the only calls it
+  accepts are the ones with nothing in them: anything else gets a Gtk-CRITICAL
+  and NULL back. Measured on 4.22.4 while implementing `accessibilityLabelledBy`,
+  with a six-line program that calls it and `new_from_list` side by side; the
+  list form has the right guard and the same effect.
+
+  Worked around rather than waited on: `rn_view_set_labelled_by` builds a GList.
+  Worth sending, and the smallest possible patch -- one operator in one guard.
+  Both functions arrived together in 4.14, which suggests nobody has called the
+  array one since.

@@ -169,6 +169,29 @@ void AppKitMountingManager::applyTransaction(SurfaceId surfaceId, MountingTransa
   // Refuses a surface the UIManager no longer has, which is what a reload's
   // teardown leaves behind. See core/UIManagerAccess.h.
   reportMountedSurface(surfaceId);
+
+  // After the mutations, because a view can be labelled by one that mounts after
+  // it: Fabric mounts in tree order, and the label of a field often follows it.
+  applyLabelRelations();
+}
+
+void AppKitMountingManager::applyLabelRelations() {
+  if (labels_.empty()) {
+    return;
+  }
+  for (const auto &change : labels_.changes()) {
+    RnAppKitView *view = viewForTag(change.tag);
+    if (view == nil) {
+      continue;
+    }
+    NSMutableArray<RnAppKitView *> *resolved = [NSMutableArray array];
+    for (const facebook::react::Tag tag : change.labels) {
+      if (RnAppKitView *label = viewForTag(tag); label != nil) {
+        [resolved addObject:label];
+      }
+    }
+    [view setRnLabelledBy:resolved];
+  }
 }
 
 namespace {
@@ -293,6 +316,10 @@ void AppKitMountingManager::removeChild(RnAppKitView *parent, RnAppKitView *chil
 }
 
 void AppKitMountingManager::forgetTag(Tag tag) {
+  // Both sides of a label relation: a view that goes away stops naming anything
+  // and stops being nameable, and a relation left pointing at it would have
+  // VoiceOver read a view that is no longer on screen.
+  labels_.forget(tag);
   scrollViews_.remove(tag);
   textInputs_.remove(tag);
   imageUris_.erase(tag);
@@ -790,6 +817,11 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
   // The app's nativeID, which marks a view for a behaviour React Native has
   // no prop for -- a drop target today. See core/DragAndDrop.h, and
   // core/TitleBarRegions.h for the older use of the same idea.
+  // Which view this nativeID names, which is what `accessibilityLabelledBy`
+  // needs: that prop names other views by their nativeID and nothing else here
+  // can look one up. See core/LabelRegistry.h.
+  labels_.setNativeId(shadowView.tag, props->nativeId);
+
   view.rnNativeId = props->nativeId.empty()
       ? nil
       : [NSString stringWithUTF8String:props->nativeId.c_str()];
@@ -970,6 +1002,11 @@ void AppKitMountingManager::applyAccessibility(RnAppKitView *view, const ShadowV
 
   const std::string role = effectiveRole(shadowView);
   [view setRnAccessibleRole:role.empty() ? nil : [NSString stringWithUTF8String:role.c_str()]];
+
+  // `accessibilityLabelledBy`: other views, named by their nativeID, whose text
+  // names this one. Only recorded here -- the resolution needs every view in the
+  // transaction to have been seen, so it happens once at the end of the mount.
+  labels_.setLabelledBy(shadowView.tag, props->accessibilityLabelledBy.value);
 
   // A label given in props wins. Falling back to a Paragraph's own text means a
   // plain <Text> announces itself without the app having to repeat the string

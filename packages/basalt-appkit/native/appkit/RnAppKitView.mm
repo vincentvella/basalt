@@ -445,6 +445,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   std::vector<RnAppKitGradientRecord> _gradients;
   NSMutableArray<CALayer *> *_boxShadowLayers;
   NSString *_cursorName;
+  // The tags of the views in this one's labelled-by relation, for the tree dump.
+  std::vector<NSInteger> _labelledBy;
   NSCursor *_cursor;
   CATransform3D _transform;
   BOOL _hasTransform;
@@ -619,6 +621,22 @@ static NSAccessibilityRole RnAccessibilityRoleFor(NSString *name) {
   const NSAccessibilityRole mapped = RnAccessibilityRoleFor(_roleName);
   self.accessibilityRole = mapped;
   self.accessibilityElement = mapped != NSAccessibilityUnknownRole;
+}
+
+- (void)setRnLabelledBy:(NSArray<RnAppKitView *> *)labels {
+  _labelledBy.clear();
+  for (RnAppKitView *label in labels) {
+    _labelledBy.push_back(label.rnTag);
+  }
+  // The first, AppKit's property being one element rather than a list. Nil when
+  // there is none, which is how an element says it has no such relation.
+  self.accessibilityTitleUIElement = labels.firstObject;
+  // And a view named by another is worth announcing: the label is on the other
+  // view, so without this a field whose only name comes from its caption stays
+  // out of the tree.
+  if (labels.count > 0) {
+    self.accessibilityElement = YES;
+  }
 }
 
 - (void)setRnAccessibleLabel:(NSString *)label hint:(NSString *)hint {
@@ -2056,6 +2074,15 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   // say it arrived on both hosts.
   if (_cursorName != nil) {
     [out appendFormat:@" cursor=%@", _cursorName];
+  }
+  // The resolved labelled-by relation, by tag, spelled as GTK spells it. Every
+  // tag that resolved, not only the one AppKit could use, so the two hosts print
+  // the same line and the difference stays in what each platform does with it.
+  if (!_labelledBy.empty()) {
+    [out appendString:@" labelled-by="];
+    for (size_t i = 0; i < _labelledBy.size(); i++) {
+      [out appendFormat:@"%s%ld", i == 0 ? "" : ",", (long)_labelledBy[i]];
+    }
   }
   if (_image != nullptr) {
     // The same `texture=WxH fit=<name>` the GTK side emits, so an <Image> shows

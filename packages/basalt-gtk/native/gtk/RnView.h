@@ -436,6 +436,19 @@ void rn_view_set_cursor(RnView *self, const char *name);
 // NULL when unset, never the empty string.
 const char *rn_view_get_cursor(RnView *self);
 
+// `accessibilityLabelledBy`, already resolved: the views whose text names this
+// one. Pass NULL or 0 to take the relation off again.
+//
+// The prop names other views by their `nativeID` and the resolution is shared
+// with the AppKit host in core/LabelRegistry.h, which also decides *when* --
+// Fabric mounts in tree order, so a field labelled by the text after it is
+// mounted before its label exists. This layer is handed the answer.
+//
+// GTK models it as an accessible relation, which is exactly what it is: AT-SPI
+// gets a list of references rather than a copied string, so a label that changes
+// its text does not leave a stale copy behind.
+void rn_view_set_labelled_by(RnView *self, RnView **labels, int count);
+
 // Accessible states. Each is a tri-state: unset leaves GTK's default alone,
 // which is not the same as setting it false.
 typedef enum {

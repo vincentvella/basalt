@@ -17,6 +17,7 @@
 #import "AppKitScrollView.h"
 #import "AppKitTextInput.h"
 
+#include "LabelRegistry.h"
 #include "MountingWalk.h"
 #include "RnAppKitView.h"
 
@@ -121,6 +122,11 @@ class AppKitMountingManager final : public facebook::react::IMountingManager,
   void applyTextInput(RnAppKitView *view, const facebook::react::ShadowView &shadowView);
   void applyLayoutMetrics(RnAppKitView *view, const facebook::react::ShadowView &shadowView);
 
+  // The labelled-by relations whose resolution changed in the transaction that
+  // just mounted. Once per transaction rather than per view, because a view can
+  // name a label that mounts after it.
+  void applyLabelRelations();
+
   AppKitScrollViewManager scrollViews_;
   AppKitTextInputManager textInputs_;
   // Shared rather than held by value: React Native's `ImageLoaderModule` takes
@@ -137,6 +143,11 @@ class AppKitMountingManager final : public facebook::react::IMountingManager,
   // The source each <Image> is currently showing, so that a mutation which
   // changed only layout does not restart the load.
   std::unordered_map<facebook::react::Tag, std::string> imageUris_;
+
+  // Which view each `nativeID` names, and which views are waiting to be labelled
+  // by one. Shared with the GTK host; see core/LabelRegistry.h for why the
+  // resolution cannot happen as the props arrive.
+  basalt::LabelRegistry labels_;
 };
 
 } // namespace basalt

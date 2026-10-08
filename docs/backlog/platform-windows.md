@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (8):**
+**Open (9):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -14,6 +14,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 7. Nothing makes a red build hard to ignore
 8. An inline `<View>` inside a `<Text>` is not positioned
 9. Five style props the other two hosts draw and this one ignores
+10. `accessibilityLabelledBy` sets no relation
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -226,3 +227,11 @@ and none of it is a missing half.
   before running it: `scripts/compare_hosts.sh` against Windows will now report
   the `blur=`, `border-style=`, `cursor=`, `shadow=` and `gradient=` lines as a
   tree difference, because they are one. That is the script doing its job, and it goes away as each lands.
+
+- **`accessibilityLabelledBy` sets no relation.** The hard half is done and is
+  shared: `core/LabelRegistry.h` resolves a `nativeID` to a tag and says when,
+  which is the part that is easy to get wrong -- a field is mounted before the
+  caption that names it. What is left here is one call. UI Automation has
+  `UIA_LabeledByPropertyId`, so the Win32 host's provider answers it with the
+  resolved view's provider; GTK sets an AT-SPI relation and macOS an
+  `accessibilityTitleUIElement`. The end-to-end scenario is skipped here by name.

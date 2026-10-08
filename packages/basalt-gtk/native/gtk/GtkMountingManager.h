@@ -9,6 +9,7 @@
 #include "GtkImageLoader.h"
 #include "GtkScrollView.h"
 #include "GtkTextInput.h"
+#include "LabelRegistry.h"
 #include "MountingWalk.h"
 #include "RnView.h"
 
@@ -124,6 +125,11 @@ class GtkMountingManager final : public facebook::react::IMountingManager,
   void applyImage(RnView *view, const facebook::react::ShadowView &shadowView);
   void applyScrollView(RnView *view, const facebook::react::ShadowView &shadowView);
   void applyAccessibility(RnView *view, const facebook::react::ShadowView &shadowView);
+
+  // The LABELLED_BY relations whose resolution changed in the transaction that
+  // just mounted. Once per transaction rather than per view, because a view can
+  // name a label that mounts after it.
+  void applyLabelRelations();
   void applyTextInput(RnView *view, const facebook::react::ShadowView &shadowView);
   void applyLayoutMetrics(RnView *view, const facebook::react::ShadowView &shadowView);
 
@@ -148,6 +154,11 @@ class GtkMountingManager final : public facebook::react::IMountingManager,
   // The source each <Image> is currently showing, so that a mutation which
   // changed only layout does not restart the load.
   std::unordered_map<facebook::react::Tag, std::string> imageUris_;
+
+  // Which view each `nativeID` names, and which views are waiting to be labelled
+  // by one. Shared with the AppKit host; see core/LabelRegistry.h for why the
+  // resolution cannot happen as the props arrive.
+  basalt::LabelRegistry labels_;
 };
 
 } // namespace basalt

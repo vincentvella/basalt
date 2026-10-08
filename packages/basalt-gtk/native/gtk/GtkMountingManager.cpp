@@ -216,6 +216,30 @@ void GtkMountingManager::applyTransaction(SurfaceId surfaceId, MountingTransacti
   // Refuses a surface the UIManager no longer has, which is what a reload's
   // teardown leaves behind. See core/UIManagerAccess.h.
   reportMountedSurface(surfaceId);
+
+  // After the mutations, because a view can be labelled by one that mounts after
+  // it: Fabric mounts in tree order, and the label of a field often follows it.
+  applyLabelRelations();
+}
+
+void GtkMountingManager::applyLabelRelations() {
+  if (labels_.empty()) {
+    return;
+  }
+  for (const auto &change : labels_.changes()) {
+    RnView *view = viewForTag(change.tag);
+    if (view == nullptr) {
+      continue;
+    }
+    std::vector<RnView *> resolved;
+    resolved.reserve(change.labels.size());
+    for (const facebook::react::Tag tag : change.labels) {
+      if (RnView *label = viewForTag(tag); label != nullptr) {
+        resolved.push_back(label);
+      }
+    }
+    rn_view_set_labelled_by(view, resolved.data(), static_cast<int>(resolved.size()));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +320,10 @@ void GtkMountingManager::removeChild(RnView *parent, RnView *child) {
 }
 
 void GtkMountingManager::forgetTag(Tag tag) {
+  // Both sides of a label relation: a view that goes away stops naming anything
+  // and stops being nameable, and a relation left pointing at it would have a
+  // screen reader read a view that is no longer on screen.
+  labels_.forget(tag);
   imageUris_.erase(tag);
   scrollViews_.remove(tag);
   textInputs_.remove(tag);
@@ -566,8 +594,11 @@ void GtkMountingManager::applyAccessibility(RnView *view, const ShadowView &shad
     return;
   }
 
-  // A label given in props wins. Falling back to a Paragraph's own text means a
-  // plain <Text> announces itself without the app having to repeat the string
+  // `accessibilityLabelledBy`: other views, named by their nativeID, whose text
+  // names this one. Only recorded here -- the resolution needs every view in the
+  // transaction to have been seen, so it happens once at the end of the mount.
+  labels_.setLabelledBy(shadowView.tag, props->accessibilityLabelledBy.value);
+
   // A role that changed after the view was mounted, which GTK cannot honour:
   // `accessible-role` is construct-only, so the role this widget was created
   // with is fixed for its life. What can still be updated is the description a
@@ -588,7 +619,9 @@ void GtkMountingManager::applyAccessibility(RnView *view, const ShadowView &shad
     }
   }
 
-  // in an accessibilityLabel.
+  // A label given in props wins. Falling back to a Paragraph's own text means a
+  // plain <Text> announces itself without the app having to repeat the string in
+  // an accessibilityLabel.
   std::string label = props->accessibilityLabel;
   if (label.empty() && shadowView.componentName != nullptr &&
       std::string_view(shadowView.componentName) == "Paragraph") {
@@ -1002,6 +1035,10 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // same comment, which is the point: the two hosts have to agree about what
   // reaches them, or a header drags on one desktop and not the other.
   rn_view_set_native_id(view, props->nativeId.c_str());
+  // And remember which view it names, which is what `accessibilityLabelledBy`
+  // needs: that prop names other views by their nativeID and nothing else here
+  // can look one up. See core/LabelRegistry.h.
+  labels_.setNativeId(shadowView.tag, props->nativeId);
 
   // overflow: 'hidden'. React Native's default is 'visible', which is why the
   // phase-1 screenshots show a child outgrowing its shrunk parent.

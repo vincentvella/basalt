@@ -3897,6 +3897,69 @@ def test_linear_gradient(bundle: Path) -> None:
         )
 
 
+def test_accessibility_labelled_by(bundle: Path) -> None:
+    """`accessibilityLabelledBy` resolves a `nativeID` to the view that has it.
+
+    A relation rather than a copied string: the field's name lives on the caption
+    beside it, so a caption that changes its text does not leave a stale copy
+    behind. GTK gets an AT-SPI LABELLED_BY relation and macOS an
+    `accessibilityTitleUIElement`.
+
+    The scenario is here because of *when* it resolves. e2e/a11y.tsx deliberately
+    puts the field before its caption, which is the ordinary way round, and Fabric
+    mounts in tree order -- so the field is mounted while the id it names does not
+    exist yet. A resolution done as the props arrived finds nothing and stays
+    wrong, and that is what the unit tests on both hosts fail on when the
+    resolution is moved. This asserts the end of it: the relation is on the view
+    after the app has rendered.
+
+    Windows has no labelled-by yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("the Win32 host does not set accessible relations yet")
+
+    app = bundle_app(bundle.parent, "a11y")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltA11y"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    related = [line for line in tree.splitlines() if "labelled-by=" in line]
+    if len(related) != 1:
+        raise Failure(
+            f"{len(related)} views report a labelled-by relation; the app sets one "
+            f"on one.\n{tree}"
+        )
+    # The tag it names has to be a view that is actually there, and the one
+    # carrying the caption: a relation pointing at nothing is the failure this
+    # cannot be allowed to pass as.
+    named = related[0].split("labelled-by=")[1].split()[0]
+    caption = [line for line in tree.splitlines()
+               if f"tag={named} " in line and "Save the document" in line]
+    if not caption:
+        raise Failure(
+            f"the relation names tag {named}, which is not the caption. The usual "
+            "cause is resolving the nativeID as the props arrive, before the "
+            f"caption is mounted.\n{tree}"
+        )
+
+
 def test_cursor_style(bundle: Path) -> None:
     """The `cursor` style property reaches the view.
 
@@ -5283,6 +5346,7 @@ SCENARIOS = [
     ("the cursor style property reaches the view", test_cursor_style),
     ("boxShadow reaches the view, inset and all", test_box_shadow),
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
+    ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

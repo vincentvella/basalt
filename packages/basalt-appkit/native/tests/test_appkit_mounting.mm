@@ -428,3 +428,79 @@ TEST(no_transform_origin_anchors_the_centre) {
   manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// `accessibilityLabelledBy` through a real transaction, which is the half the
+// view-level tests in test_appkit_accessibility.mm cannot reach: the prop names
+// another view by its `nativeID`, and Fabric mounts a field before the label
+// that follows it.
+//
+// Deliberately the same two cases the GTK suite asserts, in the same order and
+// with the same tags, for the reason the rest of this file is: the resolution is
+// shared in core/LabelRegistry.h, and the day the sharing stops holding these
+// fail here rather than in an app.
+namespace {
+
+ShadowView makeNamedView(Tag tag, const std::string &nativeId) {
+  ShadowView view = makeView(tag, 0, 0, 100, 50);
+  auto props = std::make_shared<ViewProps>();
+  props->nativeId = nativeId;
+  view.props = props;
+  return view;
+}
+
+ShadowView makeLabelledView(Tag tag, std::vector<std::string> ids) {
+  ShadowView view = makeView(tag, 0, 0, 100, 50);
+  auto props = std::make_shared<ViewProps>();
+  props->accessibilityLabelledBy.value = std::move(ids);
+  view.props = props;
+  return view;
+}
+
+} // namespace
+
+TEST(appkit_mounting_labelled_by_resolves_a_native_id) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    manager.createSurfaceRoot(kSurfaceId);
+
+    ShadowViewMutationList mutations;
+    mutations.push_back(ShadowViewMutation::CreateMutation(makeLabelledView(10, {"name-label"})));
+    mutations.push_back(
+        ShadowViewMutation::InsertMutation(kSurfaceId, makeLabelledView(10, {"name-label"}), 0));
+    mutations.push_back(ShadowViewMutation::CreateMutation(makeNamedView(20, "name-label")));
+    mutations.push_back(
+        ShadowViewMutation::InsertMutation(kSurfaceId, makeNamedView(20, "name-label"), 1));
+    apply(manager, std::move(mutations));
+
+    RnAppKitView *field = manager.viewForTag(10);
+    EXPECT(field != nil);
+    EXPECT(field.accessibilityTitleUIElement == manager.viewForTag(20));
+  }
+}
+
+// The label in a later transaction, which is what a resolution done as the props
+// arrived would miss.
+TEST(appkit_mounting_labelled_by_waits_for_a_label_that_mounts_later) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    manager.createSurfaceRoot(kSurfaceId);
+
+    ShadowViewMutationList first;
+    first.push_back(ShadowViewMutation::CreateMutation(makeLabelledView(10, {"name-label"})));
+    first.push_back(
+        ShadowViewMutation::InsertMutation(kSurfaceId, makeLabelledView(10, {"name-label"}), 0));
+    apply(manager, std::move(first));
+
+    RnAppKitView *field = manager.viewForTag(10);
+    EXPECT(field.accessibilityTitleUIElement == nil);
+
+    ShadowViewMutationList second;
+    second.push_back(ShadowViewMutation::CreateMutation(makeNamedView(20, "name-label")));
+    second.push_back(
+        ShadowViewMutation::InsertMutation(kSurfaceId, makeNamedView(20, "name-label"), 1));
+    manager.applyTransaction(
+        kSurfaceId, MountingTransaction(kSurfaceId, 2, std::move(second), TransactionTelemetry{}));
+
+    EXPECT(field.accessibilityTitleUIElement == manager.viewForTag(20));
+  }
+}
