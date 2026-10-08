@@ -15,7 +15,9 @@
 
 #import "RnTextLayout.h"
 
+#include <algorithm>
 #include <sstream>
+#include <vector>
 
 namespace {
 
@@ -356,5 +358,140 @@ TEST(an_inline_view_below_a_clip_has_no_frame) {
     // above is the limit at work and not the query failing.
     const CGRect placed = [inlineLayout(40, 20) frameForCharacterIndex:kAttachmentIndex width:60];
     EXPECT(!CGRectIsNull(placed));
+  }
+}
+
+// `textAlign: 'justify'`, which works and was recorded as not working.
+//
+// backlog/platform-macos.md said Core Text ignores justification for lines drawn
+// one at a time, which is true and is not what this draws: `linesForWidth:`
+// takes its lines out of a `CTFrame`, and Core Text justifies the lines in a
+// frame itself. So the prop has been honoured all along and nothing asserted it.
+//
+// Measured as the rightmost column with ink in it: a justified line reaches the
+// right edge of the box, and the same text drawn flush left stops short of it --
+// 199 against 186 in a 200 point box, which is also the evidence that struck
+// that entry.
+TEST(text_justified_lines_reach_both_edges) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 80);
+    // Long enough to wrap to three lines in 200 points, with spaces to stretch.
+    NSString *paragraph = @"Justified text stretches every line but the last one";
+
+    const auto inkEdges = [&](NSTextAlignment alignment, int row) {
+      RnTextLayout *layout =
+          [RnTextLayout layoutWithAttributedString:styled(paragraph, 14, alignment)
+                              maximumNumberOfLines:0
+                                    truncationType:kCTLineTruncationEnd
+                                         truncates:YES];
+
+      CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                                   8, 0, space, kCGImageAlphaPremultipliedLast);
+      CGColorSpaceRelease(space);
+      CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+      CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+      [layout drawInContext:context size:size];
+
+      auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+      const size_t stride = CGBitmapContextGetBytesPerRow(context);
+      // The bitmap counts y from the bottom and the layout draws from the top, so
+      // the first drawn line is the last band of rows.
+      const size_t band = (size_t)size.height - (size_t)row * 20 - 10;
+      int rightmost = -1;
+      for (size_t x = 0; x < (size_t)size.width; x++) {
+        for (size_t y = band - 8; y < band + 8; y++) {
+          if (pixels[y * stride + x * 4] < 200) {
+            rightmost = (int)x;
+            break;
+          }
+        }
+      }
+      CGContextRelease(context);
+      return rightmost;
+    };
+
+    // The first line, which is justified.
+    const int flushLeft = inkEdges(NSTextAlignmentNatural, 0);
+    const int justified = inkEdges(NSTextAlignmentJustified, 0);
+    EXPECT(flushLeft > 0);
+    // Stretched to the edge: within a couple of points of 200, and further right
+    // than the same line left-aligned.
+    EXPECT(justified > flushLeft);
+    EXPECT(justified >= 195);
+  }
+}
+
+// And the last line is left alone, which is what justification means
+// typographically and what Pango does on the other host -- Core Text agrees
+// without being asked, which is the other half of this being already done.
+//
+// The lines are found rather than assumed: the paragraph's own wrapping decides
+// how many there are, so this collects the rightmost ink per row of the bitmap,
+// groups the rows that have any into bands, and asks about the first band and
+// the last.
+TEST(text_the_last_justified_line_is_not_stretched) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 80);
+    NSString *paragraph = @"Justified text stretches every line but the last one";
+
+    RnTextLayout *layout =
+        [RnTextLayout layoutWithAttributedString:styled(paragraph, 14, NSTextAlignmentJustified)
+                            maximumNumberOfLines:0
+                                  truncationType:kCTLineTruncationEnd
+                                       truncates:YES];
+
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                                 8, 0, space, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+    CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+    [layout drawInContext:context size:size];
+
+    auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+    const size_t stride = CGBitmapContextGetBytesPerRow(context);
+
+    // The rightmost inked column in each row, or -1 for a blank row. The bitmap
+    // counts y from the bottom, so the first drawn line is at the high end.
+    std::vector<int> rightmostByRow((size_t)size.height, -1);
+    for (size_t y = 0; y < (size_t)size.height; y++) {
+      for (size_t x = (size_t)size.width; x > 0; x--) {
+        if (pixels[y * stride + (x - 1) * 4] < 200) {
+          rightmostByRow[y] = (int)(x - 1);
+          break;
+        }
+      }
+    }
+    CGContextRelease(context);
+
+    // Group the inked rows into bands, one per drawn line, and take each band's
+    // furthest ink.
+    std::vector<int> bands;
+    bool inBand = false;
+    int furthest = -1;
+    for (size_t y = (size_t)size.height; y > 0; y--) {
+      const int rightmost = rightmostByRow[y - 1];
+      if (rightmost >= 0) {
+        inBand = true;
+        furthest = std::max(furthest, rightmost);
+      } else if (inBand) {
+        bands.push_back(furthest);
+        inBand = false;
+        furthest = -1;
+      }
+    }
+    if (inBand) {
+      bands.push_back(furthest);
+    }
+
+    // Three lines in this box, and in any case more than one: a single line
+    // would make the question meaningless, the first line being the last.
+    EXPECT(bands.size() >= 2);
+    // The first is stretched to the edge and the last is not. A host that
+    // justified every line would push the last one to 200 as well, and the
+    // paragraph would read as a bug rather than as a choice.
+    EXPECT(bands.front() >= 195);
+    EXPECT(bands.back() < 190);
   }
 }

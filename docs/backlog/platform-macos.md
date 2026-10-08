@@ -6,14 +6,14 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (8):**
+**Open (6):**
 
-1. Justified text
+1. ~~Justified text~~, which worked all along
 2. Fonts loaded at runtime are untested
 3. No `keyboardType`, `autoCapitalize`, `autoCorrect` or `spellCheck`
 4. Nothing tested against a real screen reader
 5. No accessibility subroles
-6. `accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`
+6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
 7. No animated images
 8. No gesture cancellation from the platform
 
@@ -42,10 +42,31 @@ If an entry here is about to be picked up, run the thing it describes first.
   separately below: subroles, `accessibilityValue`, and nothing having been
   tried against a real screen reader, which is a different claim from the one
   this entry made.
-- **Justified text.** `NSTextAlignmentJustified` reaches the paragraph style and
-  Core Text ignores it for lines drawn individually, which is how RnTextLayout
-  has to draw them to honour `numberOfLines`. Doing it properly needs
-  `CTLineCreateJustifiedLine` per line.
+- ~~**Justified text.**~~ **It works, and has all along.** Checked 2026-10-08 by
+  drawing it, after this file's own instruction to run the thing an entry
+  describes before picking it up -- which is exactly what nobody had done here.
+
+  The entry said Core Text ignores justification for lines drawn individually,
+  which is true and is not what `RnTextLayout` does: `linesForWidth:` takes its
+  lines out of a `CTFrame`, and Core Text justifies the lines in a frame itself.
+  The implementation the entry described -- `CTLineCreateWithAttributedString`
+  per line -- is the one it does not have.
+
+  Measured in a 200 point box: the first line of a justified paragraph reaches
+  column 199 where the same text drawn flush left stops at 186, and the last line
+  stops at 125, Core Text leaving it alone as typography and Pango both do.
+  `text_justified_lines_reach_both_edges` and
+  `text_the_last_justified_line_is_not_stretched` pin both halves, and GTK has the
+  first of them too now, over the pixel helper that landed the same day --
+  sabotaging `pango_layout_set_justify` to FALSE fails it, which is the one-flag
+  bug that test exists for.
+
+  **What was nearly committed instead**, and is worth recording: a
+  `CTLineCreateJustifiedLine` per line, exactly as the entry proposed. It passed
+  its own test, because the lines were already justified and stretching them again
+  to the same width changes nothing. Sabotaging it is what showed the feature
+  working without it -- the test passed with the new code disabled, which is the
+  signal that the code was not what made it pass.
 - **Fonts loaded at runtime are untested.** `resolveFontFamily` is wired into
   the Core Text font lookup, and `expo-font` on macOS has never been run end to
   end.
@@ -59,11 +80,16 @@ If an entry here is about to be picked up, run the thing it describes first.
 - **Nothing tested against a real screen reader**, on either platform.
   VoiceOver and Orca are both a manual step nobody has taken; the unit tests
   assert the properties were set and cannot assert the result is usable.
+- ~~**`accessibilityValue`, `accessibilityLiveRegion` and
+  `accessibilityLabelledBy`.**~~ All three done, the first earlier and the other
+  two on 2026-10-08; see [accessibility.md](accessibility.md), which has the
+  detail and the shared registries both of the latter two needed. Left here as a
+  struck entry rather than deleted, because this file's own note at the top is
+  about entries that go stale and get read as though they were still true.
+
 - **No accessibility subroles.** A search field should be a text field with
   `NSAccessibilitySearchFieldSubrole`; reporting only the role loses the "this
   searches" part.
-- **`accessibilityValue`, `accessibilityLiveRegion` and
-  `accessibilityLabelledBy`** are unimplemented on both platforms.
 - **No animated images.** The first frame of a GIF is drawn as a still, on both
   desktops.
 - ~~**No scrollbars.**~~ Done, and on all three, the claim that the GTK side

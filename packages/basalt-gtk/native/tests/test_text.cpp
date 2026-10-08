@@ -7,6 +7,8 @@
 
 #include "TestHarness.h"
 
+#include "GtkPixels.h"
+
 #include "PangoTextLayout.h"
 // For rn_pango_clip_height, the contract between measuring a clipped paragraph
 // and painting one. It lives in the widget layer; see the comment there.
@@ -408,4 +410,72 @@ TEST(measuring_from_two_threads_at_once_does_not_deadlock) {
     EXPECT(measured.height > 0.0F);
   }
   worker.join();
+}
+
+// `textAlign: 'justify'`, asserted in pixels rather than in a Pango flag.
+//
+// Pango expresses it separately from the other alignments, through
+// `pango_layout_set_justify`, so "is the flag set" is one bug away from "does
+// the text reach the edge" -- and the other host's half of this was recorded as
+// missing for months while Core Text had been doing it all along. See
+// backlog/platform-macos.md. Measured here the same way as there: the rightmost
+// ink on the first line, against the same text drawn flush left.
+TEST(text_justified_lines_reach_both_edges) {
+  const char *paragraph = "Justified text stretches every line but the last one";
+
+  // Alignment is a *fragment* attribute, which is where React Native resolves it
+  // onto: the paragraph settings come from the first fragment. See
+  // PangoTextLayout.cpp.
+  const auto aligned = [&](facebook::react::TextAlignment alignment) {
+    TextAttributes attributes;
+    attributes.fontSize = 14.0F;
+    attributes.alignment = alignment;
+
+    AttributedString::Fragment fragment;
+    fragment.string = paragraph;
+    fragment.textAttributes = attributes;
+
+    AttributedString result;
+    result.appendFragment(std::move(fragment));
+    return result;
+  };
+
+  const auto rightmostInk = [&](bool justify) {
+    const facebook::react::TextAlignment alignment =
+        justify ? facebook::react::TextAlignment::Justified : facebook::react::TextAlignment::Left;
+    PangoLayout *layout =
+        basalt::buildTextLayout(aligned(alignment), ParagraphAttributes{}, 200.0F);
+
+    RnView *view = rn_view_new(1);
+    g_object_ref_sink(view);
+    rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 80.0F);
+    const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+    rn_view_set_text_layout(view, layout, &black);
+
+    const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 200, 80);
+    // The first line, which is the top band of the image: whatever the font
+    // metrics are, a 14 point line fits inside the top twenty rows.
+    int rightmost = -1;
+    for (int x = 0; x < 200; x++) {
+      for (int y = 0; y < 20; y++) {
+        if (pixels.at(x, y).alpha > 40) {
+          rightmost = x;
+          break;
+        }
+      }
+    }
+
+    g_object_unref(layout);
+    g_object_unref(view);
+    return rightmost;
+  };
+
+  const int flushLeft = rightmostInk(false);
+  const int justified = rightmostInk(true);
+
+  // Ink at all first: a paragraph that drew nothing would pass the comparison.
+  EXPECT(flushLeft > 0);
+  EXPECT(justified > flushLeft);
+  // Stretched to the edge of the 200 point box.
+  EXPECT(justified >= 190);
 }
