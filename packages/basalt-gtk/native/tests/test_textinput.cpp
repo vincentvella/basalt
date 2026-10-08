@@ -27,6 +27,9 @@
 
 #include <folly/dynamic.h>
 
+#include <cstdint>
+#include <string>
+
 using facebook::react::ContextContainer;
 using facebook::react::EventEmitter;
 using facebook::react::LayoutMetrics;
@@ -101,6 +104,22 @@ std::string textOf(RnView *view) {
   std::string text = owned != nullptr ? owned : "";
   g_free(owned);
   return text;
+}
+
+// A colour the way React Native's own prop parser takes one: packed ARGB, which
+// is what `processColor` hands down from JavaScript and the only shape that
+// reaches a SharedColor without a JavaScript runtime. Signed, because an opaque
+// colour has its top bit set and folly::dynamic holds a signed integer.
+constexpr int32_t argb(uint32_t value) {
+  return static_cast<int32_t>(value);
+}
+
+// The stylesheet the peer generated for its colour props, or the empty string
+// when it generated none. Empty and "no rule for this colour" are different
+// things and the tests below check both, so this never invents a rule.
+std::string cssOf(RnView *view) {
+  const char *css = rn_peer_get_colors_css(rn_view_get_editable(view));
+  return css != nullptr ? css : "";
 }
 
 // What a person typing does, as far as GtkText is concerned: an insertion the
@@ -594,5 +613,220 @@ TEST(textinput_a_prop_does_not_report_itself_as_a_change) {
   EXPECT_EQ(textOf(view), std::string("from React"));
   EXPECT(recorder.seen().empty());
 
+  g_object_unref(view);
+}
+
+// --- placeholderTextColor, selectionColor and cursorColor --------------------
+//
+// These three were parsed and then dropped on this host for a long time, and
+// why is worth keeping in view: GtkText takes none of them from the
+// PangoAttrList that carries `color` and `fontSize`. The placeholder and the
+// selection are CSS nodes of their own and the caret is the CSS `caret-color`
+// property, so the only way in is a stylesheet.
+//
+// What is assertable here is that stylesheet rather than the pixels. A widget's
+// resolved style cannot be read back without GtkStyleContext, which GTK 4.10
+// deprecated and 4.22 has already moved under gtk/deprecated/, so the peer hands
+// back the rules it generated and the class it hung them on and these pin both.
+// Whether GTK then paints what the rules say is a screenshot's job, and GTK's
+// own business.
+
+TEST(textinput_puts_the_three_colour_props_into_css) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("placeholder", "type here")(
+                                   "placeholderTextColor", argb(0xFFFF0000U))(
+                                   "selectionColor", argb(0xFF0000FFU))(
+                                   "cursorColor", argb(0xFF00FF00U))));
+
+  // One rule per prop, each naming the node GTK actually draws: the
+  // placeholder's own node, the selection's own node, and `caret-color` on the
+  // field itself. Getting the node wrong is the failure mode that looks like
+  // working code, because the stylesheet parses and then matches nothing.
+  const std::string css = cssOf(view);
+  EXPECT(css.find("placeholder { color: rgb(255,0,0); }") != std::string::npos);
+  EXPECT(css.find("selection { background-color: rgb(0,0,255); }") != std::string::npos);
+  EXPECT(css.find("{ caret-color: rgb(0,255,0);") != std::string::npos);
+
+  // And the widget carries the class those rules are keyed on, without which the
+  // stylesheet would be perfectly correct and entirely invisible.
+  GtkWidget *peer = rn_view_get_editable(view);
+  const char *className = rn_peer_get_colors_class(peer);
+  EXPECT(className != nullptr);
+  const std::string name = className != nullptr ? className : "";
+  EXPECT(gtk_widget_has_css_class(peer, name.c_str()));
+  EXPECT(css.find(name) != std::string::npos);
+
+  g_object_unref(view);
+}
+
+// A prop that was never sent must leave GTK's own colour alone. This is the
+// assertion that a careless conversion fails: an unset SharedColor is zero, so
+// handing it on without asking whether it was set paints every field's caret
+// black and takes the theme's placeholder and selection with it.
+TEST(textinput_leaves_an_unset_colour_to_the_gtk_theme) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(
+      view, makeTextInput(10, folly::dynamic::object("text", "")("placeholder", "type here")));
+
+  GtkWidget *peer = rn_view_get_editable(view);
+  EXPECT(rn_peer_get_colors_class(peer) == nullptr);
+  EXPECT(rn_peer_get_colors_css(peer) == nullptr);
+
+  // And one prop being set does not drag the other two in behind it.
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("placeholder", "type here")(
+                                   "selectionColor", argb(0xFF0000FFU))));
+  const std::string css = cssOf(view);
+  EXPECT(css.find("selection { background-color: rgb(0,0,255); }") != std::string::npos);
+  EXPECT(css.find("placeholder") == std::string::npos);
+
+  g_object_unref(view);
+}
+
+// The alpha survives. GDK writes `rgb(...)` for an opaque colour and `rgba(...)`
+// for anything else, so a half-transparent placeholder is exactly where a
+// formatter that quietly dropped the fourth channel shows up.
+TEST(textinput_carries_a_colours_alpha_into_the_css) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("placeholder", "type here")(
+                                   "placeholderTextColor", argb(0x330000FFU))));
+
+  // Matched without the closing paren: 0x33 is 51/255, which is 0.2, and GDK
+  // formats the alpha with %g, so six significant digits of it may legitimately
+  // be written either "0.2" or "0.200000".
+  const std::string css = cssOf(view);
+  EXPECT(css.find("rgba(0,0,255,0.2") != std::string::npos);
+  EXPECT(css.find("rgb(0,0,255)") == std::string::npos);
+
+  g_object_unref(view);
+}
+
+// The class is swapped rather than added to. Every rule lives in one
+// display-wide provider, so a widget left carrying both classes would resolve to
+// whichever rule the provider happened to parse last rather than to the colour
+// React asked for.
+TEST(textinput_swaps_its_colour_class_when_the_prop_changes) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("placeholder", "type here")(
+                                   "placeholderTextColor", argb(0xFFFF0000U))));
+  GtkWidget *peer = rn_view_get_editable(view);
+  const char *before = rn_peer_get_colors_class(peer);
+  EXPECT(before != nullptr);
+  const std::string first = before != nullptr ? before : "";
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("placeholder", "type here")(
+                                   "placeholderTextColor", argb(0xFF0000FFU))));
+  const char *after = rn_peer_get_colors_class(peer);
+  EXPECT(after != nullptr);
+  const std::string second = after != nullptr ? after : "";
+
+  EXPECT(second != first);
+  EXPECT(!gtk_widget_has_css_class(peer, first.c_str()));
+  EXPECT(gtk_widget_has_css_class(peer, second.c_str()));
+
+  const std::string css = cssOf(view);
+  EXPECT(css.find("rgb(0,0,255)") != std::string::npos);
+  EXPECT(css.find("rgb(255,0,0)") == std::string::npos);
+
+  g_object_unref(view);
+}
+
+// `cursorColor` overrides the caret and nothing else, and a field given only
+// `selectionColor` still gets a caret in it. That is React Native's own
+// contract: `selectionColor` is documented as the highlight, the selection
+// handle *and* the cursor, and `cursorColor` exists to peel the cursor off.
+TEST(textinput_colours_the_caret_from_the_selection_until_cursor_colour_says_otherwise) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(
+      view,
+      makeTextInput(10, folly::dynamic::object("text", "")("selectionColor", argb(0xFFFF0000U))));
+  EXPECT(cssOf(view).find("{ caret-color: rgb(255,0,0);") != std::string::npos);
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")(
+                                   "selectionColor", argb(0xFFFF0000U))(
+                                   "cursorColor", argb(0xFF0000FFU))));
+  const std::string css = cssOf(view);
+  EXPECT(css.find("{ caret-color: rgb(0,0,255);") != std::string::npos);
+  EXPECT(css.find("selection { background-color: rgb(255,0,0); }") != std::string::npos);
+
+  g_object_unref(view);
+}
+
+// The multiline peer's placeholder is the one colour of the three that cannot go
+// through CSS, because a GtkTextView has no placeholder node: this platform
+// draws that placeholder itself, so the colour has to arrive as a value.
+TEST(textinput_multiline_takes_the_placeholder_colour_as_a_value) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("multiline", true)(
+                                   "placeholder", "type here")(
+                                   "placeholderTextColor", argb(0xFF0000FFU))));
+
+  GtkWidget *peer = rn_view_get_editable(view);
+  EXPECT(rn_peer_is_multiline(peer));
+
+  GdkRGBA colour = {0.0F, 0.0F, 0.0F, 0.0F};
+  EXPECT(rn_peer_get_placeholder_color(peer, &colour));
+  EXPECT_NEAR(colour.red, 0.0, 0.01);
+  EXPECT_NEAR(colour.green, 0.0, 0.01);
+  EXPECT_NEAR(colour.blue, 1.0, 0.01);
+  // The app's own alpha, not the 0.45 the drawing dims an *inherited* colour
+  // by: a colour somebody chose is not a colour to second-guess.
+  EXPECT_NEAR(colour.alpha, 1.0, 0.01);
+
+  // The class still goes on, because the other two colours do reach a
+  // GtkTextView through CSS.
+  EXPECT(rn_peer_get_colors_class(peer) != nullptr);
+
+  // Dropping the prop puts the dimmed text colour back rather than leaving the
+  // last colour stuck on the widget.
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "")("multiline", true)(
+                                   "placeholder", "type here")));
+  EXPECT(!rn_peer_get_placeholder_color(peer, nullptr));
+
+  // And a single-line field takes no value at all: GTK owns that placeholder,
+  // and the CSS rule is the whole mechanism there.
+  RnView *single = rn_view_new(11);
+  g_object_ref_sink(single);
+  manager.update(single,
+                 makeTextInput(11,
+                               folly::dynamic::object("text", "")("placeholder", "type here")(
+                                   "placeholderTextColor", argb(0xFF0000FFU))));
+  EXPECT(!rn_peer_get_placeholder_color(rn_view_get_editable(single), nullptr));
+  EXPECT(cssOf(single).find("placeholder { color: rgb(0,0,255); }") != std::string::npos);
+
+  g_object_unref(single);
   g_object_unref(view);
 }

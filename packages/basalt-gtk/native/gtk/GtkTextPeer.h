@@ -66,6 +66,48 @@ void rn_peer_set_attributes(GtkWidget *peer, PangoAttrList *attributes);
 void rn_peer_set_placeholder(GtkWidget *peer, const char *placeholder);
 const char *rn_peer_get_placeholder(GtkWidget *peer);
 
+// The three colours a text field takes from CSS rather than from the
+// PangoAttrList above: `placeholderTextColor`, `selectionColor` and
+// `cursorColor`.
+//
+// Neither peer has a property for any of them. The placeholder, the selection
+// and the caret are a CSS node, a CSS node and a CSS property respectively, and
+// a PangoAttrList describes none of the three -- which is the whole reason
+// these props were parsed and then dropped on this host for as long as they
+// were.
+//
+// Each colour is NULL when the prop was absent, and absent is not transparent:
+// a colour nobody asked for has to leave GTK's own theme colour alone rather
+// than resolve to black. That is why these are pointers rather than a GdkRGBA
+// each.
+void rn_peer_set_colors(GtkWidget *peer,
+                        const GdkRGBA *placeholder,
+                        const GdkRGBA *selection,
+                        const GdkRGBA *cursor);
+
+// The CSS class carrying this peer's colours, or NULL when none of the three
+// props was set. Interned, so it outlives the peer and can be compared by
+// pointer.
+const char *rn_peer_get_colors_class(GtkWidget *peer);
+
+// The CSS rules behind that class, or NULL when there are none.
+//
+// Here because a widget's resolved style is not reachable without
+// GtkStyleContext, which GTK 4.10 deprecated and 4.22 has already moved under
+// gtk/deprecated/. So this is the only way anything without a screen -- the
+// test suite, in practice -- can see that a colour reached GTK at all rather
+// than being parsed and dropped the way these three used to be. Owned by the
+// peer; valid until the colours are set again.
+const char *rn_peer_get_colors_css(GtkWidget *peer);
+
+// The placeholder colour the multiline peer will draw with, which is the one
+// colour of the three that does not go through CSS: a GtkTextView has no
+// placeholder node because this file draws its placeholder itself.
+//
+// FALSE with `out` untouched when no colour was set, and FALSE for a GtkText,
+// whose placeholder GTK draws from the stylesheet above.
+gboolean rn_peer_get_placeholder_color(GtkWidget *peer, GdkRGBA *out);
+
 // Hidden characters, for `secureTextEntry`. Single line only: a multiline
 // secure field is not a thing React Native offers, and GtkTextView has no
 // visibility property.

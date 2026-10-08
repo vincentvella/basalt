@@ -6,18 +6,50 @@
 
 #include <react/renderer/components/iostextinput/TextInputProps.h>
 #include <react/renderer/components/textinput/TextInputEventEmitter.h>
+#include <react/renderer/graphics/Color.h>
 
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace basalt {
 
 using facebook::react::AttributedString;
 using facebook::react::ShadowView;
+using facebook::react::SharedColor;
 using facebook::react::Tag;
 using facebook::react::TextInputEventEmitter;
 using facebook::react::TextInputProps;
+
+namespace {
+
+// A React Native colour as the GdkRGBA the peer seam wants, or nothing when the
+// prop was absent.
+//
+// Nothing rather than transparent, and nothing rather than black: SharedColor's
+// unset value *is* zero, so handing it on as a colour would paint a caret black
+// on every field that never asked for one. The optional is what carries the
+// difference across to rn_peer_set_colors, which takes a null pointer per
+// colour for exactly this reason.
+std::optional<GdkRGBA> toRgba(const SharedColor &color) {
+  if (!color) {
+    return std::nullopt;
+  }
+  const auto components = facebook::react::colorComponentsFromColor(color);
+  GdkRGBA rgba;
+  rgba.red = components.red;
+  rgba.green = components.green;
+  rgba.blue = components.blue;
+  rgba.alpha = components.alpha;
+  return rgba;
+}
+
+const GdkRGBA *orNull(const std::optional<GdkRGBA> &colour) {
+  return colour.has_value() ? &*colour : nullptr;
+}
+
+} // namespace
 
 GtkTextInputManager::GtkTextInputManager(EmitterLookup lookup) : lookup_(std::move(lookup)) {}
 
@@ -165,6 +197,24 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   PangoAttrList *attributes = buildTextAttributes(props->getEffectiveTextAttributes(1.0F));
   rn_peer_set_attributes(entry.editable, attributes);
   pango_attr_list_unref(attributes);
+
+  // The three colours that attribute list cannot carry, because GTK takes them
+  // from CSS: the placeholder, the selection and the caret. See
+  // rn_peer_set_colors.
+  //
+  // `cursorColor` falls back to `selectionColor`, which is what React Native
+  // documents rather than something invented here: `selectionColor` is "the
+  // highlight, selection handle and cursor color of the text input", and
+  // `cursorColor` exists to override the caret on its own. A field given only
+  // `selectionColor` should therefore have a caret in that colour, not the
+  // theme's, and iOS gets the same effect by both of them being the view's
+  // tintColor.
+  const std::optional<GdkRGBA> placeholderColor = toRgba(props->placeholderTextColor);
+  const std::optional<GdkRGBA> selectionColor = toRgba(props->selectionColor);
+  const std::optional<GdkRGBA> cursorColor =
+      props->cursorColor ? toRgba(props->cursorColor) : selectionColor;
+  rn_peer_set_colors(
+      entry.editable, orNull(placeholderColor), orNull(selectionColor), orNull(cursorColor));
 
   // `editable` is the prop; `readOnly` is the newer spelling of its inverse,
   // and React Native honours both.

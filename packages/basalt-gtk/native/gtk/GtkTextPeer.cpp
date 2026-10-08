@@ -16,6 +16,15 @@ struct _RnTextView {
   GtkTextView parent_instance;
   char *placeholder;
   PangoAttrList *attributes;
+
+  // `placeholderTextColor`. The single-line peer takes it from CSS, because
+  // GtkText's placeholder is a CSS node GTK draws; this one has no such node
+  // precisely because the placeholder is drawn below instead, so the colour has
+  // to arrive here as a value. Unset leaves the drawing to work the colour out
+  // from the text colour, which is what it did before the prop was honoured at
+  // all.
+  GdkRGBA placeholder_color;
+  gboolean has_placeholder_color;
 };
 
 G_DEFINE_TYPE(RnTextView, rn_text_view, GTK_TYPE_TEXT_VIEW)
@@ -37,24 +46,32 @@ static void rn_text_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     pango_layout_set_attributes(layout, self->attributes);
   }
 
-  // The text colour, dimmed. GTK's own placeholder is the theme's dim
+  // `placeholderTextColor` when the app named one, used exactly as given: a
+  // colour somebody chose is not dimmed, and its own alpha is the alpha they
+  // asked for rather than one this file picks.
+  //
+  // Otherwise the text colour, dimmed. GTK's own placeholder is the theme's dim
   // foreground, and this field's foreground came from React Native's props --
   // so dimming that keeps the placeholder legible against whatever background
   // the app chose, which a fixed grey would not.
   GdkRGBA colour = {0.5F, 0.5F, 0.5F, 0.5F};
-  if (self->attributes != nullptr) {
-    PangoAttrIterator *iter = pango_attr_list_get_iterator(self->attributes);
-    if (iter != nullptr) {
-      if (const PangoAttribute *found = pango_attr_iterator_get(iter, PANGO_ATTR_FOREGROUND)) {
-        const PangoColor &from = reinterpret_cast<const PangoAttrColor *>(found)->color;
-        colour.red = static_cast<float>(from.red / 65535.0);
-        colour.green = static_cast<float>(from.green / 65535.0);
-        colour.blue = static_cast<float>(from.blue / 65535.0);
+  if (self->has_placeholder_color) {
+    colour = self->placeholder_color;
+  } else {
+    if (self->attributes != nullptr) {
+      PangoAttrIterator *iter = pango_attr_list_get_iterator(self->attributes);
+      if (iter != nullptr) {
+        if (const PangoAttribute *found = pango_attr_iterator_get(iter, PANGO_ATTR_FOREGROUND)) {
+          const PangoColor &from = reinterpret_cast<const PangoAttrColor *>(found)->color;
+          colour.red = static_cast<float>(from.red / 65535.0);
+          colour.green = static_cast<float>(from.green / 65535.0);
+          colour.blue = static_cast<float>(from.blue / 65535.0);
+        }
+        pango_attr_iterator_destroy(iter);
       }
-      pango_attr_iterator_destroy(iter);
     }
+    colour.alpha = 0.45F;
   }
-  colour.alpha = 0.45F;
 
   gtk_snapshot_append_layout(snapshot, layout, &colour);
   g_object_unref(layout);
@@ -75,6 +92,7 @@ static void rn_text_view_class_init(RnTextViewClass *klass) {
 static void rn_text_view_init(RnTextView *self) {
   self->placeholder = nullptr;
   self->attributes = nullptr;
+  self->has_placeholder_color = FALSE;
 }
 
 // Empty to non-empty and back changes whether the placeholder belongs on
@@ -352,6 +370,226 @@ const char *rn_peer_get_placeholder(GtkWidget *peer) {
     return gtk_text_get_placeholder_text(GTK_TEXT(peer));
   }
   return RN_TEXT_VIEW(peer)->placeholder;
+}
+
+// ---------------------------------------------------------------------------
+// placeholderTextColor, selectionColor and cursorColor
+//
+// These three are the only props a <TextInput> has that GTK will not take as a
+// value. The placeholder and the selection are CSS nodes under the peer, and
+// the caret is the CSS `caret-color` property; none of the three is a widget
+// property and none of them is expressible in the PangoAttrList that carries
+// `color`, `fontSize` and the rest. So they go in as a stylesheet.
+// ---------------------------------------------------------------------------
+
+// The eight hex digits that identify a colour inside a CSS class name, or
+// "none" for a colour that was never asked for. Unambiguous without a
+// separator, "none" containing two letters that are not hex digits, but
+// separated anyway so a name is readable in a GTK inspector.
+static void append_color_tag(GString *out, const GdkRGBA *colour) {
+  g_string_append_c(out, '-');
+  if (colour == nullptr) {
+    g_string_append(out, "none");
+    return;
+  }
+  const float channels[4] = {colour->red, colour->green, colour->blue, colour->alpha};
+  for (int i = 0; i < 4; i++) {
+    g_string_append_printf(
+        out, "%02x", static_cast<unsigned>(CLAMP(channels[i], 0.0F, 1.0F) * 255.0F + 0.5F));
+  }
+}
+
+// The rules for one combination of colours, hung on `name`.
+//
+// The selectors are descendant rather than child selectors because the class
+// sits on the peer and the two peers nest differently: a GtkText's `placeholder`
+// and `selection` are its own children, a GtkTextView's `selection` is a child
+// of its `text` node. A descendant selector is true of both.
+//
+// Colours are formatted by GDK rather than by hand, which is what gets the
+// alpha right: gdk_rgba_to_string emits `rgb(r,g,b)` for an opaque colour and
+// `rgba(r,g,b,a)` otherwise, in the one spelling gdk_rgba_parse accepts back,
+// and it formats the alpha through g_ascii_formatd so a French locale does not
+// write a decimal comma into a stylesheet.
+static void append_color_rules(GString *css,
+                               const char *name,
+                               const GdkRGBA *placeholder,
+                               const GdkRGBA *selection,
+                               const GdkRGBA *cursor) {
+  if (placeholder != nullptr) {
+    char *value = gdk_rgba_to_string(placeholder);
+    g_string_append_printf(css, ".%s placeholder { color: %s; }\n", name, value);
+    g_free(value);
+  }
+  if (selection != nullptr) {
+    // The background, not the colour: GTK draws a selection as a filled node
+    // behind the text, and `color` there is the *selected text*, which React
+    // Native has no prop for and which must keep coming from the style.
+    char *value = gdk_rgba_to_string(selection);
+    g_string_append_printf(css, ".%s selection { background-color: %s; }\n", name, value);
+    g_free(value);
+  }
+  if (cursor != nullptr) {
+    // Both carets. A bidirectional line has two, and leaving the secondary one
+    // in the theme's colour next to a caret the app chose would look like a
+    // bug rather than like the feature it is. The `text` node is named as well
+    // as the peer itself because the multiline peer's caret is drawn by that
+    // child node.
+    char *value = gdk_rgba_to_string(cursor);
+    g_string_append_printf(
+        css,
+        ".%s, .%s text { caret-color: %s; -gtk-secondary-caret-color: %s; }\n",
+        name,
+        name,
+        value,
+        value);
+    g_free(value);
+  }
+}
+
+// The CSS class carrying these colours, with the rules for it installed on the
+// display the first time the combination is seen.
+//
+// Display-wide rather than a provider per field, which is the obvious reading
+// of "per-widget CSS": the only per-widget route GTK offers is
+// gtk_widget_get_style_context, deprecated since 4.10 and already behind
+// gtk/deprecated/ in 4.22. GtkMountingManager.cpp reached the same conclusion
+// for a <Switch>'s track colour and says so there, so this does it the same way
+// rather than introducing a second way that also has to be rewritten for GTK 5.
+//
+// The name is derived from the colours rather than handed out in order, which
+// is what makes that affordable. Two fields given the same colours share one
+// rule, so an app with one theme installs one rule however many fields it has;
+// and a field whose props are re-sent unchanged -- which a controlled field's
+// are, on every single keystroke -- resolves to the class it already carries
+// and installs nothing at all.
+static const char *color_class_for(const GdkRGBA *placeholder,
+                                   const GdkRGBA *selection,
+                                   const GdkRGBA *cursor) {
+  GString *name = g_string_new("rn-input-colors");
+  append_color_tag(name, placeholder);
+  append_color_tag(name, selection);
+  append_color_tag(name, cursor);
+  const char *interned = g_intern_string(name->str);
+  g_string_free(name, TRUE);
+
+  // Interned, so the set can be keyed on the pointer. Never emptied: a rule
+  // dropped while some widget still carried its class would silently lose that
+  // widget's colour, and the set is bounded by the number of distinct colour
+  // combinations an app uses rather than by how long it runs.
+  static GHashTable *installed = nullptr;
+  static GString *css = nullptr;
+  static GtkCssProvider *provider = nullptr;
+  if (installed == nullptr) {
+    installed = g_hash_table_new(g_direct_hash, g_direct_equal);
+    css = g_string_new(nullptr);
+  }
+  if (g_hash_table_contains(installed, interned)) {
+    return interned;
+  }
+  g_hash_table_add(installed, const_cast<char *>(interned));
+  append_color_rules(css, interned, placeholder, selection, cursor);
+
+  GdkDisplay *display = gdk_display_get_default();
+  if (display == nullptr) {
+    // No display to hang a provider on, and nothing is being drawn either. The
+    // rules are kept rather than skipped, so they reach GTK with whatever
+    // combination arrives next once there is a display: the provider is loaded
+    // with the whole accumulated stylesheet every time, not with one rule.
+    return interned;
+  }
+  if (provider == nullptr) {
+    provider = gtk_css_provider_new();
+    gtk_style_context_add_provider_for_display(
+        display, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  }
+  gtk_css_provider_load_from_string(provider, css->str);
+  return interned;
+}
+
+void rn_peer_set_colors(GtkWidget *peer,
+                        const GdkRGBA *placeholder,
+                        const GdkRGBA *selection,
+                        const GdkRGBA *cursor) {
+  if (peer == nullptr) {
+    return;
+  }
+
+  // The multiline peer's placeholder is drawn by this file, so it has no CSS
+  // node for the rule above to reach and takes the colour as a value instead.
+  // The other two are CSS on either peer.
+  if (rn_peer_is_multiline(peer)) {
+    RnTextView *self = RN_TEXT_VIEW(peer);
+    self->has_placeholder_color = placeholder != nullptr ? TRUE : FALSE;
+    if (placeholder != nullptr) {
+      self->placeholder_color = *placeholder;
+    }
+    gtk_widget_queue_draw(peer);
+  }
+
+  const char *name = nullptr;
+  if (placeholder != nullptr || selection != nullptr || cursor != nullptr) {
+    name = color_class_for(placeholder, selection, cursor);
+  }
+
+  const char *previous =
+      static_cast<const char *>(g_object_get_data(G_OBJECT(peer), "rn-colors-class"));
+  if (previous == name) {
+    // The common case by far, and the reason the class name is derived from the
+    // colours: a controlled field re-applies every one of its props on every
+    // keystroke, and re-adding a class it already has would be churn for
+    // nothing. Pointer equality is a real comparison here because both sides
+    // are interned, and it covers "neither is set" too.
+    return;
+  }
+  if (previous != nullptr) {
+    // Taken off, not merely overridden. A field whose colour changed from red
+    // to blue would otherwise carry both classes, both rules would match, and
+    // which of the two won would be whichever the provider happened to parse
+    // last rather than the one React asked for.
+    gtk_widget_remove_css_class(peer, previous);
+  }
+  // Interned and therefore immortal, so this holds a borrowed pointer and needs
+  // no destroy notify. NULL removes the association, which is what a field that
+  // has just lost all three props wants.
+  g_object_set_data(G_OBJECT(peer), "rn-colors-class", const_cast<char *>(name));
+
+  char *rules = nullptr;
+  if (name != nullptr) {
+    gtk_widget_add_css_class(peer, name);
+    GString *built = g_string_new(nullptr);
+    append_color_rules(built, name, placeholder, selection, cursor);
+    rules = g_string_free(built, FALSE);
+  }
+  g_object_set_data_full(G_OBJECT(peer), "rn-colors-css", rules, g_free);
+}
+
+const char *rn_peer_get_colors_class(GtkWidget *peer) {
+  if (peer == nullptr) {
+    return nullptr;
+  }
+  return static_cast<const char *>(g_object_get_data(G_OBJECT(peer), "rn-colors-class"));
+}
+
+const char *rn_peer_get_colors_css(GtkWidget *peer) {
+  if (peer == nullptr) {
+    return nullptr;
+  }
+  return static_cast<const char *>(g_object_get_data(G_OBJECT(peer), "rn-colors-css"));
+}
+
+gboolean rn_peer_get_placeholder_color(GtkWidget *peer, GdkRGBA *out) {
+  if (peer == nullptr || !rn_peer_is_multiline(peer)) {
+    return FALSE;
+  }
+  RnTextView *self = RN_TEXT_VIEW(peer);
+  if (!self->has_placeholder_color) {
+    return FALSE;
+  }
+  if (out != nullptr) {
+    *out = self->placeholder_color;
+  }
+  return TRUE;
 }
 
 void rn_peer_set_visibility(GtkWidget *peer, gboolean visible) {

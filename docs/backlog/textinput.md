@@ -91,10 +91,31 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - `blur` grabs focus for the window rather than dropping it, because GTK models
   focus as moving, not as absent. The `onBlur` event is still correct.
 - `placeholderTextColor`, `selectionColor` and `cursorColor` are parsed and
-  ignored **on GTK and Windows**. GtkText takes those from CSS, not from a
-  `PangoAttrList`, and this platform has no per-widget CSS provider. AppKit
-  honours the placeholder colour, so this is two hosts of three rather than all
-  of them.
+  ignored **on Windows**. Done on GTK 2026-10-07; AppKit already honoured the
+  placeholder colour, so Windows is the one host left.
+
+  Not through a per-widget provider, which is what the entry used to propose.
+  The only per-widget route is `gtk_widget_get_style_context`, deprecated since
+  GTK 4.10 and gone in 5, and this package had already settled that question for
+  a `<Switch>`'s track colour. So it follows that pattern: one display-wide
+  provider holding a rule per distinct colour combination, with a CSS class on
+  the peer named after the colours, so two fields with the same colours share a
+  rule and a controlled field re-sending identical props installs nothing.
+
+  The part that would have been a bug: `SharedColor`'s undefined value is zero,
+  so passing it through unconditionally paints every caret black. Each colour
+  crosses the seam as a pointer that is null when unset, which is what keeps
+  "absent" distinguishable from "transparent". `cursorColor` falls back to
+  `selectionColor`, which is React Native's documented contract.
+
+  Multiline is the exception: a `GtkTextView` has no `placeholder` CSS node
+  because `RnTextView::snapshot` draws the placeholder itself, so the colour is
+  held as a value and used there. Selection and caret still arrive by CSS.
+
+  Windows is the harder half and is untouched. A plain `EDIT` has no CSS,
+  `EM_SETCUEBANNER` gives no colour control, the selection is the system
+  highlight unless the control is owner-drawn or swapped for a RichEdit, and the
+  caret is a bitmap you install yourself.
 - `src/overrides/TextInput.js` is a fork of React Native's component, and the only fork
   in the tree. Every prop upstream adds is a prop it will not have.
 - `autoCapitalize`, `autoCorrect`, `spellCheck`, `keyboardType`,
