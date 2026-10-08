@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (6):**
+**Open (8):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -12,6 +12,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. ~~`scripts/integration_test.py` skips Fast Refresh on Windows~~; what is
    left of it is an open entry in testing.md
 7. Nothing makes a red build hard to ignore
+8. An inline `<View>` inside a `<Text>` is not positioned
+9. Three style props the other two hosts draw and this one ignores
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -181,3 +183,37 @@ and none of it is a missing half.
   required check, no notification anyone reads. Thirteen commits of a silently
   failing Linux job is what that cost once, and none of the work above changes
   it.
+
+- **An inline `<View>` inside a `<Text>` is not positioned.** GTK and AppKit
+  reserve a box for the attachment and report where it landed; DirectWrite is
+  handed the same fragments and answers with a zero frame for each, so a view
+  inside a sentence lands at the origin with no size. The end-to-end scenario is
+  skipped here by name, and [text.md](text.md) has what the fix looks like:
+  `SetInlineObject` with an `IDWriteInlineObject` that answers React Native's own
+  metrics, read back with `HitTestTextPosition`.
+
+- **Three style props the other two hosts draw and this one ignores**, all three
+  landed on GTK and AppKit on 2026-10-07 and 2026-10-08, and all three recorded
+  here the day the second host got them rather than later:
+
+  - `blurRadius` on an `<Image>`. GSK has a blur node and Core Image a filter;
+    Direct2D has `ID2D1Effect` with `CLSID_D2D1GaussianBlur`, which is the same
+    shape of work as the AppKit half. Half the radius is the sigma on both other
+    hosts, measured rather than chosen; see backlog/image.md so this one does not
+    have to measure it again.
+  - `borderStyle`, dotted and dashed. Both others stroke one path around the
+    rounded rectangle with a dash pattern scaled to the width and let that replace
+    the four filled edges. `ID2D1StrokeStyle` takes a dash array, so the same
+    decision carries over, including that the first side which asks for something
+    other than solid decides the whole outline.
+  - The `cursor` style property. This is the one that differs in shape: Win32 has
+    no per-view cursor, so `WM_SETCURSOR` has to be answered by the window with
+    whatever view is under the pointer, which means a hit test on every cursor
+    query rather than a property on a widget. `LoadCursor` with the `IDC_` family
+    covers most of CSS's keywords.
+
+  Each has a unit test per host to copy the assertions from, and an end-to-end
+  scenario that is skipped on Windows by name. One consequence worth knowing
+  before running it: `scripts/compare_hosts.sh` against Windows will now report
+  the `blur=`, `border-style=` and `cursor=` lines as a tree difference, because
+  they are one. That is the script doing its job, and it goes away as each lands.

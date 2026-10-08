@@ -103,8 +103,14 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
 
   // Inline views (`<Text><View/></Text>`) reach here as attachment fragments.
   // Reporting a zero frame for each keeps the count right, which is what
-  // ParagraphShadowNode iterates over, but they are not positioned -- the same
-  // gap both other desktops have, for the same reason.
+  // ParagraphShadowNode iterates over, but they are not positioned.
+  //
+  // This used to say both other desktops had the same gap. They had it and no
+  // longer do: Pango reserves the box with a shape attribute and Core Text with
+  // a run delegate, both since 2026-10-07, and this host is the one left. The
+  // shape of the fix here is `SetInlineObject` over the fragment's range with an
+  // IDWriteInlineObject answering React Native's own metrics; see
+  // docs/backlog/text.md.
   for (const auto &fragment : attributedString.getFragments()) {
     if (fragment.isAttachment()) {
       measured.attachments.push_back(TextMeasurement::Attachment{

@@ -14,7 +14,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
-  Done 2026-10-07, on both hosts.
+  Done 2026-10-07 on GTK and AppKit. **Windows is the host left**, and that is
+  recorded here rather than being implied by "both hosts": see the end of this
+  entry.
 
   React Native hands a text engine one fragment holding U+FFFC together with the
   size it measured for the view, and wants back a box reserved in the line and
@@ -49,6 +51,25 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `isClipped` is still always false on GTK. It means a view fell outside the
   paragraph after `numberOfLines` cut it, which this host does not enforce yet;
   Core Text reports it, having a truncation to ask about.
+
+  **Windows, and how it was noticed.** `DirectWriteLayoutManager` reports one
+  zero-sized attachment per fragment, which keeps the count `ParagraphShadowNode`
+  iterates over right and positions nothing, and `DirectWriteLayout` skips
+  attachment fragments when it builds the runs. Both carried a comment saying
+  this was "the same gap both other desktops have", which stopped being true the
+  day the two were fixed.
+
+  The scenario was added for those two and runs on every host, so it had been
+  failing Windows CI on main for a day: twelve of thirteen in that shard, with
+  the attachment measuring 0x0 against the 48x24 it asked for. Skipped on Windows
+  now, by name and with a reason, which is what the suite does elsewhere for a
+  gap one host has.
+
+  What it would take: `IDWriteTextLayout::SetInlineObject` over the fragment's
+  range, with an `IDWriteInlineObject` whose `GetMetrics` answers the width,
+  height and baseline React Native measured, and `HitTestTextPosition` to read
+  the box back afterwards. The same shape as the other two, which is the useful
+  part of having done them first.
 - No baseline, so `alignItems: 'baseline'` is wrong for text.
   `pango_layout_get_baseline` is the value; plumbing it needs
   `TextLayoutManagerExtended`.

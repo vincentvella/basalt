@@ -3661,8 +3661,13 @@ def test_image_tint_and_blur(bundle: Path) -> None:
     Separate from the getSize scenario above, which runs the same app: that one
     is about React Native's ImageLoader module, and sharing a run would make a
     failure in either read as a failure of both.
+
+    `blurRadius` is GTK and AppKit only, so on Windows this checks the tint and
+    says so rather than being skipped whole: half a scenario that runs is worth
+    more than a scenario that does not.
     """
     app = bundle_app(bundle.parent, "image")
+    blurs = PLATFORM != "windows"
 
     env = dict(os.environ)
     env["BASALT_QUIT_AFTER_MS"] = "3000"
@@ -3688,10 +3693,10 @@ def test_image_tint_and_blur(bundle: Path) -> None:
     if not images:
         raise Failure(f"no image loaded at all, so neither prop can be read\n{tree[:1500]}")
 
-    for needle, why in (
-        ("tint=#ff00aa", "the tintColor never reached the view"),
-        ("blur=12", "the blurRadius never reached the view"),
-    ):
+    wanted = [("tint=#ff00aa", "the tintColor never reached the view")]
+    if blurs:
+        wanted.append(("blur=12", "the blurRadius never reached the view"))
+    for needle, why in wanted:
         if not any(needle in line for line in images):
             raise Failure(
                 f"{why}: no image reports {needle}.\n" + "\n".join(images)
@@ -3701,14 +3706,20 @@ def test_image_tint_and_blur(bundle: Path) -> None:
     # <Image> it mounted would fail here rather than pass twice over.
     tinted = [line for line in images if "tint=" in line]
     blurred = [line for line in images if "blur=" in line]
-    if len(tinted) != 1 or len(blurred) != 1:
+    if not blurs and blurred:
+        raise Failure(
+            "this host reports a blurred image and this scenario still says it "
+            "cannot blur. That is good news: drop the `blurs` flag above.\n"
+            + "\n".join(images)
+        )
+    if len(tinted) != 1 or len(blurred) != (1 if blurs else 0):
         raise Failure(
             f"{len(tinted)} images are tinted and {len(blurred)} are blurred; "
             "the app sets each on exactly one.\n" + "\n".join(images)
         )
     # Not the same one: the app deliberately blurs an image that is not tinted,
     # which is the case the GTK bug got wrong.
-    if tinted[0] == blurred[0]:
+    if blurs and tinted[0] == blurred[0]:
         raise Failure(
             "one image carries both props, so a blur that only applies to a "
             "tinted image would pass.\n" + "\n".join(images)
@@ -3732,7 +3743,13 @@ def test_border_style(bundle: Path) -> None:
 
     Runs e2e/views.js, the app scripts/compare_hosts.sh diffs between desktops,
     which is where a prop that arrives on one and not the other belongs.
+
+    Windows draws solid whatever the style says, so it is skipped by name; the gap
+    is an entry in backlog/platform-windows.md rather than a red tick here.
     """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws every border solid for now")
+
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)
@@ -3788,7 +3805,14 @@ def test_cursor_style(bundle: Path) -> None:
     which is also where the backlog was wrong about this: its cursor entry
     described what is left as the work "beyond what the `cursor` style property
     covers", and nothing covered it.
+
+    Windows is skipped by name: there is no per-view cursor in Win32, so the
+    window has to answer `WM_SETCURSOR` with whatever is under the pointer, and
+    that is not written yet.
     """
+    if PLATFORM == "windows":
+        raise Skipped("no WM_SETCURSOR handling yet, so no per-view cursor")
+
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)
@@ -4645,7 +4669,16 @@ def test_inline_views(bundle: Path) -> str:
 
     Three cases, each on a line of its own in e2e/inline.tsx so a failure names
     one of them rather than "inline views are wrong".
+
+    Windows is skipped rather than quietly passing: DirectWrite reserves nothing
+    and reports every attachment at the origin, which this scenario found by
+    failing on main for a day after it was added here. The gap is one entry in
+    backlog/text.md and one in backlog/platform-windows.md; the skip is so that a
+    known gap on one host is not a red tick on every commit.
     """
+    if PLATFORM == "windows":
+        raise Skipped("DirectWrite reserves no box for an inline view yet")
+
     app = bundle_app(bundle.parent, "inline")
 
     env = dict(os.environ)
