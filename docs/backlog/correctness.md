@@ -7,8 +7,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
-4. Six view style props that no host reads, and nothing said so (box shadows,
-   linear gradients and hitSlop are done on GTK and AppKit)
+4. Five view style props that no host reads, and nothing said so (box shadows,
+   linear gradients, hitSlop and filters are done on GTK and AppKit)
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -106,7 +106,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   tests having shown how to reach one. Hit testing is the wrong instrument and
   cannot answer it.
 
-- **Six view style props that no host reads, and nothing said so.** Counted
+- **Five view style props that no host reads, and nothing said so.** Counted
   2026-10-08 by going through `BaseViewProps` field by field and grepping all
   three hosts for each, after `cursor` and `borderStyle` both turned out to be
   props the backlog thought were handled. These are the ones no host mentions
@@ -120,9 +120,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     2026-10-08**, radial ones are not, and `backgroundSize`,
     `backgroundPosition` and `backgroundRepeat` are still ignored. What the work
     turned out to be is at the end of this entry.
-  - `filter`: the CSS filter functions on a view rather than on an image. Partly
-    answerable with what the blur work already built: GSK has a blur node and a
-    colour matrix, and Core Image has the rest.
+  - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, bar `dropShadow()`.
+    What the work turned out to be is at the end of this entry.
   - `outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`. CSS's
     outline, which unlike a border takes no layout space and is drawn outside the
     box. The focus ring each host draws is the same idea and is hard-coded.
@@ -257,3 +256,52 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   each host and would pass any symmetric check. End to end, e2e/press.js gets a
   24pt square with 16 points of slop and the scenario taps twice in one run --
   28 points out, which must do nothing, and 12 points out, which must press it.
+
+  **`filter`, done on GTK and AppKit 2026-10-08.** Nine CSS functions, of which
+  seven are affine maps of colour: `brightness`, `contrast`, `grayscale`,
+  `hueRotate`, `invert`, `saturate` and `sepia`. The Filter Effects spec gives
+  every matrix exactly, so the arithmetic is shared in `core/Filters.h` and the
+  hosts only hand it over.
+
+  Composing those seven is multiplying their matrices, so a list is **one** node
+  rather than a stack -- and because each is a per-pixel affine map, it does not
+  matter whether the blur happens before or after: a blur is a weighted average
+  whose weights sum to one, and an affine map commutes with that. `opacity()`
+  multiplies the view's own opacity, which is cheaper than a filter pass on both
+  hosts. Two `blur()`s compose in quadrature, 6 and 8 making 10, because
+  convolving two gaussians gives the combined variance.
+
+  `dropShadow()` is the exception: it depends on the alpha silhouette at its
+  point in the chain, so folding it in with the rest would be wrong rather than
+  approximate. It is reported, logged once per view that asks, and the rest of
+  the list still applies -- which is what stops one unsupported function taking a
+  whole style with it. Doing it properly means a shadow node or layer *inside*
+  the filter stack, in list order, which is the one case where the collapsing
+  above does not hold.
+
+  **GTK is checked against a rendered pixel, which is new here.** GSK's
+  colour-matrix node applies `transpose(matrix) * pixel + offset` to
+  unpremultiplied colour, and a transposed matrix changes every channel quietly:
+  a node-counting test passes and the colours are wrong. So the GTK suite gained
+  a twenty-line `renderedPixel` helper -- `gsk_renderer_realize` takes a NULL
+  surface, so a node tree can be rasterised with no window at all, preferring
+  the GL renderer a real app uses and falling back to cairo -- and the test
+  asserts that grayscale(1) of (1, 0.5, 0) comes out 145 in all three channels.
+  Sabotaging the transpose gives 81, 255, 28. That helper is there for the next
+  prop that needs a colour rather than a node.
+
+  **AppKit is `CALayer.filters`, which is one of the few places macOS does better
+  than React Native's own iOS half**: Core Image filters on a layer are public
+  API here and private there, so iOS builds a SwiftUI wrapper and a
+  multiply-blend layer to approximate what this sets directly. `renderInContext:`
+  draws no filters, as it draws no shadows, so the tests assert what each
+  `CIFilter` was handed -- the matrix row by row, which is what a column-wise
+  hand-off would get wrong.
+
+  Eleven tests in core against the spec's numbers, four on GTK, five on AppKit,
+  and a scenario that reads the matrix's effect on a probe colour out of the dump
+  on both hosts: `grayscale(1) brightness(1.2)` of (1, 0.5, 0.25) is 0.588 * 1.2,
+  which is #b4b4b4, and the failure message says what #969696 and #a4a4a4 would
+  mean. The AppKit test for taking a filter away found a real bug on the way: a
+  list of nothing but `opacity()` leaves no Core Image filter behind, so the
+  early return left the view at a quarter of its opacity for good.

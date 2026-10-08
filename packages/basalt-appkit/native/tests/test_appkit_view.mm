@@ -7,6 +7,8 @@
 
 #include "TestHarness.h"
 
+#include "Filters.h"
+
 #import "RnAppKitView.h"
 
 #include <sstream>
@@ -357,5 +359,138 @@ TEST(cursor_is_reported_in_the_tree) {
     // asked for, and the two hosts' trees have to match whatever each can draw.
     [view setRnCursorName:@"wait"];
     EXPECT([[view describeTree] containsString:@"cursor=wait"]);
+  }
+}
+
+// `filter`: the CSS filter functions, as Core Image filters on the layer.
+//
+// `CALayer.filters` is public on macOS and private on iOS, which is why React
+// Native's own iOS half builds a SwiftUI wrapper and a multiply-blend layer to
+// approximate what this sets directly. What is asserted is what each filter was
+// handed: a filter, like a shadow, is composited by Core Animation, and
+// `renderInContext:` draws neither -- measured earlier on a bare layer. The GTK
+// side has the render tree and checks a rendered pixel instead; the arithmetic
+// they share is tested in core.
+namespace {
+
+RnAppKitFilters resolvedFilters(const std::vector<facebook::react::FilterFunction> &functions) {
+  const basalt::ResolvedFilters resolved = basalt::resolveFilters(functions);
+  RnAppKitFilters filters{};
+  filters.hasMatrix = resolved.hasMatrix;
+  for (int i = 0; i < 16; i++) {
+    filters.matrix[i] = resolved.matrix.m[i];
+  }
+  for (int i = 0; i < 4; i++) {
+    filters.offset[i] = resolved.matrix.offset[i];
+  }
+  filters.blurRadius = resolved.blurRadius;
+  filters.opacity = resolved.opacity;
+  return filters;
+}
+
+facebook::react::FilterFunction filterFunction(facebook::react::FilterType type, double amount) {
+  facebook::react::FilterFunction function;
+  function.type = type;
+  function.parameters = static_cast<facebook::react::Float>(amount);
+  return function;
+}
+
+} // namespace
+
+TEST(filter_a_colour_matrix_reaches_core_image_row_by_row) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    EXPECT_EQ((long)view.rnFilters.count, 0L);
+
+    using facebook::react::FilterType;
+    const RnAppKitFilters filters = resolvedFilters({filterFunction(FilterType::Grayscale, 1.0)});
+    [view setRnFilters:&filters];
+
+    EXPECT_EQ((long)view.rnFilters.count, 1L);
+    CIFilter *matrix = view.rnFilters.firstObject;
+    EXPECT([matrix.name isEqualToString:@"CIColorMatrix"]);
+
+    // The red output's weights are the luminance weights, which is what
+    // grayscale(1) means -- and they are a *row* of the matrix, so a column-wise
+    // hand-off would put 0.2126 in all three vectors' X instead.
+    CIVector *red = [matrix valueForKey:@"inputRVector"];
+    EXPECT_NEAR((int)(red.X * 1000), 213, 2);
+    EXPECT_NEAR((int)(red.Y * 1000), 715, 2);
+    EXPECT_NEAR((int)(red.Z * 1000), 72, 2);
+    // Alpha is left alone.
+    CIVector *alpha = [matrix valueForKey:@"inputAVector"];
+    EXPECT_NEAR((int)alpha.W, 1, 0);
+  }
+}
+
+// invert(1) is a scale and a translate, and the translate is the half a
+// matrix-only hand-off drops.
+TEST(filter_an_offset_reaches_core_image_as_the_bias) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    using facebook::react::FilterType;
+    const RnAppKitFilters filters = resolvedFilters({filterFunction(FilterType::Invert, 1.0)});
+    [view setRnFilters:&filters];
+
+    CIFilter *matrix = view.rnFilters.firstObject;
+    CIVector *bias = [matrix valueForKey:@"inputBiasVector"];
+    EXPECT_NEAR((int)(bias.X * 100), 100, 1);
+    EXPECT_NEAR((int)(bias.Y * 100), 100, 1);
+    EXPECT_NEAR((int)(bias.Z * 100), 100, 1);
+    // And the scale is -1, so black comes out white rather than staying black.
+    CIVector *red = [matrix valueForKey:@"inputRVector"];
+    EXPECT_NEAR((int)(red.X * 100), -100, 1);
+  }
+}
+
+TEST(filter_a_blur_becomes_a_gaussian_of_half_the_radius) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    using facebook::react::FilterType;
+    const RnAppKitFilters filters = resolvedFilters({filterFunction(FilterType::Blur, 8.0)});
+    [view setRnFilters:&filters];
+
+    EXPECT_EQ((long)view.rnFilters.count, 1L);
+    CIFilter *blur = view.rnFilters.firstObject;
+    EXPECT([blur.name isEqualToString:@"CIGaussianBlur"]);
+    EXPECT_NEAR([[blur valueForKey:@"inputRadius"] intValue], 4, 0);
+  }
+}
+
+// `opacity()` is the layer's own opacity rather than a filter pass, which is
+// cheaper and is what the GTK side does with its opacity node. It multiplies the
+// view's own opacity, CSS letting an app ask in both places.
+TEST(filter_opacity_multiplies_the_views_own) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnOpacity:0.5];
+    using facebook::react::FilterType;
+    const RnAppKitFilters filters = resolvedFilters({filterFunction(FilterType::Opacity, 0.5)});
+    [view setRnFilters:&filters];
+
+    EXPECT_EQ((long)view.rnFilters.count, 0L);
+    EXPECT_NEAR((int)(view.layer.opacity * 100), 25, 1);
+
+    // And taken away again, which puts the view's own opacity back rather than
+    // leaving it at a quarter.
+    [view setRnFilters:nullptr];
+    EXPECT_NEAR((int)(view.layer.opacity * 100), 50, 1);
+  }
+}
+
+TEST(filter_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    EXPECT(![[view describeTree] containsString:@"filter="]);
+
+    using facebook::react::FilterType;
+    const RnAppKitFilters filters = resolvedFilters(
+        {filterFunction(FilterType::Grayscale, 1.0), filterFunction(FilterType::Blur, 8.0)});
+    [view setRnFilters:&filters];
+
+    // Spelled as GTK spells it, probe colour and all: (1, 0.5, 0.25) greyed is
+    // 0.588, which is 0x96 in every channel.
+    const std::string described = [view describeTree].UTF8String;
+    EXPECT(described.find("filter=(probe=#969696ff,blur=8)") != std::string::npos);
   }
 }

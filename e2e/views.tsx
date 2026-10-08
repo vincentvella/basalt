@@ -111,6 +111,16 @@ const styles = StyleSheet.create({
     height: 40,
     backgroundImage: 'linear-gradient(135deg, #4d8cf2 0%, #e0484d 100%)',
   },
+  // filter: a CSS filter list, which both hosts resolve through the same shared
+  // arithmetic and then hand to a colour-matrix node or a Core Image filter.
+  // Two functions, because a list is one matrix and the composition is the part
+  // worth proving crosses the seam.
+  filtered: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#4d8cf2',
+    filter: 'grayscale(1) brightness(1.2)',
+  },
   // boxShadow, the other prop that only a dump can confirm. Two shadows and an
   // inset one, because the list and the inset flag are each a thing a host can
   // drop while still drawing something plausible.
@@ -145,6 +155,7 @@ function App() {
         <View style={styles.dot} />
         <View style={styles.dashed} />
         <View style={styles.dotted} />
+        <View style={styles.filtered} />
         <View style={styles.gradient} />
         <View style={styles.shadowed} />
         <View style={styles.handy} />

@@ -28,6 +28,7 @@
 #import <Cocoa/Cocoa.h>
 // For CALayer, which `boxShadow` is made of: Cocoa declares the view and
 // QuartzCore the layers under it.
+#import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -360,6 +361,37 @@ typedef struct {
 // `shadowPath`, `shadowRadius` and `mask` are the whole feature, and they are
 // what macOS composites rather than anything this code draws.
 @property(nonatomic, readonly) NSArray<CALayer *> *rnBoxShadowLayers;
+
+// `filter`, already resolved: the colour matrix the list comes to, one blur
+// radius and one opacity. See core/Filters.h, which is shared with the GTK host
+// and does the arithmetic the Filter Effects spec specifies.
+//
+// `matrix` is row-major in R, G, B, A order and `offset` is added after it, both
+// in straight colour, which is what CIColorMatrix takes. `blurRadius` is CSS's
+// radius, twice the gaussian's sigma. `opacity` is 1 when the list has no
+// `opacity()`.
+typedef struct {
+  bool hasMatrix;
+  CGFloat matrix[16];
+  CGFloat offset[4];
+  CGFloat blurRadius;
+  CGFloat opacity;
+} RnAppKitFilters;
+
+// `filter`. Pass NULL for none.
+//
+// Applies to this view and everything inside it, which is what CSS does.
+// `CALayer.filters` is the mechanism and is the reason this is one of the few
+// props macOS does better than React Native's own iOS half: Core Image filters
+// on a layer are public API here and private there, so iOS builds a SwiftUI
+// wrapper and a multiply-blend layer to approximate what this sets directly.
+- (void)setRnFilters:(nullable const RnAppKitFilters *)filters;
+
+// The Core Image filters the layer is carrying, for the tests: a shadow or a
+// filter is composited by Core Animation and `renderInContext:` draws neither,
+// so what each filter was given is the observable half here. The GTK side has
+// the render tree and checks a pixel.
+@property(nonatomic, readonly) NSArray<CIFilter *> *rnFilters;
 
 // `hitSlop`: how far outside its own box this view answers a press, in the order
 // top, right, bottom, left -- the order CSS names edges and the order the border

@@ -4082,6 +4082,62 @@ def test_accessibility_live_region(bundle: Path) -> None:
         )
 
 
+def test_filter(bundle: Path) -> None:
+    """A `filter` list reaches the view, composed.
+
+    The dump carries what the filter's colour matrix makes of one probe colour,
+    (1, 0.5, 0.25), rather than sixteen numbers per view. That is what makes this
+    an assertion about arithmetic and not only about plumbing: e2e/views.tsx asks
+    for `grayscale(1) brightness(1.2)`, so the probe's luminance is
+    0.2126 + 0.5*0.7152 + 0.25*0.0722 = 0.588, and 1.2 of that is 0.7056, which
+    is 0xb4. A host that dropped the second function reports #969696, one that
+    used the older luminance weights reports #a4a4a4, and one that transposed the
+    matrix reports three different channels.
+
+    Both hosts resolve the list through the same shared code, so the two trees
+    agreeing on this line is what says neither did its own arithmetic.
+
+    Windows draws no filters yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D is given no filter list yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "filter=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a filter; the app sets one.\n{tree}"
+        )
+    if "filter=(probe=#b4b4b4ff)" not in carrying[0]:
+        raise Failure(
+            "the filter's matrix is not what grayscale(1) brightness(1.2) comes "
+            "to. #969696 is the second function dropped, #a4a4a4 is the older "
+            "luminance weights, and three different channels is a transposed "
+            f"matrix.\n{carrying[0]}"
+        )
+
+
 def test_cursor_style(bundle: Path) -> None:
     """The `cursor` style property reaches the view.
 
@@ -5469,6 +5525,7 @@ SCENARIOS = [
     ("the cursor style property reaches the view", test_cursor_style),
     ("boxShadow reaches the view, inset and all", test_box_shadow),
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
+    ("a filter list reaches the view, composed", test_filter),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),
     ("a window reports its own size, and the state changes that are not resizes",

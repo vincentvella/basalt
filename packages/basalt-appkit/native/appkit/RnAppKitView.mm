@@ -429,6 +429,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   BOOL _hasBackgroundColor;
   CGFloat _backgroundComponents[4];
   CGFloat _opacity;
+  // The `opacity()` out of the filter list, 1 when there is none.
+  CGFloat _filterOpacity;
   BOOL _clipsChildren;
   CGFloat _cornerRadius;
   // Eight floats: a horizontal and a vertical radius per corner, in the order
@@ -442,6 +444,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // Four RGBA quadruples, in the same edge order.
   CGFloat _borderColors[16];
   BOOL _hasBorders;
+  // The resolved `filter`, as the Core Image filters it became, or nil.
+  NSArray<CIFilter *> *_filters;
   // `hitSlop`, top, right, bottom, left. Read only by the hit test.
   CGFloat _hitSlop[4];
   BOOL _hasHitSlop;
@@ -489,6 +493,7 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   self = [super initWithFrame:frame];
   if (self != nil) {
     _opacity = 1.0;
+    _filterOpacity = 1.0;
     _imageFit = RnAppKitImageFitCover;
     _transform = CATransform3DIdentity;
     // Layer-backed from the start rather than on demand: a view that acquires a
@@ -1334,7 +1339,13 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
 
 - (void)setRnOpacity:(CGFloat)opacity {
   _opacity = opacity;
-  self.layer.opacity = (float)opacity;
+  [self rnApplyOpacity];
+}
+
+// The view's own opacity and any `opacity()` in its filter list, which CSS lets
+// an app ask for in both places at once.
+- (void)rnApplyOpacity {
+  self.layer.opacity = (float)(_opacity * _filterOpacity);
 }
 
 - (void)setRnHidesBackFace:(BOOL)hides {
@@ -1953,6 +1964,65 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   }
 }
 
+- (void)setRnFilters:(const RnAppKitFilters *)filters {
+  if (filters == nullptr) {
+    // Both halves have to come off. A filter list of nothing but `opacity()`
+    // leaves no Core Image filter behind, so an early return on `_filters`
+    // alone would keep the view at a quarter of its opacity for good -- which
+    // is what the test for taking a filter away caught.
+    if (_filters == nil && _filterOpacity == 1) {
+      return;
+    }
+    _filters = nil;
+    self.layer.filters = nil;
+    _filterOpacity = 1;
+    [self rnApplyOpacity];
+    return;
+  }
+
+  NSMutableArray<CIFilter *> *built = [NSMutableArray array];
+  if (filters->hasMatrix) {
+    // CIColorMatrix takes the matrix as four input vectors, one per *output*
+    // channel's weights, plus a bias -- which is this matrix row by row.
+    CIFilter *matrix = [CIFilter filterWithName:@"CIColorMatrix"];
+    const auto row = [filters](int index) {
+      return [CIVector vectorWithX:filters->matrix[index * 4 + 0]
+                                Y:filters->matrix[index * 4 + 1]
+                                Z:filters->matrix[index * 4 + 2]
+                                W:filters->matrix[index * 4 + 3]];
+    };
+    [matrix setValue:row(0) forKey:@"inputRVector"];
+    [matrix setValue:row(1) forKey:@"inputGVector"];
+    [matrix setValue:row(2) forKey:@"inputBVector"];
+    [matrix setValue:row(3) forKey:@"inputAVector"];
+    [matrix setValue:[CIVector vectorWithX:filters->offset[0]
+                                         Y:filters->offset[1]
+                                         Z:filters->offset[2]
+                                         W:filters->offset[3]]
+              forKey:@"inputBiasVector"];
+    [built addObject:matrix];
+  }
+  if (filters->blurRadius > 0) {
+    CIFilter *blur = [CIFilter filterWithName:@"CIGaussianBlur"];
+    // Sigma is half the radius, the same conversion the image blur and the box
+    // shadows use.
+    [blur setValue:@(filters->blurRadius / 2) forKey:@"inputRadius"];
+    [built addObject:blur];
+  }
+  _filters = built.count > 0 ? built : nil;
+  self.layer.filters = _filters;
+
+  // `opacity()` is not a Core Image filter here: it multiplies the view's own
+  // opacity, which is a layer property and cheaper than a filter pass. The GTK
+  // side folds it into its opacity node for the same reason.
+  _filterOpacity = filters->opacity;
+  [self rnApplyOpacity];
+}
+
+- (NSArray<CIFilter *> *)rnFilters {
+  return _filters != nil ? _filters : @[];
+}
+
 - (void)setRnHitSlop:(const CGFloat *)insets {
   BOOL any = NO;
   for (int edge = 0; edge < 4; edge++) {
@@ -2159,6 +2229,47 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   if (_cursorName != nil) {
     [out appendFormat:@" cursor=%@", _cursorName];
   }
+  // `filter`, as the pieces it came to plus what its matrix makes of one probe
+  // colour, spelled exactly as GTK spells it: sixteen numbers would drown the
+  // line, and one colour still fails when a matrix is wrong. The probe is
+  // (1, 0.5, 0.25) so no two channels can be swapped unnoticed.
+  if (_filters != nil || _filterOpacity < 1) {
+    [out appendString:@" filter=("];
+    BOOL first = YES;
+    for (CIFilter *filter in _filters) {
+      if ([filter.name isEqualToString:@"CIColorMatrix"]) {
+        const CGFloat probe[4] = {1.0, 0.5, 0.25, 1.0};
+        CGFloat result[4] = {0, 0, 0, 0};
+        NSArray<NSString *> *keys =
+            @[ @"inputRVector", @"inputGVector", @"inputBVector", @"inputAVector" ];
+        CIVector *bias = [filter valueForKey:@"inputBiasVector"];
+        for (int row = 0; row < 4; row++) {
+          CIVector *weights = [filter valueForKey:keys[(NSUInteger)row]];
+          result[row] = [bias valueAtIndex:(size_t)row] + weights.X * probe[0] +
+                        weights.Y * probe[1] + weights.Z * probe[2] + weights.W * probe[3];
+        }
+        const auto byte = [](CGFloat value) {
+          const CGFloat clamped = value < 0 ? 0 : (value > 1 ? 1 : value);
+          return (unsigned)(clamped * 255.0 + 0.5);
+        };
+        [out appendFormat:@"probe=#%02x%02x%02x%02x",
+                          byte(result[0]),
+                          byte(result[1]),
+                          byte(result[2]),
+                          byte(result[3])];
+        first = NO;
+      } else if ([filter.name isEqualToString:@"CIGaussianBlur"]) {
+        const double sigma = [[filter valueForKey:@"inputRadius"] doubleValue];
+        [out appendFormat:@"%sblur=%g", first ? "" : ",", sigma * 2.0];
+        first = NO;
+      }
+    }
+    if (_filterOpacity < 1) {
+      [out appendFormat:@"%sopacity=%g", first ? "" : ",", (double)_filterOpacity];
+    }
+    [out appendString:@")"];
+  }
+
   // `hitSlop`, which is invisible in every other line of this dump: a view with
   // a bigger target is drawn exactly like one without.
   if (_hasHitSlop) {

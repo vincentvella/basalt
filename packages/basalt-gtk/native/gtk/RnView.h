@@ -127,6 +127,28 @@ void rn_view_set_box_shadows(RnView *self, const RnBoxShadow *shadows, int count
 // How many are set, for the tests and the tree dump.
 int rn_view_get_box_shadow_count(RnView *self);
 
+// `filter`, already resolved: the colour matrix the list comes to, one blur
+// radius and one opacity. See core/Filters.h, which is shared with the AppKit
+// host and does the arithmetic the Filter Effects spec specifies.
+//
+// `matrix` is row-major in R, G, B, A order and `offset` is added after it, both
+// in straight (unpremultiplied) colour, which is the space GSK's colour-matrix
+// node works in. `blur_radius` is CSS's radius, twice the gaussian's sigma.
+// `opacity` is 1 when the list has no `opacity()`.
+typedef struct {
+  gboolean has_matrix;
+  float matrix[16];
+  float offset[4];
+  float blur_radius;
+  float opacity;
+} RnFilters;
+
+// `filter`. Pass NULL for none.
+//
+// Applies to this view and everything inside it, which is what CSS does and what
+// makes it a layer rather than a paint: the nodes wrap the whole subtree.
+void rn_view_set_filters(RnView *self, const RnFilters *filters);
+
 // `hitSlop`: how far outside its own box this view answers a press, in the order
 // top, right, bottom, left -- the order CSS names edges and the order the border
 // widths arrive in. NULL or all zeroes is no slop.

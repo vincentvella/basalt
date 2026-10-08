@@ -7,6 +7,7 @@
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
 #include "CursorNames.h"
+#include "Filters.h"
 #include "Gradients.h"
 #include "UIManagerAccess.h"
 #include "PangoTextLayout.h"
@@ -1248,6 +1249,37 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
       });
     }
     rn_view_set_box_shadows(view, shadows.data(), static_cast<int>(shadows.size()));
+  }
+
+  // filter. The arithmetic is core/Filters.h's and is shared with the AppKit
+  // host: the list of CSS functions comes to one colour matrix, one blur and one
+  // opacity, and the widget layer pushes a node for each.
+  //
+  // A dropShadow() in the list is reported rather than applied -- it is the one
+  // function that does not commute with the others, so folding it in with them
+  // would be wrong rather than approximate. Logged once per view that asks,
+  // because silence here looks like a working filter.
+  {
+    const basalt::ResolvedFilters resolved = basalt::resolveFilters(props->filter);
+    if (resolved.empty()) {
+      rn_view_set_filters(view, nullptr);
+    } else {
+      RnFilters filters{};
+      filters.has_matrix = resolved.hasMatrix ? TRUE : FALSE;
+      for (int i = 0; i < 16; i++) {
+        filters.matrix[i] = resolved.matrix.m[i];
+      }
+      for (int i = 0; i < 4; i++) {
+        filters.offset[i] = resolved.matrix.offset[i];
+      }
+      filters.blur_radius = resolved.blurRadius;
+      filters.opacity = resolved.opacity;
+      rn_view_set_filters(view, &filters);
+    }
+    if (resolved.hasDropShadow) {
+      LOG(WARNING) << "filter: dropShadow() is not applied on this platform; "
+                   << "the rest of the filter list is";
+    }
   }
 
   // hitSlop, which grows what a press can land on without moving a pixel. The

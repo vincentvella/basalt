@@ -8,11 +8,13 @@
 
 #include "TestHarness.h"
 
+#include "Filters.h"
 #include "RnView.h"
 
 #include <cmath>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -31,6 +33,68 @@ GskRenderNode *paintedNode(RnView *view) {
   GtkSnapshot *snapshot = gtk_snapshot_new();
   GTK_WIDGET_GET_CLASS(GTK_WIDGET(view))->snapshot(GTK_WIDGET(view), snapshot);
   return gtk_snapshot_free_to_node(snapshot);
+}
+
+// One pixel of what a view actually paints, rendered rather than inspected.
+//
+// New here, and worth the twenty lines: every other test in this file asks which
+// nodes a view produced, which is the right question for "is there a blur" and
+// the wrong one for "is this the right colour". A colour matrix is sixteen
+// numbers and a transpose, and the only honest check is a pixel.
+//
+// GSK can render a node tree with no window at all -- `gsk_renderer_realize`
+// takes a NULL surface -- and the GL renderer is what a real app uses, so that
+// is the one asked. The cairo renderer is the fallback for a machine with no GL,
+// which CI's Linux may well be; a colour matrix is exact in both.
+struct Pixel {
+  int red;
+  int green;
+  int blue;
+  int alpha;
+};
+
+Pixel renderedPixel(RnView *view, int width, int height, int x, int y) {
+  GskRenderNode *node = paintedNode(view);
+  if (node == nullptr) {
+    return Pixel{-1, -1, -1, -1};
+  }
+
+  GskRenderer *renderer = gsk_gl_renderer_new();
+  if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
+    g_object_unref(renderer);
+    renderer = gsk_cairo_renderer_new();
+    if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
+      g_object_unref(renderer);
+      gsk_render_node_unref(node);
+      return Pixel{-1, -1, -1, -1};
+    }
+  }
+
+  // Not GRAPHENE_RECT_INIT, which is a C99 compound literal and so rejected here
+  // -- the same note rn_view_snapshot carries about GRAPHENE_SIZE_INIT.
+  graphene_rect_t viewport;
+  graphene_rect_init(
+      &viewport, 0.0F, 0.0F, static_cast<float>(width), static_cast<float>(height));
+  GdkTexture *texture = gsk_renderer_render_texture(renderer, node, &viewport);
+  const gsize stride = static_cast<gsize>(width) * 4;
+  std::vector<guchar> pixels(stride * static_cast<gsize>(height));
+  gdk_texture_download(texture, pixels.data(), stride);
+
+  const gsize at = static_cast<gsize>(y) * stride + static_cast<gsize>(x) * 4;
+  // `gdk_texture_download` writes premultiplied BGRA in native byte order, which
+  // is little-endian on everything this runs on.
+  const int alpha = pixels[at + 3];
+  const auto straight = [alpha](int value) {
+    return alpha == 0 ? 0 : static_cast<int>(value * 255.0 / alpha + 0.5);
+  };
+  const Pixel pixel{straight(pixels[at + 2]), straight(pixels[at + 1]), straight(pixels[at + 0]),
+                    alpha};
+
+  g_object_unref(texture);
+  gsk_renderer_unrealize(renderer);
+  g_object_unref(renderer);
+  gsk_render_node_unref(node);
+  return pixel;
 }
 
 // How many clip nodes are anywhere in that tree. Counted rather than located,
@@ -1330,5 +1394,182 @@ TEST(collected_text_is_every_paragraph_in_the_subtree) {
   g_object_unref(two);
   g_object_unref(context);
   g_object_unref(empty);
+  g_object_unref(view);
+}
+
+// `filter`: the colour matrix, the blur and the opacity a list of CSS filter
+// functions comes to.
+//
+// Against a rendered pixel, not a node count. The arithmetic is core's and is
+// tested there against the spec's numbers; what is left to get wrong here is
+// handing GSK the matrix the wrong way round, which a transposed matrix does
+// quietly -- every channel still changes, so a node-counting test passes and the
+// colours are wrong.
+
+TEST(a_filter_matrix_reaches_gsk_the_right_way_round) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 20.0F, 20.0F);
+  layout(view, 20, 20);
+
+  // An asymmetric colour, so a transposed matrix cannot pass: red full, green
+  // half, blue off.
+  const GdkRGBA colour{1.0F, 0.5F, 0.0F, 1.0F};
+  rn_view_set_background_color(view, TRUE, &colour);
+
+  const Pixel before = renderedPixel(view, 20, 20, 10, 10);
+  EXPECT_NEAR(before.red, 255, 2);
+  EXPECT_NEAR(before.green, 128, 3);
+  EXPECT_NEAR(before.blue, 0, 2);
+
+  // grayscale(1): every channel becomes the luminance, 0.2126r + 0.7152g +
+  // 0.0722b, which for this colour is 0.2126 + 0.3576 = 0.570 -> 145.
+  const auto resolved = basalt::resolveFilters(
+      {[]() {
+        facebook::react::FilterFunction function;
+        function.type = facebook::react::FilterType::Grayscale;
+        function.parameters = static_cast<facebook::react::Float>(1.0);
+        return function;
+      }()});
+  RnFilters filters{};
+  filters.has_matrix = resolved.matrix.isIdentity() ? FALSE : TRUE;
+  for (int i = 0; i < 16; i++) {
+    filters.matrix[i] = resolved.matrix.m[i];
+  }
+  for (int i = 0; i < 4; i++) {
+    filters.offset[i] = resolved.matrix.offset[i];
+  }
+  filters.blur_radius = resolved.blurRadius;
+  filters.opacity = resolved.opacity;
+  rn_view_set_filters(view, &filters);
+
+  const Pixel grey = renderedPixel(view, 20, 20, 10, 10);
+  EXPECT_NEAR(grey.red, 145, 3);
+  EXPECT_NEAR(grey.green, 145, 3);
+  EXPECT_NEAR(grey.blue, 145, 3);
+  // The same in all three, which is what being grey means and what a transposed
+  // matrix would not give.
+  EXPECT(std::abs(grey.red - grey.blue) <= 2);
+  EXPECT_NEAR(grey.alpha, 255, 2);
+
+  // And taken away again.
+  rn_view_set_filters(view, nullptr);
+  const Pixel back = renderedPixel(view, 20, 20, 10, 10);
+  EXPECT_NEAR(back.red, 255, 2);
+  EXPECT_NEAR(back.blue, 0, 2);
+
+  g_object_unref(view);
+}
+
+// An offset is the other half of the affine map, and the one a matrix-only
+// implementation drops: invert(1) is a scale of -1 *and* a translate of 1.
+TEST(a_filter_offset_reaches_gsk_too) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 20.0F, 20.0F);
+  layout(view, 20, 20);
+
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_background_color(view, TRUE, &black);
+
+  facebook::react::FilterFunction invert;
+  invert.type = facebook::react::FilterType::Invert;
+  invert.parameters = static_cast<facebook::react::Float>(1.0);
+  const auto resolved = basalt::resolveFilters({invert});
+
+  RnFilters filters{};
+  filters.has_matrix = TRUE;
+  for (int i = 0; i < 16; i++) {
+    filters.matrix[i] = resolved.matrix.m[i];
+  }
+  for (int i = 0; i < 4; i++) {
+    filters.offset[i] = resolved.matrix.offset[i];
+  }
+  filters.opacity = 1.0F;
+  rn_view_set_filters(view, &filters);
+
+  // Black inverted is white. Without the offset it would still be black.
+  const Pixel inverted = renderedPixel(view, 20, 20, 10, 10);
+  EXPECT_NEAR(inverted.red, 255, 2);
+  EXPECT_NEAR(inverted.green, 255, 2);
+  EXPECT_NEAR(inverted.blue, 255, 2);
+
+  g_object_unref(view);
+}
+
+// The other two parts are nodes rather than numbers, so these are counted: a
+// blur node and an opacity node around the whole subtree.
+TEST(a_filter_blur_and_opacity_are_nodes_around_everything) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 40.0F, 40.0F);
+  layout(view, 40, 40);
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_background_color(view, TRUE, &red);
+
+  GskRenderNode *plain = paintedNode(view);
+  EXPECT_EQ(blurNodesIn(plain), 0);
+
+  RnFilters filters{};
+  filters.blur_radius = 8.0F;
+  filters.opacity = 0.5F;
+  rn_view_set_filters(view, &filters);
+
+  GskRenderNode *filtered = paintedNode(view);
+  EXPECT_EQ(blurNodesIn(filtered), 1);
+  // The opacity is the outermost node, which is what makes it apply to the
+  // children too rather than to this view's own paint.
+  EXPECT_EQ(static_cast<int>(gsk_render_node_get_node_type(filtered)), GSK_OPACITY_NODE);
+  EXPECT_NEAR((int)(gsk_opacity_node_get_opacity(filtered) * 100), 50, 1);
+
+  if (plain != nullptr) {
+    gsk_render_node_unref(plain);
+  }
+  if (filtered != nullptr) {
+    gsk_render_node_unref(filtered);
+  }
+  g_object_unref(view);
+}
+
+// And the filter is in the tree dump, as the pieces it came to plus what its
+// matrix makes of a probe colour -- which is how a wrong matrix shows up in a
+// cross-host diff without printing sixteen numbers per view.
+TEST(a_filter_is_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 20.0F, 20.0F);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string none(text);
+  g_free(text);
+  EXPECT(none.find("filter=") == std::string::npos);
+
+  facebook::react::FilterFunction grayscale;
+  grayscale.type = facebook::react::FilterType::Grayscale;
+  grayscale.parameters = static_cast<facebook::react::Float>(1.0);
+  facebook::react::FilterFunction blur;
+  blur.type = facebook::react::FilterType::Blur;
+  blur.parameters = static_cast<facebook::react::Float>(8.0);
+  const auto resolved = basalt::resolveFilters({grayscale, blur});
+
+  RnFilters filters{};
+  filters.has_matrix = TRUE;
+  for (int i = 0; i < 16; i++) {
+    filters.matrix[i] = resolved.matrix.m[i];
+  }
+  for (int i = 0; i < 4; i++) {
+    filters.offset[i] = resolved.matrix.offset[i];
+  }
+  filters.blur_radius = resolved.blurRadius;
+  filters.opacity = resolved.opacity;
+  rn_view_set_filters(view, &filters);
+
+  text = rn_view_describe_tree(view);
+  const std::string dumped(text);
+  g_free(text);
+  // The probe is (1, 0.5, 0.25): greyed, that is 0.2126 + 0.3576 + 0.018 =
+  // 0.588, which is 0x96 in all three channels.
+  EXPECT(dumped.find("filter=(probe=#969696ff,blur=8)") != std::string::npos);
+
   g_object_unref(view);
 }

@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (11):**
+**Open (12):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -17,6 +17,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 10. `accessibilityLabelledBy` sets no relation
 11. `hitSlop` is not part of the hit test
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
+13. `filter` is not applied
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -257,3 +258,12 @@ and none of it is a missing half.
   macOS posts `NSAccessibilityAnnouncementRequested`. The host would also need to
   collect a region's text, which the other two do by walking the subtree for
   paragraphs. The end-to-end scenario is skipped here by name.
+
+- **`filter` is not applied.** The arithmetic is done and shared:
+  `core/Filters.h` turns a CSS filter list into one colour matrix, one blur
+  radius and one opacity, with the Filter Effects spec's own numbers and eleven
+  tests against them. Direct2D has the pieces to spend them on --
+  `CLSID_D2D1ColorMatrix` takes a 5x4 matrix in exactly this shape, and
+  `CLSID_D2D1GaussianBlur` the blur -- so this host needs an effect graph over
+  the view's layer rather than any new maths. The end-to-end scenario is skipped
+  here by name.

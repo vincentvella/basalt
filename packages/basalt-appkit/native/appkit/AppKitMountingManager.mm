@@ -7,6 +7,7 @@
 
 #include "ComponentRegistry.h"
 #include "CursorNames.h"
+#include "Filters.h"
 #include "Gradients.h"
 #include "ExpoImageComponent.h"
 #ifdef BASALT_HAS_SKIA
@@ -955,6 +956,36 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       shadows.push_back(converted);
     }
     [view setRnBoxShadows:shadows.data() count:(NSInteger)shadows.size()];
+  }
+
+  // filter. The arithmetic is core/Filters.h's and is shared with the GTK host:
+  // the list of CSS functions comes to one colour matrix, one blur and one
+  // opacity, and the view layer turns the first two into Core Image filters.
+  //
+  // A dropShadow() in the list is reported rather than applied -- it is the one
+  // function that does not commute with the others. Logged once per view that
+  // asks, because silence here looks like a working filter.
+  {
+    const basalt::ResolvedFilters resolved = basalt::resolveFilters(props->filter);
+    if (resolved.empty()) {
+      [view setRnFilters:nullptr];
+    } else {
+      RnAppKitFilters filters{};
+      filters.hasMatrix = resolved.hasMatrix;
+      for (int i = 0; i < 16; i++) {
+        filters.matrix[i] = resolved.matrix.m[i];
+      }
+      for (int i = 0; i < 4; i++) {
+        filters.offset[i] = resolved.matrix.offset[i];
+      }
+      filters.blurRadius = resolved.blurRadius;
+      filters.opacity = resolved.opacity;
+      [view setRnFilters:&filters];
+    }
+    if (resolved.hasDropShadow) {
+      LOG(WARNING) << "filter: dropShadow() is not applied on this platform; "
+                   << "the rest of the filter list is";
+    }
   }
 
   // hitSlop, which grows what a press can land on without moving a pixel.

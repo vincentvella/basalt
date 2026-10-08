@@ -195,6 +195,9 @@ struct _RnView {
   graphene_size_t border_radii[4];
   gboolean has_border_radii;
   float border_widths[4];
+  // The resolved `filter`, and whether there is one at all.
+  RnFilters filters;
+  gboolean has_filters;
   // `hitSlop`, top, right, bottom, left. Read only by rn_view_contains.
   float hit_slop[4];
   gboolean has_hit_slop;
@@ -298,9 +301,44 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   const int width = gtk_widget_get_width(widget);
   const int height = gtk_widget_get_height(widget);
 
-  const gboolean needs_opacity_layer = self->opacity < 1.0;
+  // `filter`'s own opacity() multiplies the view's: CSS has two ways to ask for
+  // the same thing and an app can use both.
+  const double filter_opacity = self->has_filters ? self->filters.opacity : 1.0;
+  const double effective_opacity = self->opacity * filter_opacity;
+  const gboolean needs_opacity_layer = effective_opacity < 1.0;
   if (needs_opacity_layer) {
-    gtk_snapshot_push_opacity(snapshot, self->opacity);
+    gtk_snapshot_push_opacity(snapshot, effective_opacity);
+  }
+
+  // The rest of `filter`, wrapping this view and everything inside it, which is
+  // what CSS applies it to. The blur is outside the colour matrix for no reason
+  // that shows: both are linear, so a blurred-then-recoloured image and a
+  // recoloured-then-blurred one are the same picture, which is also why
+  // core/Filters.h is allowed to collapse the list into one of each.
+  const gboolean filter_blurs = self->has_filters && self->filters.blur_radius > 0.0f;
+  const gboolean filter_recolours = self->has_filters && self->filters.has_matrix;
+  if (filter_blurs) {
+    gtk_snapshot_push_blur(snapshot, self->filters.blur_radius);
+  }
+  if (filter_recolours) {
+    // GSK applies `transpose(matrix) * pixel + offset` to unpremultiplied RGBA,
+    // and graphene reads sixteen floats row by row -- so the matrix goes in
+    // transposed, which the rendered-pixel test is what actually pins down.
+    graphene_matrix_t matrix;
+    float transposed[16];
+    for (int row = 0; row < 4; row++) {
+      for (int column = 0; column < 4; column++) {
+        transposed[row * 4 + column] = self->filters.matrix[column * 4 + row];
+      }
+    }
+    graphene_matrix_init_from_float(&matrix, transposed);
+    graphene_vec4_t offset;
+    graphene_vec4_init(&offset,
+                       self->filters.offset[0],
+                       self->filters.offset[1],
+                       self->filters.offset[2],
+                       self->filters.offset[3]);
+    gtk_snapshot_push_color_matrix(snapshot, &matrix, &offset);
   }
 
   graphene_rect_t bounds;
@@ -721,6 +759,12 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     gtk_snapshot_append_border(snapshot, &ring, widths, colors);
   }
 
+  if (filter_recolours) {
+    gtk_snapshot_pop(snapshot);
+  }
+  if (filter_blurs) {
+    gtk_snapshot_pop(snapshot);
+  }
   if (needs_opacity_layer) {
     gtk_snapshot_pop(snapshot);
   }
@@ -819,6 +863,7 @@ static void rn_view_init(RnView *self) {
   }
   self->has_border_radii = FALSE;
   self->has_borders = FALSE;
+  self->has_filters = FALSE;
   self->has_hit_slop = FALSE;
   for (int edge = 0; edge < 4; edge++) {
     self->hit_slop[edge] = 0.0f;
@@ -1548,6 +1593,25 @@ int rn_view_get_box_shadow_count(RnView *self) {
   return self->box_shadows != nullptr ? static_cast<int>(self->box_shadows->len) : 0;
 }
 
+void rn_view_set_filters(RnView *self, const RnFilters *filters) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  if (filters == nullptr) {
+    if (!self->has_filters) {
+      return;
+    }
+    self->has_filters = FALSE;
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+    return;
+  }
+  if (self->has_filters && memcmp(&self->filters, filters, sizeof(RnFilters)) == 0) {
+    return;
+  }
+  self->filters = *filters;
+  self->has_filters = TRUE;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
 void rn_view_set_hit_slop(RnView *self, const float insets[4]) {
   g_return_if_fail(RN_IS_VIEW(self));
 
@@ -1930,6 +1994,47 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   if (self->cursor_name != nullptr) {
     g_string_append_printf(out, " cursor=%s", self->cursor_name);
   }
+  // `filter`, as the pieces it came to plus what its matrix makes of one probe
+  // colour. Sixteen numbers would drown the line; one colour is eight characters
+  // and still fails when a matrix is wrong, which is what the cross-host diff
+  // and the end-to-end run need. The probe is (1, 0.5, 0.25) so that no two
+  // channels can be swapped without the answer changing.
+  if (self->has_filters) {
+    g_string_append(out, " filter=(");
+    gboolean first = TRUE;
+    if (self->filters.has_matrix) {
+      const float probe[4] = {1.0f, 0.5f, 0.25f, 1.0f};
+      float result[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+      for (int row = 0; row < 4; row++) {
+        result[row] = self->filters.offset[row];
+        for (int column = 0; column < 4; column++) {
+          result[row] += self->filters.matrix[row * 4 + column] * probe[column];
+        }
+      }
+      const auto byte = [](float value) {
+        const float clamped = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+        return static_cast<unsigned>(clamped * 255.0f + 0.5f);
+      };
+      g_string_append_printf(out,
+                             "probe=#%02x%02x%02x%02x",
+                             byte(result[0]),
+                             byte(result[1]),
+                             byte(result[2]),
+                             byte(result[3]));
+      first = FALSE;
+    }
+    if (self->filters.blur_radius > 0.0f) {
+      g_string_append_printf(
+          out, "%sblur=%g", first ? "" : ",", static_cast<double>(self->filters.blur_radius));
+      first = FALSE;
+    }
+    if (self->filters.opacity < 1.0f) {
+      g_string_append_printf(
+          out, "%sopacity=%g", first ? "" : ",", static_cast<double>(self->filters.opacity));
+    }
+    g_string_append(out, ")");
+  }
+
   // `hitSlop`, which is invisible in every other line of this dump: a view with
   // a bigger target is drawn exactly like one without.
   if (self->has_hit_slop) {
