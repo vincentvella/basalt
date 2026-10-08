@@ -157,6 +157,15 @@ static CGPathRef RnAppKitCreateRoundedPath(CGRect rect, const CGFloat radii[8]) 
   return path;
 }
 
+// One gradient as the view keeps it: the two points and its own stops. A
+// transition hint turns three stops into eleven, so the lists are different
+// lengths for no reason the caller controls, and each gradient owns its own.
+struct RnAppKitGradientRecord {
+  CGPoint start;
+  CGPoint end;
+  std::vector<RnAppKitGradientStop> stops;
+};
+
 // A corner radius grown by a shadow's spread, which is not just an addition.
 //
 // The CSS spec says so and gives the curve: a corner tighter than the spread is
@@ -432,6 +441,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   BOOL _hasBorders;
   RnAppKitBorderStyle _borderStyle;
   std::vector<RnAppKitBoxShadow> _boxShadows;
+  // The `backgroundImage` gradients, each with its own stops.
+  std::vector<RnAppKitGradientRecord> _gradients;
   NSMutableArray<CALayer *> *_boxShadowLayers;
   NSString *_cursorName;
   NSCursor *_cursor;
@@ -944,11 +955,16 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   (void)dirtyRect;
   const BOOL ring = [self rnShowsFocusRing];
   if (_textLayout == nil && _image == nullptr && !_hasBorders && !ring &&
-      _highlightFilled.empty()) {
+      _highlightFilled.empty() && _gradients.empty()) {
     return;
   }
   CGContextRef context = [NSGraphicsContext currentContext].CGContext;
   const NSSize size = self.bounds.size;
+
+  // The background image, under everything this view draws and over the
+  // background colour, which is a layer property and so is painted below all of
+  // this. That is CSS's order.
+  [self rnDrawGradientsInContext:context size:size];
 
   if (_image != nullptr) {
     const NSRect destination = [self rnImageRectForSize:size];
@@ -1641,6 +1657,100 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   }
 }
 
+- (void)setRnLinearGradients:(const RnAppKitLinearGradient *)gradients count:(NSInteger)count {
+  std::vector<RnAppKitGradientRecord> wanted;
+  if (gradients != nullptr && count > 0) {
+    wanted.reserve((size_t)count);
+    for (NSInteger i = 0; i < count; i++) {
+      RnAppKitGradientRecord record{gradients[i].start, gradients[i].end, {}};
+      if (gradients[i].stops != nullptr && gradients[i].stopCount > 0) {
+        record.stops.assign(gradients[i].stops, gradients[i].stops + gradients[i].stopCount);
+      }
+      wanted.push_back(std::move(record));
+    }
+  }
+
+  // Compared before it is kept, for the reason the shadows are: a view re-sends
+  // identical props on every mutation, and a redraw per mutation is a gradient
+  // rasterised again for nothing.
+  if (wanted.size() == _gradients.size()) {
+    bool same = true;
+    for (size_t i = 0; i < wanted.size() && same; i++) {
+      same = CGPointEqualToPoint(wanted[i].start, _gradients[i].start) &&
+             CGPointEqualToPoint(wanted[i].end, _gradients[i].end) &&
+             wanted[i].stops.size() == _gradients[i].stops.size() &&
+             (wanted[i].stops.empty() ||
+              memcmp(wanted[i].stops.data(),
+                     _gradients[i].stops.data(),
+                     wanted[i].stops.size() * sizeof(RnAppKitGradientStop)) == 0);
+    }
+    if (same) {
+      return;
+    }
+  }
+  _gradients = std::move(wanted);
+  self.needsDisplay = YES;
+}
+
+- (NSInteger)rnLinearGradientCount {
+  return (NSInteger)_gradients.size();
+}
+
+// The gradients, back to front, clipped to the view's own rounded box.
+//
+// `drawRect:` is already clipped to the bounds, so only the rounded case needs a
+// path; a gradient with square corners on a rounded card is the kind of
+// difference a screenshot shows and a tree does not.
+//
+// Drawn beyond both ends of its line, which is what CSS does: the first and last
+// colours extend to the edges of the box rather than leaving it unpainted, and
+// the gradient line is often shorter than the box's diagonal.
+- (void)rnDrawGradientsInContext:(CGContextRef)context size:(NSSize)size {
+  if (_gradients.empty()) {
+    return;
+  }
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  for (auto gradient = _gradients.rbegin(); gradient != _gradients.rend(); ++gradient) {
+    if (gradient->stops.empty()) {
+      continue;
+    }
+    std::vector<CGFloat> components;
+    std::vector<CGFloat> locations;
+    components.reserve(gradient->stops.size() * 4);
+    locations.reserve(gradient->stops.size());
+    for (const RnAppKitGradientStop &stop : gradient->stops) {
+      components.insert(components.end(), stop.color, stop.color + 4);
+      locations.push_back(stop.offset);
+    }
+    CGGradientRef ramp = CGGradientCreateWithColorComponents(
+        space, components.data(), locations.data(), locations.size());
+    if (ramp == nullptr) {
+      continue;
+    }
+
+    CGContextSaveGState(context);
+    if (_hasBorderRadii || _cornerRadius > 0) {
+      CGFloat radii[8];
+      for (int i = 0; i < 8; i++) {
+        radii[i] = _hasBorderRadii ? _borderRadii[i] : _cornerRadius;
+      }
+      CGPathRef path = RnAppKitCreateRoundedPath(CGRectMake(0, 0, size.width, size.height), radii);
+      CGContextAddPath(context, path);
+      CGContextClip(context);
+      CGPathRelease(path);
+    }
+    CGContextDrawLinearGradient(context,
+                                ramp,
+                                gradient->start,
+                                gradient->end,
+                                kCGGradientDrawsBeforeStartLocation |
+                                    kCGGradientDrawsAfterEndLocation);
+    CGContextRestoreGState(context);
+    CGGradientRelease(ramp);
+  }
+  CGColorSpaceRelease(space);
+}
+
 - (void)setRnBoxShadows:(const RnAppKitBoxShadow *)shadows count:(NSInteger)count {
   std::vector<RnAppKitBoxShadow> wanted;
   if (shadows != nullptr && count > 0) {
@@ -1872,6 +1982,19 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
                         _borderStyle == RnAppKitBorderStyleDotted ? "dotted" : "dashed"];
     }
   }
+  // Gradients: how many, and each one's line and stop count, spelled as GTK
+  // spells them. Not every stop, which a transition hint can turn into eleven
+  // of: what a cross-host diff needs is that the same gradient arrived with the
+  // same geometry, and the stop fixup is asserted in core's own tests.
+  for (const RnAppKitGradientRecord &gradient : _gradients) {
+    [out appendFormat:@" gradient=((%g,%g)-(%g,%g),%lu stops)",
+                      (double)gradient.start.x,
+                      (double)gradient.start.y,
+                      (double)gradient.end.x,
+                      (double)gradient.end.y,
+                      (unsigned long)gradient.stops.size()];
+  }
+
   // Box shadows, each in full and spelled as GTK spells them. Nothing else in
   // this dump can say a shadow is there, and the numbers are the whole feature:
   // an offset that went to the wrong axis or a spread read as a blur still draws

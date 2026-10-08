@@ -94,6 +94,63 @@ int blurNodesIn(GskRenderNode *node) {
   }
 }
 
+// The first linear-gradient node in the tree, and how many there are: a
+// `backgroundImage` is a GSK node of its own, so both are readable.
+int gradientNodesIn(GskRenderNode *node) {
+  if (node == nullptr) {
+    return 0;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_LINEAR_GRADIENT_NODE:
+      return 1;
+    case GSK_CONTAINER_NODE: {
+      int found = 0;
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        found += gradientNodesIn(gsk_container_node_get_child(node, i));
+      }
+      return found;
+    }
+    case GSK_CLIP_NODE:
+      return gradientNodesIn(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return gradientNodesIn(gsk_rounded_clip_node_get_child(node));
+    case GSK_TRANSFORM_NODE:
+      return gradientNodesIn(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return gradientNodesIn(gsk_opacity_node_get_child(node));
+    default:
+      return 0;
+  }
+}
+
+GskRenderNode *firstGradient(GskRenderNode *node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_LINEAR_GRADIENT_NODE:
+      return node;
+    case GSK_CONTAINER_NODE:
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        GskRenderNode *found = firstGradient(gsk_container_node_get_child(node, i));
+        if (found != nullptr) {
+          return found;
+        }
+      }
+      return nullptr;
+    case GSK_CLIP_NODE:
+      return firstGradient(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return firstGradient(gsk_rounded_clip_node_get_child(node));
+    case GSK_TRANSFORM_NODE:
+      return firstGradient(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return firstGradient(gsk_opacity_node_get_child(node));
+    default:
+      return nullptr;
+  }
+}
+
 // The shadow nodes a view painted, outset and inset counted apart: `boxShadow`
 // carries an `inset` flag and the two are different GSK nodes, so a view that
 // read the flag wrongly draws a shadow in the wrong place and nothing else.
@@ -1017,6 +1074,207 @@ TEST(box_shadows_are_reported_in_the_tree) {
   g_free(text);
   EXPECT(dumped.find("shadow=(2,4,8,1,#00000040)") != std::string::npos);
   EXPECT(dumped.find("shadow=(inset 0,1,0,0,#ffffffff)") != std::string::npos);
+
+  g_object_unref(view);
+}
+
+// `backgroundImage` as a linear gradient. GSK has a gradient node, so what was
+// drawn and along which line are both readable out of the render tree.
+//
+// The arithmetic is not asserted here -- core's own tests do that, the angle and
+// the stop fixup being shared with the other host. What is asserted here is that
+// this widget draws what it was handed, in the right place in the paint order.
+
+TEST(a_linear_gradient_is_a_gradient_node_along_the_line_it_was_given) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
+      {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
+  };
+  const RnLinearGradient gradient{
+      graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 2};
+  rn_view_set_linear_gradients(view, &gradient, 1);
+  EXPECT_EQ(rn_view_get_linear_gradient_count(view), 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT_EQ(gradientNodesIn(painted), 1);
+
+  GskRenderNode *node = firstGradient(painted);
+  EXPECT(node != nullptr);
+  const graphene_point_t *start = gsk_linear_gradient_node_get_start(node);
+  const graphene_point_t *end = gsk_linear_gradient_node_get_end(node);
+  EXPECT_EQ((double)start->y, 60.0);
+  EXPECT_EQ((double)end->y, 0.0);
+  // And the stops reached GSK as they were given, offsets and colours.
+  EXPECT_EQ((long)gsk_linear_gradient_node_get_n_color_stops(node), 2L);
+  const GskColorStop *gskStops = gsk_linear_gradient_node_get_color_stops(node, nullptr);
+  EXPECT_EQ((double)gskStops[0].offset, 0.0);
+  EXPECT_EQ((double)gskStops[0].color.red, 1.0);
+  EXPECT_EQ((double)gskStops[1].offset, 1.0);
+  EXPECT_EQ((double)gskStops[1].color.blue, 1.0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// Several, which CSS allows: a translucent gradient over an opaque one is how a
+// sheen is drawn.
+TEST(every_linear_gradient_in_the_list_is_painted) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnGradientStop first[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnGradientStop second[2] = {
+      {0.0F, GdkRGBA{1.0F, 1.0F, 1.0F, 0.5F}}, {1.0F, GdkRGBA{1.0F, 1.0F, 1.0F, 0.0F}}};
+  const RnLinearGradient gradients[2] = {
+      {graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, first, 2},
+      {graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, second, 2},
+  };
+  rn_view_set_linear_gradients(view, gradients, 2);
+
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT_EQ(gradientNodesIn(painted), 2);
+  // Back to front, so the first in the list is painted last and the *second* is
+  // the one found first in the tree.
+  GskRenderNode *node = firstGradient(painted);
+  EXPECT_EQ((double)gsk_linear_gradient_node_get_end(node)->x, 100.0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// Above the background colour, which is where CSS paints a background image: a
+// gradient under an opaque background would be invisible.
+TEST(a_linear_gradient_paints_over_the_background_colour) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const GdkRGBA green{0.0F, 1.0F, 0.0F, 1.0F};
+  rn_view_set_background_color(view, TRUE, &green);
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnLinearGradient gradient{
+      graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2};
+  rn_view_set_linear_gradients(view, &gradient, 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT(painted != nullptr);
+  // The container's children in paint order: the colour first, the gradient
+  // after it. Walked rather than assumed, so a reordering shows up here.
+  int colourAt = -1;
+  int gradientAt = -1;
+  if (gsk_render_node_get_node_type(painted) == GSK_CONTAINER_NODE) {
+    for (guint i = 0; i < gsk_container_node_get_n_children(painted); i++) {
+      GskRenderNode *child = gsk_container_node_get_child(painted, i);
+      if (gsk_render_node_get_node_type(child) == GSK_COLOR_NODE && colourAt < 0) {
+        colourAt = static_cast<int>(i);
+      }
+      if (gradientNodesIn(child) > 0 && gradientAt < 0) {
+        gradientAt = static_cast<int>(i);
+      }
+    }
+  }
+  EXPECT(colourAt >= 0);
+  EXPECT(gradientAt > colourAt);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// Rounded corners clip it, as they clip the background colour: a gradient with
+// square corners on a rounded card is the kind of difference a screenshot shows
+// and a tree does not.
+TEST(a_linear_gradient_is_clipped_to_the_rounded_box) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const graphene_size_t radii[4] = {{12.0F, 12.0F}, {12.0F, 12.0F}, {12.0F, 12.0F}, {12.0F, 12.0F}};
+  rn_view_set_border_radii(view, radii);
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnLinearGradient gradient{
+      graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2};
+  rn_view_set_linear_gradients(view, &gradient, 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  GskRenderNode *node = firstGradient(painted);
+  EXPECT(node != nullptr);
+  // The gradient is inside a rounded clip. Found by walking down to it and
+  // noting the clip on the way, which is what the counter below does.
+  EXPECT_EQ(clipNodesIn(painted) > 0, true);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(a_linear_gradient_can_be_taken_away_again) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnLinearGradient gradient{
+      graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2};
+  rn_view_set_linear_gradients(view, &gradient, 1);
+  rn_view_set_linear_gradients(view, nullptr, 0);
+  EXPECT_EQ(rn_view_get_linear_gradient_count(view), 0);
+
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT_EQ(gradientNodesIn(painted), 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// And it is in the tree dump, which is what makes the wiring testable: the prop
+// is read in GtkMountingManager, where the angle and the stops are resolved, and
+// the tests above hand the widget the answer by hand.
+TEST(linear_gradients_are_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string none(text);
+  g_free(text);
+  EXPECT(none.find("gradient=") == std::string::npos);
+
+  const RnGradientStop stops[3] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
+      {0.5F, GdkRGBA{0.0F, 1.0F, 0.0F, 1.0F}},
+      {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
+  };
+  const RnLinearGradient gradient{
+      graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 3};
+  rn_view_set_linear_gradients(view, &gradient, 1);
+
+  text = rn_view_describe_tree(view);
+  const std::string dumped(text);
+  g_free(text);
+  EXPECT(dumped.find("gradient=((0,60)-(0,0),3 stops)") != std::string::npos);
 
   g_object_unref(view);
 }

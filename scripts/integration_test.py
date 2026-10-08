@@ -3844,6 +3844,59 @@ def test_box_shadow(bundle: Path) -> None:
             )
 
 
+def test_linear_gradient(bundle: Path) -> None:
+    """`backgroundImage: 'linear-gradient(...)'` reaches the view, resolved.
+
+    The dump carries the gradient's line and its stop count, which is the part
+    worth comparing across hosts: both resolve the angle, the box size and CSS's
+    colour-stop fixup through the same shared code, so the two trees agreeing is
+    what says neither host did its own arithmetic.
+
+    e2e/views.tsx asks for 135 degrees on an 80x40 box, which is the case that
+    tells the spec's construction from the obvious one: the line is the
+    perpendicular construction, (10,-10) to (70,50) -- longer than the box, ends
+    outside it, centred on it -- where the diagonal would be (0,0) to (80,40).
+
+    Windows draws no gradients yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws no gradients from backgroundImage yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "gradient=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a gradient; the app sets one.\n{tree}"
+        )
+    if "gradient=((10,-10)-(70,50),2 stops)" not in carrying[0]:
+        raise Failure(
+            "the gradient line is not where the spec puts it. The diagonal, "
+            "(0,0)-(80,40), is the usual wrong answer; so is an angle measured "
+            "anticlockwise or from the wrong axis.\n" + carrying[0]
+        )
+
+
 def test_cursor_style(bundle: Path) -> None:
     """The `cursor` style property reaches the view.
 
@@ -5229,6 +5282,7 @@ SCENARIOS = [
     ("borderStyle reaches the view, dashed and dotted", test_border_style),
     ("the cursor style property reaches the view", test_cursor_style),
     ("boxShadow reaches the view, inset and all", test_box_shadow),
+    ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

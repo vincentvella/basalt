@@ -297,6 +297,40 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 - (void)setRnBorderWidths:(nullable const CGFloat *)widths
                    colors:(nullable const CGFloat *)colors;
 
+// One colour stop of a gradient: an offset from 0 to 1 along the gradient line
+// and the colour there, as RGBA components.
+typedef struct {
+  CGFloat offset;
+  CGFloat color[4];
+} RnAppKitGradientStop;
+
+// One `backgroundImage` gradient, already resolved: the end points of its
+// gradient line in this view's own coordinates, and its stops in order.
+//
+// Resolved rather than described, because the resolution is CSS's and is shared
+// with the GTK host in core/Gradients.h -- the angle, the box size and the stop
+// fixup all go into the two points and the offsets. This layer draws what it is
+// given. The stops are borrowed for the duration of the call.
+typedef struct {
+  CGPoint start;
+  CGPoint end;
+  const RnAppKitGradientStop *stops;
+  NSInteger stopCount;
+} RnAppKitLinearGradient;
+
+// `backgroundImage`, as linear gradients. Replaces whatever was there; pass NULL
+// or 0 for none.
+//
+// Drawn above the background colour, which is a layer property and therefore
+// below anything `drawRect:` paints, and below the image and the text, which is
+// where CSS puts a background image. First in the list is on top, so they are
+// drawn back to front.
+- (void)setRnLinearGradients:(nullable const RnAppKitLinearGradient *)gradients
+                       count:(NSInteger)count;
+
+// How many are set, for the tests and the tree dump.
+@property(nonatomic, readonly) NSInteger rnLinearGradientCount;
+
 // One CSS box shadow, in React Native's own terms: `BoxShadow` carries exactly
 // these fields. The colour is RGBA components in that order, as the border
 // colours arrive, so this header stays free of NSColor for the same reason the

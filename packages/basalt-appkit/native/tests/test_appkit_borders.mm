@@ -412,3 +412,175 @@ TEST(box_shadows_are_reported_in_the_tree) {
     EXPECT(described.find("shadow=(inset 0,1,0,0,#ffffffff)") != std::string::npos);
   }
 }
+
+// `backgroundImage` as a linear gradient.
+//
+// Pixels here, unlike the shadows: a gradient is drawn in `drawRect:` with Core
+// Graphics, so the same bitmap the border tests use shows it. What is asserted is
+// the ramp itself -- a colour at one end, the other colour at the other, and
+// something in between in the middle -- because a gradient drawn along the wrong
+// line, or with its stops reversed, is still a gradient.
+//
+// The arithmetic is not asserted here. The angle and the stop fixup are shared
+// with the GTK host in core/Gradients.h and have their own tests; this is the
+// drawing.
+namespace {
+
+RnAppKitGradientStop gradientStop(CGFloat offset, CGFloat red, CGFloat green, CGFloat blue) {
+  RnAppKitGradientStop stop{};
+  stop.offset = offset;
+  stop.color[0] = red;
+  stop.color[1] = green;
+  stop.color[2] = blue;
+  stop.color[3] = 1;
+  return stop;
+}
+
+// The red, green and blue of one pixel of the drawn view.
+struct Pixel {
+  int red;
+  int green;
+  int blue;
+};
+
+Pixel pixelAt(RnAppKitView *view, CGSize size, int x, int y) {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                               8, 0, space, kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+  CGContextTranslateCTM(context, 0, size.height);
+  CGContextScaleCTM(context, 1, -1);
+
+  NSGraphicsContext *previous = NSGraphicsContext.currentContext;
+  NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithCGContext:context
+                                                                             flipped:YES];
+  [view drawRect:NSMakeRect(0, 0, size.width, size.height)];
+  NSGraphicsContext.currentContext = previous;
+
+  auto *bytes = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  const size_t at = (size_t)y * stride + (size_t)x * 4;
+  const Pixel pixel{bytes[at], bytes[at + 1], bytes[at + 2]};
+  CGContextRelease(context);
+  return pixel;
+}
+
+RnAppKitView *gradientView(const RnAppKitLinearGradient *gradients, NSInteger count, CGSize size) {
+  RnAppKitView *view = [RnAppKitView viewWithTag:1];
+  [view setRnFrameX:0 y:0 width:size.width height:size.height];
+  [view setRnLinearGradients:gradients count:count];
+  return view;
+}
+
+} // namespace
+
+TEST(gradient_a_left_to_right_ramp_is_drawn_across_the_box) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 40);
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitLinearGradient gradient{CGPointMake(0, 0), CGPointMake(100, 0), stops, 2};
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    EXPECT_EQ((long)view.rnLinearGradientCount, 1L);
+    const Pixel left = pixelAt(view, size, 2, 20);
+    const Pixel middle = pixelAt(view, size, 50, 20);
+    const Pixel right = pixelAt(view, size, 97, 20);
+
+    // Red at the left, blue at the right, and mixed in between -- which is the
+    // assertion that fails if the line runs the other way.
+    EXPECT(left.red > 200 && left.blue < 60);
+    EXPECT(right.blue > 200 && right.red < 60);
+    EXPECT(middle.red > 60 && middle.red < 200);
+    EXPECT(middle.blue > 60 && middle.blue < 200);
+  }
+}
+
+// The colours extend past the ends of the gradient line, which CSS requires and
+// which matters because the line is usually shorter than the box: without it a
+// diagonal gradient leaves two corners unpainted.
+TEST(gradient_extends_beyond_the_ends_of_its_line) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 40);
+    // A line covering only the middle fifth of the box.
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitLinearGradient gradient{CGPointMake(40, 0), CGPointMake(60, 0), stops, 2};
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const Pixel left = pixelAt(view, size, 2, 20);
+    const Pixel right = pixelAt(view, size, 97, 20);
+    // Still the end colours rather than the white the view was drawn onto.
+    EXPECT(left.red > 200 && left.blue < 60);
+    EXPECT(right.blue > 200 && right.red < 60);
+  }
+}
+
+// Several gradients, back to front: the first in the list is on top, so a second
+// opaque one underneath it must not win.
+TEST(gradient_the_first_in_the_list_is_on_top) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 40);
+    const RnAppKitGradientStop top[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 1, 0, 0)};
+    const RnAppKitGradientStop bottom[2] = {gradientStop(0, 0, 1, 0), gradientStop(1, 0, 1, 0)};
+    const RnAppKitLinearGradient gradients[2] = {
+        {CGPointMake(0, 0), CGPointMake(100, 0), top, 2},
+        {CGPointMake(0, 0), CGPointMake(100, 0), bottom, 2},
+    };
+    RnAppKitView *view = gradientView(gradients, 2, size);
+
+    EXPECT_EQ((long)view.rnLinearGradientCount, 2L);
+    const Pixel middle = pixelAt(view, size, 50, 20);
+    EXPECT(middle.red > 200);
+    EXPECT(middle.green < 60);
+  }
+}
+
+TEST(gradient_can_be_taken_away_again) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 40);
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitLinearGradient gradient{CGPointMake(0, 0), CGPointMake(100, 0), stops, 2};
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    [view setRnLinearGradients:nullptr count:0];
+    EXPECT_EQ((long)view.rnLinearGradientCount, 0L);
+    // White, which is what the bitmap was filled with: nothing was drawn.
+    const Pixel middle = pixelAt(view, size, 50, 20);
+    EXPECT(middle.red > 250 && middle.green > 250 && middle.blue > 250);
+  }
+}
+
+// Rounded corners clip it, as they clip the background colour.
+TEST(gradient_is_clipped_to_the_rounded_box) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 40);
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitLinearGradient gradient{CGPointMake(0, 0), CGPointMake(100, 0), stops, 2};
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+    [view setRnCornerRadius:20];
+
+    // The top-left corner is outside a 20pt radius, so it keeps the white it was
+    // drawn onto; the middle of the left edge is inside and is painted.
+    const Pixel corner = pixelAt(view, size, 1, 1);
+    const Pixel edge = pixelAt(view, size, 2, 20);
+    EXPECT(corner.red > 250 && corner.blue > 250);
+    EXPECT(edge.red > 200 && edge.blue < 60);
+  }
+}
+
+// And the gradients are in the tree dump, spelled as GTK spells them, which is
+// what makes the wiring testable: the angle and the stops are resolved in
+// AppKitMountingManager and the tests above hand the view the answer.
+TEST(gradients_are_reported_in_the_tree) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 60);
+    const RnAppKitGradientStop stops[3] = {
+        gradientStop(0, 1, 0, 0), gradientStop(0.5, 0, 1, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitLinearGradient gradient{CGPointMake(0, 60), CGPointMake(0, 0), stops, 3};
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const std::string described = [view describeTree].UTF8String;
+    EXPECT(described.find("gradient=((0,60)-(0,0),3 stops)") != std::string::npos);
+  }
+}

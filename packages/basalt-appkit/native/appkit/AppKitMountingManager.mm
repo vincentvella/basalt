@@ -7,6 +7,7 @@
 
 #include "ComponentRegistry.h"
 #include "CursorNames.h"
+#include "Gradients.h"
 #include "ExpoImageComponent.h"
 #ifdef BASALT_HAS_SKIA
 #include "AppKitSkiaPeer.h"
@@ -810,6 +811,57 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
     case facebook::react::PointerEventsMode::Auto:
       view.rnPointerEvents = RnAppKitPointerEventsAuto;
       break;
+  }
+
+  // backgroundImage, as far as linear gradients. The angle, the box size and
+  // CSS's colour-stop fixup are resolved here through core/Gradients.h, shared
+  // with the GTK host, and the view is handed two points and a list of stops.
+  //
+  // Against this mutation's own frame, and applyProps runs on every update, so a
+  // resized view gets a resized gradient without the view layer knowing anything
+  // about angles.
+  //
+  // A radial gradient is parsed by React Native and dropped here; see
+  // backlog/correctness.md.
+  {
+    const auto &frameSize = shadowView.layoutMetrics.frame.size;
+    std::vector<RnAppKitLinearGradient> gradients;
+    std::vector<std::vector<RnAppKitGradientStop>> stops;
+    gradients.reserve(props->backgroundImage.size());
+    stops.reserve(props->backgroundImage.size());
+    for (const auto &image : props->backgroundImage) {
+      if (!std::holds_alternative<facebook::react::LinearGradient>(image)) {
+        continue;
+      }
+      const auto &gradient = std::get<facebook::react::LinearGradient>(image);
+      const basalt::GradientLine line = basalt::linearGradientLine(
+          gradient, (float)frameSize.width, (float)frameSize.height);
+      const auto resolved = basalt::resolveGradientStops(gradient.colorStops, line.length());
+      if (resolved.empty()) {
+        continue;
+      }
+      std::vector<RnAppKitGradientStop> converted;
+      converted.reserve(resolved.size());
+      for (const auto &stop : resolved) {
+        RnAppKitGradientStop one{};
+        one.offset = stop.offset;
+        one.color[0] = stop.red;
+        one.color[1] = stop.green;
+        one.color[2] = stop.blue;
+        one.color[3] = stop.alpha;
+        converted.push_back(one);
+      }
+      // Reserved above, so pushing cannot reallocate and the pointer handed over
+      // below stays good for this block. The view copies what it is given.
+      stops.push_back(std::move(converted));
+      gradients.push_back(RnAppKitLinearGradient{
+          CGPointMake(line.startX, line.startY),
+          CGPointMake(line.endX, line.endY),
+          stops.back().data(),
+          (NSInteger)stops.back().size(),
+      });
+    }
+    [view setRnLinearGradients:gradients.data() count:(NSInteger)gradients.size()];
   }
 
   // boxShadow. React Native's BoxShadow carries the six CSS fields and the view

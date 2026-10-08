@@ -199,6 +199,8 @@ struct _RnView {
   // The `boxShadow` list, in the order the app wrote it. NULL for none rather
   // than an empty array, so a view with no shadow allocates nothing.
   GArray *box_shadows;
+  // The `backgroundImage` gradients, each owning its own stops. NULL for none.
+  GArray *gradients;
   GdkRGBA border_colors[4];
   gboolean has_borders;
 
@@ -243,6 +245,22 @@ struct _RnView {
   int allocated_width;
   int allocated_height;
 };
+
+// One gradient as the widget keeps it: the two points, and its own stops. The
+// stops are a GArray per gradient rather than one array for all of them, because
+// a transition hint turns three stops into eleven and the lists are different
+// lengths for no reason the caller controls.
+struct RnGradientRecord {
+  graphene_point_t start;
+  graphene_point_t end;
+  GArray *stops;
+};
+
+static void rn_gradient_record_clear(gpointer data) {
+  auto *record = static_cast<RnGradientRecord *>(data);
+  g_clear_pointer(&record->stops, g_array_unref);
+}
+
 
 static void rn_view_notify_allocation(RnView *self, int width, int height) {
   if (self->resize_callback == nullptr) {
@@ -329,6 +347,38 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     gtk_snapshot_append_color(snapshot, &self->background_color, &bounds);
     if (self->has_border_radii) {
       gtk_snapshot_pop(snapshot);
+    }
+  }
+
+  // `backgroundImage` gradients, above the background colour and below the
+  // content, which is where CSS paints a background image. Clipped to the
+  // rounded box for the reason the background colour is: a gradient that
+  // squared off the corners would be a worse bug than no gradient.
+  //
+  // Back to front, the first in the list being the one on top. The points and
+  // the stops were resolved against this view's size in the mounting manager,
+  // which runs again on every layout, so a resized view is a resized gradient.
+  if (self->gradients != nullptr) {
+    for (guint i = self->gradients->len; i > 0; i--) {
+      const RnGradientRecord &gradient = g_array_index(self->gradients, RnGradientRecord, i - 1);
+      if (gradient.stops == nullptr || gradient.stops->len == 0) {
+        continue;
+      }
+      if (self->has_border_radii) {
+        gtk_snapshot_push_rounded_clip(snapshot, &box);
+      }
+      // RnGradientStop has GskColorStop's layout, so the array is handed over as
+      // it stands rather than copied a field at a time.
+      gtk_snapshot_append_linear_gradient(
+          snapshot,
+          &bounds,
+          &gradient.start,
+          &gradient.end,
+          reinterpret_cast<const GskColorStop *>(gradient.stops->data),
+          gradient.stops->len);
+      if (self->has_border_radii) {
+        gtk_snapshot_pop(snapshot);
+      }
     }
   }
 
@@ -696,6 +746,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->native_id, g_free);
   g_clear_pointer(&self->cursor_name, g_free);
   g_clear_pointer(&self->box_shadows, g_array_unref);
+  g_clear_pointer(&self->gradients, g_array_unref);
 
   G_OBJECT_CLASS(rn_view_parent_class)->dispose(object);
 }
@@ -723,6 +774,7 @@ static void rn_view_init(RnView *self) {
   self->role_name = nullptr;
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
+  self->gradients = nullptr;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
@@ -1247,6 +1299,65 @@ void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]) {
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
+void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradients, int count) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const guint wanted = gradients != nullptr && count > 0 ? static_cast<guint>(count) : 0;
+  const guint had = self->gradients != nullptr ? self->gradients->len : 0;
+  if (wanted == 0 && had == 0) {
+    return;
+  }
+
+  // Compared before it is replaced, for the reason the shadows are: a view
+  // re-sends identical props on every mutation, and a window repainted per
+  // mutation is a gradient recomputed for nothing.
+  if (wanted == had && wanted > 0) {
+    gboolean same = TRUE;
+    for (guint i = 0; i < wanted && same; i++) {
+      const RnGradientRecord &have = g_array_index(self->gradients, RnGradientRecord, i);
+      const RnLinearGradient &want = gradients[i];
+      same = graphene_point_equal(&have.start, &want.start) &&
+             graphene_point_equal(&have.end, &want.end) &&
+             have.stops->len == static_cast<guint>(want.stop_count) &&
+             memcmp(have.stops->data,
+                    want.stops,
+                    have.stops->len * sizeof(RnGradientStop)) == 0;
+    }
+    if (same) {
+      return;
+    }
+  }
+
+  if (wanted == 0) {
+    g_clear_pointer(&self->gradients, g_array_unref);
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+    return;
+  }
+
+  if (self->gradients == nullptr) {
+    self->gradients = g_array_sized_new(FALSE, FALSE, sizeof(RnGradientRecord), wanted);
+    g_array_set_clear_func(self->gradients, rn_gradient_record_clear);
+  } else {
+    g_array_set_size(self->gradients, 0);
+  }
+  for (guint i = 0; i < wanted; i++) {
+    const RnLinearGradient &gradient = gradients[i];
+    RnGradientRecord record{gradient.start, gradient.end, nullptr};
+    const guint stops = gradient.stop_count > 0 ? static_cast<guint>(gradient.stop_count) : 0;
+    record.stops = g_array_sized_new(FALSE, FALSE, sizeof(RnGradientStop), MAX(stops, 1));
+    if (stops > 0) {
+      g_array_append_vals(record.stops, gradient.stops, stops);
+    }
+    g_array_append_val(self->gradients, record);
+  }
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+int rn_view_get_linear_gradient_count(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0);
+  return self->gradients != nullptr ? static_cast<int>(self->gradients->len) : 0;
+}
+
 void rn_view_set_box_shadows(RnView *self, const RnBoxShadow *shadows, int count) {
   g_return_if_fail(RN_IS_VIEW(self));
 
@@ -1570,6 +1681,23 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
           out, " border-style=%s", self->border_style == RN_BORDER_DOTTED ? "dotted" : "dashed");
     }
   }
+  // Gradients: how many, and each one's line and stop count. Not every stop,
+  // which a transition hint can turn into eleven of: what a cross-host diff and
+  // an end-to-end run need is that the same gradient arrived with the same
+  // geometry, and the stop fixup itself is asserted in core's own tests.
+  if (self->gradients != nullptr) {
+    for (guint i = 0; i < self->gradients->len; i++) {
+      const RnGradientRecord &gradient = g_array_index(self->gradients, RnGradientRecord, i);
+      g_string_append_printf(out,
+                             " gradient=((%g,%g)-(%g,%g),%u stops)",
+                             static_cast<double>(gradient.start.x),
+                             static_cast<double>(gradient.start.y),
+                             static_cast<double>(gradient.end.x),
+                             static_cast<double>(gradient.end.y),
+                             gradient.stops != nullptr ? gradient.stops->len : 0);
+    }
+  }
+
   // Box shadows, each in full. Nothing else in this dump can say a shadow is
   // there, and the numbers are the whole feature: an offset that went to the
   // wrong axis or a spread read as a blur still draws a plausible shadow.

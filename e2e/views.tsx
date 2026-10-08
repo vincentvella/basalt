@@ -102,6 +102,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#4d8cf2',
     cursor: 'pointer',
   },
+  // backgroundImage: a CSS gradient, which is what React Native put behind that
+  // prop. The angle is deliberately not a right angle and the box is not square,
+  // so the gradient line is the spec's perpendicular construction rather than
+  // the diagonal -- the two differ by enough to see.
+  gradient: {
+    width: 80,
+    height: 40,
+    backgroundImage: 'linear-gradient(135deg, #4d8cf2 0%, #e0484d 100%)',
+  },
   // boxShadow, the other prop that only a dump can confirm. Two shadows and an
   // inset one, because the list and the inset flag are each a thing a host can
   // drop while still drawing something plausible.
@@ -136,6 +145,7 @@ function App() {
         <View style={styles.dot} />
         <View style={styles.dashed} />
         <View style={styles.dotted} />
+        <View style={styles.gradient} />
         <View style={styles.shadowed} />
         <View style={styles.handy} />
         <View style={styles.draggable} />

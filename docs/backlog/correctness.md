@@ -7,8 +7,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
-4. Eight view style props that no host reads, and nothing said so (box shadows
-   are done on GTK and AppKit)
+4. Seven view style props that no host reads, and nothing said so (box shadows
+   and linear gradients are done on GTK and AppKit)
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -106,7 +106,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   tests having shown how to reach one. Hit testing is the wrong instrument and
   cannot answer it.
 
-- **Eight view style props that no host reads, and nothing said so.** Counted
+- **Seven view style props that no host reads, and nothing said so.** Counted
   2026-10-08 by going through `BaseViewProps` field by field and grepping all
   three hosts for each, after `cursor` and `borderStyle` both turned out to be
   props the backlog thought were handled. These are the ones no host mentions
@@ -116,10 +116,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius` beside it
     are still ignored, and are iOS's pre-CSS spelling of the same idea. What the
     work turned out to be is at the end of this entry.
-  - `backgroundImage`, with `backgroundSize`, `backgroundPosition` and
-    `backgroundRepeat`. This is where React Native put CSS gradients, so
-    `linear-gradient(...)` in a style reaches the host and is dropped. GSK has
-    linear, radial and conic gradient nodes; Core Graphics has `CGGradient`.
+  - `backgroundImage`: **linear gradients are done on GTK and AppKit
+    2026-10-08**, radial ones are not, and `backgroundSize`,
+    `backgroundPosition` and `backgroundRepeat` are still ignored. What the work
+    turned out to be is at the end of this entry.
   - `filter`: the CSS filter functions on a view rather than on an image. Partly
     answerable with what the blur work already built: GSK has a blur node and a
     colour matrix, and Core Image has the rest.
@@ -190,3 +190,43 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and masks on the other, plus an end-to-end scenario that reads the dump on
   both. Sabotages checked: a spread applied as a blur, dx and dy swapped, inset
   painted as outset, and a clipping view keeping its shadow inside.
+
+  **`backgroundImage` as a linear gradient, done on GTK and AppKit 2026-10-08.**
+  Two halves, and the interesting one is not the drawing.
+
+  The *resolution* is specified and is shared: `core/Gradients.h` turns a
+  `LinearGradient` and a box size into two points and a list of stops, and both
+  hosts draw what it says. It is a port of React Native's own iOS code, which is
+  a port of Chromium, because both halves are easy to get plausibly wrong. The
+  gradient line is a perpendicular-bisector construction, not the box's diagonal:
+  at 135 degrees on an 80x40 box it runs (10,-10) to (70,50), longer than the box
+  and ending outside it, where the diagonal would be (0,0) to (80,40). A corner
+  keyword is not 45 degrees either, except on a square. And the colour stops go
+  through the fixup in css-images-4: a first stop with no position sits at 0 and a
+  last one at 1, a position that goes backwards is pulled forward so that
+  `red 60%, blue 20%` is a hard edge rather than a reversal, a run with no
+  positions is spread evenly, and a transition hint -- `linear-gradient(red, 20%,
+  blue)` -- becomes nine stops along the curve the spec gives, which is what moves
+  the midpoint colour to the hint.
+
+  The drawing is small on both. GSK has a linear-gradient node that takes the two
+  points and the stops; Core Graphics has `CGGradient` and
+  `CGContextDrawLinearGradient`, drawn in `drawRect:` with both extend flags set,
+  which is what keeps the corners painted when the line is shorter than the box.
+  Both clip to the view's rounded box, as the background colour does, and both
+  paint above the background colour and below the content, where CSS puts a
+  background image, back to front so the first in the list is on top.
+
+  Eleven tests in core for the arithmetic, which is shared and so belongs there;
+  six per host for the drawing, the GTK ones walking the render tree and the
+  AppKit ones reading pixels out of a bitmap, since a gradient goes through
+  `drawRect:` rather than through Core Animation; and an end-to-end scenario that
+  asserts the resolved line on both. Sabotages checked: the two points swapped,
+  the list drawn front to back, and the rounded clip taken away.
+
+  **What is left of the prop.** A radial gradient parses in React Native and is
+  dropped here, which needs the size keywords -- `closest-side`,
+  `farthest-corner` -- and the position syntax resolved first; GSK and Core
+  Graphics both have the node for it. `backgroundSize`, `backgroundPosition` and
+  `backgroundRepeat` have nothing to act on until an image can be a background,
+  which is a loader question rather than a drawing one.

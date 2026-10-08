@@ -79,6 +79,41 @@ typedef struct {
   gboolean inset;
 } RnBoxShadow;
 
+// One colour stop of a gradient: an offset from 0 to 1 along the gradient line
+// and the colour there. The same layout as GskColorStop, deliberately, so the
+// array goes straight to GSK without being copied field by field.
+typedef struct {
+  float offset;
+  GdkRGBA color;
+} RnGradientStop;
+
+// One `backgroundImage` gradient, already resolved: the end points of its
+// gradient line in this view's own pixels, and its stops in order.
+//
+// Resolved rather than described, because the resolution is CSS's and is shared
+// with the AppKit host in core/Gradients.h -- the angle, the box size and the
+// stop fixup all go into the two points and the offsets. This layer draws what it
+// is given, which is also why it does not need to know an angle from a keyword.
+//
+// The stops are borrowed for the duration of the call.
+typedef struct {
+  graphene_point_t start;
+  graphene_point_t end;
+  const RnGradientStop *stops;
+  int stop_count;
+} RnLinearGradient;
+
+// `backgroundImage`, as linear gradients. Replaces whatever was there; pass NULL
+// or 0 for none.
+//
+// Painted above the background colour and below the content, which is where CSS
+// puts a background image, and clipped to the view's rounded box as the
+// background colour is. First in the list is on top, so they are painted back to
+// front.
+void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradients, int count);
+// How many are set, for the tests and the tree dump.
+int rn_view_get_linear_gradient_count(RnView *self);
+
 // `boxShadow`. Replaces whatever was there; pass NULL or 0 for none.
 //
 // Order is CSS's: the first shadow in the list is the one on top, so these are
