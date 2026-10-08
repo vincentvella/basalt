@@ -15,18 +15,27 @@
 #include "GtkFocus.h"
 #include "GtkMountingManager.h"
 
+#include <react/renderer/components/iostextinput/TextInputProps.h>
 #include <react/renderer/components/view/ViewProps.h>
+#include <react/renderer/core/RawPropsParser.h>
+
+#include <folly/dynamic.h>
 
 #include <cstdint>
 #include <sstream>
 
+using facebook::react::ContextContainer;
 using facebook::react::LayoutMetrics;
 using facebook::react::MountingTransaction;
+using facebook::react::PropsParserContext;
+using facebook::react::RawProps;
+using facebook::react::RawPropsParser;
 using facebook::react::ShadowView;
 using facebook::react::ShadowViewMutation;
 using facebook::react::ShadowViewMutationList;
 using facebook::react::SurfaceId;
 using facebook::react::Tag;
+using facebook::react::TextInputProps;
 using facebook::react::TransactionTelemetry;
 using facebook::react::ViewProps;
 
@@ -46,6 +55,35 @@ ShadowView makeView(Tag tag, float y, bool accessible) {
   view.surfaceId = kSurfaceId;
   view.tag = tag;
   view.props = props;
+  view.layoutMetrics = metrics;
+  return view;
+}
+
+// A text field, which is the only widget with focus commands of its own: the
+// rest of the tree is reached by Tab. Props go through React Native's own
+// parser for the same reason test_textinput.cpp does it -- `traits.editable`
+// is const and only reachable that way, and an uneditable GtkText is not
+// focusable at all, which would make a focus test pass for the wrong reason.
+ShadowView makeTextInput(Tag tag) {
+  static const RawPropsParser parser = []() {
+    RawPropsParser prepared;
+    prepared.prepare<TextInputProps>();
+    return prepared;
+  }();
+  static const auto contextContainer = std::make_shared<const ContextContainer>();
+  PropsParserContext context{kSurfaceId, *contextContainer};
+
+  RawProps rawProps{folly::dynamic::object("text", "hello")};
+  rawProps.parse(parser);
+
+  LayoutMetrics metrics;
+  metrics.frame = {.origin = {.x = 0.0F, .y = 0.0F}, .size = {.width = 200.0F, .height = 40.0F}};
+
+  ShadowView view;
+  view.componentName = "TextInput";
+  view.surfaceId = kSurfaceId;
+  view.tag = tag;
+  view.props = std::make_shared<const TextInputProps>(context, TextInputProps{}, rawProps);
   view.layoutMetrics = metrics;
   return view;
 }
@@ -191,4 +229,25 @@ TEST(focus_a_view_that_stops_being_accessible_leaves_the_tab_order) {
   scene.focus.moveFocus(true);
   // Tab now goes straight to 11, because 10 has left the chain.
   EXPECT_EQ((long)scene.focus.focusedTag(), 11L);
+}
+
+TEST(focus_blur_drops_focus_instead_of_handing_it_to_the_window) {
+  Scene scene;
+  scene.mount({makeTextInput(10)});
+  GtkWindow *window = GTK_WINDOW(scene.window);
+  GtkWidget *field = rn_view_get_editable(scene.manager.viewForTag(10));
+  EXPECT(field != nullptr);
+
+  scene.manager.applyCommand(10, "focus", folly::dynamic::array());
+  Scene::pump();
+  EXPECT(gtk_window_get_focus(window) == field);
+
+  scene.manager.applyCommand(10, "blur", folly::dynamic::array());
+  Scene::pump();
+  // Nothing is focused, which is what blur means on every other platform. This
+  // handed focus to the window instead, so the answer to "what has focus" was
+  // the window rather than nothing, and a Tab afterwards started from there
+  // rather than from the top of the tab order.
+  EXPECT(gtk_window_get_focus(window) == nullptr);
+  EXPECT_EQ((long)scene.focus.focusedTag(), 0L);
 }

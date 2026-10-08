@@ -2,13 +2,13 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (8):**
+**Open (7):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
 3. The synthetic typing instruments cannot observe either event on GTK
 4. No shared focus registry: TextInput
-5. blur grabs focus for the window rather than dropping it, because GTK models fo
+5. ~~`blur` grabs focus for the window rather than dropping it~~
 6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored **
 7. src/overrides/TextInput
 8. autoCapitalize, autoCorrect, spellCheck, keyboardType, returnKeyType, clearBut
@@ -88,8 +88,22 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - No shared focus registry: `TextInput.State.currentlyFocusedInput()` does not
   exist, and nothing else can ask what has focus. React Native's own
   `TextInputState` module talks to a TurboModule this platform does not have.
-- `blur` grabs focus for the window rather than dropping it, because GTK models
-  focus as moving, not as absent. The `onBlur` event is still correct.
+- ~~**`blur` grabs focus for the window rather than dropping it, because GTK
+  models focus as moving, not as absent.**~~ Fixed 2026-10-08. The premise was
+  wrong: `gtk_window_set_focus` is documented as nullable, and with NULL it
+  "unsets the focus widget for the root", which is exactly what `blur` means
+  everywhere else. `blur` now does that, falling back to the old behaviour only
+  when the widget's root is not a window, which is a test or a widget not yet
+  shown.
+
+  The entry was right that `onBlur` fired either way, since the focus controller
+  reports a leave on both paths, and that is why nothing had noticed. What was
+  observably wrong is what had focus afterwards: the window itself, so a Tab
+  after a `blur` started from the window rather than from the top of the tab
+  order, and anything asking what was focused got the window instead of nothing.
+  `focus_blur_drops_focus_instead_of_handing_it_to_the_window` asserts
+  `gtk_window_get_focus` is NULL after the command, in a real window, and fails
+  on the old behaviour.
 - `placeholderTextColor`, `selectionColor` and `cursorColor` are parsed and
   ignored **on Windows**. Done on GTK 2026-10-07; AppKit already honoured the
   placeholder colour, so Windows is the one host left.

@@ -500,11 +500,25 @@ bool GtkTextInputManager::dispatchCommand(Tag tag,
   }
 
   if (name == "blur") {
-    // GTK has no "unfocus this widget"; focus moves, it is not dropped. Handing
-    // it to the window's default is the closest thing, and it makes the focus
-    // controller report a leave, so JavaScript still sees onBlur.
+    // Dropped, not moved. `gtk_window_set_focus` with NULL "unsets the focus
+    // widget for the root" in GTK's own words, which is what `blur` means on
+    // every other platform: nothing is focused afterwards.
+    //
+    // This used to hand focus to the root instead, with a comment saying GTK has
+    // no way to unfocus a widget and that focus moves rather than being dropped.
+    // That is not true, and the difference was visible: the window itself became
+    // the focus widget, so a Tab after a blur started from the window rather than
+    // from the top of the tab order, and anything asking what had focus got the
+    // window instead of nothing.
+    //
+    // Either way the focus controller reports a leave, so JavaScript sees onBlur,
+    // which is why the old behaviour looked right from the app's side.
     GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(entry.editable));
-    if (root != nullptr) {
+    if (GTK_IS_WINDOW(root)) {
+      gtk_window_set_focus(GTK_WINDOW(root), nullptr);
+    } else if (root != nullptr) {
+      // Not in a window: a surface root during a test, or a widget not yet shown.
+      // Moving focus to the root is the old behaviour and the only thing left.
       gtk_widget_grab_focus(GTK_WIDGET(root));
     }
     return true;
