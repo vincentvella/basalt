@@ -196,6 +196,9 @@ struct _RnView {
   gboolean has_border_radii;
   float border_widths[4];
   RnBorderStyle border_style;
+  // The `boxShadow` list, in the order the app wrote it. NULL for none rather
+  // than an empty array, so a view with no shadow allocates nothing.
+  GArray *box_shadows;
   GdkRGBA border_colors[4];
   gboolean has_borders;
 
@@ -288,6 +291,34 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
                         &self->border_radii[2],
                         &self->border_radii[3]);
 
+  // Outset box shadows, behind everything this view draws, which is where CSS
+  // puts them: a shadow is cast by the box rather than painted on it.
+  //
+  // Back to front, because CSS says the first shadow in the list is the one on
+  // top and GSK has no z within a snapshot. GSK's node takes the view's own
+  // outline and does the geometry -- the spread grows the box, the blur softens
+  // it, and the corners stay the view's corners -- so nothing here computes a
+  // rectangle. Its dx, dy, spread and blur mean what CSS's do.
+  if (self->box_shadows != nullptr) {
+    for (guint i = self->box_shadows->len; i > 0; i--) {
+      const RnBoxShadow &shadow = g_array_index(self->box_shadows, RnBoxShadow, i - 1);
+      if (shadow.inset || shadow.color.alpha <= 0.0f) {
+        continue;
+      }
+      // The blur is clamped, the spread is not. CSS says a blur radius may not
+      // be negative and a spread may, and GSK agrees with the first half by
+      // asserting on it -- so an app that sends one gets no blur rather than a
+      // Gsk-CRITICAL and a missing shadow.
+      gtk_snapshot_append_outset_shadow(snapshot,
+                                        &box,
+                                        &shadow.color,
+                                        shadow.dx,
+                                        shadow.dy,
+                                        shadow.spread,
+                                        shadow.blur > 0.0f ? shadow.blur : 0.0f);
+    }
+  }
+
   // The background is always clipped to the rounded box, even when children are
   // not: overflow: 'visible' lets a child escape the corner, but the view's own
   // fill still has to respect its border radius.
@@ -298,6 +329,25 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     gtk_snapshot_append_color(snapshot, &self->background_color, &bounds);
     if (self->has_border_radii) {
       gtk_snapshot_pop(snapshot);
+    }
+  }
+
+  // Inset box shadows, above the background and below the content, which is
+  // again where CSS puts them: an inset shadow darkens the inside of the box
+  // without hiding the text in it.
+  if (self->box_shadows != nullptr) {
+    for (guint i = self->box_shadows->len; i > 0; i--) {
+      const RnBoxShadow &shadow = g_array_index(self->box_shadows, RnBoxShadow, i - 1);
+      if (!shadow.inset || shadow.color.alpha <= 0.0f) {
+        continue;
+      }
+      gtk_snapshot_append_inset_shadow(snapshot,
+                                       &box,
+                                       &shadow.color,
+                                       shadow.dx,
+                                       shadow.dy,
+                                       shadow.spread,
+                                       shadow.blur > 0.0f ? shadow.blur : 0.0f);
     }
   }
 
@@ -645,6 +695,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->role_name, g_free);
   g_clear_pointer(&self->native_id, g_free);
   g_clear_pointer(&self->cursor_name, g_free);
+  g_clear_pointer(&self->box_shadows, g_array_unref);
 
   G_OBJECT_CLASS(rn_view_parent_class)->dispose(object);
 }
@@ -671,6 +722,7 @@ static void rn_view_init(RnView *self) {
   self->texture_fit = RN_IMAGE_FIT_COVER;
   self->role_name = nullptr;
   self->cursor_name = nullptr;
+  self->box_shadows = nullptr;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
@@ -1195,6 +1247,40 @@ void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]) {
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
+void rn_view_set_box_shadows(RnView *self, const RnBoxShadow *shadows, int count) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const guint wanted = shadows != nullptr && count > 0 ? static_cast<guint>(count) : 0;
+  const guint had = self->box_shadows != nullptr ? self->box_shadows->len : 0;
+  if (wanted == 0 && had == 0) {
+    return;
+  }
+  // Compared rather than replaced blindly: a controlled view re-sends identical
+  // props on every keystroke, and queueing a draw per mutation would repaint the
+  // window for nothing.
+  if (wanted == had && wanted > 0 &&
+      memcmp(self->box_shadows->data, shadows, wanted * sizeof(RnBoxShadow)) == 0) {
+    return;
+  }
+
+  if (wanted == 0) {
+    g_clear_pointer(&self->box_shadows, g_array_unref);
+  } else {
+    if (self->box_shadows == nullptr) {
+      self->box_shadows = g_array_sized_new(FALSE, FALSE, sizeof(RnBoxShadow), wanted);
+    } else {
+      g_array_set_size(self->box_shadows, 0);
+    }
+    g_array_append_vals(self->box_shadows, shadows, wanted);
+  }
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+int rn_view_get_box_shadow_count(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0);
+  return self->box_shadows != nullptr ? static_cast<int>(self->box_shadows->len) : 0;
+}
+
 void rn_view_set_border_style(RnView *self, RnBorderStyle style) {
   g_return_if_fail(RN_IS_VIEW(self));
 
@@ -1482,6 +1568,25 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
     if (self->border_style != RN_BORDER_SOLID) {
       g_string_append_printf(
           out, " border-style=%s", self->border_style == RN_BORDER_DOTTED ? "dotted" : "dashed");
+    }
+  }
+  // Box shadows, each in full. Nothing else in this dump can say a shadow is
+  // there, and the numbers are the whole feature: an offset that went to the
+  // wrong axis or a spread read as a blur still draws a plausible shadow.
+  if (self->box_shadows != nullptr) {
+    for (guint i = 0; i < self->box_shadows->len; i++) {
+      const RnBoxShadow &shadow = g_array_index(self->box_shadows, RnBoxShadow, i);
+      g_string_append_printf(out,
+                             " shadow=(%s%g,%g,%g,%g,#%02x%02x%02x%02x)",
+                             shadow.inset ? "inset " : "",
+                             static_cast<double>(shadow.dx),
+                             static_cast<double>(shadow.dy),
+                             static_cast<double>(shadow.blur),
+                             static_cast<double>(shadow.spread),
+                             static_cast<unsigned>(shadow.color.red * 255.0 + 0.5),
+                             static_cast<unsigned>(shadow.color.green * 255.0 + 0.5),
+                             static_cast<unsigned>(shadow.color.blue * 255.0 + 0.5),
+                             static_cast<unsigned>(shadow.color.alpha * 255.0 + 0.5));
     }
   }
   if (self->has_transform) {

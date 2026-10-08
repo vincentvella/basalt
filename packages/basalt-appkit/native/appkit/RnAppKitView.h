@@ -26,6 +26,9 @@
 
 #ifdef __OBJC__
 #import <Cocoa/Cocoa.h>
+// For CALayer, which `boxShadow` is made of: Cocoa declares the view and
+// QuartzCore the layers under it.
+#import <QuartzCore/QuartzCore.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -293,6 +296,36 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 // the same edge order. Either being null clears the border.
 - (void)setRnBorderWidths:(nullable const CGFloat *)widths
                    colors:(nullable const CGFloat *)colors;
+
+// One CSS box shadow, in React Native's own terms: `BoxShadow` carries exactly
+// these fields. The colour is RGBA components in that order, as the border
+// colours arrive, so this header stays free of NSColor for the same reason the
+// rest of it is.
+typedef struct {
+  CGFloat dx;
+  CGFloat dy;
+  CGFloat blur;
+  CGFloat spread;
+  CGFloat color[4];
+  bool inset;
+} RnAppKitBoxShadow;
+
+// `boxShadow`. Replaces whatever was there; pass NULL or 0 for none.
+//
+// Order is CSS's: the first shadow in the list is the one on top. Each becomes a
+// CALayer of its own with a shadow path and a mask, which is the only way to
+// paint outside a view -- `drawRect:` is clipped to the bounds and an outset
+// shadow is by definition outside them. It is also what React Native's own iOS
+// half does, so a shadow lands in the same place on both.
+- (void)setRnBoxShadows:(nullable const RnAppKitBoxShadow *)shadows count:(NSInteger)count;
+
+// How many are set, for the tests and the tree dump.
+@property(nonatomic, readonly) NSInteger rnBoxShadowCount;
+
+// The layers those shadows became, bottom to top, for the tests: each one's
+// `shadowPath`, `shadowRadius` and `mask` are the whole feature, and they are
+// what macOS composites rather than anything this code draws.
+@property(nonatomic, readonly) NSArray<CALayer *> *rnBoxShadowLayers;
 
 // `borderStyle`, for the two values that are not solid.
 typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {

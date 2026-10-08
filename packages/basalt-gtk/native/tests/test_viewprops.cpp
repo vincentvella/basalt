@@ -94,6 +94,77 @@ int blurNodesIn(GskRenderNode *node) {
   }
 }
 
+// The shadow nodes a view painted, outset and inset counted apart: `boxShadow`
+// carries an `inset` flag and the two are different GSK nodes, so a view that
+// read the flag wrongly draws a shadow in the wrong place and nothing else.
+struct ShadowNodes {
+  int outset;
+  int inset;
+};
+
+void countShadowNodes(GskRenderNode *node, ShadowNodes *found) {
+  if (node == nullptr) {
+    return;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_OUTSET_SHADOW_NODE:
+      found->outset++;
+      return;
+    case GSK_INSET_SHADOW_NODE:
+      found->inset++;
+      return;
+    case GSK_CONTAINER_NODE:
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        countShadowNodes(gsk_container_node_get_child(node, i), found);
+      }
+      return;
+    case GSK_CLIP_NODE:
+      countShadowNodes(gsk_clip_node_get_child(node), found);
+      return;
+    case GSK_ROUNDED_CLIP_NODE:
+      countShadowNodes(gsk_rounded_clip_node_get_child(node), found);
+      return;
+    case GSK_TRANSFORM_NODE:
+      countShadowNodes(gsk_transform_node_get_child(node), found);
+      return;
+    case GSK_OPACITY_NODE:
+      countShadowNodes(gsk_opacity_node_get_child(node), found);
+      return;
+    default:
+      return;
+  }
+}
+
+// The first outset shadow node in the tree, for the tests that read its numbers
+// back rather than counting it.
+GskRenderNode *firstOutsetShadow(GskRenderNode *node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_OUTSET_SHADOW_NODE:
+      return node;
+    case GSK_CONTAINER_NODE:
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        GskRenderNode *found = firstOutsetShadow(gsk_container_node_get_child(node, i));
+        if (found != nullptr) {
+          return found;
+        }
+      }
+      return nullptr;
+    case GSK_CLIP_NODE:
+      return firstOutsetShadow(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return firstOutsetShadow(gsk_rounded_clip_node_get_child(node));
+    case GSK_TRANSFORM_NODE:
+      return firstOutsetShadow(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return firstOutsetShadow(gsk_opacity_node_get_child(node));
+    default:
+      return nullptr;
+  }
+}
+
 // Which of the two border nodes a view painted. A solid border is GTK's border
 // node and a dotted or dashed one is a stroked path, so the pair says both that
 // the style took effect and that the other kind was not drawn as well.
@@ -726,6 +797,226 @@ TEST(a_cursor_is_reported_in_the_tree) {
   const std::string grabbing(text);
   g_free(text);
   EXPECT(grabbing.find("cursor=grab") != std::string::npos);
+
+  g_object_unref(view);
+}
+
+// `boxShadow`. GSK has an outset and an inset shadow node and CSS's six fields
+// are exactly their six arguments, so what a shadow is and where it went are
+// both readable out of the render tree rather than only on screen.
+
+TEST(a_box_shadow_is_an_outset_shadow_node_carrying_its_own_numbers) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnBoxShadow shadow{
+      .dx = 2.0F, .dy = 4.0F, .blur = 8.0F, .spread = 1.0F,
+      .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.25F}, .inset = FALSE};
+  rn_view_set_box_shadows(view, &shadow, 1);
+  EXPECT_EQ(rn_view_get_box_shadow_count(view), 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  ShadowNodes found{0, 0};
+  countShadowNodes(painted, &found);
+  EXPECT_EQ(found.outset, 1);
+  EXPECT_EQ(found.inset, 0);
+
+  // The numbers, in CSS's own order. Offset, blur and spread are three
+  // different arguments of the same shape, and a shadow with any two of them
+  // swapped still looks like a shadow.
+  GskRenderNode *node = firstOutsetShadow(painted);
+  EXPECT(node != nullptr);
+  EXPECT_EQ((double)gsk_outset_shadow_node_get_dx(node), 2.0);
+  EXPECT_EQ((double)gsk_outset_shadow_node_get_dy(node), 4.0);
+  EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(node), 8.0);
+  EXPECT_EQ((double)gsk_outset_shadow_node_get_spread(node), 1.0);
+  // And the outline is the view's own box, so a rounded card casts a rounded
+  // shadow without anything here knowing the radii.
+  const GskRoundedRect *outline = gsk_outset_shadow_node_get_outline(node);
+  EXPECT_EQ((double)outline->bounds.size.width, 100.0);
+  EXPECT_EQ((double)outline->bounds.size.height, 60.0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(an_inset_box_shadow_is_the_other_node) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnBoxShadow shadow{
+      .dx = 0.0F, .dy = 2.0F, .blur = 4.0F, .spread = 0.0F,
+      .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.5F}, .inset = TRUE};
+  rn_view_set_box_shadows(view, &shadow, 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  ShadowNodes found{0, 0};
+  countShadowNodes(painted, &found);
+  // Inside, not behind: an inset shadow drawn as an outset one is the most
+  // likely way to get this wrong and the hardest to see in a screenshot.
+  EXPECT_EQ(found.inset, 1);
+  EXPECT_EQ(found.outset, 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// Several shadows, which is the usual way a card is drawn: one tight and dark,
+// one wide and soft.
+TEST(every_box_shadow_in_the_list_is_painted) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnBoxShadow shadows[3] = {
+      {.dx = 0.0F, .dy = 1.0F, .blur = 2.0F, .spread = 0.0F,
+       .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.2F}, .inset = FALSE},
+      {.dx = 0.0F, .dy = 8.0F, .blur = 24.0F, .spread = -4.0F,
+       .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.15F}, .inset = FALSE},
+      {.dx = 0.0F, .dy = 1.0F, .blur = 0.0F, .spread = 0.0F,
+       .color = GdkRGBA{1.0F, 1.0F, 1.0F, 0.4F}, .inset = TRUE},
+  };
+  rn_view_set_box_shadows(view, shadows, 3);
+  EXPECT_EQ(rn_view_get_box_shadow_count(view), 3);
+
+  GskRenderNode *painted = paintedNode(view);
+  ShadowNodes found{0, 0};
+  countShadowNodes(painted, &found);
+  EXPECT_EQ(found.outset, 2);
+  EXPECT_EQ(found.inset, 1);
+
+  // The first shadow in the list is the one on top, so the two outset nodes come
+  // out back to front: the wide soft one is painted first.
+  GskRenderNode *first = firstOutsetShadow(painted);
+  EXPECT(first != nullptr);
+  EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(first), 24.0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(a_box_shadow_can_be_taken_away_again) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnBoxShadow shadow{
+      .dx = 0.0F, .dy = 4.0F, .blur = 8.0F, .spread = 0.0F,
+      .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.25F}, .inset = FALSE};
+  rn_view_set_box_shadows(view, &shadow, 1);
+  rn_view_set_box_shadows(view, nullptr, 0);
+  EXPECT_EQ(rn_view_get_box_shadow_count(view), 0);
+
+  GskRenderNode *painted = paintedNode(view);
+  ShadowNodes found{0, 0};
+  countShadowNodes(painted, &found);
+  EXPECT_EQ(found.outset, 0);
+  EXPECT_EQ(found.inset, 0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// A shadow React Native could not parse a colour for arrives with none. Painting
+// it would put a black shadow under a view that asked for nothing, which is worse
+// than the missing shadow.
+TEST(a_box_shadow_with_no_colour_is_not_painted) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnBoxShadow shadow{
+      .dx = 0.0F, .dy = 4.0F, .blur = 8.0F, .spread = 0.0F,
+      .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.0F}, .inset = FALSE};
+  rn_view_set_box_shadows(view, &shadow, 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  ShadowNodes found{0, 0};
+  countShadowNodes(painted, &found);
+  EXPECT_EQ(found.outset, 0);
+  // Still counted as set, because the props said so: what is skipped is the
+  // painting, not the prop.
+  EXPECT_EQ(rn_view_get_box_shadow_count(view), 1);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// A negative blur radius is no blur rather than a Gsk-CRITICAL. CSS does not
+// allow one and GSK asserts on it, and nothing between an app and here stops it:
+// `blurRadius: -8` parses and arrives. Found while sabotaging the test above,
+// which swapped the blur and the spread and took the whole suite down with it.
+TEST(a_negative_blur_radius_on_a_box_shadow_is_not_a_crash) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnBoxShadow shadows[2] = {
+      {.dx = 0.0F, .dy = 4.0F, .blur = -8.0F, .spread = 0.0F,
+       .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.25F}, .inset = FALSE},
+      {.dx = 0.0F, .dy = 4.0F, .blur = -8.0F, .spread = 0.0F,
+       .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.25F}, .inset = TRUE},
+  };
+  rn_view_set_box_shadows(view, shadows, 2);
+
+  GskRenderNode *painted = paintedNode(view);
+  ShadowNodes found{0, 0};
+  countShadowNodes(painted, &found);
+  EXPECT_EQ(found.outset, 1);
+  EXPECT_EQ(found.inset, 1);
+  GskRenderNode *node = firstOutsetShadow(painted);
+  EXPECT(node != nullptr);
+  EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(node), 0.0);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// And the list is in the tree dump, every field of it, which is what makes the
+// wiring testable: the prop is read in GtkMountingManager, and the tests above
+// set the shadows on the widget by hand.
+TEST(box_shadows_are_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string none(text);
+  g_free(text);
+  EXPECT(none.find("shadow=") == std::string::npos);
+
+  const RnBoxShadow shadows[2] = {
+      {.dx = 2.0F, .dy = 4.0F, .blur = 8.0F, .spread = 1.0F,
+       .color = GdkRGBA{0.0F, 0.0F, 0.0F, 0.25F}, .inset = FALSE},
+      {.dx = 0.0F, .dy = 1.0F, .blur = 0.0F, .spread = 0.0F,
+       .color = GdkRGBA{1.0F, 1.0F, 1.0F, 1.0F}, .inset = TRUE},
+  };
+  rn_view_set_box_shadows(view, shadows, 2);
+  text = rn_view_describe_tree(view);
+  const std::string dumped(text);
+  g_free(text);
+  EXPECT(dumped.find("shadow=(2,4,8,1,#00000040)") != std::string::npos);
+  EXPECT(dumped.find("shadow=(inset 0,1,0,0,#ffffffff)") != std::string::npos);
 
   g_object_unref(view);
 }

@@ -174,3 +174,241 @@ TEST(border_style_is_reported_in_the_tree) {
         containsString:@"border-style=dotted"]);
   }
 }
+
+// `boxShadow`.
+//
+// Two things are checked, because they fail differently: what each shadow's layer
+// carries -- the path, the blur, the colour -- and where that layer lives, which
+// is what decides whether `overflow: 'hidden'` clips the shadow away.
+//
+// **No pixels here, and that is measured rather than assumed.** A layer's shadow
+// is drawn by Core Animation during compositing; `-[CALayer renderInContext:]`
+// does not draw it at all, which a probe confirmed on a bare layer with a
+// shadowPath and nothing else -- every pixel came back white, inside the path as
+// well as outside. That is also the method `AppKitSnapshot.mm` uses, so a box
+// shadow is invisible to this project's own snapshots on macOS, and a window
+// capture through CGWindowList needs a permission no CI runner grants. The GTK
+// side has the render tree, which is why its half of this feature is checked
+// node by node; here the layers and their paths are the observable thing.
+namespace {
+
+RnAppKitBoxShadow outsetShadow(CGFloat dx, CGFloat dy, CGFloat blur, CGFloat spread) {
+  RnAppKitBoxShadow shadow{};
+  shadow.dx = dx;
+  shadow.dy = dy;
+  shadow.blur = blur;
+  shadow.spread = spread;
+  shadow.color[3] = 1;
+  shadow.inset = false;
+  return shadow;
+}
+
+// A view inside a parent, which is where a view with an outset shadow has to be
+// for the shadow to have anywhere to go.
+RnAppKitView *shadowed(const RnAppKitBoxShadow *shadows, NSInteger count, CGRect frame) {
+  RnAppKitView *parent = [RnAppKitView viewWithTag:1];
+  [parent setRnFrameX:0 y:0 width:200 height:200];
+  RnAppKitView *view = [RnAppKitView viewWithTag:2];
+  [parent insertRnChild:view atIndex:0];
+  [view setRnFrameX:frame.origin.x y:frame.origin.y
+              width:frame.size.width height:frame.size.height];
+  [view setRnBoxShadows:shadows count:count];
+  return view;
+}
+
+} // namespace
+
+TEST(box_shadow_becomes_a_layer_carrying_its_own_numbers) {
+  @autoreleasepool {
+    const RnAppKitBoxShadow shadow = outsetShadow(2, 4, 8, 1);
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+
+    EXPECT_EQ((long)view.rnBoxShadowCount, 1L);
+    EXPECT_EQ((long)view.rnBoxShadowLayers.count, 1L);
+    CALayer *layer = view.rnBoxShadowLayers.firstObject;
+
+    // Half the blur radius, which is CSS's radius as a gaussian sigma.
+    EXPECT_NEAR((int)(layer.shadowRadius * 100), 400, 1);
+    EXPECT_NEAR((int)layer.shadowOpacity, 1, 0);
+    // The offset is in the path, not in shadowOffset: this view is flipped, and
+    // a path in its own coordinates comes out pointing the right way.
+    EXPECT_EQ((int)layer.shadowOffset.width, 0);
+    EXPECT_EQ((int)layer.shadowOffset.height, 0);
+
+    // The path is the box, grown by the spread and moved by the offset. Checking
+    // the bounding box catches an offset on the wrong axis and a spread read as a
+    // blur, which both draw a plausible shadow.
+    const CGRect box = CGPathGetBoundingBox(layer.shadowPath);
+    EXPECT_EQ((int)box.origin.x, 1);    // -spread + dx
+    EXPECT_EQ((int)box.origin.y, 3);    // -spread + dy
+    EXPECT_EQ((int)box.size.width, 102);
+    EXPECT_EQ((int)box.size.height, 62);
+
+    // And it is masked, or the shadow would show through a translucent box.
+    EXPECT(layer.mask != nil);
+    EXPECT([((CAShapeLayer *)layer.mask).fillRule isEqualToString:kCAFillRuleEvenOdd]);
+  }
+}
+
+// Where the layer lives. Inside the view normally, which is where it composites
+// exactly as the view does.
+TEST(box_shadow_an_outset_shadow_sits_inside_the_view_that_casts_it) {
+  @autoreleasepool {
+    const RnAppKitBoxShadow shadow = outsetShadow(0, 4, 8, 0);
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+
+    CALayer *layer = view.rnBoxShadowLayers.firstObject;
+    EXPECT(layer != nil);
+    EXPECT(layer.superlayer == view.layer);
+  }
+}
+
+// And in the parent when the view clips itself, which is the case the obvious
+// arrangement loses entirely: masksToBounds clips a sublayer, and CSS does not
+// clip an element's own shadow for `overflow: 'hidden'`.
+TEST(box_shadow_a_clipping_view_casts_its_shadow_into_the_parent) {
+  @autoreleasepool {
+    const RnAppKitBoxShadow shadow = outsetShadow(0, 4, 8, 0);
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+    [view setRnClipsChildren:YES];
+
+    CALayer *layer = view.rnBoxShadowLayers.firstObject;
+    EXPECT(layer != nil);
+    EXPECT(layer.superlayer == view.superview.layer);
+    // In the parent's coordinates, so the shadow is still where the view is.
+    EXPECT_EQ((int)layer.frame.origin.x, 50);
+    EXPECT_EQ((int)layer.frame.origin.y, 50);
+
+    // And back inside when the view stops clipping.
+    [view setRnClipsChildren:NO];
+    EXPECT(view.rnBoxShadowLayers.firstObject.superlayer == view.layer);
+    EXPECT(layer.superlayer == nil);
+  }
+}
+
+// The other way a view clips its own layer: radii too elliptical for CALayer's
+// cornerRadius, which get a mask layer. Same consequence, same answer.
+TEST(box_shadow_elliptical_radii_also_move_the_shadow_out) {
+  @autoreleasepool {
+    const RnAppKitBoxShadow shadow = outsetShadow(0, 4, 8, 0);
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+    const CGFloat radii[8] = {20, 8, 20, 8, 20, 8, 20, 8};
+    [view setRnBorderRadii:radii];
+
+    EXPECT(view.layer.mask != nil);
+    EXPECT(view.rnBoxShadowLayers.firstObject.superlayer == view.superview.layer);
+    // The shadow follows the radii it is cast by, so its path is rounded too.
+    const CGRect box = CGPathGetBoundingBox(view.rnBoxShadowLayers.firstObject.shadowPath);
+    EXPECT_EQ((int)box.size.width, 100);
+  }
+}
+
+// An inset shadow is the other way round: inside the view, where clipping is
+// right, and with the hole punched out of its path so the blur falls inward.
+TEST(box_shadow_an_inset_shadow_sits_inside_the_view) {
+  @autoreleasepool {
+    RnAppKitBoxShadow shadow = outsetShadow(0, 2, 4, 0);
+    shadow.inset = true;
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+
+    CALayer *layer = view.rnBoxShadowLayers.firstObject;
+    EXPECT(layer != nil);
+    EXPECT(layer.superlayer == view.layer);
+    // The path is bigger than the view, being the ring the shadow is cast from,
+    // and the mask keeps it inside.
+    const CGRect box = CGPathGetBoundingBox(layer.shadowPath);
+    EXPECT(box.size.width > 100);
+    EXPECT(layer.mask != nil);
+    // Not even-odd: the hole is a reversed subpath, so the winding punches it.
+    EXPECT(![((CAShapeLayer *)layer.mask).fillRule isEqualToString:kCAFillRuleEvenOdd]);
+  }
+}
+
+TEST(box_shadow_every_shadow_in_the_list_becomes_a_layer) {
+  @autoreleasepool {
+    RnAppKitBoxShadow shadows[3] = {
+        outsetShadow(0, 1, 2, 0),
+        outsetShadow(0, 8, 24, -4),
+        outsetShadow(0, 1, 0, 0),
+    };
+    shadows[2].inset = true;
+    RnAppKitView *view = shadowed(shadows, 3, CGRectMake(50, 50, 100, 60));
+
+    EXPECT_EQ((long)view.rnBoxShadowCount, 3L);
+    EXPECT_EQ((long)view.rnBoxShadowLayers.count, 3L);
+    // Back to front: the first shadow in the list is the one on top, so the
+    // layers come out in the reverse of the list -- the inset one with no blur
+    // first, then the wide soft one, then the tight one.
+    EXPECT_NEAR((int)view.rnBoxShadowLayers[0].shadowRadius, 0, 0);
+    EXPECT_NEAR((int)view.rnBoxShadowLayers[1].shadowRadius, 12, 0);
+    EXPECT_NEAR((int)view.rnBoxShadowLayers[2].shadowRadius, 1, 0);
+  }
+}
+
+TEST(box_shadow_can_be_taken_away_again) {
+  @autoreleasepool {
+    const RnAppKitBoxShadow shadow = outsetShadow(0, 4, 8, 0);
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+    CALayer *layer = view.rnBoxShadowLayers.firstObject;
+
+    [view setRnBoxShadows:nullptr count:0];
+    EXPECT_EQ((long)view.rnBoxShadowCount, 0L);
+    EXPECT_EQ((long)view.rnBoxShadowLayers.count, 0L);
+    // And it left the parent, or the shadow outlives the prop that asked for it.
+    EXPECT(layer.superlayer == nil);
+  }
+}
+
+// A view that is unmounted takes its shadow with it. The shadow lives in the
+// parent, so this is the one way this arrangement can leak something visible.
+TEST(box_shadow_leaves_the_parent_when_the_view_does) {
+  @autoreleasepool {
+    const RnAppKitBoxShadow shadow = outsetShadow(0, 4, 8, 0);
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+    [view setRnClipsChildren:YES];
+    NSView *parent = view.superview;
+    CALayer *layer = view.rnBoxShadowLayers.firstObject;
+    // In the parent, because the view clips. AppKit has not attached the view's
+    // own layer yet -- it does that at the first display -- so the shadow is all
+    // there is to find there.
+    EXPECT(layer.superlayer == parent.layer);
+
+    [view removeFromSuperview];
+    EXPECT(layer.superlayer == nil);
+    EXPECT_EQ((long)view.rnBoxShadowLayers.count, 0L);
+  }
+}
+
+TEST(box_shadow_with_no_colour_is_not_drawn) {
+  @autoreleasepool {
+    RnAppKitBoxShadow shadow = outsetShadow(0, 4, 8, 0);
+    shadow.color[3] = 0;
+    RnAppKitView *view = shadowed(&shadow, 1, CGRectMake(50, 50, 100, 60));
+
+    // Still one prop, no layer: what is skipped is the painting, not the prop.
+    EXPECT_EQ((long)view.rnBoxShadowCount, 1L);
+    EXPECT_EQ((long)view.rnBoxShadowLayers.count, 0L);
+  }
+}
+
+// And ink lands outside the box, which is the only assertion here that somebody
+// looking at the screen would make.
+//
+// The whole list in the tree dump, which is what makes the wiring testable: the
+// prop is read in AppKitMountingManager, and every test above sets the shadows on
+// the view by hand. Spelled as GTK spells them, so the cross-host diff compares.
+TEST(box_shadows_are_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitBoxShadow shadows[2] = {outsetShadow(2, 4, 8, 1), outsetShadow(0, 1, 0, 0)};
+    shadows[0].color[3] = 0.25;
+    shadows[1].color[0] = 1;
+    shadows[1].color[1] = 1;
+    shadows[1].color[2] = 1;
+    shadows[1].inset = true;
+    RnAppKitView *view = shadowed(shadows, 2, CGRectMake(50, 50, 100, 60));
+
+    const std::string described = [view describeTree].UTF8String;
+    EXPECT(described.find("shadow=(2,4,8,1,#00000040)") != std::string::npos);
+    EXPECT(described.find("shadow=(inset 0,1,0,0,#ffffffff)") != std::string::npos);
+  }
+}

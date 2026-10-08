@@ -3789,6 +3789,61 @@ def test_border_style(bundle: Path) -> None:
             )
 
 
+def test_box_shadow(bundle: Path) -> None:
+    """`boxShadow` reaches the view, the list and the inset flag with it.
+
+    A shadow is the one prop here that neither host can be asked about in pixels.
+    GTK's is a GSK node, which its unit tests walk; macOS composites it in Core
+    Animation, and `renderInContext:` -- which is what this project's own
+    snapshots use -- draws no shadow at all, measured on a bare layer. So the
+    tree dump is what says a shadow arrived, and this reads it.
+
+    Two shadows on one view, one of them inset, because a host can drop the
+    second of a list or lose the inset flag and still draw something plausible:
+    e2e/views.tsx writes them as one CSS shorthand, so this also covers React
+    Native's own parse of it.
+
+    Windows draws no shadows yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws no box shadows yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "shadow=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a shadow; the app sets two on one.\n{tree}"
+        )
+    # The numbers in full. An offset read onto the wrong axis, or a blur read as a
+    # spread, still draws a shadow -- so the assertion is the whole tuple.
+    for needle in ("shadow=(0,4,8,0,#00000040)", "shadow=(inset 0,1,0,0,#ffffffff)"):
+        if needle not in carrying[0]:
+            raise Failure(
+                f"expected {needle} on the shadowed view.\n{carrying[0]}"
+            )
+
+
 def test_cursor_style(bundle: Path) -> None:
     """The `cursor` style property reaches the view.
 
@@ -5173,6 +5228,7 @@ SCENARIOS = [
     ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
     ("borderStyle reaches the view, dashed and dotted", test_border_style),
     ("the cursor style property reaches the view", test_cursor_style),
+    ("boxShadow reaches the view, inset and all", test_box_shadow),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

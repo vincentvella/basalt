@@ -102,6 +102,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#4d8cf2',
     cursor: 'pointer',
   },
+  // boxShadow, the other prop that only a dump can confirm. Two shadows and an
+  // inset one, because the list and the inset flag are each a thing a host can
+  // drop while still drawing something plausible.
+  shadowed: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#ffffff',
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 #ffffff',
+  },
   draggable: {
     width: 40,
     height: 40,
@@ -127,6 +136,7 @@ function App() {
         <View style={styles.dot} />
         <View style={styles.dashed} />
         <View style={styles.dotted} />
+        <View style={styles.shadowed} />
         <View style={styles.handy} />
         <View style={styles.draggable} />
         <View style={styles.dot} />

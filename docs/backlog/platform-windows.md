@@ -13,7 +13,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    left of it is an open entry in testing.md
 7. Nothing makes a red build hard to ignore
 8. An inline `<View>` inside a `<Text>` is not positioned
-9. Three style props the other two hosts draw and this one ignores
+9. Four style props the other two hosts draw and this one ignores
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -192,8 +192,8 @@ and none of it is a missing half.
   `SetInlineObject` with an `IDWriteInlineObject` that answers React Native's own
   metrics, read back with `HitTestTextPosition`.
 
-- **Three style props the other two hosts draw and this one ignores**, all three
-  landed on GTK and AppKit on 2026-10-07 and 2026-10-08, and all three recorded
+- **Four style props the other two hosts draw and this one ignores**, all four
+  landed on GTK and AppKit on 2026-10-07 and 2026-10-08, and all four recorded
   here the day the second host got them rather than later:
 
   - `blurRadius` on an `<Image>`. GSK has a blur node and Core Image a filter;
@@ -206,6 +206,11 @@ and none of it is a missing half.
     the four filled edges. `ID2D1StrokeStyle` takes a dash array, so the same
     decision carries over, including that the first side which asks for something
     other than solid decides the whole outline.
+  - `boxShadow`, outset and inset, any number of them. GSK has a shadow node per
+    kind and macOS has CALayer's shadow properties; Direct2D has
+    `CLSID_D2D1Shadow`, which takes a blurred alpha mask of what is drawn, so the
+    work is the geometry rather than the blur. backlog/correctness.md has what the
+    other two decided, including that a negative blur radius has to be clamped.
   - The `cursor` style property. This is the one that differs in shape: Win32 has
     no per-view cursor, so `WM_SETCURSOR` has to be answered by the window with
     whatever view is under the pointer, which means a hit test on every cursor
@@ -215,5 +220,5 @@ and none of it is a missing half.
   Each has a unit test per host to copy the assertions from, and an end-to-end
   scenario that is skipped on Windows by name. One consequence worth knowing
   before running it: `scripts/compare_hosts.sh` against Windows will now report
-  the `blur=`, `border-style=` and `cursor=` lines as a tree difference, because
-  they are one. That is the script doing its job, and it goes away as each lands.
+  the `blur=`, `border-style=`, `cursor=` and `shadow=` lines as a tree
+  difference, because they are one. That is the script doing its job, and it goes away as each lands.

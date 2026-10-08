@@ -7,7 +7,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
-4. Nine view style props that no host reads, and nothing said so
+4. Eight view style props that no host reads, and nothing said so (box shadows
+   are done on GTK and AppKit)
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -105,17 +106,16 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   tests having shown how to reach one. Hit testing is the wrong instrument and
   cannot answer it.
 
-- **Nine view style props that no host reads, and nothing said so.** Counted
+- **Eight view style props that no host reads, and nothing said so.** Counted
   2026-10-08 by going through `BaseViewProps` field by field and grepping all
   three hosts for each, after `cursor` and `borderStyle` both turned out to be
   props the backlog thought were handled. These are the ones no host mentions
   anywhere, and which nothing in this backlog mentioned either:
 
-  - `boxShadow`, and the older `shadowColor`, `shadowOffset`, `shadowOpacity`
-    and `shadowRadius` beside it. The most visible of the nine: a card, a menu
-    and a dialog all read as flat without one. GSK has shadow nodes, CALayer has
-    shadow properties, and Direct2D has a shadow effect, so every host has a
-    primitive and none is wired to it.
+  - ~~`boxShadow`~~, **done on GTK and AppKit 2026-10-08**; the older
+    `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius` beside it
+    are still ignored, and are iOS's pre-CSS spelling of the same idea. What the
+    work turned out to be is at the end of this entry.
   - `backgroundImage`, with `backgroundSize`, `backgroundPosition` and
     `backgroundRepeat`. This is where React Native put CSS gradients, so
     `linear-gradient(...)` in a style reaches the host and is dropped. GSK has
@@ -143,3 +143,50 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   value on the widget by hand passes whether or not the prop path works. Every
   one of the nine needs its dump line and an end-to-end assertion, not only a
   drawing.
+
+  **`boxShadow`, done on GTK and AppKit 2026-10-08.** The list crosses the seam
+  as React Native wrote it, six fields per shadow, and each view layer decides
+  what a shadow is made of there.
+
+  GTK is a direct mapping and barely an implementation: GSK has an outset and an
+  inset shadow node whose arguments are CSS's dx, dy, spread and blur, and they
+  take the view's own rounded outline, so a rounded card casts a rounded shadow
+  with nothing computing a rectangle. Outset shadows are appended before the
+  background and inset ones after it, which is where CSS puts them, and the list
+  is painted back to front because CSS says the first shadow is the one on top.
+  One thing the mapping does not survive: GSK asserts a non-negative blur radius
+  and `blurRadius: -8` parses and arrives, so the blur is clamped and the spread,
+  which CSS does allow to be negative, is not. Found by a sabotage run that
+  swapped the two and took the suite down with a Gsk-CRITICAL.
+
+  AppKit is one CALayer per shadow with a `shadowPath` and a mask, which is how
+  React Native's iOS half does it and the only way to paint outside a view at
+  all: `drawRect:` is clipped to the bounds. The offset and spread are baked into
+  the path rather than set as `shadowOffset`, which keeps a positive dy pointing
+  down in a flipped view, and `shadowRadius` is half the CSS blur, the same
+  sigma conversion the image blur measured. Corner radii grow by the spread
+  through the curve the CSS spec gives, so a tight corner on a widely spread
+  shadow does not become a circle.
+
+  **Two things on the AppKit side are decisions rather than details.** An outset
+  shadow normally sits inside the view, where it composites exactly as the view
+  does; a view that clips its own layer -- `overflow: 'hidden'`, or radii too
+  elliptical for `cornerRadius` -- would lose it entirely, since CSS clips
+  neither, so for those it is cast into the parent's layer below the view
+  instead. The cost is z-order: AppKit attaches a subview's layer lazily at the
+  first display and these are built while mounting, so the shadow lands at the
+  bottom of the parent rather than directly below its own view, which shows only
+  where a sibling overlaps the shadow of a clipping view. And an inset shadow,
+  being a sublayer, paints above this view's own drawn text where CSS puts it
+  below; GTK gets that right for free.
+
+  **No pixel test on macOS, and that is measured.** A layer's shadow is drawn by
+  Core Animation while compositing; `-[CALayer renderInContext:]` draws none of
+  it, confirmed on a bare layer with a `shadowPath` and nothing else, every pixel
+  white inside the path and out. That is also what `AppKitSnapshot.mm` uses, so a
+  box shadow is invisible to this project's own snapshots on macOS, and a
+  CGWindowList capture needs a permission no runner grants. Seventeen unit tests
+  across the two hosts assert the render nodes on one side and the layers, paths
+  and masks on the other, plus an end-to-end scenario that reads the dump on
+  both. Sabotages checked: a spread applied as a blur, dx and dy swapped, inset
+  painted as outset, and a clipping view keeping its shadow inside.

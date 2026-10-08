@@ -812,6 +812,31 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       break;
   }
 
+  // boxShadow. React Native's BoxShadow carries the six CSS fields and the view
+  // layer takes the same six, so nothing is converted here: it decides what a
+  // shadow is made of on this platform, and this decides nothing.
+  {
+    std::vector<RnAppKitBoxShadow> shadows;
+    shadows.reserve(props->boxShadow.size());
+    for (const auto &shadow : props->boxShadow) {
+      RnAppKitBoxShadow converted{};
+      converted.dx = (CGFloat)shadow.offsetX;
+      converted.dy = (CGFloat)shadow.offsetY;
+      converted.blur = (CGFloat)shadow.blurRadius;
+      converted.spread = (CGFloat)shadow.spreadDistance;
+      converted.inset = shadow.inset;
+      if (shadow.color) {
+        const ColorComponents components = colorComponentsFromColor(shadow.color);
+        converted.color[0] = components.red;
+        converted.color[1] = components.green;
+        converted.color[2] = components.blue;
+        converted.color[3] = components.alpha;
+      }
+      shadows.push_back(converted);
+    }
+    [view setRnBoxShadows:shadows.data() count:(NSInteger)shadows.size()];
+  }
+
   // The `cursor` style property, as a CSS keyword. core/CursorNames.h is shared
   // with the GTK host, which hands the same keyword to GDK; what macOS has no
   // cursor for is decided in the view layer, beside the NSCursors.

@@ -1090,6 +1090,28 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
       break;
   }
 
+  // boxShadow. React Native's BoxShadow carries the six CSS fields and GSK's
+  // shadow nodes take the same six, so nothing is converted: the widget layer
+  // gets the list as the app wrote it and decides where in the paint order each
+  // one goes. A shadow with no colour is one React Native could not parse, and
+  // the widget skips it rather than painting black.
+  {
+    std::vector<RnBoxShadow> shadows;
+    shadows.reserve(props->boxShadow.size());
+    for (const auto &shadow : props->boxShadow) {
+      shadows.push_back(RnBoxShadow{
+          .dx = static_cast<float>(shadow.offsetX),
+          .dy = static_cast<float>(shadow.offsetY),
+          .blur = static_cast<float>(shadow.blurRadius),
+          .spread = static_cast<float>(shadow.spreadDistance),
+          .color = shadow.color ? toRgba(colorComponentsFromColor(shadow.color))
+                                : GdkRGBA{0.0F, 0.0F, 0.0F, 0.0F},
+          .inset = shadow.inset ? TRUE : FALSE,
+      });
+    }
+    rn_view_set_box_shadows(view, shadows.data(), static_cast<int>(shadows.size()));
+  }
+
   // The `cursor` style property, as a CSS keyword. GDK's names are CSS's, so the
   // keyword goes straight through; core/CursorNames.h is shared with the AppKit
   // host so the two cannot disagree about what a value is called.

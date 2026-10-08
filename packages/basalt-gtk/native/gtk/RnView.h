@@ -63,6 +63,35 @@ void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]);
 // the order GTK's border node wants and the order CSS names them in.
 void rn_view_set_borders(RnView *self, const float widths[4], const GdkRGBA colors[4]);
 
+// One CSS box shadow, in React Native's own terms: `BoxShadow` carries exactly
+// these six fields and nothing is converted on the way here.
+//
+// `spread` grows the shadow's box before the blur, and `inset` puts the shadow
+// inside the view instead of behind it, which is a different GSK node. The
+// shadow follows the view's own corner radii, GSK taking the outline rather than
+// a rectangle.
+typedef struct {
+  float dx;
+  float dy;
+  float blur;
+  float spread;
+  GdkRGBA color;
+  gboolean inset;
+} RnBoxShadow;
+
+// `boxShadow`. Replaces whatever was there; pass NULL or 0 for none.
+//
+// Order is CSS's: the first shadow in the list is the one on top, so these are
+// painted back to front. Outset shadows go behind the background and inset ones
+// above it and below the content, which is where CSS puts them.
+//
+// The whole list rather than one shadow, because a card with a tight dark shadow
+// and a wide soft one is the usual reason to ask, and because the two hosts that
+// can do it both can do it for any number.
+void rn_view_set_box_shadows(RnView *self, const RnBoxShadow *shadows, int count);
+// How many are set, for the tests and the tree dump.
+int rn_view_get_box_shadow_count(RnView *self);
+
 // `borderStyle`, for the two values that are not solid.
 typedef enum {
   RN_BORDER_SOLID = 0,

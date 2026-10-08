@@ -157,6 +157,146 @@ static CGPathRef RnAppKitCreateRoundedPath(CGRect rect, const CGFloat radii[8]) 
   return path;
 }
 
+// A corner radius grown by a shadow's spread, which is not just an addition.
+//
+// The CSS spec says so and gives the curve: a corner tighter than the spread is
+// rounded off more gently than the spread alone would make it, so a small radius
+// on a widely spread shadow does not turn into a circle. Ported from React
+// Native's iOS half, which took it from the same place.
+// See https://drafts.csswg.org/css-backgrounds/#shadow-shape
+static CGFloat RnAppKitSpreadRadius(CGFloat radius, CGFloat spread) {
+  CGFloat adjustment = spread;
+  if (radius < fabs(spread)) {
+    const CGFloat ratio = radius / fabs(spread);
+    adjustment *= 1.0 + pow(ratio - 1.0, 3.0);
+  }
+  return fmax(radius + adjustment, 0);
+}
+
+// The eight radii of a shadow's own box, each grown by the spread.
+static void RnAppKitSpreadRadii(const CGFloat radii[8], CGFloat spread, CGFloat out[8]) {
+  for (int i = 0; i < 8; i++) {
+    out[i] = RnAppKitSpreadRadius(radii[i], spread);
+  }
+}
+
+// The same path, walked the other way, so that adding it to another one punches
+// a hole rather than filling it: `shadowPath` has no fill rule and winds
+// non-zero. NSBezierPath has reversal built in, and hand-rolling it means
+// reversing four elliptical corners in the right order, which is exactly the
+// kind of code that is wrong in one corner only.
+static CGPathRef RnAppKitCreateReversedPath(CGPathRef path) {
+  NSBezierPath *bezier = [NSBezierPath bezierPathWithCGPath:path];
+  return CGPathCreateCopy([bezier bezierPathByReversingPath].CGPath);
+}
+
+// A shadow cast outward by the view's box.
+//
+// The offset and the spread are baked into the path rather than set as
+// `shadowOffset`, which is what keeps a positive dy pointing down in this
+// flipped view, and the mask cuts the box itself out so the shadow is only ever
+// outside it -- a shadow painted under a translucent background would otherwise
+// show through it, which CSS does not do.
+static CALayer *RnAppKitOutsetShadowLayer(const RnAppKitBoxShadow &shadow,
+                                          const CGFloat radii[8],
+                                          CGSize size) {
+  CALayer *layer = [CALayer layer];
+  layer.frame = CGRectMake(0, 0, size.width, size.height);
+  layer.shadowOffset = CGSizeZero;
+  layer.shadowOpacity = 1;
+  // Half the radius, which is the same conversion the image blur uses and the
+  // same one React Native's iOS half settled on: CSS's blur radius is twice the
+  // gaussian's sigma, and CALayer's shadowRadius is the sigma.
+  layer.shadowRadius = shadow.blur > 0 ? shadow.blur / 2 : 0;
+
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGColorRef color = CGColorCreate(space, shadow.color);
+  layer.shadowColor = color;
+  CGColorRelease(color);
+  CGColorSpaceRelease(space);
+
+  CGFloat spreadRadii[8];
+  RnAppKitSpreadRadii(radii, shadow.spread, spreadRadii);
+  CGRect box = CGRectInset(layer.bounds, -shadow.spread, -shadow.spread);
+  box = CGRectOffset(box, shadow.dx, shadow.dy);
+  CGPathRef shadowPath = RnAppKitCreateRoundedPath(box, spreadRadii);
+  layer.shadowPath = shadowPath;
+
+  // Everything outside the view's own box, as an even-odd pair: the box, and a
+  // rectangle big enough to hold the whole blur around it.
+  CAShapeLayer *mask = [CAShapeLayer layer];
+  mask.fillRule = kCAFillRuleEvenOdd;
+  CGMutablePathRef maskPath = CGPathCreateMutable();
+  CGPathRef viewPath = RnAppKitCreateRoundedPath(layer.bounds, radii);
+  CGPathAddPath(maskPath, NULL, viewPath);
+  const CGFloat room = 2 * (fabs(shadow.blur) + 1);
+  CGPathRef around = RnAppKitCreateRoundedPath(CGRectInset(box, -room, -room), spreadRadii);
+  CGPathAddPath(maskPath, NULL, around);
+  mask.path = maskPath;
+  layer.mask = mask;
+
+  CGPathRelease(maskPath);
+  CGPathRelease(viewPath);
+  CGPathRelease(around);
+  CGPathRelease(shadowPath);
+  return layer;
+}
+
+// A shadow cast inward from the box's own edge.
+//
+// Built from the hole it leaves: the shadow path is a wide rectangle with the
+// clear region punched out of it, so the blur spills inward from the edge of
+// that hole, and the mask keeps all of it inside the view. The clear region is
+// the box moved by the offset and shrunk by the spread, which is what makes an
+// inset shadow with no offset a ring and one with an offset a crescent.
+static CALayer *RnAppKitInsetShadowLayer(const RnAppKitBoxShadow &shadow,
+                                         const CGFloat radii[8],
+                                         CGSize size) {
+  CALayer *layer = [CALayer layer];
+  layer.frame = CGRectMake(0, 0, size.width, size.height);
+  layer.shadowOffset = CGSizeZero;
+  layer.shadowOpacity = 1;
+  layer.shadowRadius = shadow.blur > 0 ? shadow.blur / 2 : 0;
+
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGColorRef color = CGColorCreate(space, shadow.color);
+  layer.shadowColor = color;
+  CGColorRelease(color);
+  CGColorSpaceRelease(space);
+
+  const CGFloat room = fabs(shadow.blur) + 1;
+  CGMutablePathRef path = CGPathCreateMutable();
+  // Square, because this one is only there to be the outside of the hole: its
+  // own corners are beyond the mask and never seen.
+  const CGFloat square[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  CGPathRef outer = RnAppKitCreateRoundedPath(CGRectInset(layer.bounds, -room, -room), square);
+  CGPathAddPath(path, NULL, outer);
+
+  CGFloat holeRadii[8];
+  RnAppKitSpreadRadii(radii, -shadow.spread, holeRadii);
+  CGRect hole = CGRectOffset(layer.bounds, shadow.dx, shadow.dy);
+  hole = CGRectInset(hole, shadow.spread, shadow.spread);
+  if (CGRectIsNull(hole) || hole.size.width < 0 || hole.size.height < 0) {
+    hole = CGRectZero;
+  }
+  CGPathRef holePath = RnAppKitCreateRoundedPath(hole, holeRadii);
+  CGPathRef reversedHole = RnAppKitCreateReversedPath(holePath);
+  CGPathAddPath(path, NULL, reversedHole);
+  layer.shadowPath = path;
+
+  CAShapeLayer *mask = [CAShapeLayer layer];
+  CGPathRef viewPath = RnAppKitCreateRoundedPath(layer.bounds, radii);
+  mask.path = viewPath;
+  layer.mask = mask;
+
+  CGPathRelease(path);
+  CGPathRelease(outer);
+  CGPathRelease(holePath);
+  CGPathRelease(reversedHole);
+  CGPathRelease(viewPath);
+  return layer;
+}
+
 // Clips to the side of the line through `p` with direction `dir` that contains
 // `inside`. Two of these give an edge the sector it owns at a corner.
 //
@@ -291,6 +431,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   CGFloat _borderColors[16];
   BOOL _hasBorders;
   RnAppKitBorderStyle _borderStyle;
+  std::vector<RnAppKitBoxShadow> _boxShadows;
+  NSMutableArray<CALayer *> *_boxShadowLayers;
   NSString *_cursorName;
   NSCursor *_cursor;
   CATransform3D _transform;
@@ -314,6 +456,12 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 - (void)dealloc {
   CGImageRelease(_image);
   CGImageRelease(_imageBlurred);
+  // An outset shadow's layer lives in the superlayer, so it outlives this view
+  // unless it is taken out. Ordinarily -viewDidMoveToSuperview has already done
+  // it; this is for a view released without being unmounted first.
+  for (CALayer *layer in _boxShadowLayers) {
+    [layer removeFromSuperlayer];
+  }
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -348,6 +496,12 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // Borders are drawn along the bounds too.
   if (_hasBorders) {
     self.needsDisplay = YES;
+  }
+  // And a box shadow's path is in the view's own coordinates, so every one of
+  // them has to be rebuilt: a card that grew would otherwise keep the shadow of
+  // the size it used to be.
+  if (!_boxShadows.empty()) {
+    [self rnRebuildBoxShadowLayers];
   }
 }
 
@@ -1159,6 +1313,10 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
 - (void)setRnClipsChildren:(BOOL)clips {
   _clipsChildren = clips;
   self.layer.masksToBounds = clips;
+  // Which decides where an outset shadow lives, so the shadows move with it.
+  if (!_boxShadows.empty()) {
+    [self rnRebuildBoxShadowLayers];
+  }
 }
 
 - (void)setRnZIndex:(NSInteger)zIndex {
@@ -1303,6 +1461,10 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   }
   // The border is drawn along these radii.
   self.needsDisplay = YES;
+  // And so is every shadow: a shadow follows the box it is cast by.
+  if (!_boxShadows.empty()) {
+    [self rnRebuildBoxShadowLayers];
+  }
 }
 
 - (void)rnUpdateRadiusMask {
@@ -1479,6 +1641,132 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   }
 }
 
+- (void)setRnBoxShadows:(const RnAppKitBoxShadow *)shadows count:(NSInteger)count {
+  std::vector<RnAppKitBoxShadow> wanted;
+  if (shadows != nullptr && count > 0) {
+    wanted.assign(shadows, shadows + count);
+  }
+  // Compared rather than rebuilt blindly: a view re-sends identical props on
+  // every mutation, and a layer rebuilt per mutation is a shadow recomputed for
+  // nothing on every keystroke.
+  if (wanted.size() == _boxShadows.size() &&
+      (wanted.empty() || memcmp(wanted.data(), _boxShadows.data(),
+                                wanted.size() * sizeof(RnAppKitBoxShadow)) == 0)) {
+    return;
+  }
+  _boxShadows = std::move(wanted);
+  [self rnRebuildBoxShadowLayers];
+}
+
+- (NSInteger)rnBoxShadowCount {
+  return (NSInteger)_boxShadows.size();
+}
+
+- (NSArray<CALayer *> *)rnBoxShadowLayers {
+  return _boxShadowLayers != nil ? [_boxShadowLayers copy] : @[];
+}
+
+// One layer per shadow, rebuilt whenever the list, the view's size, its radii or
+// its place in the tree changes -- a shadow's path is in the view's own
+// coordinates and an outset one lives in its parent, so all four invalidate it.
+//
+// Added back to front, because CSS says the first shadow in the list is the one
+// on top and sublayers composite in order.
+//
+// **Where an outset shadow goes depends on whether this view clips itself.**
+//
+// Normally it is a sublayer of the view, which is what React Native's iOS half
+// does: the mask cuts the box out of the shadow, so it only ever paints outside,
+// and being inside the view's own layer it composites exactly where the view
+// does -- above earlier siblings, below later ones.
+//
+// That arrangement loses the shadow entirely when the view clips its own layer,
+// which `overflow: 'hidden'` does through `masksToBounds` and non-uniform radii
+// do through a mask layer. CSS clips neither: an element's own shadow is outside
+// its box and is not subject to its overflow. So a clipping view casts its
+// shadow into the *parent's* layer instead, below its own.
+//
+// The cost of that path is z-order among siblings: AppKit attaches a subview's
+// layer lazily, at the first display, and these are built while mounting -- so
+// `below:self.layer` has nothing to aim at yet and the shadow lands at the
+// bottom of the parent, below every sibling rather than below this view alone.
+// Visible only where a sibling overlaps the shadow of a clipping view, which is
+// the narrower case of the two.
+//
+// Inset shadows are always sublayers of this view, where clipping is harmless
+// and right. They do paint above this view's own drawn text rather than under
+// it, which the GTK host gets right for free; backlog/correctness.md records
+// both of these.
+// Whether this view's own layer clips what is inside it, which decides where an
+// outset shadow can live. Both answers come from props: `overflow: 'hidden'` and
+// a set of radii too elliptical for CALayer's cornerRadius.
+- (BOOL)rnClipsItsOwnLayer {
+  return _clipsChildren || self.layer.mask != nil;
+}
+
+- (void)rnRebuildBoxShadowLayers {
+  for (CALayer *layer in _boxShadowLayers) {
+    [layer removeFromSuperlayer];
+  }
+  [_boxShadowLayers removeAllObjects];
+  if (_boxShadows.empty()) {
+    return;
+  }
+  if (_boxShadowLayers == nil) {
+    _boxShadowLayers = [NSMutableArray array];
+  }
+
+  const CGSize size = self.bounds.size;
+  if (size.width <= 0 || size.height <= 0) {
+    return;
+  }
+  CGFloat radii[8];
+  for (int i = 0; i < 8; i++) {
+    radii[i] = _hasBorderRadii ? _borderRadii[i] : 0;
+  }
+
+  for (auto shadow = _boxShadows.rbegin(); shadow != _boxShadows.rend(); ++shadow) {
+    // A shadow React Native could not parse a colour for arrives with none.
+    // Painting it would put a black shadow under a view that asked for nothing.
+    if (shadow->color[3] <= 0) {
+      continue;
+    }
+    if (shadow->inset) {
+      CALayer *layer = RnAppKitInsetShadowLayer(*shadow, radii, size);
+      [self.layer addSublayer:layer];
+      [_boxShadowLayers addObject:layer];
+      continue;
+    }
+    CALayer *layer = RnAppKitOutsetShadowLayer(*shadow, radii, size);
+    if (![self rnClipsItsOwnLayer]) {
+      [self.layer addSublayer:layer];
+      [_boxShadowLayers addObject:layer];
+      continue;
+    }
+    CALayer *parent = self.superview.layer;
+    if (parent == nil) {
+      // A clipping surface root, or one not yet mounted. Nothing to cast onto;
+      // the next move into a superview rebuilds this.
+      continue;
+    }
+    // In the parent's coordinates, which are this view's frame. Both are flipped
+    // the same way, so the frame carries over as it stands.
+    layer.frame = self.frame;
+    [parent insertSublayer:layer below:self.layer];
+    [_boxShadowLayers addObject:layer];
+  }
+}
+
+// A view that moves, or is removed, takes its shadows with it. Without this an
+// unmounted card leaves its shadow behind in the parent, which is the one bug
+// this arrangement can have that the simpler one cannot.
+- (void)viewDidMoveToSuperview {
+  [super viewDidMoveToSuperview];
+  if (!_boxShadows.empty()) {
+    [self rnRebuildBoxShadowLayers];
+  }
+}
+
 - (void)setRnBorderStyle:(RnAppKitBorderStyle)style {
   if (_borderStyle == style) {
     return;
@@ -1583,6 +1871,22 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
       [out appendFormat:@" border-style=%s",
                         _borderStyle == RnAppKitBorderStyleDotted ? "dotted" : "dashed"];
     }
+  }
+  // Box shadows, each in full and spelled as GTK spells them. Nothing else in
+  // this dump can say a shadow is there, and the numbers are the whole feature:
+  // an offset that went to the wrong axis or a spread read as a blur still draws
+  // a plausible shadow.
+  for (const RnAppKitBoxShadow &shadow : _boxShadows) {
+    [out appendFormat:@" shadow=(%s%g,%g,%g,%g,#%02x%02x%02x%02x)",
+                      shadow.inset ? "inset " : "",
+                      (double)shadow.dx,
+                      (double)shadow.dy,
+                      (double)shadow.blur,
+                      (double)shadow.spread,
+                      (unsigned)(shadow.color[0] * 255.0 + 0.5),
+                      (unsigned)(shadow.color[1] * 255.0 + 0.5),
+                      (unsigned)(shadow.color[2] * 255.0 + 0.5),
+                      (unsigned)(shadow.color[3] * 255.0 + 0.5)];
   }
   if (_hasTransform) {
     // The 2D affine part, which is all either platform draws, in the order
