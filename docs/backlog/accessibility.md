@@ -6,8 +6,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 1. Not tested against a real screen reader
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
-3. accessibilityRole cannot change after mount; see docs/DECISIONS.md
-4. accessibilityLiveRegion, accessibilityLabelledBy, accessibilityValue and acces
+3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
+4. accessibilityLiveRegion, accessibilityLabelledBy and accessibilityActions are ignored
 
 - Not tested against a real screen reader. GTK's assertions say the properties
   are set; Orca on the Linux box is the check that matters.
@@ -15,7 +15,33 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `accessibleClickAction`, `setAccessibilityFocusedView`,
   `accessibleScrollInDirection` and `accessibleSetText`, and all are no-ops, so
   the interface can be read but not driven.
-- `accessibilityRole` cannot change after mount; see `docs/DECISIONS.md`.
+
+  **Nothing drives them either**, which is worth knowing before anyone spends a
+  day on it: checked 2026-10-07, no caller for any of the four exists anywhere in
+  `ReactCommon` or `ReactCxxPlatform`. The seam is declared with empty default
+  bodies and the platform never invokes it, so a host that implemented all four
+  would have nothing calling them and no way to show they worked beyond a unit
+  test of its own making. Worth doing when something upstream reaches for them,
+  or alongside the screen-reader testing above, and not before.
+- `accessibilityRole` cannot change after mount **on GTK**, and that is a
+  platform limitation rather than missing work: `accessible-role` is
+  construct-only, so the role a widget is created with is the role it dies with.
+  See `docs/DECISIONS.md`.
+
+  **AppKit has no such limit** and already followed a change, its mounting
+  manager applying the role on every props update. There is now a test pinning
+  that, because nothing would have noticed a change to apply it at creation only.
+
+  Mitigated on GTK as of 2026-10-07, as far as GTK allows. When the role a view
+  asks for stops matching the role it was built with, the role *description* is
+  updated instead, and that is the string a screen reader reads out, so the
+  announcement follows even though the role does not. What still does not follow
+  is anything inferred from the role itself, such as which navigation commands
+  apply. An unchanged role leaves the description unset, because a description
+  identical to the role would be noise on every visit.
+
+  Compared against the widget rather than against remembered state, since GTK
+  already knows what it was built as and a second copy of that could disagree.
 - `accessibilityLiveRegion`, `accessibilityLabelledBy` and
   `accessibilityActions` are ignored. **`accessibilityValue` is done**, on both
   hosts, 2026-10-07.

@@ -557,6 +557,26 @@ void GtkMountingManager::applyAccessibility(RnView *view, const ShadowView &shad
 
   // A label given in props wins. Falling back to a Paragraph's own text means a
   // plain <Text> announces itself without the app having to repeat the string
+  // A role that changed after the view was mounted, which GTK cannot honour:
+  // `accessible-role` is construct-only, so the role this widget was created
+  // with is fixed for its life. What can still be updated is the description a
+  // screen reader reads out, so the announcement follows even though the role
+  // does not. Anything inferred from the role itself, such as which navigation
+  // commands apply, still follows the original. See backlog/accessibility.md.
+  //
+  // Compared against the widget rather than against remembered state, because
+  // GTK already knows what it was built as and a second copy of that could
+  // disagree with it.
+  {
+    const std::string &wantedName = props->accessibilityRole;
+    const GtkAccessibleRole built = gtk_accessible_get_accessible_role(GTK_ACCESSIBLE(view));
+    if (!wantedName.empty() && toAccessibleRole(wantedName) != built) {
+      rn_view_set_accessible_role_description(view, wantedName.c_str());
+    } else {
+      rn_view_set_accessible_role_description(view, nullptr);
+    }
+  }
+
   // in an accessibilityLabel.
   std::string label = props->accessibilityLabel;
   if (label.empty() && shadowView.componentName != nullptr &&

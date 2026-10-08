@@ -360,6 +360,22 @@ typedef enum {
 
 void rn_view_set_accessible_value(RnView *self, int min, int max, int now, const char *text);
 
+// What a screen reader should call this view, for the case where its
+// `accessibilityRole` changed after it was mounted.
+//
+// GTK's `accessible-role` is construct-only, so the role a widget was created
+// with is the role it dies with, and an app that swaps a view's role mid-life
+// used to be ignored outright. The role description is the one part of that
+// which can still be updated, and it is what a screen reader announces, so the
+// announcement follows even though the underlying role does not. That is a
+// partial answer and the limits are real: anything a screen reader infers from
+// the role itself, such as which navigation commands apply, still follows the
+// original. See backlog/accessibility.md.
+//
+// Null or empty clears it, which is what a view whose role never changed wants:
+// a description identical to its own role would be noise.
+void rn_view_set_accessible_role_description(RnView *self, const char *description);
+
 void rn_view_set_accessible_state(RnView *self,
                                   RnAccessibleFlag disabled,
                                   RnAccessibleFlag checked,

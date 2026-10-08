@@ -243,3 +243,18 @@ TEST(a_view_with_no_accessibility_value_keeps_none) {
     EXPECT(view.accessibilityValue == nil);
   }
 }
+
+TEST(a_role_can_change_after_the_view_is_mounted) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"button");
+    EXPECT([view.accessibilityRole isEqual:NSAccessibilityButtonRole]);
+
+    // AppKit's role is a settable property, so unlike GTK, where it is
+    // construct-only and the backlog records the limitation, the role itself
+    // follows. This pins that rather than assuming it: the mounting manager
+    // applies the role on every props update, and a change to apply it only at
+    // creation would be invisible without this.
+    [view setRnAccessibleRole:@"checkbox"];
+    EXPECT([view.accessibilityRole isEqual:NSAccessibilityCheckBoxRole]);
+  }
+}

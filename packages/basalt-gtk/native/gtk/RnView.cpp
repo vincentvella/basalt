@@ -815,6 +815,18 @@ static void rn_view_apply_flag(RnView *self, GtkAccessibleState state, RnAccessi
   gtk_accessible_update_state(GTK_ACCESSIBLE(self), state, value, -1);
 }
 
+void rn_view_set_accessible_role_description(RnView *self, const char *description) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  if (description == nullptr || *description == '\0') {
+    gtk_accessible_reset_property(GTK_ACCESSIBLE(self),
+                                  GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION);
+    return;
+  }
+  gtk_accessible_update_property(
+      GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION, description, -1);
+}
+
 void rn_view_set_accessible_value(RnView *self, int min, int max, int now, const char *text) {
   g_return_if_fail(RN_IS_VIEW(self));
 

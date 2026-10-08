@@ -94,6 +94,20 @@ RnView *mountOne(basalt::GtkMountingManager &manager, const ShadowView &view) {
   return RN_VIEW(gtk_widget_get_first_child(GTK_WIDGET(root)));
 }
 
+// An Update mutation against a view already mounted, which nothing needed until
+// a prop that can change after mount had to be tested.
+void updateOne(basalt::GtkMountingManager &manager,
+               Tag tag,
+               const std::function<void(ViewProps &)> &configure) {
+  const ShadowView before = makeAccessibleView(tag, [](ViewProps &) {});
+  const ShadowView after = makeAccessibleView(tag, configure);
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(before, after, kSurfaceId));
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 2, std::move(mutations), TransactionTelemetry{}));
+}
+
 } // namespace
 
 TEST(accessibility_role_maps_to_a_gtk_role) {
@@ -319,6 +333,50 @@ TEST(a_view_with_no_accessibility_value_says_nothing_about_one) {
 
   EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW));
   EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// A role that changes after mount. GTK's `accessible-role` is construct-only, so
+// the role cannot follow; the description a screen reader reads out can, and
+// that is what these pin. The limitation is real and recorded, so what is
+// asserted is the mitigation and not a claim that the role changed.
+
+TEST(a_role_that_changes_after_mount_at_least_changes_what_is_announced) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  // Mounted as a button, then told it is a checkbox. GTK keeps the button role.
+  RnView *view = mountOne(manager, makeAccessibleView(40, [](ViewProps &props) {
+                            props.accessibilityRole = "button";
+                          }));
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view),
+                                           GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION));
+
+  updateOne(manager, 40, [](ViewProps &props) { props.accessibilityRole = "checkbox"; });
+
+  // The role is still button, which is the limitation, and the description now
+  // says checkbox, which is the part that could be done.
+  EXPECT(gtk_test_accessible_has_property(GTK_ACCESSIBLE(view),
+                                          GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(a_role_that_does_not_change_describes_itself_as_nothing) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  // A description identical to the view's own role would be noise read out on
+  // every visit, so an unchanged role must leave it unset.
+  RnView *view = mountOne(manager, makeAccessibleView(41, [](ViewProps &props) {
+                            props.accessibilityRole = "button";
+                          }));
+
+  updateOne(manager, 41, [](ViewProps &props) { props.accessibilityRole = "button"; });
+
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view),
+                                           GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION));
 
   manager.destroySurfaceRoot(kSurfaceId);
 }
