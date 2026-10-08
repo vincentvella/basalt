@@ -347,6 +347,19 @@ typedef enum {
   RN_A11Y_TRUE,
 } RnAccessibleFlag;
 
+// `accessibilityValue`, which React Native models as four independent optionals:
+// a numeric range (min, max, now) and a text form that overrides how the number
+// is read out. GTK has a property for each, so each one that is set is set and
+// each one that is not is reset rather than defaulted: a view that says nothing
+// about its range is not a slider at zero, and announcing it as one would be
+// worse than announcing nothing.
+//
+// RN_A11Y_VALUE_UNSET for an absent number. Zero cannot stand in for absent,
+// `now: 0` being a perfectly ordinary value at the bottom of a range.
+#define RN_A11Y_VALUE_UNSET G_MININT
+
+void rn_view_set_accessible_value(RnView *self, int min, int max, int now, const char *text);
+
 void rn_view_set_accessible_state(RnView *self,
                                   RnAccessibleFlag disabled,
                                   RnAccessibleFlag checked,

@@ -460,6 +460,45 @@ static NSAccessibilityRole RnAccessibilityRoleFor(NSString *name) {
   }
 }
 
+// `accessibilityValue`, which React Native models as a range (min, max, now) and
+// a text form that a screen reader prefers over the number.
+//
+// AppKit has `accessibilityMinValue` and `accessibilityMaxValue` for the range,
+// and one `accessibilityValue` that carries either the number or the text.
+// Setting nil is how an element says it has no such value, which matters because
+// an absent part must stay absent: a view that never said what its range is must
+// not be announced as sitting at the bottom of one.
+//
+// **This shares `accessibilityValue` with the checked state**, which AppKit
+// expresses as an element's value the way a checkbox does. An explicit
+// accessibilityValue wins, the app having said it outright, and the order below
+// is what decides that: state is applied first and this second. Both reaching
+// for the same property is an AppKit fact rather than a choice here.
+- (void)setRnAccessibleValueMin:(NSNumber *)min
+                            max:(NSNumber *)max
+                            now:(NSNumber *)now
+                           text:(NSString *)text {
+  self.accessibilityMinValue = min;
+  self.accessibilityMaxValue = max;
+
+  // The text form first: "Tuesday" reads better than "3", which is the whole
+  // reason React Native carries both.
+  if (text.length > 0) {
+    self.accessibilityValue = text;
+  } else if (now != nil) {
+    self.accessibilityValue = now;
+  } else if (min != nil || max != nil) {
+    // A range with no position in it. Leaving a stale value here would be worse
+    // than leaving none.
+    self.accessibilityValue = nil;
+  }
+
+  if (min != nil || max != nil || now != nil || text.length > 0) {
+    // Worth announcing, the same reason a label alone makes a view an element.
+    self.accessibilityElement = YES;
+  }
+}
+
 - (void)setRnAccessibleStateDisabled:(RnAppKitAccessibleFlag)disabled
                              checked:(RnAppKitAccessibleFlag)checked
                             selected:(RnAppKitAccessibleFlag)selected

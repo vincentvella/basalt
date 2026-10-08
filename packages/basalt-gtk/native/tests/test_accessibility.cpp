@@ -17,6 +17,7 @@
 #include <sstream>
 
 using facebook::react::AccessibilityState;
+using facebook::react::AccessibilityValue;
 using facebook::react::ImportantForAccessibility;
 using facebook::react::LayoutMetrics;
 using facebook::react::MountingTransaction;
@@ -246,6 +247,78 @@ TEST(important_for_accessibility_no_hide_descendants_hides_too) {
                                 ImportantForAccessibility::NoHideDescendants;
                           }));
   EXPECT(gtk_test_accessible_has_state(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_STATE_HIDDEN));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// accessibilityValue: a range, a position in it, and a text form a screen reader
+// prefers over the number. React Native's four parts are independent optionals,
+// which is the whole difficulty: an absent part must be absent rather than zero.
+
+TEST(accessibility_value_reaches_the_accessible) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(30, [](ViewProps &props) {
+                            AccessibilityValue value;
+                            value.min = 0;
+                            value.max = 10;
+                            value.now = 7;
+                            props.accessibilityValue = value;
+                          }));
+
+  EXPECT(gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_MIN));
+  EXPECT(gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_MAX));
+  EXPECT(gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(an_accessibility_value_without_a_range_does_not_invent_one) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  // `now` alone. A view that never said what its range is must not be announced
+  // as sitting at the bottom of a range from zero: absent is not zero, which is
+  // why the seam carries a sentinel rather than a number.
+  RnView *view = mountOne(manager, makeAccessibleView(31, [](ViewProps &props) {
+                            AccessibilityValue value;
+                            value.now = 3;
+                            props.accessibilityValue = value;
+                          }));
+
+  EXPECT(gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW));
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_MIN));
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_MAX));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(an_accessibility_value_can_be_text_rather_than_a_number) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  // "Tuesday" reads better than "3", which is what the text form is for.
+  RnView *view = mountOne(manager, makeAccessibleView(32, [](ViewProps &props) {
+                            AccessibilityValue value;
+                            value.text = "Tuesday";
+                            props.accessibilityValue = value;
+                          }));
+
+  EXPECT(gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT));
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(a_view_with_no_accessibility_value_says_nothing_about_one) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(33, [](ViewProps &props) { (void)props; }));
+
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW));
+  EXPECT(!gtk_test_accessible_has_property(GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT));
 
   manager.destroySurfaceRoot(kSurfaceId);
 }

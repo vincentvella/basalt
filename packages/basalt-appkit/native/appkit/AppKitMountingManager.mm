@@ -928,6 +928,22 @@ void AppKitMountingManager::applyAccessibility(RnAppKitView *view, const ShadowV
                                   busy:RnAppKitAccessibleUnset];
   }
 
+  // After the state, deliberately: AppKit carries both `checked` and
+  // accessibilityValue in one property, and an explicit value is the app's own
+  // word so it wins over one derived from a checkbox. See the setter.
+  //
+  // Each part passed as nil when absent, so a view that gave only `now` is not
+  // announced as sitting at the bottom of a range it never mentioned.
+  {
+    const auto &value = props->accessibilityValue;
+    [view setRnAccessibleValueMin:value.min.has_value() ? @(*value.min) : nil
+                              max:value.max.has_value() ? @(*value.max) : nil
+                              now:value.now.has_value() ? @(*value.now) : nil
+                             text:value.text.has_value()
+                                      ? [NSString stringWithUTF8String:value.text->c_str()]
+                                      : nil];
+  }
+
   // Keyboard focus. `accessible` is the signal because React Native's
   // `focusable` prop never reaches this platform -- see AppKitFocus.h -- and
   // because it is what <Pressable> sets on everything it renders. A hidden view

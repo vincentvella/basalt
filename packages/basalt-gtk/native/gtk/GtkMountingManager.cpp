@@ -593,6 +593,24 @@ void GtkMountingManager::applyAccessibility(RnView *view, const ShadowView &shad
     rn_view_set_accessible_text(view, label.c_str(), props->accessibilityHint.c_str());
   }
 
+  // accessibilityValue, whose four parts are independent: a range, a current
+  // position in it, and a text form that a screen reader prefers over the
+  // number. Each absent part is reset rather than given a number, so a view that
+  // says nothing about its range is not announced as a slider at zero.
+  if (props->accessibilityValue.min.has_value() || props->accessibilityValue.max.has_value() ||
+      props->accessibilityValue.now.has_value() || props->accessibilityValue.text.has_value()) {
+    const auto &value = props->accessibilityValue;
+    rn_view_set_accessible_value(
+        view,
+        value.min.has_value() ? *value.min : RN_A11Y_VALUE_UNSET,
+        value.max.has_value() ? *value.max : RN_A11Y_VALUE_UNSET,
+        value.now.has_value() ? *value.now : RN_A11Y_VALUE_UNSET,
+        value.text.has_value() ? value.text->c_str() : nullptr);
+  } else {
+    rn_view_set_accessible_value(
+        view, RN_A11Y_VALUE_UNSET, RN_A11Y_VALUE_UNSET, RN_A11Y_VALUE_UNSET, nullptr);
+  }
+
   if (props->accessibilityState.has_value()) {
     const auto &state = *props->accessibilityState;
     RnAccessibleFlag checked = RN_A11Y_UNSET;

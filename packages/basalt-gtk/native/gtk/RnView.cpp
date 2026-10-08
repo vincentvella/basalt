@@ -815,6 +815,42 @@ static void rn_view_apply_flag(RnView *self, GtkAccessibleState state, RnAccessi
   gtk_accessible_update_state(GTK_ACCESSIBLE(self), state, value, -1);
 }
 
+void rn_view_set_accessible_value(RnView *self, int min, int max, int now, const char *text) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  // Each property separately, because React Native's four are independent and a
+  // caller may give a `now` with no range or a text form with no number at all.
+  // `gtk_accessible_reset_property` is what says "this view has nothing to say
+  // about that" as distinct from saying zero.
+  if (min == RN_A11Y_VALUE_UNSET) {
+    gtk_accessible_reset_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_MIN);
+  } else {
+    gtk_accessible_update_property(
+        GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_MIN, static_cast<double>(min), -1);
+  }
+
+  if (max == RN_A11Y_VALUE_UNSET) {
+    gtk_accessible_reset_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_MAX);
+  } else {
+    gtk_accessible_update_property(
+        GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_MAX, static_cast<double>(max), -1);
+  }
+
+  if (now == RN_A11Y_VALUE_UNSET) {
+    gtk_accessible_reset_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW);
+  } else {
+    gtk_accessible_update_property(
+        GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_NOW, static_cast<double>(now), -1);
+  }
+
+  if (text == nullptr || *text == '\0') {
+    gtk_accessible_reset_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT);
+  } else {
+    gtk_accessible_update_property(
+        GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT, text, -1);
+  }
+}
+
 void rn_view_set_accessible_state(RnView *self,
                                   RnAccessibleFlag disabled,
                                   RnAccessibleFlag checked,

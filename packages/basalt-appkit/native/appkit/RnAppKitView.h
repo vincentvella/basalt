@@ -324,6 +324,15 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 // Accessible states. Each is a tri-state: unset leaves AppKit's default alone,
 // which is not the same as setting it false.
 
+// accessibilityValue: a range and a position in it, or a text form that reads
+// better than the number. nil for a part the app did not give, which is how an
+// element says it has none. See the definition: this shares AppKit's one
+// `accessibilityValue` with the checked state, and an explicit value wins.
+- (void)setRnAccessibleValueMin:(nullable NSNumber *)min
+                            max:(nullable NSNumber *)max
+                            now:(nullable NSNumber *)now
+                           text:(nullable NSString *)text;
+
 - (void)setRnAccessibleStateDisabled:(RnAppKitAccessibleFlag)disabled
                              checked:(RnAppKitAccessibleFlag)checked
                             selected:(RnAppKitAccessibleFlag)selected

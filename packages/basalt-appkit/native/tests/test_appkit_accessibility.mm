@@ -168,3 +168,78 @@ TEST(accessibility_role_is_reported_in_the_tree) {
     EXPECT(std::string([plain describeTree].UTF8String).find("role=") == std::string::npos);
   }
 }
+
+// accessibilityValue: a range, a position in it, and a text form a screen reader
+// prefers over the number. The parts are independent in React Native, which is
+// the difficulty: an absent one must stay absent rather than become zero.
+
+TEST(accessibility_value_reaches_appkit) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"adjustable");
+
+    [view setRnAccessibleValueMin:@0 max:@10 now:@7 text:nil];
+
+    EXPECT([view.accessibilityMinValue isEqual:@0]);
+    EXPECT([view.accessibilityMaxValue isEqual:@10]);
+    EXPECT([view.accessibilityValue isEqual:@7]);
+    EXPECT(view.isAccessibilityElement);
+  }
+}
+
+TEST(an_accessibility_value_without_a_range_does_not_invent_one) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"adjustable");
+
+    // `now` alone. A view that never said what its range is must not be
+    // announced as sitting at the bottom of one.
+    [view setRnAccessibleValueMin:nil max:nil now:@3 text:nil];
+
+    EXPECT(view.accessibilityMinValue == nil);
+    EXPECT(view.accessibilityMaxValue == nil);
+    EXPECT([view.accessibilityValue isEqual:@3]);
+  }
+}
+
+TEST(a_text_accessibility_value_is_preferred_over_the_number) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"adjustable");
+
+    // "Tuesday" reads better than "3", which is why React Native carries both.
+    [view setRnAccessibleValueMin:@0 max:@6 now:@3 text:@"Tuesday"];
+
+    EXPECT([view.accessibilityValue isEqual:@"Tuesday"]);
+    // The range still stands: a screen reader may announce position as well.
+    EXPECT([view.accessibilityMaxValue isEqual:@6]);
+  }
+}
+
+TEST(an_explicit_accessibility_value_wins_over_a_checked_state) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"checkbox");
+
+    // AppKit carries both in one property, so the order matters and this is the
+    // assertion that pins it: the app's own value is not overwritten by a value
+    // derived from a checkbox.
+    [view setRnAccessibleStateDisabled:RnAppKitAccessibleUnset
+                               checked:RnAppKitAccessibleTrue
+                              selected:RnAppKitAccessibleUnset
+                              expanded:RnAppKitAccessibleUnset
+                                  busy:RnAppKitAccessibleUnset];
+    EXPECT([view.accessibilityValue isEqual:@YES]);
+
+    [view setRnAccessibleValueMin:nil max:nil now:nil text:@"Mixed"];
+    EXPECT([view.accessibilityValue isEqual:@"Mixed"]);
+  }
+}
+
+TEST(a_view_with_no_accessibility_value_keeps_none) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"adjustable");
+
+    [view setRnAccessibleValueMin:nil max:nil now:nil text:nil];
+
+    EXPECT(view.accessibilityMinValue == nil);
+    EXPECT(view.accessibilityMaxValue == nil);
+    EXPECT(view.accessibilityValue == nil);
+  }
+}
