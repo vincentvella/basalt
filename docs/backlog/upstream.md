@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (14):**
+**Open (15):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -39,6 +39,7 @@ workaround and the comment explaining it, which is already written.
 12. Consider upstreaming a Linux entry in getHostPlatform
 13. `ImageLoaderModule` is built with no loader and nothing can supply one
 14. `~Scheduler` leaves a mount hook registered, and the next mount uses it
+15. `CursorValue` is two keywords where the C++ parses thirty-four
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -175,3 +176,18 @@ workaround and the comment explaining it, which is already written.
   dangling always implies the surface being gone. That narrows the window from
   three statements to a few instructions and does not close it. See
   [testing.md](testing.md) for the backtrace and the run it came from.
+
+- **`CursorValue` is two keywords where the C++ parses thirty-four.**
+  `Libraries/StyleSheet/StyleSheetTypes.js` declares
+  `export type CursorValue = 'auto' | 'pointer'`, and that is the whole type. The
+  native side is not narrow at all: `view/conversions.h` parses every CSS cursor
+  keyword into the `Cursor` enum, `BaseViewProps` carries it, and iOS, macOS and
+  this platform can all draw a good number of them.
+
+  So an app that wants an I-beam over a custom text area, or a resize cursor over
+  a divider, has to cast to get past Flow or TypeScript while the value works
+  perfectly once it reaches C++. Found 2026-10-08 while implementing `cursor` on
+  GTK and AppKit: e2e/views.tsx carries the cast and a comment pointing here.
+
+  Worth sending, and small: the type is one line, and the list to widen it to is
+  the one the C++ already accepts. Nothing here is blocked on it.

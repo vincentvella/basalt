@@ -237,6 +237,26 @@ has gone unrecorded until now.
 - **Cursor control** beyond what the `cursor` style property covers: setting a
   busy cursor for the window, hiding it, and capturing it to a region.
 
+  This entry used to be the only mention of the `cursor` property anywhere, and
+  it described it as covered. It was not: no host read `props->cursor`, so every
+  view on every desktop showed an arrow, a `<Pressable>` included, and the one
+  thing a desktop user notices first about a button was missing.
+
+  Done on GTK and AppKit 2026-10-08. The keyword crosses the seam as CSS's own
+  string, shared by `core/CursorNames.h`, because React Native's `Cursor` enum is
+  the CSS list and so is GDK's: GTK hands it to
+  `gtk_widget_set_cursor_from_name` and inherits when there is none. AppKit maps
+  the names onto its NSCursors in the view layer and installs no cursor rect for
+  the six macOS has nothing for -- `all-scroll`, `cell`, `help`, `move`,
+  `progress`, `wait` -- so those inherit rather than snapping back to an arrow,
+  which is what react-native-macos does too. The diagonal resizes, `col-resize`,
+  `row-resize` and the zooms need macOS 15's `frameResizeCursorFromPosition:`
+  family and fall back where it is missing.
+
+  Windows is the host left. `WM_SETCURSOR` is the hook, and it is a different
+  shape of change: there is no per-view cursor there, so the window has to answer
+  with whichever view is under the pointer.
+
 ### The rest of the surface, catalogued
 
 Everything above grew out of something the demo or an app needed, which is why

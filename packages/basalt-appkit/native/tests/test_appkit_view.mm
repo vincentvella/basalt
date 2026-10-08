@@ -235,3 +235,127 @@ TEST(appkit_view_describes_its_tree_like_the_gtk_one) {
 int main(int argc, char **argv) {
   return basalt::testing::runAllTests(argc, argv);
 }
+
+// The `cursor` style property.
+//
+// Two halves, and they fail differently: which NSCursor a CSS keyword means, and
+// whether the view tells AppKit about it. The second is a cursor *rect*, which
+// AppKit asks for by calling `resetCursorRects`, so the test subclass below
+// records what the view adds rather than needing a window and a real pointer.
+// An Objective-C class cannot be declared inside a namespace, which is why this
+// one is not in the anonymous namespace the rest of the file's helpers are in.
+@interface RnRecordingCursorView : RnAppKitView
+@property(nonatomic, strong, nullable) NSCursor *recorded;
+@property(nonatomic) NSInteger rectCount;
+@end
+
+@implementation RnRecordingCursorView
+- (void)addCursorRect:(NSRect)rect cursor:(NSCursor *)cursor {
+  // Deliberately not calling super: without a window there is nothing to add it
+  // to, and what is being checked is what the view asked for.
+  (void)rect;
+  self.recorded = cursor;
+  self.rectCount++;
+}
+@end
+
+namespace {
+
+RnRecordingCursorView *cursorView(NSString *name) {
+  RnRecordingCursorView *view = [[RnRecordingCursorView alloc] initWithFrame:NSZeroRect];
+  [view setRnFrameX:0 y:0 width:100 height:50];
+  [view setRnCursorName:name];
+  [view resetCursorRects];
+  return view;
+}
+
+} // namespace
+
+TEST(cursor_pointer_is_the_pointing_hand) {
+  @autoreleasepool {
+    RnRecordingCursorView *view = cursorView(@"pointer");
+    EXPECT(view.rnResolvedCursor == NSCursor.pointingHandCursor);
+    // And it reached AppKit, which is the half a stored property cannot show.
+    EXPECT_EQ((long)view.rectCount, 1L);
+    EXPECT(view.recorded == NSCursor.pointingHandCursor);
+  }
+}
+
+TEST(cursor_keywords_map_to_the_cursors_macos_has) {
+  @autoreleasepool {
+    EXPECT(cursorView(@"text").rnResolvedCursor == NSCursor.IBeamCursor);
+    EXPECT(cursorView(@"default").rnResolvedCursor == NSCursor.arrowCursor);
+    EXPECT(cursorView(@"grab").rnResolvedCursor == NSCursor.openHandCursor);
+    EXPECT(cursorView(@"grabbing").rnResolvedCursor == NSCursor.closedHandCursor);
+    EXPECT(cursorView(@"crosshair").rnResolvedCursor == NSCursor.crosshairCursor);
+    EXPECT(cursorView(@"copy").rnResolvedCursor == NSCursor.dragCopyCursor);
+    EXPECT(cursorView(@"alias").rnResolvedCursor == NSCursor.dragLinkCursor);
+    EXPECT(cursorView(@"context-menu").rnResolvedCursor == NSCursor.contextualMenuCursor);
+    // CSS has two keywords for this and macOS has one cursor.
+    EXPECT(cursorView(@"not-allowed").rnResolvedCursor == NSCursor.operationNotAllowedCursor);
+    EXPECT(cursorView(@"no-drop").rnResolvedCursor == NSCursor.operationNotAllowedCursor);
+    // The axis-aligned resizes collapse onto the two double-headed arrows, since
+    // "e-resize" and "w-resize" are the same picture on this platform.
+    EXPECT(cursorView(@"ew-resize").rnResolvedCursor == NSCursor.resizeLeftRightCursor);
+    EXPECT(cursorView(@"e-resize").rnResolvedCursor == NSCursor.resizeLeftRightCursor);
+    EXPECT(cursorView(@"ns-resize").rnResolvedCursor == NSCursor.resizeUpDownCursor);
+    EXPECT(cursorView(@"s-resize").rnResolvedCursor == NSCursor.resizeUpDownCursor);
+    // "none" hides the pointer, which is a cursor made of an empty image rather
+    // than the absence of one: nil would mean "inherit" and show an arrow.
+    EXPECT(cursorView(@"none").rnResolvedCursor != nil);
+  }
+}
+
+// A keyword macOS has no cursor for installs no rect, so the cursor is whatever
+// encloses the view. Forcing an arrow instead would be worse than doing nothing:
+// a spinner view inside a window showing a busy cursor would cut a hole in it.
+TEST(cursor_a_keyword_macos_lacks_leaves_the_cursor_alone) {
+  @autoreleasepool {
+    for (NSString *name in @[@"wait", @"help", @"move", @"progress", @"cell", @"all-scroll"]) {
+      RnRecordingCursorView *view = cursorView(name);
+      EXPECT(view.rnResolvedCursor == nil);
+      EXPECT_EQ((long)view.rectCount, 0L);
+    }
+  }
+}
+
+TEST(cursor_auto_is_no_cursor_at_all) {
+  @autoreleasepool {
+    // What `cursor: 'auto'` becomes by the time it is here: nothing to apply.
+    RnRecordingCursorView *view = cursorView(nil);
+    EXPECT(view.rnResolvedCursor == nil);
+    EXPECT_EQ((long)view.rectCount, 0L);
+    EXPECT(![[view describeTree] containsString:@"cursor="]);
+  }
+}
+
+// Clearing has to clear. A view whose cursor prop goes away keeps showing the
+// hand otherwise, because a cursor rect lives in the window until it is
+// discarded.
+TEST(cursor_can_be_taken_away_again) {
+  @autoreleasepool {
+    RnRecordingCursorView *view = cursorView(@"pointer");
+    [view setRnCursorName:nil];
+    view.rectCount = 0;
+    [view resetCursorRects];
+    EXPECT(view.rnResolvedCursor == nil);
+    EXPECT_EQ((long)view.rectCount, 0L);
+  }
+}
+
+// And the keyword is in the tree dump, which is what makes the wiring testable:
+// the prop is read in AppKitMountingManager, and every test above sets the name
+// on the view by hand. Spelled as the GTK side spells it, so the cross-host diff
+// can compare them.
+TEST(cursor_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnFrameX:0 y:0 width:100 height:50];
+    [view setRnCursorName:@"grab"];
+    EXPECT([[view describeTree] containsString:@"cursor=grab"]);
+    // A keyword macOS cannot show is still reported: the dump says what the app
+    // asked for, and the two hosts' trees have to match whatever each can draw.
+    [view setRnCursorName:@"wait"];
+    EXPECT([[view describeTree] containsString:@"cursor=wait"]);
+  }
+}

@@ -649,3 +649,83 @@ TEST(a_border_style_on_a_view_with_no_border_draws_nothing) {
   }
   g_object_unref(view);
 }
+
+// The `cursor` style property. GDK's cursor names are CSS's, so the keyword goes
+// straight through, and `gtk_widget_get_cursor` is what says it arrived.
+//
+// Against the widget rather than against a stored string: a view that remembered
+// "pointer" and never told GTK would leave an arrow over every button, which is
+// exactly the state this platform was in.
+
+TEST(a_cursor_keyword_reaches_the_widget) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+
+  // Nothing set: no cursor of its own, which means inherited rather than arrow.
+  EXPECT(gtk_widget_get_cursor(GTK_WIDGET(view)) == nullptr);
+
+  // The name GDK holds, or the empty string if it holds none: a missing cursor
+  // and a cursor called nothing have to read differently from "pointer".
+  const auto nameOf = [](RnView *widget) {
+    GdkCursor *cursor = gtk_widget_get_cursor(GTK_WIDGET(widget));
+    const char *name = cursor != nullptr ? gdk_cursor_get_name(cursor) : nullptr;
+    return std::string(name != nullptr ? name : "");
+  };
+
+  rn_view_set_cursor(view, "pointer");
+  EXPECT(gtk_widget_get_cursor(GTK_WIDGET(view)) != nullptr);
+  EXPECT_EQ(nameOf(view), std::string("pointer"));
+  EXPECT_EQ(std::string(rn_view_get_cursor(view) != nullptr ? rn_view_get_cursor(view) : ""),
+            std::string("pointer"));
+
+  // A hyphenated one, since those are the shapes a resize handle wants and the
+  // ones a mapping table is most likely to misspell.
+  rn_view_set_cursor(view, "ns-resize");
+  EXPECT_EQ(nameOf(view), std::string("ns-resize"));
+
+  g_object_unref(view);
+}
+
+TEST(a_cursor_can_be_taken_away_again) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+
+  rn_view_set_cursor(view, "grab");
+  EXPECT(gtk_widget_get_cursor(GTK_WIDGET(view)) != nullptr);
+
+  // A view whose cursor prop goes away has to stop claiming one, or it keeps the
+  // hand for the rest of its life. Empty is the same as nothing: React Native
+  // sends `auto`, which arrives here as a null name.
+  rn_view_set_cursor(view, nullptr);
+  EXPECT(gtk_widget_get_cursor(GTK_WIDGET(view)) == nullptr);
+  EXPECT(rn_view_get_cursor(view) == nullptr);
+
+  rn_view_set_cursor(view, "grab");
+  rn_view_set_cursor(view, "");
+  EXPECT(gtk_widget_get_cursor(GTK_WIDGET(view)) == nullptr);
+
+  g_object_unref(view);
+}
+
+// And it is in the tree dump, which is what makes the wiring testable: the prop
+// is read in GtkMountingManager, and the tests above set it on the widget by
+// hand. Spelled as the AppKit side spells it, so the cross-host diff compares
+// them.
+TEST(a_cursor_is_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 50.0F);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string none(text);
+  g_free(text);
+  EXPECT(none.find("cursor=") == std::string::npos);
+
+  rn_view_set_cursor(view, "grab");
+  text = rn_view_describe_tree(view);
+  const std::string grabbing(text);
+  g_free(text);
+  EXPECT(grabbing.find("cursor=grab") != std::string::npos);
+
+  g_object_unref(view);
+}

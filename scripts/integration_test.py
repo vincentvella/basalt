@@ -3772,6 +3772,62 @@ def test_border_style(bundle: Path) -> None:
             )
 
 
+def test_cursor_style(bundle: Path) -> None:
+    """The `cursor` style property reaches the view.
+
+    A desktop prop, and the one most obviously missing: until now every view on
+    every host showed an arrow, a `<Pressable>` included. GTK takes CSS's keyword
+    straight through `gtk_widget_set_cursor_from_name`; macOS maps it onto the
+    NSCursors it has, and installs nothing for the half-dozen it has no cursor
+    for, so those inherit rather than snapping back to an arrow.
+
+    Two keywords, because they fail differently: `pointer`, which both hosts have,
+    and `ns-resize`, which is hyphenated and is where a mapping table goes wrong.
+
+    Runs e2e/views.js, the app scripts/compare_hosts.sh diffs between desktops,
+    which is also where the backlog was wrong about this: its cursor entry
+    described what is left as the work "beyond what the `cursor` style property
+    covers", and nothing covered it.
+    """
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    lines = tree.splitlines()
+    for keyword in ("pointer", "ns-resize"):
+        if not any(f"cursor={keyword}" in line for line in lines):
+            raise Failure(
+                f"no view reports cursor={keyword}, so the prop did not reach the "
+                f"view layer.\n{tree}"
+            )
+    # Exactly those two. A host that applied one view's cursor to the whole tree
+    # would otherwise pass: the dump would still contain both keywords.
+    carrying = [line for line in lines if "cursor=" in line]
+    if len(carrying) != 2:
+        raise Failure(
+            f"{len(carrying)} views report a cursor; the app sets one on two.\n"
+            + "\n".join(carrying)
+        )
+
+
 def test_window_limits(bundle: Path) -> None:
     """How big the window may be, and the fact that it is not the same list
     everywhere.
@@ -5083,6 +5139,7 @@ SCENARIOS = [
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
     ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
     ("borderStyle reaches the view, dashed and dotted", test_border_style),
+    ("the cursor style property reaches the view", test_cursor_style),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

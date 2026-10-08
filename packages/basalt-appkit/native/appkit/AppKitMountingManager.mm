@@ -6,6 +6,7 @@
 #import <CoreImage/CoreImage.h>
 
 #include "ComponentRegistry.h"
+#include "CursorNames.h"
 #include "ExpoImageComponent.h"
 #ifdef BASALT_HAS_SKIA
 #include "AppKitSkiaPeer.h"
@@ -809,6 +810,14 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
     case facebook::react::PointerEventsMode::Auto:
       view.rnPointerEvents = RnAppKitPointerEventsAuto;
       break;
+  }
+
+  // The `cursor` style property, as a CSS keyword. core/CursorNames.h is shared
+  // with the GTK host, which hands the same keyword to GDK; what macOS has no
+  // cursor for is decided in the view layer, beside the NSCursors.
+  {
+    const char *name = basalt::cursorName(props->cursor);
+    [view setRnCursorName:name != nullptr ? [NSString stringWithUTF8String:name] : nil];
   }
 
   // borderStyle. React Native carries one per side and a stroked path carries

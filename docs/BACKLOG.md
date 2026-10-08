@@ -36,7 +36,7 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | [Host wiring](backlog/host-wiring.md) | 6 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |
 | [Testing](backlog/testing.md) | 10 | What the suites cannot see. Was two sections with the same name, 800 lines apart; merged. |
-| [Upstream](backlog/upstream.md) | 14 | Bugs and gaps in React Native and Expo, with the workarounds here. |
+| [Upstream](backlog/upstream.md) | 15 | Bugs and gaps in React Native and Expo, with the workarounds here. |
 
 ## How to use this
 

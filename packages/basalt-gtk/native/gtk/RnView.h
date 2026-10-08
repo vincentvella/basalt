@@ -359,6 +359,19 @@ void rn_view_set_native_id(RnView *self, const char *native_id);
 // NULL when unset, never the empty string.
 const char *rn_view_get_native_id(RnView *self);
 
+// The `cursor` style property, as the CSS keyword React Native and GDK both use:
+// "pointer", "text", "grab", "ns-resize" and the rest. NULL or "" leaves the
+// cursor to whatever encloses this view, which is what `cursor: 'auto'` means.
+//
+// Straight through to `gtk_widget_set_cursor_from_name`, GDK's names being CSS's.
+// A name no cursor theme has falls back to the default, which is GDK's business
+// rather than this layer's -- the keyword is still stored and still reported, so
+// the cross-host dump compares what the app asked for rather than what a theme
+// happened to have.
+void rn_view_set_cursor(RnView *self, const char *name);
+// NULL when unset, never the empty string.
+const char *rn_view_get_cursor(RnView *self);
+
 // Accessible states. Each is a tri-state: unset leaves GTK's default alone,
 // which is not the same as setting it false.
 typedef enum {

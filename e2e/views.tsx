@@ -92,6 +92,26 @@ const styles = StyleSheet.create({
     borderColor: '#1f2129',
     borderStyle: 'dotted',
   },
+  // cursor, the other prop that is invisible in a picture of a still window.
+  // Two keywords rather than one: a plain one, and a hyphenated one that each
+  // host has to spell its own way -- GDK takes it as it stands and macOS has to
+  // find an NSCursor for it.
+  handy: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#4d8cf2',
+    cursor: 'pointer',
+  },
+  draggable: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#4d8cf2',
+    // Cast because React Native's own `CursorValue` is `'auto' | 'pointer'` and
+    // nothing else, while its C++ parses all thirty-four CSS keywords and its
+    // ViewProps carries them. The type is the narrow half, not the platform:
+    // see backlog/upstream.md.
+    cursor: 'ns-resize' as unknown as 'pointer',
+  },
 });
 
 function App() {
@@ -107,6 +127,8 @@ function App() {
         <View style={styles.dot} />
         <View style={styles.dashed} />
         <View style={styles.dotted} />
+        <View style={styles.handy} />
+        <View style={styles.draggable} />
         <View style={styles.dot} />
       </View>
     </View>

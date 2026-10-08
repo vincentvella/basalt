@@ -181,6 +181,9 @@ struct _RnView {
   float image_blur;
   GdkRGBA image_tint;
   char *role_name;
+  // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
+  // to GDK so the tree dump can report what the app asked for.
+  char *cursor_name;
   // The app's `nativeID`. Read only by the hidden title bar's drag-region hit
   // test; see RnView.h and core/TitleBarRegions.h.
   char *native_id;
@@ -641,6 +644,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_object(&self->texture);
   g_clear_pointer(&self->role_name, g_free);
   g_clear_pointer(&self->native_id, g_free);
+  g_clear_pointer(&self->cursor_name, g_free);
 
   G_OBJECT_CLASS(rn_view_parent_class)->dispose(object);
 }
@@ -666,6 +670,7 @@ static void rn_view_init(RnView *self) {
   self->texture = nullptr;
   self->texture_fit = RN_IMAGE_FIT_COVER;
   self->role_name = nullptr;
+  self->cursor_name = nullptr;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
@@ -1077,6 +1082,26 @@ void rn_view_set_native_id(RnView *self, const char *native_id) {
 const char *rn_view_get_native_id(RnView *self) {
   g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
   return self->native_id;
+}
+
+void rn_view_set_cursor(RnView *self, const char *name) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const char *wanted = name != nullptr && *name != '\0' ? name : nullptr;
+  if (g_strcmp0(self->cursor_name, wanted) == 0) {
+    return;
+  }
+  g_free(self->cursor_name);
+  self->cursor_name = wanted != nullptr ? g_strdup(wanted) : nullptr;
+  // NULL unsets it, and unset means inherited rather than arrow: a view inside
+  // one that asked for a hand keeps the hand, which is what CSS does and what
+  // makes `cursor` worth setting on a container at all.
+  gtk_widget_set_cursor_from_name(GTK_WIDGET(self), self->cursor_name);
+}
+
+const char *rn_view_get_cursor(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
+  return self->cursor_name;
 }
 
 // The spelling React Native uses for the prop, which is also CSS's, so the
@@ -1495,6 +1520,11 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // reports it.
   if (self->pointer_events != RN_POINTER_EVENTS_AUTO) {
     g_string_append_printf(out, " pe=%s", rn_pointer_events_name(self->pointer_events));
+  }
+  // Printed for the reason pointerEvents is: the prop is invisible in a still
+  // picture, so a dump is the only thing that can say it arrived on both hosts.
+  if (self->cursor_name != nullptr) {
+    g_string_append_printf(out, " cursor=%s", self->cursor_name);
   }
   if (self->texture != nullptr) {
     // The fit is here because it is the only thing about a drawn image that a

@@ -380,6 +380,25 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // same idea. Stored and never drawn.
 @property(nonatomic, copy, nullable) NSString *rnNativeId;
 
+// The `cursor` style property, as the CSS keyword React Native uses: "pointer",
+// "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
+// whatever encloses this view, which is what `cursor: 'auto'` means.
+//
+// A keyword rather than an NSCursor because the name is what crosses the seam
+// from the mounting manager, shared with the GTK host through
+// core/CursorNames.h, and because macOS has no cursor for some of them: the
+// mapping and its holes belong on this side. See `rnResolvedCursor`.
+- (void)setRnCursorName:(nullable NSString *)name;
+
+// The NSCursor that name resolves to, or nil for a keyword macOS has no cursor
+// for -- "wait", "help", "move", "progress", "cell", "all-scroll". Nil means
+// this view installs no cursor rect at all, so the cursor is inherited rather
+// than forced back to an arrow.
+//
+// Public for the tests, which assert the mapping, and read by nothing else: the
+// cursor itself is applied through `resetCursorRects`, as AppKit expects.
+@property(nonatomic, readonly, nullable) NSCursor *rnResolvedCursor;
+
 // Set on the surface root. See RnAppKitInputHandler.
 @property(nonatomic, weak, nullable) id<RnAppKitInputHandler> rnInputHandler;
 

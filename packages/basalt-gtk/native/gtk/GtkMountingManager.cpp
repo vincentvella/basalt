@@ -6,6 +6,7 @@
 
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
+#include "CursorNames.h"
 #include "UIManagerAccess.h"
 #include "PangoTextLayout.h"
 
@@ -1088,6 +1089,11 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
       rn_view_set_pointer_events(view, RN_POINTER_EVENTS_AUTO);
       break;
   }
+
+  // The `cursor` style property, as a CSS keyword. GDK's names are CSS's, so the
+  // keyword goes straight through; core/CursorNames.h is shared with the AppKit
+  // host so the two cannot disagree about what a value is called.
+  rn_view_set_cursor(view, basalt::cursorName(props->cursor));
 
   // borderStyle. React Native carries one per side and a stroked path carries
   // one dash pattern, so the first side that asks for something other than

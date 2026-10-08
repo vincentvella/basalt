@@ -291,6 +291,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   CGFloat _borderColors[16];
   BOOL _hasBorders;
   RnAppKitBorderStyle _borderStyle;
+  NSString *_cursorName;
+  NSCursor *_cursor;
   CATransform3D _transform;
   BOOL _hasTransform;
   BOOL _hidesBackFace;
@@ -1335,6 +1337,148 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   self.needsDisplay = YES;
 }
 
+// The NSCursor for a CSS cursor keyword, or nil for one macOS has no cursor for.
+//
+// The mapping React Native's own macOS fork makes, which is worth matching to the
+// letter: an app moved from react-native-macos to this platform should get the
+// same pointer over the same view. That fork is also where the holes come from --
+// "all-scroll", "cell", "help", "move", "progress" and "wait" have no NSCursor,
+// public or otherwise, and nil here means the view installs no cursor rect, so
+// the cursor is inherited rather than forced back to an arrow.
+//
+// The resize family is the one place macOS 15 made this better: before it, the
+// only resize cursors were the four axis-aligned ones, so a corner handle had
+// nothing to show. `frameResizeCursorFromPosition:inDirections:` has the
+// diagonals, and the fallbacks below are what the older system can do.
+static NSCursor *RnAppKitCursorNamed(NSString *name) {
+  if ([name isEqualToString:@"default"]) {
+    return NSCursor.arrowCursor;
+  }
+  if ([name isEqualToString:@"pointer"]) {
+    return NSCursor.pointingHandCursor;
+  }
+  if ([name isEqualToString:@"text"]) {
+    return NSCursor.IBeamCursor;
+  }
+  if ([name isEqualToString:@"crosshair"]) {
+    return NSCursor.crosshairCursor;
+  }
+  if ([name isEqualToString:@"grab"]) {
+    return NSCursor.openHandCursor;
+  }
+  if ([name isEqualToString:@"grabbing"]) {
+    return NSCursor.closedHandCursor;
+  }
+  if ([name isEqualToString:@"alias"]) {
+    return NSCursor.dragLinkCursor;
+  }
+  if ([name isEqualToString:@"copy"]) {
+    return NSCursor.dragCopyCursor;
+  }
+  if ([name isEqualToString:@"context-menu"]) {
+    return NSCursor.contextualMenuCursor;
+  }
+  // CSS distinguishes "this is not a drop target" from "this is not allowed at
+  // all"; macOS has one cursor for both, as does react-native-macos.
+  if ([name isEqualToString:@"no-drop"] || [name isEqualToString:@"not-allowed"]) {
+    return NSCursor.operationNotAllowedCursor;
+  }
+  // An empty one-pixel image, which is how macOS hides the pointer over a view.
+  if ([name isEqualToString:@"none"]) {
+    static NSCursor *blank = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      blank = [[NSCursor alloc] initWithImage:[[NSImage alloc] initWithSize:NSMakeSize(1, 1)]
+                                      hotSpot:NSZeroPoint];
+    });
+    return blank;
+  }
+  if ([name isEqualToString:@"ew-resize"] || [name isEqualToString:@"e-resize"] ||
+      [name isEqualToString:@"w-resize"]) {
+    return NSCursor.resizeLeftRightCursor;
+  }
+  if ([name isEqualToString:@"ns-resize"] || [name isEqualToString:@"n-resize"] ||
+      [name isEqualToString:@"s-resize"]) {
+    return NSCursor.resizeUpDownCursor;
+  }
+  if ([name isEqualToString:@"col-resize"]) {
+    if (@available(macOS 15.0, *)) {
+      return NSCursor.columnResizeCursor;
+    }
+    return NSCursor.resizeLeftRightCursor;
+  }
+  if ([name isEqualToString:@"row-resize"]) {
+    if (@available(macOS 15.0, *)) {
+      return NSCursor.rowResizeCursor;
+    }
+    return NSCursor.resizeUpDownCursor;
+  }
+  if (@available(macOS 15.0, *)) {
+    // The diagonals, which only exist as frame-resize cursors. "nesw" and "nwse"
+    // are the two-headed pair and the single directions are one-headed, which is
+    // what Outward and All mean here.
+    if ([name isEqualToString:@"nesw-resize"]) {
+      return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopRight
+                                        inDirections:NSCursorFrameResizeDirectionsAll];
+    }
+    if ([name isEqualToString:@"nwse-resize"]) {
+      return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopLeft
+                                        inDirections:NSCursorFrameResizeDirectionsAll];
+    }
+    if ([name isEqualToString:@"ne-resize"]) {
+      return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopRight
+                                        inDirections:NSCursorFrameResizeDirectionsOutward];
+    }
+    if ([name isEqualToString:@"nw-resize"]) {
+      return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionTopLeft
+                                        inDirections:NSCursorFrameResizeDirectionsOutward];
+    }
+    if ([name isEqualToString:@"se-resize"]) {
+      return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomRight
+                                        inDirections:NSCursorFrameResizeDirectionsOutward];
+    }
+    if ([name isEqualToString:@"sw-resize"]) {
+      return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomLeft
+                                        inDirections:NSCursorFrameResizeDirectionsOutward];
+    }
+    if ([name isEqualToString:@"zoom-in"]) {
+      return NSCursor.zoomInCursor;
+    }
+    if ([name isEqualToString:@"zoom-out"]) {
+      return NSCursor.zoomOutCursor;
+    }
+  }
+  return nil;
+}
+
+- (void)setRnCursorName:(NSString *)name {
+  NSString *wanted = name.length > 0 ? name : nil;
+  if (_cursorName == wanted || [_cursorName isEqualToString:wanted]) {
+    return;
+  }
+  _cursorName = [wanted copy];
+  _cursor = wanted != nil ? RnAppKitCursorNamed(wanted) : nil;
+  // Cursor rects are cached by the window and only rebuilt when it is told to,
+  // so a prop that changes while the pointer is already inside the view would
+  // otherwise keep the old cursor until the pointer left and came back.
+  [self.window invalidateCursorRectsForView:self];
+}
+
+- (NSCursor *)rnResolvedCursor {
+  return _cursor;
+}
+
+// AppKit asks for the rects rather than being told, which is why the cursor is
+// held and applied here: one rect over the whole view, discarded and rebuilt
+// each time, as react-native-macos does it. A child with its own cursor adds its
+// own rect and wins inside its own bounds, which is what CSS does.
+- (void)resetCursorRects {
+  [self discardCursorRects];
+  if (_cursor != nil) {
+    [self addCursorRect:self.bounds cursor:_cursor];
+  }
+}
+
 - (void)setRnBorderStyle:(RnAppKitBorderStyle)style {
   if (_borderStyle == style) {
     return;
@@ -1479,6 +1623,12 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   // reports it.
   if (self.rnPointerEvents != RnAppKitPointerEventsAuto) {
     [out appendFormat:@" pe=%s", RnAppKitPointerEventsName(self.rnPointerEvents)];
+  }
+  // Printed for the reason pointerEvents is, and spelled as GTK spells it: the
+  // prop is invisible in a still picture, so a dump is the only thing that can
+  // say it arrived on both hosts.
+  if (_cursorName != nil) {
+    [out appendFormat:@" cursor=%@", _cursorName];
   }
   if (_image != nullptr) {
     // The same `texture=WxH fit=<name>` the GTK side emits, so an <Image> shows
