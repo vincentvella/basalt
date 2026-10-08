@@ -2,9 +2,9 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (10):**
+**Open (9):**
 
-1. No rendering assertions on GTK
+1. ~~No rendering assertions on GTK~~
 2. Nothing exercises the JS thread and the main thread concurrently
 3. The Fast Refresh scenario is skipped in CI
 4. The GTK `<TextInput>` focus scenario flaked on a Mac, and nothing explains it
@@ -222,10 +222,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   occurrence is diagnosable; until then there is nothing to fix and guessing
   would be inventing a cause.
 
-- **No rendering assertions on GTK.** The widget tree says a view has a colour
-  and a frame, not that the right pixels reached the screen. This is not
-  theoretical, GTK's cairo renderer mangled every transform in the demo and no
-  test noticed. See `docs/TESTING.md`.
+- ~~**No rendering assertions on GTK.**~~ **Done 2026-10-08**, and the entry was
+  wrong about the cost. The widget tree says a view has a colour and a frame, not
+  that the right pixels reached the screen, and that is not theoretical: GTK's
+  cairo renderer mangled every transform in the demo and no test noticed.
 
   Windows has them as of phase 39, because Direct2D renders offscreen with no
   window and no display; `tests/test_win32_paint.cpp` is fourteen of them.
@@ -238,8 +238,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   where its alignment says, and `test_appkit_scrollbar.mm` that the overlay
   thumb is at the trailing edge.
 
-  What is left is GTK, which needs a display server and a `GdkTexture`
-  read-back, and is the one host where nothing checks the pixels.
+  **And GTK has them now, by a route this entry had half right.** It guessed a
+  display server and a `GdkTexture` read-back. The read-back is exactly it, and
+  the display server turned out to be needed only for part of it:
+  `gsk_renderer_realize` takes a NULL surface, so a node tree rasterises into a
+  texture with no window at all -- which is how the `filter` tests check a colour.
+  A tree with *children* does need the window, because
+  `gtk_widget_snapshot_child` draws nothing for an unmapped child, the same
+  reason test_hittest.cpp shows one before picking. So `tests/GtkPixels.h` puts
+  the tree in a window that is never ordered front, waits for the allocation, and
+  hands back straight RGBA; `tests/test_gtk_paint.cpp` is eleven assertions over
+  it, and the whole file runs in a second and a half.
+
+  Deliberately the same eleven questions `test_win32_paint.cpp` asks of Direct2D,
+  in the same order: a child at its frame, opacity over a whole subtree, a clip
+  that clips only with `overflow: hidden`, children in zIndex order, a scroll
+  offset that moves them, the background inside its corner radii and each corner
+  on its own, a border inside the box and over the children, each edge its own
+  colour, and a plain view painting nothing as the control. Three hosts asking
+  one set of questions is the point: the answers are supposed to be the same
+  picture.
+
+  Each of those is a bug a tree dump cannot catch, which the sabotage checks show:
+  a clip pushed over a box too big to clip anything fails the clip test and
+  nothing else, and painting children in list order rather than zIndex order fails
+  the ordering test and nothing else. Both leave every dump in the suite
+  identical.
+
+  One thing the helper has to say out loud is which renderer answered, and it
+  logs it once per run: the GL one is what an application uses, cairo is the
+  fallback on a machine without GL, and they are not interchangeable for every
+  question -- the cairo renderer draws a transformed subtree unrotated, which is
+  in [upstream.md](upstream.md). So the eleven are all questions both renderers
+  answer the same way, and transforms are still asserted through
+  `gtk_widget_compute_point` rather than through pixels.
 - Nothing exercises the JS thread and the main thread concurrently.
 - ~~The end-to-end scenarios hard-code tap coordinates from the demo's
   layout.~~ They find the button by its label now, in a tree measured from one

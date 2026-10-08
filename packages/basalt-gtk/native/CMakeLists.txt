@@ -330,6 +330,9 @@ if(TARGET basalt_core)
     tests/test_image.cpp
     tests/test_accessibility.cpp
     tests/test_viewprops.cpp
+    # What reached the pixels, asking what tests/test_win32_paint.cpp asks of
+    # Direct2D. No display and no window: see tests/GtkPixels.h.
+    tests/test_gtk_paint.cpp
     tests/test_textinput.cpp
     tests/test_titlebar.cpp
     # The drag regions, asking what tests/test_win32_titlebar.cpp asks of

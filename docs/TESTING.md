@@ -206,7 +206,8 @@ Hermes: mutations are hand-built, the way `mount_harness_gtk` builds them.
 | `native/tests/test_mounting.cpp` | The mutation walk. Create/Insert/Remove/Delete/Update ordering, insert indices, nesting, that Remove detaches without destroying, that Delete unregisters, and that a stray Insert for a deleted tag is ignored rather than fatal. |
 | `native/tests/test_view.cpp` | The widget layer. Frames, child order, that a scroll offset moves children, that `measure` reports zero so GTK never competes with Yoga, and that dispose unparents children. |
 | `native/tests/test_text.cpp` | Pango measurement. Wrapping, `numberOfLines`, that a bigger font measures bigger, and two regression tests: that font sizes are absolute rather than points, and that the default ellipsize mode does not collapse a wrapping paragraph to one line. |
-| `native/tests/test_hittest.cpp` | Hit testing. Depth, sibling order, misses, and that it follows a scroll offset. |
+| `native/tests/test_hittest.cpp` | Hit testing. Depth, sibling order, misses, that it follows a scroll offset, and that `hitSlop` grows a target without moving it. |
+| `native/tests/test_gtk_paint.cpp` | What reached the pixels, through `tests/GtkPixels.h`: placement, opacity as a subtree layer, clipping under `overflow`, zIndex paint order, the scroll offset, corner radii, and a border inside the box and over the children. The same eleven questions `test_win32_paint.cpp` asks of Direct2D, in the same order. Each is something a tree dump cannot show. |
 | `native/tests/test_image.cpp` | The image loader. Decoding, the cache answering synchronously, and the three ways a load can fail. |
 | `native/tests/test_textinput.cpp` | The controlled-value loop. That applying a prop is not reported back as typing, that the caret survives a prop arriving mid-word, that a command carrying a stale `eventCount` is dropped, and that the `GtkText` peer is allocated inside the content inset. Props are built through React Native's own `RawProps` parser, because the fields that matter are const and only reachable that way. Two tests watch the *events* rather than the widget, through `native/tests/EventRecorder.h`. |
 
@@ -992,14 +993,27 @@ is the 53-point step in `GtkScrollViewManager` times five.
 both at once. Closing it needs a compositor with a real seat: a desktop session
 in the VM, or a physical Linux machine.
 
-**Rendering.** Nothing asserts on pixels, which is how GTK's cairo renderer
-mangled every transform in the demo without a single test noticing. The widget tree says a view has a
-background colour and a frame, not that the right pixels reached the screen. A
-screenshot comparison would catch paint bugs the tree cannot: wrong z-order,
-a missing clip, text drawn in the wrong colour, but it needs a reference image
-per machine, and font rendering differs enough between them that the references
-would not travel. Reasonable to add on one fixed machine, not as a portable
-suite.
+**Rendering.** All three hosts assert on pixels now, each with no window on
+screen and no reference image: Direct2D into a WIC bitmap
+(`test_win32_paint.cpp`), Core Graphics into a `CGBitmapContext` through the
+view's own `drawRect:` (`test_appkit_image.mm` and two others), and GSK into a
+`GdkTexture` (`test_gtk_paint.cpp`, over `tests/GtkPixels.h`). The three ask the
+same eleven questions in the same order, because the answers are supposed to be
+the same picture.
+
+That gap is what let GTK's cairo renderer mangle every transform in the demo
+without a single test noticing. What is still not asserted is the thing a
+reference image would catch and these cannot: whether a glyph is the right shape.
+Font rendering differs enough between machines that reference images would not
+travel, so the pixel suites ask about colour, placement, clipping and order --
+all of which are exact -- and text is asserted by where its ink lands rather than
+by what it looks like.
+
+One caveat lives in the GTK helper and it logs which renderer answered: the GL
+one is what an application uses and the cairo one is the fallback on a machine
+without GL, and they do not agree about transforms. So the GTK pixel suite sticks
+to questions both answer the same way, and transforms are checked through
+`gtk_widget_compute_point`.
 
 **Threading.** The mounting manager asserts it is on the main thread, and text
 measurement takes a mutex, but nothing exercises the JS thread and the main

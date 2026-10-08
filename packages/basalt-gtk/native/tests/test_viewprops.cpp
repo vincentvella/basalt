@@ -9,6 +9,7 @@
 #include "TestHarness.h"
 
 #include "Filters.h"
+#include "GtkPixels.h"
 #include "RnView.h"
 
 #include <cmath>
@@ -33,68 +34,6 @@ GskRenderNode *paintedNode(RnView *view) {
   GtkSnapshot *snapshot = gtk_snapshot_new();
   GTK_WIDGET_GET_CLASS(GTK_WIDGET(view))->snapshot(GTK_WIDGET(view), snapshot);
   return gtk_snapshot_free_to_node(snapshot);
-}
-
-// One pixel of what a view actually paints, rendered rather than inspected.
-//
-// New here, and worth the twenty lines: every other test in this file asks which
-// nodes a view produced, which is the right question for "is there a blur" and
-// the wrong one for "is this the right colour". A colour matrix is sixteen
-// numbers and a transpose, and the only honest check is a pixel.
-//
-// GSK can render a node tree with no window at all -- `gsk_renderer_realize`
-// takes a NULL surface -- and the GL renderer is what a real app uses, so that
-// is the one asked. The cairo renderer is the fallback for a machine with no GL,
-// which CI's Linux may well be; a colour matrix is exact in both.
-struct Pixel {
-  int red;
-  int green;
-  int blue;
-  int alpha;
-};
-
-Pixel renderedPixel(RnView *view, int width, int height, int x, int y) {
-  GskRenderNode *node = paintedNode(view);
-  if (node == nullptr) {
-    return Pixel{-1, -1, -1, -1};
-  }
-
-  GskRenderer *renderer = gsk_gl_renderer_new();
-  if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
-    g_object_unref(renderer);
-    renderer = gsk_cairo_renderer_new();
-    if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
-      g_object_unref(renderer);
-      gsk_render_node_unref(node);
-      return Pixel{-1, -1, -1, -1};
-    }
-  }
-
-  // Not GRAPHENE_RECT_INIT, which is a C99 compound literal and so rejected here
-  // -- the same note rn_view_snapshot carries about GRAPHENE_SIZE_INIT.
-  graphene_rect_t viewport;
-  graphene_rect_init(
-      &viewport, 0.0F, 0.0F, static_cast<float>(width), static_cast<float>(height));
-  GdkTexture *texture = gsk_renderer_render_texture(renderer, node, &viewport);
-  const gsize stride = static_cast<gsize>(width) * 4;
-  std::vector<guchar> pixels(stride * static_cast<gsize>(height));
-  gdk_texture_download(texture, pixels.data(), stride);
-
-  const gsize at = static_cast<gsize>(y) * stride + static_cast<gsize>(x) * 4;
-  // `gdk_texture_download` writes premultiplied BGRA in native byte order, which
-  // is little-endian on everything this runs on.
-  const int alpha = pixels[at + 3];
-  const auto straight = [alpha](int value) {
-    return alpha == 0 ? 0 : static_cast<int>(value * 255.0 / alpha + 0.5);
-  };
-  const Pixel pixel{straight(pixels[at + 2]), straight(pixels[at + 1]), straight(pixels[at + 0]),
-                    alpha};
-
-  g_object_unref(texture);
-  gsk_renderer_unrealize(renderer);
-  g_object_unref(renderer);
-  gsk_render_node_unref(node);
-  return pixel;
 }
 
 // How many clip nodes are anywhere in that tree. Counted rather than located,
@@ -1417,7 +1356,7 @@ TEST(a_filter_matrix_reaches_gsk_the_right_way_round) {
   const GdkRGBA colour{1.0F, 0.5F, 0.0F, 1.0F};
   rn_view_set_background_color(view, TRUE, &colour);
 
-  const Pixel before = renderedPixel(view, 20, 20, 10, 10);
+  const basalt::testing::RnPixel before = basalt::testing::renderView(view, 20, 20).at(10, 10);
   EXPECT_NEAR(before.red, 255, 2);
   EXPECT_NEAR(before.green, 128, 3);
   EXPECT_NEAR(before.blue, 0, 2);
@@ -1443,7 +1382,7 @@ TEST(a_filter_matrix_reaches_gsk_the_right_way_round) {
   filters.opacity = resolved.opacity;
   rn_view_set_filters(view, &filters);
 
-  const Pixel grey = renderedPixel(view, 20, 20, 10, 10);
+  const basalt::testing::RnPixel grey = basalt::testing::renderView(view, 20, 20).at(10, 10);
   EXPECT_NEAR(grey.red, 145, 3);
   EXPECT_NEAR(grey.green, 145, 3);
   EXPECT_NEAR(grey.blue, 145, 3);
@@ -1454,7 +1393,7 @@ TEST(a_filter_matrix_reaches_gsk_the_right_way_round) {
 
   // And taken away again.
   rn_view_set_filters(view, nullptr);
-  const Pixel back = renderedPixel(view, 20, 20, 10, 10);
+  const basalt::testing::RnPixel back = basalt::testing::renderView(view, 20, 20).at(10, 10);
   EXPECT_NEAR(back.red, 255, 2);
   EXPECT_NEAR(back.blue, 0, 2);
 
@@ -1489,7 +1428,8 @@ TEST(a_filter_offset_reaches_gsk_too) {
   rn_view_set_filters(view, &filters);
 
   // Black inverted is white. Without the offset it would still be black.
-  const Pixel inverted = renderedPixel(view, 20, 20, 10, 10);
+  const basalt::testing::RnPixel inverted =
+      basalt::testing::renderView(view, 20, 20).at(10, 10);
   EXPECT_NEAR(inverted.red, 255, 2);
   EXPECT_NEAR(inverted.green, 255, 2);
   EXPECT_NEAR(inverted.blue, 255, 2);
