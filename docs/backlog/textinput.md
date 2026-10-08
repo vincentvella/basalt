@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
@@ -12,7 +12,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored **
 7. src/overrides/TextInput
 8. autoCapitalize, autoCorrect, spellCheck, keyboardType, returnKeyType, clearBut
-9. autoFocus selected the field's text, on two hosts, for the same reason
+9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
 
 - ~~**An uncontrolled field loses what was typed into it.**~~ Found on Windows
   in phase 46 and fixed on all three in phase 47. React Native's `TextInput.js`
