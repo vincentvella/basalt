@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (10):**
+**Open (11):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -16,6 +16,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 9. Five style props the other two hosts draw and this one ignores
 10. `accessibilityLabelledBy` sets no relation
 11. `hitSlop` is not part of the hit test
+12. No accessibility announcements, so `accessibilityLiveRegion` is silent
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -246,3 +247,13 @@ and none of it is a missing half.
   in one run and is skipped here by name; when it is unskipped it will say which
   half is missing, because it reads `hit-slop=` out of the tree before it taps
   anything.
+
+- **No accessibility announcements, so `accessibilityLiveRegion` is silent.** The
+  change detection is done and shared -- `core/LiveRegions.h` decides what counts
+  as news, and the only two rules that matter are already written down there --
+  so what is left here is the announcement itself. UI Automation raises it as a
+  `UIA_SystemAlertEventId` on the provider, or as a live-region property change
+  with `UIA_LiveSettingPropertyId` set; GTK calls `gtk_accessible_announce` and
+  macOS posts `NSAccessibilityAnnouncementRequested`. The host would also need to
+  collect a region's text, which the other two do by walking the subtree for
+  paragraphs. The end-to-end scenario is skipped here by name.

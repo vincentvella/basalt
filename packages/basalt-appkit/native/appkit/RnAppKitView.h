@@ -470,6 +470,36 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // hosts. backlog/accessibility.md records that.
 - (void)setRnLabelledBy:(nullable NSArray<RnAppKitView *> *)labels;
 
+// The text of this view and everything inside it, as a screen reader would read
+// it: each paragraph's string in tree order, separated by single spaces.
+//
+// Here for `accessibilityLiveRegion`, which announces a status message when it
+// changes and so needs to know what the message currently says. An accessible
+// label stands in for the text where one was set, which the mounting manager
+// decides before calling this, as the GTK host does.
+@property(nonatomic, readonly) NSString *rnCollectedText;
+
+// The text this view draws itself, or nil: the paragraph it holds, and nothing
+// from its children. The recursive half of `rnCollectedText` reads it from each
+// view it walks, which is why it is here rather than in the implementation.
+@property(nonatomic, readonly, nullable) NSString *rnOwnText;
+
+// Reads `text` out to VoiceOver now, as `accessibilityLiveRegion` asks. Not a
+// property: AppKit posts an announcement, and whether anybody is listening is
+// VoiceOver's business.
+//
+// `assertive` asks to interrupt what is being read; polite waits for a gap,
+// which is what the two values of the prop mean.
+//
+// The announcement is also remembered, which is the only way to see that it
+// happened: nothing in an automated run is running VoiceOver, so
+// `rnLastAnnouncement` is what the tests read. Deliberately not in the tree dump
+// -- an announcement is an event and the dump is state -- and the host logs it.
+- (void)rnAnnounce:(NSString *)text assertive:(BOOL)assertive;
+
+// The last text this view announced, or nil.
+@property(nonatomic, readonly, nullable) NSString *rnLastAnnouncement;
+
 // Hidden from assistive technology, for accessible={false} and
 // accessibilityElementsHidden.
 - (void)setRnAccessibleHidden:(BOOL)hidden;

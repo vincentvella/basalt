@@ -10,6 +10,7 @@
 #include "GtkScrollView.h"
 #include "GtkTextInput.h"
 #include "LabelRegistry.h"
+#include "LiveRegions.h"
 #include "MountingWalk.h"
 #include "RnView.h"
 
@@ -130,6 +131,12 @@ class GtkMountingManager final : public facebook::react::IMountingManager,
   // just mounted. Once per transaction rather than per view, because a view can
   // name a label that mounts after it.
   void applyLabelRelations();
+
+  // Announces any live region whose text changed in the transaction that just
+  // mounted. Once per transaction, and after it, because the text to announce is
+  // what the region says *now*: a <Text> inside it may have been updated by a
+  // later mutation in the same batch.
+  void announceLiveRegions();
   void applyTextInput(RnView *view, const facebook::react::ShadowView &shadowView);
   void applyLayoutMetrics(RnView *view, const facebook::react::ShadowView &shadowView);
 
@@ -159,6 +166,15 @@ class GtkMountingManager final : public facebook::react::IMountingManager,
   // by one. Shared with the AppKit host; see core/LabelRegistry.h for why the
   // resolution cannot happen as the props arrive.
   basalt::LabelRegistry labels_;
+
+  // Which views are live regions and what each last said, so a changed status
+  // message can be announced. Shared with the AppKit host; see
+  // core/LiveRegions.h.
+  basalt::LiveRegionRegistry liveRegions_;
+
+  // Each live region's `accessibilityLabel`, which stands in for its text when
+  // the app set one. Kept because GTK has no getter for an accessible property.
+  std::unordered_map<facebook::react::Tag, std::string> liveRegionLabels_;
 };
 
 } // namespace basalt

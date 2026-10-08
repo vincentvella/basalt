@@ -534,3 +534,80 @@ TEST(accessibility_labelled_by_an_id_that_names_nothing_is_no_relation) {
   EXPECT(!gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
                                            GTK_ACCESSIBLE_RELATION_LABELLED_BY));
 }
+
+// `accessibilityLiveRegion`: a status message read out when it changes.
+//
+// Nothing in an automated run is connected to AT-SPI, so what is asserted is the
+// decision rather than the speech: `rn_view_announce` records the text it passed
+// to `gtk_accessible_announce`, and these read that back. The rules themselves --
+// what counts as a change -- are core/LiveRegions.h's and are tested there.
+//
+// The text here comes from the accessibility label, which is what an icon-only
+// status has; a <Text> inside the region is the other source and is asserted
+// against `rn_view_collect_text` in test_viewprops.cpp.
+
+TEST(accessibility_a_live_region_says_nothing_when_it_appears) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *status = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                              props.accessibilityLiveRegion =
+                                  facebook::react::AccessibilityLiveRegion::Polite;
+                              props.accessibilityLabel = "Saving";
+                            }));
+  // Mounting a status line is not news: the screen appeared, nothing changed.
+  EXPECT(rn_view_get_last_announcement(status) == nullptr);
+}
+
+TEST(accessibility_a_live_region_announces_a_change) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *status = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                              props.accessibilityLiveRegion =
+                                  facebook::react::AccessibilityLiveRegion::Polite;
+                              props.accessibilityLabel = "Saving";
+                            }));
+
+  updateOne(manager, 10, [](ViewProps &props) {
+    props.accessibilityLiveRegion = facebook::react::AccessibilityLiveRegion::Polite;
+    props.accessibilityLabel = "Saved";
+  });
+  EXPECT(rn_view_get_last_announcement(status) != nullptr);
+  EXPECT_EQ(std::string(rn_view_get_last_announcement(status)), std::string("Saved"));
+}
+
+// A view without the prop never announces, whatever its label does. The whole
+// point of the prop is that most views are not live regions.
+TEST(accessibility_a_view_that_is_not_a_live_region_stays_quiet) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                            props.accessibilityLabel = "Saving";
+                          }));
+  updateOne(manager, 10, [](ViewProps &props) { props.accessibilityLabel = "Saved"; });
+  EXPECT(rn_view_get_last_announcement(view) == nullptr);
+}
+
+// And a region that stops being one goes quiet, which is what a screen that
+// turns its status line into ordinary text means.
+TEST(accessibility_a_live_region_that_stops_being_one_goes_quiet) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *status = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                              props.accessibilityLiveRegion =
+                                  facebook::react::AccessibilityLiveRegion::Assertive;
+                              props.accessibilityLabel = "Saving";
+                            }));
+  updateOne(manager, 10, [](ViewProps &props) {
+    props.accessibilityLiveRegion = facebook::react::AccessibilityLiveRegion::Assertive;
+    props.accessibilityLabel = "Saved";
+  });
+  EXPECT_EQ(std::string(rn_view_get_last_announcement(status)), std::string("Saved"));
+
+  updateOne(manager, 10, [](ViewProps &props) { props.accessibilityLabel = "Saved again"; });
+  // Still the old announcement: nothing new was said.
+  EXPECT_EQ(std::string(rn_view_get_last_announcement(status)), std::string("Saved"));
+}

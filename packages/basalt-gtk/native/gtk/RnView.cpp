@@ -207,6 +207,8 @@ struct _RnView {
   // The tags of the views in this one's LABELLED_BY relation, for the tree dump:
   // GTK holds the references itself and will not say what they are.
   GArray *labelled_by;
+  // The last text this view announced as a live region. See rn_view_announce.
+  char *last_announcement;
   GdkRGBA border_colors[4];
   gboolean has_borders;
 
@@ -754,6 +756,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->box_shadows, g_array_unref);
   g_clear_pointer(&self->gradients, g_array_unref);
   g_clear_pointer(&self->labelled_by, g_array_unref);
+  g_clear_pointer(&self->last_announcement, g_free);
 
   G_OBJECT_CLASS(rn_view_parent_class)->dispose(object);
 }
@@ -805,6 +808,7 @@ static void rn_view_init(RnView *self) {
   self->box_shadows = nullptr;
   self->gradients = nullptr;
   self->labelled_by = nullptr;
+  self->last_announcement = nullptr;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
@@ -1016,6 +1020,65 @@ void rn_view_set_image_blur(RnView *self, float radius) {
   }
   self->image_blur = wanted;
   gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+// The text of one view and everything under it, appended to `out`.
+//
+// Paragraphs only. An accessible label can stand in for text, but GTK offers no
+// way to read one back -- `gtk_accessible_update_property` is write-only outside
+// the test helpers -- so the mounting manager prefers the label from the props
+// before asking for this, which is also where the AppKit host decides it.
+static void rn_view_collect_text_into(RnView *self, GString *out) {
+  if (self->text_layout != nullptr) {
+    const char *text = pango_layout_get_text(self->text_layout);
+    if (text != nullptr && *text != '\0') {
+      if (out->len > 0) {
+        g_string_append_c(out, ' ');
+      }
+      g_string_append(out, text);
+    }
+  }
+  for (GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(self)); child != nullptr;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (RN_IS_VIEW(child)) {
+      rn_view_collect_text_into(RN_VIEW(child), out);
+    }
+  }
+}
+
+char *rn_view_collect_text(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), g_strdup(""));
+
+  GString *out = g_string_new(nullptr);
+  rn_view_collect_text_into(self, out);
+  return g_string_free(out, FALSE);
+}
+
+void rn_view_announce(RnView *self, const char *text, gboolean assertive) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  if (text == nullptr || *text == '\0') {
+    return;
+  }
+
+  g_free(self->last_announcement);
+  self->last_announcement = g_strdup(text);
+
+#if GTK_CHECK_VERSION(4, 14, 0)
+  gtk_accessible_announce(GTK_ACCESSIBLE(self),
+                          text,
+                          assertive ? GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_HIGH
+                                    : GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM);
+#else
+  // GTK 4.10 to 4.13, which this project still supports: announcements arrived
+  // in 4.14. The text is still recorded, so a run on an older GTK reports what
+  // it would have said rather than looking as though the prop did nothing.
+  (void)assertive;
+#endif
+}
+
+const char *rn_view_get_last_announcement(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
+  return self->last_announcement;
 }
 
 void rn_view_set_labelled_by(RnView *self, RnView **labels, int count) {

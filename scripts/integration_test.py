@@ -4024,6 +4024,64 @@ def test_accessibility_labelled_by(bundle: Path) -> None:
         )
 
 
+def test_accessibility_live_region(bundle: Path) -> None:
+    """`accessibilityLiveRegion` reads a status message out when it changes.
+
+    Neither desktop models this as a property of a view: GTK announces at a
+    moment through `gtk_accessible_announce`, macOS posts an
+    `NSAccessibilityAnnouncementRequested` notification. So honouring the prop is
+    change detection, and the two rules worth asserting end to end are that the
+    *first* text says nothing -- a screen appearing is not news, and a host that
+    got this wrong would have every screen with a status line read itself out --
+    and that a change says the new text once.
+
+    e2e/a11y.tsx has a status line that goes from "Saving" to "Saved" a second
+    after mount. Nothing in an automated run is connected to AT-SPI or running
+    VoiceOver, so each host logs what it announced, which is what this reads.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("the Win32 host posts no accessibility announcements yet")
+
+    app = bundle_app(bundle.parent, "a11y")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    result = run_host_process(
+        [str(HOST), str(app), "BasaltA11y"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    logged = result.stdout + result.stderr
+
+    announcements = re.findall(r"announced(?: \(assertive\))?: (.+)", logged)
+    if not any(text.strip() == "Saved" for text in announcements):
+        raise Failure(
+            "the status line changed to 'Saved' and nothing was announced.\n"
+            + tail_text(logged)
+        )
+    # "Saving" is what the region said when it appeared, and a screen appearing is
+    # not news: announcing it would make every screen with a status line read
+    # itself out on arrival.
+    if any(text.strip() == "Saving" for text in announcements):
+        raise Failure(
+            "the region announced its first text, so this host announces on mount "
+            f"rather than on change.\n{announcements}"
+        )
+    # Once, not once per transaction: a view re-renders for every reason under the
+    # sun and React Native re-sends identical props on each mutation.
+    if len([text for text in announcements if text.strip() == "Saved"]) != 1:
+        raise Failure(
+            f"'Saved' was announced {len(announcements)} times; once is the whole "
+            f"point.\n{announcements}"
+        )
+
+
 def test_cursor_style(bundle: Path) -> None:
     """The `cursor` style property reaches the view.
 
@@ -5412,6 +5470,7 @@ SCENARIOS = [
     ("boxShadow reaches the view, inset and all", test_box_shadow),
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
+    ("accessibilityLiveRegion announces a change", test_accessibility_live_region),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

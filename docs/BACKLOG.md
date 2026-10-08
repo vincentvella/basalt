@@ -24,14 +24,14 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | [Image](backlog/image.md) | 4 | Decorative props, and assets over the network: fetching, caching, progress. |
 | [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |
-| [Accessibility](backlog/accessibility.md) | 3 | Nothing has been tested against a real screen reader. |
+| [Accessibility](backlog/accessibility.md) | 2 | Nothing has been tested against a real screen reader. |
 | [Correctness](backlog/correctness.md) | 3 | Things that work but not quite right. |
 
 ## Platforms and plumbing
 
 | Area | Open | What is left there |
 | --- | --- | --- |
-| [Windows, the platform](backlog/platform-windows.md) | 10 | A peer since phase 47. What is left is named, and two entries are missing halves: an inline <View> inside a <Text>, and three style props. |
+| [Windows, the platform](backlog/platform-windows.md) | 11 | A peer since phase 47. What is left is named, and two entries are missing halves: an inline <View> inside a <Text>, and three style props. |
 | [macOS](backlog/platform-macos.md) | 8 | Justified text, fonts, the rest of accessibility. |
 | [Host wiring](backlog/host-wiring.md) | 6 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |

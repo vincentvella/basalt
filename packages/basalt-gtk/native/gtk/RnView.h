@@ -462,6 +462,32 @@ const char *rn_view_get_cursor(RnView *self);
 // its text does not leave a stale copy behind.
 void rn_view_set_labelled_by(RnView *self, RnView **labels, int count);
 
+// The text of this view and everything inside it, as a screen reader would read
+// it: each paragraph's string in tree order, separated by single spaces.
+//
+// Here for `accessibilityLiveRegion`, which announces a status message when it
+// changes and so needs to know what the message currently says. An accessible
+// label stands in for the text where one was set, which the mounting manager
+// decides before calling this -- GTK has no way to read a label back. Returns a
+// string to free with g_free, never NULL.
+char *rn_view_collect_text(RnView *self);
+
+// Reads `text` out to assistive technology now, as `accessibilityLiveRegion`
+// asks. Not a property: GTK announces at a moment, and whether anybody is
+// listening is the screen reader's business.
+//
+// `assertive` interrupts what is being read; polite waits for a gap, which is
+// what the two values of the prop mean.
+//
+// The announcement is also remembered, which is the only way to see that it
+// happened: nothing in an automated run is connected to AT-SPI, so
+// `rn_view_get_last_announcement` is what the tests and the end-to-end suite
+// read. It is deliberately not in the tree dump -- an announcement is an event
+// and the dump is state -- and the host logs it as well.
+void rn_view_announce(RnView *self, const char *text, gboolean assertive);
+// The last text this view announced, or NULL. Owned by the view.
+const char *rn_view_get_last_announcement(RnView *self);
+
 // Accessible states. Each is a tri-state: unset leaves GTK's default alone,
 // which is not the same as setting it false.
 typedef enum {

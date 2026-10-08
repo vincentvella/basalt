@@ -40,6 +40,14 @@ const styles = StyleSheet.create({
 });
 
 function App() {
+  // One change, a beat after mount: long enough that the first mount is its own
+  // transaction, short enough that a three-second run sees both.
+  const [status, setStatus] = React.useState('Saving');
+  React.useEffect(() => {
+    const timer = setTimeout(() => setStatus('Saved'), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <View style={styles.page}>
       {/* A <Text> is text without being told so. */}
@@ -102,6 +110,19 @@ function App() {
           Save the document
         </Text>
       </View>
+
+      {/*
+        accessibilityLiveRegion: a status line that is read out when it changes,
+        without a screen reader having to be on it. The text changes once, a
+        second after mount, so a run can tell the first sighting -- which must
+        announce nothing -- from the change, which must announce the new text.
+      */}
+      <Text
+        style={styles.note}
+        accessibilityLiveRegion="polite"
+        nativeID="status">
+        {status}
+      </Text>
 
       <Text style={styles.note}>A plain View is scenery and stays out of the tree.</Text>
     </View>

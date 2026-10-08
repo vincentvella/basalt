@@ -220,6 +220,42 @@ void GtkMountingManager::applyTransaction(SurfaceId surfaceId, MountingTransacti
   // After the mutations, because a view can be labelled by one that mounts after
   // it: Fabric mounts in tree order, and the label of a field often follows it.
   applyLabelRelations();
+
+  // And after those, because an announcement is the last word on a transaction:
+  // the text a live region says now is what every mutation in this batch has
+  // left it saying.
+  announceLiveRegions();
+}
+
+void GtkMountingManager::announceLiveRegions() {
+  if (liveRegions_.empty()) {
+    return;
+  }
+  for (const facebook::react::Tag tag : liveRegions_.tags()) {
+    RnView *view = viewForTag(tag);
+    if (view == nullptr) {
+      continue;
+    }
+    // A label stands in for the text when the app set one: an icon-only status
+    // has no paragraph of its own, and the label is what would be read. The
+    // AppKit host makes the same choice in the same order.
+    const auto label = liveRegionLabels_.find(tag);
+    std::string text = label != liveRegionLabels_.end() ? label->second : std::string();
+    if (text.empty()) {
+      char *collected = rn_view_collect_text(view);
+      text = collected != nullptr ? collected : "";
+      g_free(collected);
+    }
+    const auto politeness = liveRegions_.noticed(tag, text);
+    if (!politeness.has_value()) {
+      continue;
+    }
+    const gboolean assertive = *politeness == basalt::LiveRegionPoliteness::Assertive;
+    rn_view_announce(view, text.c_str(), assertive);
+    // Logged as well as announced: nothing in an automated run is connected to
+    // AT-SPI, so this line is how an end-to-end test sees that it happened.
+    LOG(INFO) << "announced" << (assertive ? " (assertive): " : ": ") << text;
+  }
 }
 
 void GtkMountingManager::applyLabelRelations() {
@@ -320,6 +356,8 @@ void GtkMountingManager::removeChild(RnView *parent, RnView *child) {
 }
 
 void GtkMountingManager::forgetTag(Tag tag) {
+  liveRegions_.forget(tag);
+  liveRegionLabels_.erase(tag);
   // Both sides of a label relation: a view that goes away stops naming anything
   // and stops being nameable, and a relation left pointing at it would have a
   // screen reader read a view that is no longer on screen.
@@ -592,6 +630,19 @@ void GtkMountingManager::applyAccessibility(RnView *view, const ShadowView &shad
   const auto props = std::dynamic_pointer_cast<const facebook::react::AccessibilityProps>(shadowView.props);
   if (props == nullptr) {
     return;
+  }
+
+  // `accessibilityLiveRegion`: a status message to read out when it changes.
+  // Recorded here and acted on after the transaction, the text being whatever
+  // the region says once every mutation in the batch has landed.
+  liveRegions_.setPoliteness(shadowView.tag, props->accessibilityLiveRegion);
+  // The label, if the app set one, which stands in for the text: an icon-only
+  // status has no paragraph of its own. Kept here rather than read back from
+  // GTK, which has no getter for an accessible property.
+  if (props->accessibilityLiveRegion == facebook::react::AccessibilityLiveRegion::None) {
+    liveRegionLabels_.erase(shadowView.tag);
+  } else {
+    liveRegionLabels_[shadowView.tag] = props->accessibilityLabel;
   }
 
   // `accessibilityLabelledBy`: other views, named by their nativeID, whose text

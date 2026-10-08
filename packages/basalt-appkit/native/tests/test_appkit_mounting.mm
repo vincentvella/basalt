@@ -504,3 +504,115 @@ TEST(appkit_mounting_labelled_by_waits_for_a_label_that_mounts_later) {
     EXPECT(field.accessibilityTitleUIElement == manager.viewForTag(20));
   }
 }
+
+// `accessibilityLiveRegion`: a status message read out when it changes.
+//
+// Nothing in an automated run is running VoiceOver, so what is asserted is the
+// decision rather than the speech: `-rnAnnounce:assertive:` records the text it
+// posted and these read it back. The rules -- what counts as a change -- are
+// core/LiveRegions.h's and are tested there; this is the wiring, and it is the
+// same four cases the GTK suite asserts.
+namespace {
+
+ShadowView makeStatusView(Tag tag,
+                          facebook::react::AccessibilityLiveRegion politeness,
+                          const std::string &label) {
+  ShadowView view = makeView(tag, 0, 0, 200, 40);
+  auto props = std::make_shared<ViewProps>();
+  props->accessibilityLiveRegion = politeness;
+  props->accessibilityLabel = label;
+  view.props = props;
+  return view;
+}
+
+void mountStatus(basalt::AppKitMountingManager &manager, const ShadowView &view, int transaction) {
+  ShadowViewMutationList mutations;
+  if (transaction == 1) {
+    mutations.push_back(ShadowViewMutation::CreateMutation(view));
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, view, 0));
+  } else {
+    mutations.push_back(ShadowViewMutation::UpdateMutation(view, view, kSurfaceId));
+  }
+  manager.applyTransaction(
+      kSurfaceId,
+      MountingTransaction(kSurfaceId, transaction, std::move(mutations), TransactionTelemetry{}));
+}
+
+} // namespace
+
+TEST(appkit_mounting_a_live_region_says_nothing_when_it_appears) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    manager.createSurfaceRoot(kSurfaceId);
+
+    using facebook::react::AccessibilityLiveRegion;
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::Polite, "Saving"), 1);
+    // Mounting a status line is not news: the screen appeared, nothing changed.
+    EXPECT(manager.viewForTag(10).rnLastAnnouncement == nil);
+  }
+}
+
+TEST(appkit_mounting_a_live_region_announces_a_change) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    manager.createSurfaceRoot(kSurfaceId);
+
+    using facebook::react::AccessibilityLiveRegion;
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::Polite, "Saving"), 1);
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::Polite, "Saved"), 2);
+
+    RnAppKitView *status = manager.viewForTag(10);
+    EXPECT(status.rnLastAnnouncement != nil);
+    EXPECT([status.rnLastAnnouncement isEqualToString:@"Saved"]);
+  }
+}
+
+TEST(appkit_mounting_a_view_that_is_not_a_live_region_stays_quiet) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    manager.createSurfaceRoot(kSurfaceId);
+
+    using facebook::react::AccessibilityLiveRegion;
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::None, "Saving"), 1);
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::None, "Saved"), 2);
+    EXPECT(manager.viewForTag(10).rnLastAnnouncement == nil);
+  }
+}
+
+TEST(appkit_mounting_a_live_region_that_stops_being_one_goes_quiet) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    manager.createSurfaceRoot(kSurfaceId);
+
+    using facebook::react::AccessibilityLiveRegion;
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::Assertive, "Saving"), 1);
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::Assertive, "Saved"), 2);
+    RnAppKitView *status = manager.viewForTag(10);
+    EXPECT([status.rnLastAnnouncement isEqualToString:@"Saved"]);
+
+    mountStatus(manager, makeStatusView(10, AccessibilityLiveRegion::None, "Saved again"), 3);
+    // Still the old announcement: nothing new was said.
+    EXPECT([status.rnLastAnnouncement isEqualToString:@"Saved"]);
+  }
+}
+
+// The other source of a region's text: a <Text> inside it rather than a label on
+// it. Asserted against the collector directly, a Paragraph with real state being
+// more machinery than the question needs.
+TEST(appkit_collected_text_is_every_paragraph_in_the_subtree) {
+  @autoreleasepool {
+    RnAppKitView *region = [RnAppKitView viewWithTag:1];
+    [region setRnFrameX:0 y:0 width:200 height:100];
+    EXPECT_EQ(region.rnCollectedText.length, 0UL);
+
+    RnAppKitView *first = [RnAppKitView viewWithTag:2];
+    [first setRnFrameX:0 y:0 width:200 height:20];
+    [region insertRnChild:first atIndex:0];
+    RnAppKitView *second = [RnAppKitView viewWithTag:3];
+    [second setRnFrameX:0 y:20 width:200 height:20];
+    [region insertRnChild:second atIndex:1];
+    // No text layouts, so still nothing: a tree of plain views collects nothing
+    // rather than crashing on the way down.
+    EXPECT_EQ(region.rnCollectedText.length, 0UL);
+  }
+}

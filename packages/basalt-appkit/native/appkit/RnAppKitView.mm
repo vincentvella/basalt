@@ -451,6 +451,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   std::vector<RnAppKitGradientRecord> _gradients;
   NSMutableArray<CALayer *> *_boxShadowLayers;
   NSString *_cursorName;
+  // The last text this view announced as a live region. See -rnAnnounce:.
+  NSString *_lastAnnouncement;
   // The tags of the views in this one's labelled-by relation, for the tree dump.
   std::vector<NSInteger> _labelledBy;
   NSCursor *_cursor;
@@ -627,6 +629,56 @@ static NSAccessibilityRole RnAccessibilityRoleFor(NSString *name) {
   const NSAccessibilityRole mapped = RnAccessibilityRoleFor(_roleName);
   self.accessibilityRole = mapped;
   self.accessibilityElement = mapped != NSAccessibilityUnknownRole;
+}
+
+// The text of one view and everything under it, appended to `out`.
+//
+// Paragraphs only. A label can stand in for text, and the mounting manager
+// prefers one before asking for this, as the GTK host does -- which keeps the
+// rule in one place per host rather than in the view layer, where the props are
+// not.
+static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
+  NSString *own = view.rnOwnText;
+  if (own.length > 0) {
+    if (out.length > 0) {
+      [out appendString:@" "];
+    }
+    [out appendString:own];
+  }
+  for (RnAppKitView *child in [view rnChildrenInPaintOrder]) {
+    RnAppKitCollectText(child, out);
+  }
+}
+
+- (NSString *)rnOwnText {
+  return _textLayout.attributedString.string;
+}
+
+- (NSString *)rnCollectedText {
+  NSMutableString *out = [NSMutableString string];
+  RnAppKitCollectText(self, out);
+  return out;
+}
+
+- (void)rnAnnounce:(NSString *)text assertive:(BOOL)assertive {
+  if (text.length == 0) {
+    return;
+  }
+  _lastAnnouncement = [text copy];
+  // Posted against the application rather than this view: an announcement is not
+  // about an element, and AppKit documents the app as the element to post it on.
+  NSAccessibilityPostNotificationWithUserInfo(
+      NSApp,
+      NSAccessibilityAnnouncementRequestedNotification,
+      @{
+        NSAccessibilityAnnouncementKey : text,
+        NSAccessibilityPriorityKey : @(assertive ? NSAccessibilityPriorityHigh
+                                                 : NSAccessibilityPriorityMedium),
+      });
+}
+
+- (NSString *)rnLastAnnouncement {
+  return _lastAnnouncement;
 }
 
 - (void)setRnLabelledBy:(NSArray<RnAppKitView *> *)labels {

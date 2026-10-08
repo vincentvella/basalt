@@ -18,6 +18,7 @@
 #import "AppKitTextInput.h"
 
 #include "LabelRegistry.h"
+#include "LiveRegions.h"
 #include "MountingWalk.h"
 #include "RnAppKitView.h"
 
@@ -127,6 +128,12 @@ class AppKitMountingManager final : public facebook::react::IMountingManager,
   // name a label that mounts after it.
   void applyLabelRelations();
 
+  // Announces any live region whose text changed in the transaction that just
+  // mounted. Once per transaction, and after it, because the text to announce is
+  // what the region says *now*: a <Text> inside it may have been updated by a
+  // later mutation in the same batch.
+  void announceLiveRegions();
+
   AppKitScrollViewManager scrollViews_;
   AppKitTextInputManager textInputs_;
   // Shared rather than held by value: React Native's `ImageLoaderModule` takes
@@ -148,6 +155,15 @@ class AppKitMountingManager final : public facebook::react::IMountingManager,
   // by one. Shared with the GTK host; see core/LabelRegistry.h for why the
   // resolution cannot happen as the props arrive.
   basalt::LabelRegistry labels_;
+
+  // Which views are live regions and what each last said, so a changed status
+  // message can be announced. Shared with the GTK host; see core/LiveRegions.h.
+  basalt::LiveRegionRegistry liveRegions_;
+
+  // Each live region's `accessibilityLabel`, which stands in for its text when
+  // the app set one. Kept beside the registry so both hosts decide it the same
+  // way and in the same order.
+  std::unordered_map<facebook::react::Tag, std::string> liveRegionLabels_;
 };
 
 } // namespace basalt

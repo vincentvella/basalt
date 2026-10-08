@@ -2,13 +2,13 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (3):**
+**Open (2):**
 
 1. Not tested against a real screen reader
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
-4. accessibilityLiveRegion and accessibilityActions are ignored
-   (~~accessibilityLabelledBy~~ is done on GTK and AppKit)
+4. accessibilityActions is ignored (~~accessibilityLabelledBy~~ and
+   ~~accessibilityLiveRegion~~ are done on GTK and AppKit)
 
 - Not tested against a real screen reader. GTK's assertions say the properties
   are set; Orca on the Linux box is the check that matters.
@@ -63,14 +63,43 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   `accessibilityActions` has its own entry above.
 
-  **`accessibilityLiveRegion`** has no property to map onto: GTK models it as
-  `gtk_accessible_announce` at a moment rather than as a state of a view, and
-  AppKit as an `NSAccessibilityAnnouncementRequested` notification, so honouring
-  it means noticing that a view's content changed and announcing the new text.
-  That is change detection rather than prop plumbing: the mounting manager would
-  have to keep the last announced string per live region and compare it after
-  each transaction, which is the same shape as the label registry below and is
-  the reason that one was written first.
+  **`accessibilityLiveRegion` is done on GTK and AppKit, 2026-10-08.** It has no
+  property to map onto, which is what made it look harder than the rest: GTK
+  announces at a moment through `gtk_accessible_announce`, AppKit posts an
+  `NSAccessibilityAnnouncementRequested` notification, and neither is a state a
+  view carries. So honouring the prop is change detection, and `core/LiveRegions.h`
+  is where it lives, beside the label registry it is the sibling of.
+
+  Two rules are the whole of it, and both are about not being deafening. **The
+  first text is not news**: mounting a status line should not read it out, so the
+  text a region is first seen with is remembered silently. Getting that wrong
+  makes every screen with a status message announce itself on arrival, which is
+  why the sabotage check is exactly that change -- it fails three tests per host.
+  **The same text twice is not news either**, a view re-rendering for every reason
+  under the sun and React Native re-sending identical props on each mutation.
+  Clearing the text announces nothing, an empty announcement being silence with a
+  beat of interruption in front of it.
+
+  The text is the region's own, collected after the transaction rather than when
+  the props arrive, because a `<Text>` inside it may be updated by a later
+  mutation in the same batch: `rn_view_collect_text` and `-rnCollectedText` walk
+  the subtree and join each paragraph with a space, and an `accessibilityLabel`
+  stands in for it where the app set one, an icon-only status having no paragraph.
+  Both hosts prefer the label in the same order, decided in the mounting manager
+  because GTK offers no way to read an accessible property back.
+
+  **What is observable, and what is not.** Nothing in an automated run is
+  connected to AT-SPI or running VoiceOver, so both hosts record the last text
+  they announced and log it. The record is what the unit tests read; the log is
+  what the end-to-end scenario reads, and it asserts all three rules against a
+  status line that goes from "Saving" to "Saved" a second after mount. The
+  announcement is deliberately not in the tree dump: an announcement is an event
+  and the dump is state.
+
+  Seven tests in core for the rules, four per host for the wiring, one per host for
+  the text collection, and the scenario. On GTK the announcement itself needs 4.14;
+  below that the text is still recorded, so an older GTK reports what it would have
+  said rather than looking as though the prop did nothing.
 
   **`accessibilityLabelledBy` is done on GTK and AppKit, 2026-10-08**, and the
   reason it was open was wrong: the entry said nothing here can resolve a

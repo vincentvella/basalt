@@ -1278,3 +1278,57 @@ TEST(linear_gradients_are_reported_in_the_tree) {
 
   g_object_unref(view);
 }
+
+// The text a live region would announce: its own paragraph and every paragraph
+// inside it, in tree order. See rn_view_collect_text, which
+// `accessibilityLiveRegion` uses to find out what a status message currently
+// says.
+TEST(collected_text_is_every_paragraph_in_the_subtree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 100.0F);
+
+  // A region with no text of its own and two paragraphs inside it, which is what
+  // a status line made of a label and a count looks like.
+  PangoContext *context = gtk_widget_create_pango_context(GTK_WIDGET(view));
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+
+  // Inserted at their own indices rather than through `addChild`, which puts
+  // every child at 0: the order is what is being asserted, so the tree has to be
+  // in the order a mount would have built it.
+  RnView *first = rn_view_new(2);
+  g_object_ref_sink(first);
+  rn_view_set_frame(first, 0.0F, 0.0F, 200.0F, 20.0F);
+  rn_view_insert_child(view, first, 0);
+  PangoLayout *one = pango_layout_new(context);
+  pango_layout_set_text(one, "Saved", -1);
+  rn_view_set_text_layout(first, one, &black);
+
+  RnView *second = rn_view_new(3);
+  g_object_ref_sink(second);
+  rn_view_set_frame(second, 0.0F, 20.0F, 200.0F, 20.0F);
+  rn_view_insert_child(view, second, 1);
+  PangoLayout *two = pango_layout_new(context);
+  pango_layout_set_text(two, "just now", -1);
+  rn_view_set_text_layout(second, two, &black);
+
+  char *collected = rn_view_collect_text(view);
+  const std::string text(collected);
+  g_free(collected);
+  // One space between them, which is what a screen reader would put there.
+  EXPECT_EQ(text, std::string("Saved just now"));
+
+  // A view with no text at all collects nothing rather than crashing on the
+  // way down, which is every ordinary view in a tree.
+  RnView *empty = rn_view_new(4);
+  g_object_ref_sink(empty);
+  char *none = rn_view_collect_text(empty);
+  EXPECT_EQ(std::string(none), std::string(""));
+  g_free(none);
+
+  g_object_unref(one);
+  g_object_unref(two);
+  g_object_unref(context);
+  g_object_unref(empty);
+  g_object_unref(view);
+}
