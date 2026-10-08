@@ -3644,6 +3644,77 @@ def test_image_get_size(bundle: Path) -> None:
         )
 
 
+def test_image_tint_and_blur(bundle: Path) -> None:
+    """`tintColor` and `blurRadius` reach the view.
+
+    The two <Image> props a frame cannot show: a tinted image, a blurred one and
+    a plain one are the same size in the same place, so a tree dump is the only
+    thing that can say the prop arrived. Both hosts print them for that reason.
+
+    Which is the whole scenario, and it exists because of how one of them broke.
+    Both props are read in the same branch of each mounting manager, and on GTK
+    the blur was assigned *inside* the `if` that read the tint: a blurred image
+    with no tintColor came out sharp. Every unit test still passed, because each
+    one pushes the blur onto the widget by hand and none of them goes through the
+    props. This one does.
+
+    Separate from the getSize scenario above, which runs the same app: that one
+    is about React Native's ImageLoader module, and sharing a run would make a
+    failure in either read as a failure of both.
+    """
+    app = bundle_app(bundle.parent, "image")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltImage"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    images = [line for line in tree.splitlines() if "texture=" in line]
+    if not images:
+        raise Failure(f"no image loaded at all, so neither prop can be read\n{tree[:1500]}")
+
+    for needle, why in (
+        ("tint=#ff00aa", "the tintColor never reached the view"),
+        ("blur=12", "the blurRadius never reached the view"),
+    ):
+        if not any(needle in line for line in images):
+            raise Failure(
+                f"{why}: no image reports {needle}.\n" + "\n".join(images)
+            )
+
+    # And exactly one image has each, so a host that applied a prop to every
+    # <Image> it mounted would fail here rather than pass twice over.
+    tinted = [line for line in images if "tint=" in line]
+    blurred = [line for line in images if "blur=" in line]
+    if len(tinted) != 1 or len(blurred) != 1:
+        raise Failure(
+            f"{len(tinted)} images are tinted and {len(blurred)} are blurred; "
+            "the app sets each on exactly one.\n" + "\n".join(images)
+        )
+    # Not the same one: the app deliberately blurs an image that is not tinted,
+    # which is the case the GTK bug got wrong.
+    if tinted[0] == blurred[0]:
+        raise Failure(
+            "one image carries both props, so a blur that only applies to a "
+            "tinted image would pass.\n" + "\n".join(images)
+        )
+
+
 def test_window_limits(bundle: Path) -> None:
     """How big the window may be, and the fact that it is not the same list
     everywhere.
@@ -4953,6 +5024,7 @@ SCENARIOS = [
     ("locationX and locationY are relative to the view that was pressed",
      test_press_location),
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
+    ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),
     ("a window says how big it may be, and what this desktop can do about it",

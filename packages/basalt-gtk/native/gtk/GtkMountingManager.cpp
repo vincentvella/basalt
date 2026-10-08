@@ -435,8 +435,8 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
     // both spell "no tint" as a falsy SharedColor once unwrapped.
     if (props->tintColor) {
       tint = *props->tintColor;
-    blurRadius = static_cast<float>(props->blurRadius);
     }
+    blurRadius = static_cast<float>(props->blurRadius);
     if (!props->sources.empty()) {
       source = props->sources.front();
     }

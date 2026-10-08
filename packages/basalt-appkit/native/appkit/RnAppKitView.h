@@ -203,6 +203,15 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 // from a loader, and either can land first.
 - (void)setRnImageTint:(nullable NSColor *)tint;
 
+// `blurRadius`: blurs the image and not the view, which is what the prop means
+// -- a blurred photograph behind sharp text is the usual reason to ask for it.
+// Zero or negative is no blur.
+//
+// The radius is a distance in this view's own coordinates rather than in the
+// image's pixels, so the same number is the same picture here as on the GTK
+// side. Also separate from the image for the reason the tint is.
+- (void)setRnImageBlur:(CGFloat)radius;
+
 // The paragraph this view draws, or nil for a view that draws none.
 //
 // A view either paints a layer or draws text; nothing here does both, because

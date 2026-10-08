@@ -4,7 +4,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 **Open (4):**
 
-1. overlayColor, fadeDuration and progressiveRenderingEnabled are ignored; blurRadius is done on GTK
+1. overlayColor, fadeDuration and progressiveRenderingEnabled are ignored; blurRadius is done
 2. Assets are never fetched over the network, so a dev server's assets do not wor
 3. Nothing caches a downloaded asset, which is right for a local file and will no
 4. onProgress and onPartialLoad are never emitted
@@ -59,7 +59,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   fit.
 
 - `overlayColor`, `fadeDuration` and `progressiveRenderingEnabled` are ignored.
-  **`blurRadius` is done on GTK**, 2026-10-07.
+  **`blurRadius` is done on GTK and AppKit**, 2026-10-07 and 2026-10-08.
 
   GSK has a blur node, so the prop is a `gtk_snapshot_push_blur` around the
   image, inside the clip and the tiling: a blurred `cover` image is still cut to
@@ -73,9 +73,46 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   asserting a radius was stored. A negative radius is no blur rather than a
   crash, which nothing stops an app sending and GSK would otherwise take.
 
-  AppKit is not done. Its image path is a layer, so the equivalent is
-  `layer.filters` with a CIFilter, which is a different shape of change and is
-  not reachable from the render-node tests that cover the GTK side.
+  AppKit, the next day, and the entry was wrong about why it would be hard. It
+  said the image path is a layer, so the change would be `layer.filters` with a
+  CIFilter and would not be reachable from the tests. The image is not a layer:
+  it is drawn in `drawRect:` with Core Graphics, which has no blur of its own, so
+  the blur is a Core Image round trip that produces a blurred CGImage to draw in
+  place of the original. The tests reach it the way the other image tests do, by
+  drawing into a bitmap and measuring the ink.
+
+  Three things had to be decided, and each was measured rather than chosen:
+
+  **Which space to blur in.** The source's pixels or the view's coordinates, and
+  they are the same only for an image drawn at its natural size. Blurring in the
+  source's would make one prop almost invisible on a photograph and overwhelming
+  on an icon, and would not agree with GSK, which blurs in widget coordinates. So
+  the image is scaled to its destination first. A test stretches a 40-pixel image
+  to 200 and measures the ramp: in the wrong space it is magnified along with the
+  picture and comes out five times too wide, which is what the sabotage check
+  reported.
+
+  **How a radius becomes a sigma.** `gtk_snapshot_push_blur` documents neither,
+  so it was measured: a black-to-white edge rendered through a blur node and
+  downloaded as a texture comes out at sigma = 0.47 * radius under the GL
+  renderer, and 0.55 under the cairo one, which approximates with three boxes.
+  React Native's own iOS path convolves three boxes of
+  `floor((radius * scale * 3 * sqrt(2 * pi) / 4 + 0.5) / 2) | 1`, whose variance
+  works out to the same 0.47. Half the radius is what both agree on.
+
+  **Which colour space.** Core Image converts to linear light and blurs there by
+  default; GSK blurs the encoded pixels and iOS runs `vImageBoxConvolve` over
+  8-bit sRGB bytes. Measured on the same edge, the managed blur spreads about 1.2
+  times as far, so colour management is off for this one filter. That was the
+  difference between a plausible blur and the same blur as the other two.
+
+  **And the bug the GTK half shipped with**, found by writing this one: the
+  radius was assigned inside the `if` that read `tintColor`, so a blurred image
+  that was not also tinted came out sharp. Every unit test passed, because each
+  one pushes the blur onto the widget by hand and none of them went through the
+  props. Both hosts now print `blur=` in the tree dump, there is a unit test per
+  host that the dump says it, and an end-to-end scenario mounts a blurred image
+  with no tint and asserts on it. The two hosts' image lines are byte-identical.
 - ~~A `require()`d image drew nothing.~~ It laid out at the right size and had
   no pixels, and the reason was neither the loader nor the mounting manager:
   Metro's `build` command has no `--assets-dest`, so the files were never copied

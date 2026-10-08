@@ -463,6 +463,36 @@ TEST(a_blur_radius_puts_a_blur_node_around_the_image) {
   g_object_unref(view);
 }
 
+// And it is in the tree dump, which is what makes the *wiring* testable: the
+// prop is read in a branch of GtkMountingManager that knows ImageProps, and
+// every test above pushes the blur onto the widget by hand, so all of them pass
+// while the mounting manager drops it. It did, until this line existed.
+TEST(a_blur_radius_is_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 100.0F);
+
+  GBytes *pixel = g_bytes_new_static("\xff\x00\x00\xff", 4);
+  GdkTexture *texture = gdk_memory_texture_new(1, 1, GDK_MEMORY_R8G8B8A8, pixel, 4);
+  rn_view_set_texture(view, texture, RN_IMAGE_FIT_STRETCH);
+
+  rn_view_set_image_blur(view, 8.0F);
+  char *dump = rn_view_describe_tree(view);
+  const std::string blurred(dump);
+  g_free(dump);
+  EXPECT(blurred.find("blur=8") != std::string::npos);
+
+  rn_view_set_image_blur(view, 0.0F);
+  dump = rn_view_describe_tree(view);
+  const std::string sharp(dump);
+  g_free(dump);
+  EXPECT(sharp.find("blur=") == std::string::npos);
+
+  g_object_unref(texture);
+  g_bytes_unref(pixel);
+  g_object_unref(view);
+}
+
 TEST(a_negative_blur_radius_is_no_blur_rather_than_a_crash) {
   RnView *view = rn_view_new(1);
   g_object_ref_sink(view);

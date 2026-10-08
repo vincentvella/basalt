@@ -129,8 +129,10 @@ target_include_directories(basalt_appkit_view PUBLIC appkit)
 # so anything it takes from there has to be `inline`.
 target_include_directories(basalt_appkit_view PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../basalt-core/native/core)
+# CoreImage is here for one prop: an <Image>'s `blurRadius`, which Core Graphics
+# has no filter of its own for. See RnBlurredImageCreate.
 target_link_libraries(basalt_appkit_view PUBLIC
-  "-framework Cocoa" "-framework QuartzCore" "-framework CoreText")
+  "-framework Cocoa" "-framework QuartzCore" "-framework CoreText" "-framework CoreImage")
 
 add_executable(demo_layout_appkit appkit/demo_layout_appkit.mm)
 target_compile_options(demo_layout_appkit PRIVATE -Wall -Wextra -fobjc-arc)

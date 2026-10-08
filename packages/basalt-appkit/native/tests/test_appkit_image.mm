@@ -18,7 +18,9 @@
 
 #import "RnAppKitView.h"
 
+#include <cmath>
 #include <sstream>
+#include <vector>
 
 namespace {
 
@@ -36,6 +38,80 @@ CGImageRef makeImage(size_t width, size_t height) {
   return image;
 }
 
+// Left half black, right half white, opaque. A step edge, which is the one
+// picture a blur is measurable against: how far the ramp spreads is the radius.
+CGImageRef makeSplitImage(size_t width, size_t height) {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, width, height, 8, 0, space,
+                                               kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, (CGFloat)width, (CGFloat)height));
+  CGContextSetRGBFillColor(context, 0, 0, 0, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, (CGFloat)width / 2, (CGFloat)height));
+  CGImageRef image = CGBitmapContextCreateImage(context);
+  CGContextRelease(context);
+  return image;
+}
+
+// The red channel of the view drawn onto white, row-major. Red rather than
+// luminance because everything here is grey or black: the three channels agree.
+std::vector<unsigned char> drawnPixels(RnAppKitView *view, CGSize size) {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                               8, 0, space, kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+  // A CGBitmapContext counts y from the bottom and this view counts it from the
+  // top, and `graphicsContextWithCGContext:flipped:` only *declares* which way
+  // up a context is -- it applies no transform.
+  CGContextTranslateCTM(context, 0, size.height);
+  CGContextScaleCTM(context, 1, -1);
+
+  NSGraphicsContext *previous = NSGraphicsContext.currentContext;
+  NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithCGContext:context
+                                                                             flipped:YES];
+  [view drawRect:NSMakeRect(0, 0, size.width, size.height)];
+  NSGraphicsContext.currentContext = previous;
+
+  auto *bytes = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  std::vector<unsigned char> red((size_t)size.width * (size_t)size.height);
+  for (size_t y = 0; y < (size_t)size.height; y++) {
+    for (size_t x = 0; x < (size_t)size.width; x++) {
+      red[y * (size_t)size.width + x] = bytes[y * stride + x * 4];
+    }
+  }
+  CGContextRelease(context);
+  return red;
+}
+
+// How wide the black-to-white ramp is along the middle row, from 10% to 90%.
+//
+// For a gaussian of standard deviation sigma that width is 2.563 * sigma, which
+// is how a measured number here becomes a statement about the radius: an
+// unblurred edge is one or two pixels and nothing else needs to be known about
+// the filter.
+double rampWidth(RnAppKitView *view, CGSize size) {
+  const std::vector<unsigned char> pixels = drawnPixels(view, size);
+  const int width = (int)size.width;
+  const int row = (int)size.height / 2;
+  int low = -1;
+  int high = -1;
+  for (int x = 0; x < width; x++) {
+    const unsigned char value = pixels[(size_t)row * (size_t)width + (size_t)x];
+    if (low < 0 && value > 25) {
+      low = x;
+    }
+    if (value > 229) {
+      high = x;
+      break;
+    }
+  }
+  return (high > low && low >= 0) ? (double)(high - low) : 0.0;
+}
+
 struct Ink {
   int left{-1};
   int top{-1};
@@ -48,32 +124,11 @@ struct Ink {
 // Draws the view into a white bitmap and returns the bounding box of anything
 // darker than white.
 Ink inkOf(RnAppKitView *view, CGSize size) {
-  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
-                                               8, 0, space, kCGImageAlphaPremultipliedLast);
-  CGColorSpaceRelease(space);
-  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
-  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
-  // A CGBitmapContext counts y from the bottom and this view counts it from the
-  // top, and `graphicsContextWithCGContext:flipped:` only *declares* which way
-  // up a context is -- it applies no transform. Every case here happens to be
-  // vertically symmetric, so this changes no result; without it the next case
-  // that is not symmetric would be read upside down.
-  CGContextTranslateCTM(context, 0, size.height);
-  CGContextScaleCTM(context, 1, -1);
-
-  NSGraphicsContext *previous = NSGraphicsContext.currentContext;
-  NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithCGContext:context
-                                                                             flipped:YES];
-  [view drawRect:NSMakeRect(0, 0, size.width, size.height)];
-  NSGraphicsContext.currentContext = previous;
-
-  auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
-  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  const std::vector<unsigned char> pixels = drawnPixels(view, size);
   Ink ink;
   for (int y = 0; y < (int)size.height; y++) {
     for (int x = 0; x < (int)size.width; x++) {
-      if (pixels[(size_t)y * stride + (size_t)x * 4] < 128) {
+      if (pixels[(size_t)y * (size_t)size.width + (size_t)x] < 128) {
         if (ink.left < 0 || x < ink.left) ink.left = x;
         if (ink.right < 0 || x > ink.right) ink.right = x;
         if (ink.top < 0 || y < ink.top) ink.top = y;
@@ -81,7 +136,6 @@ Ink inkOf(RnAppKitView *view, CGSize size) {
       }
     }
   }
-  CGContextRelease(context);
   return ink;
 }
 
@@ -233,5 +287,129 @@ TEST(image_repeat_keeps_the_tile_at_its_natural_size) {
     RnAppKitView *view = imageView(image, RnAppKitImageFitRepeat, CGSizeMake(100, 100));
     EXPECT([[view describeTree] containsString:@"fit=repeat"]);
     CGImageRelease(image);
+  }
+}
+
+// `blurRadius` blurs the image, and by the right amount.
+//
+// The amount is the whole point of the test. A blur that is applied in the
+// source image's pixels rather than in the view's coordinates still looks
+// blurred, and still passes a test that only asks whether the edge is soft, but
+// it is a different picture from the GTK side's for every image that is not
+// drawn at its natural size. Here a 40-pixel-wide image is stretched to 200, so
+// a blur in the wrong space would be five times too narrow.
+TEST(image_blur_radius_softens_the_edge_in_view_coordinates) {
+  @autoreleasepool {
+    CGImageRef image = makeSplitImage(40, 8);
+    const CGSize size = CGSizeMake(200, 40);
+
+    RnAppKitView *sharp = imageView(image, RnAppKitImageFitStretch, size);
+    const double unblurred = rampWidth(sharp, size);
+    // Four pixels, which is what "no blur" looks like here: one source pixel is
+    // five destination pixels wide after the stretch, and the interpolation
+    // between them is the whole ramp.
+    EXPECT(unblurred <= 5);
+
+    RnAppKitView *view = imageView(image, RnAppKitImageFitStretch, size);
+    [view setRnImageBlur:20];
+    // sigma is half the radius and a 10-90 ramp is 2.563 sigma, so a radius of
+    // 20 is a ramp near 26 pixels, which is what it measures. The tolerance is
+    // wide enough for Core Image to round its kernel differently on a future
+    // macOS and narrow enough to fail on a blur applied in the source's own
+    // pixels: that one is magnified by the stretch along with the picture and
+    // measures 130, which is checked by sabotage rather than guessed at.
+    EXPECT_NEAR((int)rampWidth(view, size), 26, 5);
+
+    CGImageRelease(image);
+  }
+}
+
+// Zero is no blur, and so is a negative radius: an app can send either and
+// neither is a crash or a filter with a nonsense kernel.
+TEST(image_blur_radius_of_zero_or_less_draws_the_image_itself) {
+  @autoreleasepool {
+    CGImageRef image = makeSplitImage(40, 8);
+    const CGSize size = CGSizeMake(200, 40);
+
+    RnAppKitView *view = imageView(image, RnAppKitImageFitStretch, size);
+    [view setRnImageBlur:20];
+    [view setRnImageBlur:0];
+    EXPECT((int)rampWidth(view, size) <= 5);
+
+    [view setRnImageBlur:-20];
+    EXPECT((int)rampWidth(view, size) <= 5);
+
+    CGImageRelease(image);
+  }
+}
+
+// A tinted image is a silhouette filled with one colour, and a blurred tinted
+// image is that silhouette with soft edges. The mask is what gets blurred here,
+// which is the same picture as blurring the fill because the colour is
+// constant, and it is what the GTK side does by pushing its blur around the
+// tint rather than inside it.
+TEST(image_blur_radius_applies_to_a_tinted_image_too) {
+  @autoreleasepool {
+    // Opaque black on the left, transparent on the right: with a tint it is the
+    // alpha that decides where the colour lands.
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef bitmap = CGBitmapContextCreate(nullptr, 40, 8, 8, 0, space,
+                                                kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextSetRGBFillColor(bitmap, 0, 0, 0, 1);
+    CGContextFillRect(bitmap, CGRectMake(0, 0, 20, 8));
+    CGImageRef image = CGBitmapContextCreateImage(bitmap);
+    CGContextRelease(bitmap);
+
+    const CGSize size = CGSizeMake(200, 40);
+    RnAppKitView *view = imageView(image, RnAppKitImageFitStretch, size);
+    [view setRnImageTint:[NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:1]];
+    EXPECT((int)rampWidth(view, size) <= 5);
+
+    [view setRnImageBlur:20];
+    EXPECT_NEAR((int)rampWidth(view, size), 26, 5);
+
+    CGImageRelease(image);
+  }
+}
+
+// Clearing the image must not leave the blurred copy of it behind to be drawn
+// against the next one, and a blur with no image at all is nothing rather than a
+// crash.
+TEST(image_blur_survives_the_image_being_replaced) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 40);
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnFrameX:0 y:0 width:size.width height:size.height];
+    [view setRnImageBlur:20];
+    EXPECT_EQ(inkOf(view, size).width(), 0);
+
+    CGImageRef image = makeSplitImage(40, 8);
+    [view setRnImage:image fit:RnAppKitImageFitStretch];
+    EXPECT_NEAR((int)rampWidth(view, size), 26, 5);
+
+    [view setRnImage:nullptr fit:RnAppKitImageFitStretch];
+    EXPECT_EQ(inkOf(view, size).width(), 0);
+    CGImageRelease(image);
+  }
+}
+
+// And the radius is in the tree dump, spelled as GTK spells it.
+//
+// Which is what makes the wiring testable rather than only the drawing: the
+// prop is read in a branch of AppKitMountingManager that knows ImageProps, and
+// every test above sets the blur on the view by hand, so all of them pass while
+// the mounting manager drops it on the floor. The GTK side did exactly that.
+TEST(image_blur_is_reported_in_the_tree) {
+  @autoreleasepool {
+    CGImageRef image = makeImage(4, 2);
+    RnAppKitView *view = imageView(image, RnAppKitImageFitStretch, CGSizeMake(50, 50));
+    CGImageRelease(image);
+
+    EXPECT(![[view describeTree] containsString:@"blur="]);
+    [view setRnImageBlur:8];
+    EXPECT([[view describeTree] containsString:@"blur=8"]);
+    [view setRnImageBlur:0];
+    EXPECT(![[view describeTree] containsString:@"blur="]);
   }
 }

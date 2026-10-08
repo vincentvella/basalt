@@ -92,6 +92,19 @@ function App() {
           style={styles.cell}
           tintColor="#ff00aa"
         />
+        {/*
+          blurRadius, with no tintColor on it. The pair above is one reason it
+          is here; the other is that both props are read in the same branch of
+          each mounting manager, and one host had the blur inside the `if` that
+          read the tint -- so a blurred image that was not also tinted came out
+          sharp, and no test in the tree noticed.
+        */}
+        <Image
+          source={FILE}
+          resizeMode="contain"
+          style={styles.cell}
+          blurRadius={12}
+        />
       </View>
       <Image
         source={MISSING}

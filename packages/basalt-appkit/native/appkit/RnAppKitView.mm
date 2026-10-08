@@ -15,6 +15,7 @@
 
 #import "RnTextLayout.h"
 
+#import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
 
 // Topmost first: AppKit's subviews array is back to front, and a hit test wants
@@ -269,6 +270,10 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   CGImageRef _image;
   NSColor *_imageTint;
   RnAppKitImageFit _imageFit;
+  CGFloat _imageBlur;
+  // The blurred copy of _image, at the device pixel size it was last drawn at,
+  // or NULL when there is none to reuse. See -rnBlurredImageForSize:scale:.
+  CGImageRef _imageBlurred;
   BOOL _hasBackgroundColor;
   CGFloat _backgroundComponents[4];
   CGFloat _opacity;
@@ -305,6 +310,7 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 
 - (void)dealloc {
   CGImageRelease(_image);
+  CGImageRelease(_imageBlurred);
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -607,6 +613,42 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
   [self setNeedsDisplay:YES];
 }
 
+- (void)setRnImageBlur:(CGFloat)radius {
+  const CGFloat wanted = radius > 0 ? radius : 0;
+  if (_imageBlur == wanted) {
+    return;
+  }
+  _imageBlur = wanted;
+  CGImageRelease(_imageBlurred);
+  _imageBlurred = nullptr;
+  [self setNeedsDisplay:YES];
+}
+
+// The blurred copy to draw in place of the image, or NULL when there is no blur
+// or Core Image would not produce one.
+//
+// Kept on the view because `drawRect:` runs on every frame of a live resize and
+// a Core Image round trip per frame is not free, where the GTK side's blur is a
+// render node the GPU applies for nothing. The cache is keyed by the pixel size
+// it was made at, and thrown away whenever the image or the radius changes.
+- (CGImageRef)rnBlurredImageForSize:(CGSize)size scale:(CGFloat)scale {
+  if (_image == nullptr || _imageBlur <= 0) {
+    return nullptr;
+  }
+  const size_t width = (size_t)lround(size.width * scale);
+  const size_t height = (size_t)lround(size.height * scale);
+  if (width == 0 || height == 0) {
+    return nullptr;
+  }
+  if (_imageBlurred != nullptr && CGImageGetWidth(_imageBlurred) == width &&
+      CGImageGetHeight(_imageBlurred) == height) {
+    return _imageBlurred;
+  }
+  CGImageRelease(_imageBlurred);
+  _imageBlurred = RnBlurredImageCreate(_image, width, height, _imageBlur * scale / 2.0);
+  return _imageBlurred;
+}
+
 - (void)setRnImage:(CGImageRef)image fit:(RnAppKitImageFit)fit {
   if (_image == image && _imageFit == fit) {
     return;
@@ -616,8 +658,63 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
   CGImageRef previous = _image;
   _image = image != nullptr ? CGImageRetain(image) : nullptr;
   CGImageRelease(previous);
+  CGImageRelease(_imageBlurred);
+  _imageBlurred = nullptr;
   _imageFit = fit;
   self.needsDisplay = YES;
+}
+
+// `image`, blurred, at `width` by `height` device pixels.
+//
+// Blurred at the size it will be drawn rather than in its own pixels, so that
+// the radius is a distance on screen. Blurring in the source's pixels instead
+// would make one prop almost invisible on a large photograph and overwhelming
+// on an icon, and would not agree with the GTK side, which pushes a GSK blur
+// node in widget coordinates.
+//
+// Sigma is half the radius, which is measured rather than chosen. A hard edge
+// blurred by `gtk_snapshot_push_blur` comes out at sigma = 0.47 * radius under
+// GTK's GL renderer, measured off a downloaded texture; React Native's own iOS
+// path blurs with three box convolutions of
+// `floor((radius * scale * 3 * sqrt(2 * pi) / 4 + 0.5) / 2) | 1`, whose variance
+// works out to the same 0.47. Half the radius is what both of those agree on,
+// within the few percent between a true gaussian and three boxes, and it is what
+// the test here measures on the same kind of edge.
+static CGImageRef RnBlurredImageCreate(CGImageRef image,
+                                       size_t width,
+                                       size_t height,
+                                       CGFloat sigma) {
+  CIImage *source = [CIImage imageWithCGImage:image];
+  const CGRect extent = source.extent;
+  if (extent.size.width <= 0 || extent.size.height <= 0) {
+    return nullptr;
+  }
+  CIImage *scaled = [source
+      imageByApplyingTransform:CGAffineTransformMakeScale((CGFloat)width / extent.size.width,
+                                                          (CGFloat)height / extent.size.height)];
+  // Clamped before the blur and cropped after it. Without the clamp the edges
+  // blur out into transparency, so a `cover` photograph would gain a soft frame
+  // it has on no other platform: iOS extends its edge pixels instead
+  // (kvImageEdgeExtend) and GSK blurs inside the clip.
+  CIImage *blurred =
+      [[scaled imageByClampingToExtent] imageByApplyingGaussianBlurWithSigma:sigma];
+  const CGRect box = CGRectMake(0, 0, (CGFloat)width, (CGFloat)height);
+
+  // One context for the process: building a CIContext is the expensive part of
+  // Core Image, not running the filter.
+  //
+  // Colour management off, which is the difference between this looking like the
+  // other two platforms and not. Core Image converts to linear light by default
+  // and blurs there; GSK blurs the encoded pixels, and React Native's iOS path
+  // runs vImageBoxConvolve over 8-bit sRGB bytes. Measured on a black-to-white
+  // edge, the managed blur spreads about 1.2 times as far as either. Unmanaged,
+  // the filter works on the sample values as given, like both of them.
+  static CIContext *renderer = nil;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    renderer = [CIContext contextWithOptions:@{kCIContextWorkingColorSpace : (id)[NSNull null]}];
+  });
+  return [renderer createCGImage:blurred fromRect:box];
 }
 
 // Where the image lands inside the frame.
@@ -698,6 +795,26 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
 
   if (_image != nullptr) {
     const NSRect destination = [self rnImageRectForSize:size];
+    // A blurred copy stands in for the image below, including as the tint's
+    // mask: blurring an alpha mask and filling it with one solid colour is the
+    // same picture as blurring the fill, because the colour is constant. That
+    // is what makes this match the GTK side, which pushes its blur around the
+    // tint rather than around the silhouette it is masked from.
+    //
+    // Made at the destination's size, which for `repeat` is one tile, so every
+    // tile blurs alike as it does on GTK. The device scale comes from the
+    // context rather than from the window, because a view drawn into a bitmap
+    // -- a test, a snapshot -- has no window to ask.
+    CGImageRef pixels = _image;
+    if (_imageBlur > 0) {
+      const CGFloat deviceScale =
+          CGContextConvertSizeToDeviceSpace(context, CGSizeMake(1, 1)).width;
+      CGImageRef blurred = [self rnBlurredImageForSize:destination.size
+                                                scale:deviceScale > 0 ? deviceScale : 1];
+      if (blurred != nullptr) {
+        pixels = blurred;
+      }
+    }
 
     CGContextSaveGState(context);
     // cover, center and repeat can all put pixels outside the frame, and an
@@ -728,21 +845,21 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
                                      destination.size.width,
                                      destination.size.height);
       if (_imageTint != nil) {
-        CGContextClipToMask(context, tile, _image);
+        CGContextClipToMask(context, tile, pixels);
         CGContextSetFillColorWithColor(context, _imageTint.CGColor);
         CGContextFillRect(context, NSMakeRect(0, 0, size.width, size.height));
       } else {
-        CGContextDrawTiledImage(context, tile, _image);
+        CGContextDrawTiledImage(context, tile, pixels);
       }
     } else if (_imageTint != nil) {
       // The image becomes a stencil and the colour is what is drawn. Clipping
       // to the mask uses the image's alpha, which is what `tintColor` means:
       // recolour the silhouette rather than blend with the pixels.
-      CGContextClipToMask(context, drawn, _image);
+      CGContextClipToMask(context, drawn, pixels);
       CGContextSetFillColorWithColor(context, _imageTint.CGColor);
       CGContextFillRect(context, drawn);
     } else {
-      CGContextDrawImage(context, drawn, _image);
+      CGContextDrawImage(context, drawn, pixels);
     }
     CGContextRestoreGState(context);
   }
@@ -1311,6 +1428,13 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
                         (unsigned)(rgb.greenComponent * 255.0 + 0.5),
                         (unsigned)(rgb.blueComponent * 255.0 + 0.5),
                         (unsigned)(rgb.alphaComponent * 255.0 + 0.5)];
+    }
+    // And the blur, spelled as GTK spells it. Invisible in this dump for the
+    // reason the tint is, and in one more: the prop is read in a branch that
+    // knows ImageProps, and a line here is the only thing that can say it got
+    // out of that branch and onto the view.
+    if (_imageBlur > 0) {
+      [out appendFormat:@" blur=%g", (double)_imageBlur];
     }
   }
   if (_textLayout != nil) {

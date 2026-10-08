@@ -1509,6 +1509,14 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
                              static_cast<unsigned>(self->image_tint.blue * 255.0 + 0.5),
                              static_cast<unsigned>(self->image_tint.alpha * 255.0 + 0.5));
     }
+    // And the blur, which is invisible in this dump for the same reason and in
+    // one more: the prop is read in a branch that knows ImageProps, and the
+    // only thing that can say it got out of that branch and onto the widget is
+    // a line here. It was once set inside the `tintColor` branch by accident,
+    // where every test that pushed a blur node by hand still passed.
+    if (self->image_blur > 0.0f) {
+      g_string_append_printf(out, " blur=%g", static_cast<double>(self->image_blur));
+    }
   }
   if (self->text_layout != nullptr) {
     const char *text = pango_layout_get_text(self->text_layout);

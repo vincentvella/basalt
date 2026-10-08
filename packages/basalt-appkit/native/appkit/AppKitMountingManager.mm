@@ -349,6 +349,10 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
   // unqualified ImageSource resolves to that one.
   facebook::react::ImageSource source{};
   facebook::react::SharedColor tint{};
+  // blurRadius alongside the tint, captured the same way: each branch below
+  // knows its own props type, and both props are applied together after them.
+  // expo-image has no blur prop, so that branch leaves this at zero.
+  CGFloat blurRadius = 0;
 
   if (isExpoImage) {
     const auto props = std::dynamic_pointer_cast<const facebook::react::ExpoImageProps>(shadowView.props);
@@ -374,13 +378,14 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
     if (props->tintColor) {
       tint = *props->tintColor;
     }
+    blurRadius = (CGFloat)props->blurRadius;
   }
 
   const std::string uri = source.uri;
   const Tag tag = shadowView.tag;
 
-  // Applied before the load rather than in its callback: the tint is a prop and
-  // the image is a loader's answer, and either can arrive first.
+  // Applied before the load rather than in its callback: the tint and the blur
+  // are props where the image is a loader's answer, and either can arrive first.
   if (RnAppKitView *tinted = viewForTag(tag); tinted != nil) {
     if (tint) {
       const ColorComponents components = colorComponentsFromColor(tint);
@@ -391,6 +396,7 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
     } else {
       [tinted setRnImageTint:nil];
     }
+    [tinted setRnImageBlur:blurRadius];
   }
 
   // A mutation that changed only layout must not restart the load, or an
