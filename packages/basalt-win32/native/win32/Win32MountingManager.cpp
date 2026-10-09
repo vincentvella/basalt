@@ -534,6 +534,12 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
     view->setImageTint(false, nullptr);
   }
 
+  // `blurRadius`, for the same reason and in the same place: a prop beside a
+  // loader's answer. The GTK host had this assignment *inside* the branch that
+  // read the tint, so a blurred image with no tintColor came out sharp and
+  // every unit test still passed; see the scenario that caught it.
+  view->setImageBlur(static_cast<float>(props->blurRadius));
+
   // A mutation that changed only layout must not restart the load, or an
   // <Image> flickers whenever its parent resizes. The fit is applied every time
   // regardless, because changing it is cheap and does not touch the pixels.

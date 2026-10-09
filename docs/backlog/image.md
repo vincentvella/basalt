@@ -61,7 +61,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   fit.
 
 - `overlayColor`, `fadeDuration` and `progressiveRenderingEnabled` are ignored.
-  **`blurRadius` is done on GTK and AppKit**, 2026-10-07 and 2026-10-08.
+  **`blurRadius` is done on all three**: GTK and AppKit on 2026-10-07 and
+  2026-10-08, Win32 on 2026-10-09 with `CLSID_D2D1GaussianBlur` once the text
+  shadow had proved a device context reachable. All three blur in the view's
+  coordinates and take half the radius as the standard deviation, which is the
+  part that had to be measured once.
 
   GSK has a blur node, so the prop is a `gtk_snapshot_push_blur` around the
   image, inside the clip and the tiling: a blurred `cover` image is still cut to

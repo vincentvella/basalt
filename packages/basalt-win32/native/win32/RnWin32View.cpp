@@ -314,6 +314,13 @@ void RnWin32View::setImageTint(bool hasTint, const float components[4]) {
   }
 }
 
+void RnWin32View::setImageBlur(float radius) {
+  // Negative is no blur rather than a crash, which nothing stops an app from
+  // sending: the other two hosts clamp it for the same reason, and GSK would
+  // otherwise take it.
+  imageBlur_ = radius > 0.0f ? radius : 0.0f;
+}
+
 void RnWin32View::setImage(std::shared_ptr<RnWin32Image> image, RnImageFit fit) {
   image_ = std::move(image);
   imageFit_ = fit;
@@ -498,7 +505,8 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
                    frame_.width,
                    frame_.height,
                    imageFit_,
-                   hasImageTint_ ? imageTint_ : nullptr);
+                   hasImageTint_ ? imageTint_ : nullptr,
+                   imageBlur_);
     }
 
     // Then anything this layer cannot draw itself -- the Skia surface behind a
@@ -1378,6 +1386,12 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     // every other field of this dump and different on screen.
     appendFormat(out, " texture=%ux%u", image_->width(), image_->height());
     appendFormat(out, " fit=%s", imageFitName(imageFit_));
+    // And the blur, spelled as the other two hosts spell it. Invisible in this
+    // dump otherwise: a blurred image has the same frame, the same texture and
+    // the same fit as a sharp one.
+    if (imageBlur_ > 0.0f) {
+      appendFormat(out, " blur=%g", static_cast<double>(imageBlur_));
+    }
     // Printed for the same reason the fit is, and in the same format the other
     // two hosts use, so the cross-host diff can compare them.
     if (hasImageTint_) {

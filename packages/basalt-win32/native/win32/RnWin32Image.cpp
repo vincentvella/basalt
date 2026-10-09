@@ -5,6 +5,8 @@
 #include <windows.h>
 
 #include <d2d1.h>
+#include <d2d1_1.h>
+#include <d2d1effects.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -153,9 +155,58 @@ void RnWin32Image::draw(ID2D1RenderTarget *target,
                         float boxWidth,
                         float boxHeight,
                         RnImageFit fit,
-                        const float *tint) const {
+                        const float *tint,
+                        float blurRadius) const {
   if (target == nullptr || bitmap_ == nullptr || boxWidth <= 0.0f || boxHeight <= 0.0f) {
     return;
+  }
+
+  // `blurRadius`, which is an effect, and an effect needs a device context
+  // where this is handed a render target. A target made by a Direct2D 1.1
+  // factory answers for one and both of this host's are; the text shadow in
+  // RnWin32TextLayout.cpp asks the same question for the same reason.
+  //
+  // **In the view's coordinates, not the image's pixels**, which is the rule
+  // the other two hosts measured rather than chose: blurring in the source's
+  // pixels makes one prop almost invisible on a photograph and overwhelming on
+  // an icon. So the image is drawn into a bitmap the size of the box, by this
+  // same function with no radius, and the blur is applied to that. Which also
+  // means the fit, the tint and the tiling are already accounted for, because
+  // the recursive call does all three.
+  //
+  // Clipped to the box, as the blurred image is on both other hosts: a blur
+  // spreads beyond its input, and an `<Image>` never paints outside its own
+  // frame.
+  if (blurRadius > 0.0f) {
+    Microsoft::WRL::ComPtr<ID2D1DeviceContext> context;
+    Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> offscreen;
+    if (SUCCEEDED(target->QueryInterface(IID_PPV_ARGS(&context)))
+        && SUCCEEDED(target->CreateCompatibleRenderTarget(D2D1::SizeF(boxWidth, boxHeight),
+                                                          offscreen.GetAddressOf()))
+        && offscreen) {
+      offscreen->BeginDraw();
+      offscreen->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+      draw(offscreen.Get(), boxWidth, boxHeight, fit, tint, 0.0f);
+      if (SUCCEEDED(offscreen->EndDraw())) {
+        Microsoft::WRL::ComPtr<ID2D1Bitmap> drawn;
+        Microsoft::WRL::ComPtr<ID2D1Effect> blur;
+        if (SUCCEEDED(offscreen->GetBitmap(drawn.GetAddressOf())) && drawn
+            && SUCCEEDED(context->CreateEffect(CLSID_D2D1GaussianBlur, blur.GetAddressOf()))
+            && blur) {
+          blur->SetInput(0, drawn.Get());
+          // Half the radius is the standard deviation on both other hosts,
+          // measured there rather than chosen here; see backlog/image.md.
+          blur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, blurRadius / 2.0f);
+          const ScopedGeometryClip clip(target,
+                                        D2D1::RectF(0.0f, 0.0f, boxWidth, boxHeight),
+                                        0.0f);
+          context->DrawImage(blur.Get(), D2D1::Point2F(0.0f, 0.0f));
+          return;
+        }
+      }
+    }
+    // No device context and no effect: the sharp image is the honest fallback,
+    // since a prop that cannot be honoured should not take the picture with it.
   }
 
   if (deviceBitmap_ == nullptr || deviceTarget_ != target) {

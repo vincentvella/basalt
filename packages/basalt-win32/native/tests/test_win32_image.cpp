@@ -16,10 +16,12 @@
 #include "RnWin32View.h"
 #include "Win32Snapshot.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using basalt::win32::RnImageFit;
@@ -236,4 +238,133 @@ TEST(image_rejects_bytes_that_are_not_an_image) {
   const uint8_t rubbish[] = {'n', 'o', 't', ' ', 'a', ' ', 'p', 'n', 'g'};
   EXPECT(RnWin32Image::fromEncodedBytes(rubbish, sizeof(rubbish)) == nullptr);
   EXPECT(RnWin32Image::fromEncodedBytes(nullptr, 0) == nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// `blurRadius`.
+//
+// Measured as the width of the ramp between the two halves, which is what a
+// blur does and what a radius means: the two-tone image has one hard edge down
+// its middle, and blurring spreads it. The same instrument
+// tests/test_appkit_image.mm uses, for the same reason -- an exact pixel would
+// pin the filter's kernel rather than the prop.
+//
+// In the view's coordinates rather than the image's pixels, which is the rule
+// both other hosts measured: the same number has to be the same picture on a
+// photograph and on an icon.
+// ---------------------------------------------------------------------------
+namespace {
+
+RnPixels renderBlurred(const std::shared_ptr<RnWin32Image> &image,
+                       float radius,
+                       float boxWidth,
+                       float boxHeight) {
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, boxWidth, boxHeight);
+  root->setImage(image, RnImageFit::Stretch);
+  root->setImageBlur(radius);
+  return basalt::win32::renderToPixels(*root);
+}
+
+// How many columns along the middle row are neither red nor blue, which is the
+// ramp the blur produced. A hard edge is one or two columns of antialiasing.
+int rampWidth(const RnPixels &pixels) {
+  int mixed = 0;
+  const unsigned row = pixels.height() / 2;
+  for (unsigned x = 0; x < pixels.width(); x++) {
+    const RnPixel pixel = pixels.at(x, row);
+    if (pixel.alpha < 32) {
+      continue;
+    }
+    const bool red = pixel.red > 200 && pixel.blue < 60;
+    const bool blue = pixel.blue > 200 && pixel.red < 60;
+    if (!red && !blue) {
+      mixed++;
+    }
+  }
+  return mixed;
+}
+
+} // namespace
+
+TEST(image_blur_radius_softens_the_edge) {
+  const auto image = twoToneImage(40, 8);
+  EXPECT(image != nullptr);
+
+  const int sharp = rampWidth(renderBlurred(image, 0.0f, 100, 100));
+  const int blurred = rampWidth(renderBlurred(image, 12.0f, 100, 100));
+
+  // A hard edge is a column or two of antialiasing; a twelve point blur is a
+  // ramp several times wider. Not an exact width: that would pin Direct2D's
+  // kernel rather than the prop.
+  EXPECT(sharp <= 4);
+  EXPECT(blurred > sharp + 6);
+}
+
+TEST(image_blur_radius_is_in_view_coordinates) {
+  // The same image at two box sizes with the same radius. If the blur were
+  // applied in the image's own pixels, the ramp would scale with the box; in
+  // the view's coordinates it is the same width in both, which is the rule the
+  // other two hosts measured.
+  const auto image = twoToneImage(40, 8);
+  const int small = rampWidth(renderBlurred(image, 10.0f, 100, 100));
+  const int large = rampWidth(renderBlurred(image, 10.0f, 200, 100));
+
+  EXPECT(small > 4);
+  EXPECT(large > 4);
+  // Within a few pixels of each other, where blurring in source pixels would
+  // have doubled one of them.
+  EXPECT(std::abs(small - large) < 8);
+}
+
+TEST(image_blur_radius_of_zero_or_less_draws_the_image_itself) {
+  const auto image = twoToneImage(40, 8);
+
+  const RnPixels sharp = renderBlurred(image, 0.0f, 100, 100);
+  // Left half red, right half blue, as the unblurred tests assert.
+  EXPECT_PIXEL(sharp, 10, 50, 255, 0, 0, 255);
+  EXPECT_PIXEL(sharp, 90, 50, 0, 0, 255, 255);
+
+  // Negative is no blur rather than a crash, which nothing stops an app from
+  // sending.
+  const RnPixels negative = renderBlurred(image, -4.0f, 100, 100);
+  EXPECT_PIXEL(negative, 10, 50, 255, 0, 0, 255);
+  EXPECT_PIXEL(negative, 90, 50, 0, 0, 255, 255);
+}
+
+// A blur spreads beyond its input, and an <Image> never paints outside its own
+// frame: both other hosts blur inside the clip, so this one does too.
+TEST(image_blur_does_not_paint_outside_the_frame) {
+  const auto image = twoToneImage(40, 8);
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 100, 100);
+  auto child = std::make_unique<RnWin32View>(2);
+  child->setFrame(20, 20, 60, 60);
+  child->setImage(image, RnImageFit::Stretch);
+  child->setImageBlur(14.0f);
+  root->insertChild(child.get(), 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+  // Just outside the child's box on each side.
+  EXPECT_TRANSPARENT(pixels, 50, 18);
+  EXPECT_TRANSPARENT(pixels, 50, 82);
+  EXPECT_TRANSPARENT(pixels, 18, 50);
+  EXPECT_TRANSPARENT(pixels, 82, 50);
+  // And something inside it.
+  EXPECT(pixels.at(50, 50).alpha > 200);
+}
+
+TEST(image_blur_is_reported_in_the_tree) {
+  const auto image = twoToneImage(4, 2);
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 50, 50);
+  root->setImage(image, RnImageFit::Stretch);
+
+  EXPECT(root->describeTree().find("blur=") == std::string::npos);
+  root->setImageBlur(12.0f);
+  EXPECT(root->describeTree().find("blur=12") != std::string::npos);
+  root->setImageBlur(0.0f);
+  EXPECT(root->describeTree().find("blur=") == std::string::npos);
 }

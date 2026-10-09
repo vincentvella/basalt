@@ -189,10 +189,6 @@
       "text": "Meta's own analytics tag, which nothing outside their infrastructure reads",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
     },
-    "win-image-blur": {
-      "text": "CLSID_D2D1GaussianBlur, the same shape of work as the AppKit half",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "ti-ios": {
       "text": "iOS's own, with no desktop equivalent",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
@@ -1439,8 +1435,7 @@
     "ImageProps.blurRadius": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-image-blur"
+      "windows": "yes"
     },
     "ImageProps.capInsets": {
       "linux": "ignored",

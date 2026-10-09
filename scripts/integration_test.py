@@ -4105,12 +4105,11 @@ def test_image_tint_and_blur(bundle: Path) -> None:
     is about React Native's ImageLoader module, and sharing a run would make a
     failure in either read as a failure of both.
 
-    `blurRadius` is GTK and AppKit only, so on Windows this checks the tint and
-    says so rather than being skipped whole: half a scenario that runs is worth
-    more than a scenario that does not.
+    Both props on all three hosts as of 2026-10-09, which is why the `blurs`
+    flag below is gone: it existed because `blurRadius` was GTK and AppKit only,
+    and half a scenario that runs was worth more than a scenario that did not.
     """
     app = bundle_app(bundle.parent, "image")
-    blurs = PLATFORM != "windows"
 
     env = dict(os.environ)
     env["BASALT_QUIT_AFTER_MS"] = "3000"
@@ -4136,9 +4135,8 @@ def test_image_tint_and_blur(bundle: Path) -> None:
     if not images:
         raise Failure(f"no image loaded at all, so neither prop can be read\n{tree[:1500]}")
 
-    wanted = [("tint=#ff00aa", "the tintColor never reached the view")]
-    if blurs:
-        wanted.append(("blur=12", "the blurRadius never reached the view"))
+    wanted = [("tint=#ff00aa", "the tintColor never reached the view"),
+              ("blur=12", "the blurRadius never reached the view")]
     for needle, why in wanted:
         if not any(needle in line for line in images):
             raise Failure(
@@ -4149,20 +4147,15 @@ def test_image_tint_and_blur(bundle: Path) -> None:
     # <Image> it mounted would fail here rather than pass twice over.
     tinted = [line for line in images if "tint=" in line]
     blurred = [line for line in images if "blur=" in line]
-    if not blurs and blurred:
-        raise Failure(
-            "this host reports a blurred image and this scenario still says it "
-            "cannot blur. That is good news: drop the `blurs` flag above.\n"
-            + "\n".join(images)
-        )
-    if len(tinted) != 1 or len(blurred) != (1 if blurs else 0):
+    if len(tinted) != 1 or len(blurred) != 1:
         raise Failure(
             f"{len(tinted)} images are tinted and {len(blurred)} are blurred; "
             "the app sets each on exactly one.\n" + "\n".join(images)
         )
     # Not the same one: the app deliberately blurs an image that is not tinted,
-    # which is the case the GTK bug got wrong.
-    if blurs and tinted[0] == blurred[0]:
+    # which is the case the GTK bug got wrong and the Win32 half was written
+    # against.
+    if tinted[0] == blurred[0]:
         raise Failure(
             "one image carries both props, so a blur that only applies to a "
             "tinted image would pass.\n" + "\n".join(images)

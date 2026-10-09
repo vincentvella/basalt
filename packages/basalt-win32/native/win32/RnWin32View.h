@@ -296,6 +296,13 @@ class RnWin32View {
   // because the tint arrives from the props and the image from a loader, and
   // either can land first.
   void setImageTint(bool hasTint, const float components[4]);
+
+  // `blurRadius`: blurs the image and not the view, which is what the prop
+  // means. Separate from the image for the reason the tint is, and in the
+  // view's coordinates rather than the image's pixels, which is the rule the
+  // other two hosts measured. Zero or less is no blur.
+  void setImageBlur(float radius);
+  float imageBlur() const { return imageBlur_; }
   const std::shared_ptr<RnWin32Image> &image() const { return image_; }
   RnImageFit imageFit() const { return imageFit_; }
 
@@ -518,6 +525,7 @@ class RnWin32View {
   RnImageFit imageFit_ = RnImageFit::Cover;
   bool hasImageTint_ = false;
   float imageTint_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float imageBlur_ = 0.0f;
   RnAccessibleInfo accessible_;
   bool hasTransform_ = false;
   // The 2D affine part, in the order Direct2D's Matrix3x2F stores it:

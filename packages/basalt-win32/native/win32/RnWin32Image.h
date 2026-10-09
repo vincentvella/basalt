@@ -69,11 +69,17 @@ class RnWin32Image {
   // *different* type of that name and every later include of d2d1.h fails on
   // the redefinition, which is exactly what it did. Floats cannot collide with
   // anything, and the colour is built where d2d1.h is already in scope.
+  // `blurRadius`, in the view's own coordinates rather than the image's
+  // pixels, which is the rule both other hosts measured: the same number has to
+  // be the same picture on a photograph and on an icon. Zero or less is no
+  // blur. Half the radius is the gaussian's standard deviation, which is what
+  // the other two hosts pass and what `CLSID_D2D1GaussianBlur` takes.
   void draw(ID2D1RenderTarget *target,
             float boxWidth,
             float boxHeight,
             RnImageFit fit,
-            const float *tint = nullptr) const;
+            const float *tint = nullptr,
+            float blurRadius = 0.0f) const;
 
  private:
   RnWin32Image() = default;

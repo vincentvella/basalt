@@ -209,11 +209,25 @@ and none of it is a missing half.
   landed on GTK and AppKit on 2026-10-07 and 2026-10-08, and all five recorded
   here the day the second host got them rather than later:
 
-  - `blurRadius` on an `<Image>`. GSK has a blur node and Core Image a filter;
-    Direct2D has `ID2D1Effect` with `CLSID_D2D1GaussianBlur`, which is the same
-    shape of work as the AppKit half. Half the radius is the sigma on both other
-    hosts, measured rather than chosen; see backlog/image.md so this one does not
-    have to measure it again.
+  - ~~`blurRadius` on an `<Image>`.~~ Done 2026-10-09, with
+    `CLSID_D2D1GaussianBlur` over the device context the text shadow proved
+    reachable. Half the radius is the standard deviation, which is what the
+    other two hosts measured rather than chose, so nothing was measured again.
+
+    **In the view's coordinates rather than the image's pixels**, which is the
+    same rule and got the same treatment: the image is drawn into a bitmap the
+    size of its box by this function calling itself with no radius, and the blur
+    is applied to that. So the fit, the tint and the tiling are already
+    accounted for, because the recursive call does all three. Clipped to the
+    box, as both other hosts clip theirs, since a blur spreads beyond its input
+    and an `<Image>` never paints outside its own frame.
+
+    Five tests. The ramp between the two halves of the two-tone image is the
+    instrument, as it is on AppKit: a hard edge is a column or two of
+    antialiasing and a twelve point blur is several times that. One of them
+    renders the same image into two box sizes with the same radius and asserts
+    the ramp is the same width, which is what says the blur is in view
+    coordinates rather than source pixels.
   - ~~`borderStyle`, dotted and dashed.~~ Done 2026-10-09, the same way and with
     the same decisions: one stroked path around the rounded box replacing the
     four filled edges, the first side that asks for something other than solid
