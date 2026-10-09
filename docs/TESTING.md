@@ -114,6 +114,8 @@ node --test scripts/test_cli.js     # run-linux, run-macos and run-windows
 node scripts/check_includes.js      # a header used and not included, and a
                                     # spelling one toolchain lacks
 node scripts/check_backlog.js       # the backlog's counts against its entries
+node scripts/check_support.js      # the support page, from the scraped prop list
+python3 scripts/scrape_props.py    # what React Native declares, from the pin
 ```
 
 The last two need nothing built, and run in both CI jobs. `check_includes.js`
@@ -134,6 +136,22 @@ Those spellings are all unused in the tree on purpose, which means nothing here
 would notice if the rules stopped matching. So the guard has its own tests,
 `node --test scripts/test_check_includes.js`, which feed text through the rules
 directly and run before it in both places.
+
+`check_support.js` is the third, and the only one that reads React Native.
+`website/docs/support.mdx` has one row per attribute, and the attributes are not
+this repository's to list: `scripts/scrape_props.py --from-pin` reads
+`BaseViewProps`, `AccessibilityProps` and `TextAttributes` out of the pinned
+release and writes `docs/react-native-props.json`, and the statuses live beside
+it keyed by `Struct.prop`. So a prop added upstream arrives as a row with no
+status and fails the check until somebody says what this platform does with it,
+which a hand-written table cannot do: a missing row looks exactly like a row
+nobody filled in.
+
+It also checks the statuses against the code -- a host claiming a prop has to
+read it, and a host disclaiming one has to not -- which found two wrong cells the
+day it was written, one of them `accessibilityValue` claiming Windows support
+that was never implemented. The scraper needs the network and CI does not run it;
+what CI runs is the renderer's `--check` against the committed inventory.
 
 `check_backlog.js` is the same shape of guard pointed at prose. `docs/BACKLOG.md`
 is a table of areas and how much is open in each, every file repeats its own

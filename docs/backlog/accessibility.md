@@ -2,13 +2,15 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (5):**
 
 1. Not tested against a real screen reader
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
 4. accessibilityActions is ignored (~~accessibilityLabelledBy~~ and
    ~~accessibilityLiveRegion~~ are done on GTK and AppKit)
+5. Fourteen more AccessibilityProps fields that no host reads, counted rather
+   than guessed
 
 - Not tested against a real screen reader. GTK's assertions say the properties
   are set; Orca on the Linux box is the check that matters.
@@ -144,3 +146,32 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   what counts as focusable is what `accessible` marks, six tests on GTK
   (`focus_*`) and two on AppKit. A view that stops being accessible leaves the
   tab order, which is the part that had to be got right rather than added.
+
+- **Fourteen more fields that no host reads, counted 2026-10-09.** Walking
+  `AccessibilityProps` field by field, which is what `scripts/scrape_props.py`
+  now does for the support page: what the three hosts read is `accessible`,
+  `accessibilityState`, `accessibilityLabel`, `accessibilityRole`,
+  `accessibilityHint`, `accessibilityElementsHidden` and
+  `importantForAccessibility`, plus `accessibilityValue`,
+  `accessibilityLabelledBy` and `accessibilityLiveRegion` on GTK and AppKit.
+  Everything else in the struct is ignored.
+
+  **Which splits three ways rather than being one gap.** Six are iOS's own with
+  no desktop equivalent -- `accessibilityTraits`, `accessibilityLargeContentTitle`,
+  `accessibilityShowsLargeContentViewer`, `accessibilityIgnoresInvertColors`,
+  `onAccessibilityMagicTap` and `onAccessibilityEscape`. Four are the action
+  family, which is entry 2: `accessibilityActions`, `onAccessibilityAction`,
+  `onAccessibilityTap` and `accessibilityRespondsToUserInteraction`.
+
+  The remaining four are worth doing and are small. `accessibilityOrder` is the
+  reading order, which AT-SPI has as a relation and NSAccessibility as
+  `accessibilityChildren`; `accessibilityLanguage` is one attribute on each
+  platform and matters for a screen reader's pronunciation;
+  `accessibilityViewIsModal` is `aria-modal`'s equivalent and is what makes a
+  `<Modal>` trap a screen reader rather than letting it wander behind;
+  `testId` is what an automation tool outside this repository would look for.
+
+  **And one wrong claim, found the same day.** The support page said
+  `accessibilityValue` worked on Windows. It does not: nothing in the Win32 host
+  reads it. The page's own check now catches that class of mistake, because every
+  row names the prop its column claims.

@@ -161,6 +161,10 @@ if command -v node >/dev/null 2>&1; then
   # has to be what the data renders to.
   step "support matrix tests" node --test scripts/test_check_support.js
   step "support matrix" node scripts/check_support.js --check
+  # Not scripts/scrape_props.py --check, which reads React Native's headers from
+  # GitHub at the pinned tag and so needs the network. The committed inventory is
+  # what the check above renders from; run the scraper by hand -- with --from-pin
+  # -- after bumping the pin, and it will ask for a status for anything new.
 else
   skip "node suites" "node is not installed"
 fi

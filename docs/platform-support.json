@@ -1,25 +1,27 @@
 {
   "comment": [
-    "What each host supports, as the source for the Platform support page on the",
-    "website. scripts/check_support.js renders website/docs/support.mdx from this",
-    "and checks what it can: every status is legal, anything short of `yes` says",
-    "why and points at a backlog file that exists, and -- for a row that names a",
-    "C++ prop -- each host's sources are grepped for it, so a box ticked without",
-    "an implementation and an implementation without the box both fail.",
+    "What each host does with every prop, one row per attribute.",
     "",
-    "A grep is not a proof and the file says so on the page: what proves a prop",
-    "`reads` overrides what counts as evidence for a row whose prop is read",
-    "indirectly -- borderRadii through resolveBorderMetrics, boxShadow through",
-    "core's allShadows, transform through resolveTransform.",
-    "behaves is the scenario in scripts/integration_test.py, which runs on every",
-    "host. This is the index, not the evidence.",
+    "The list of attributes is not maintained here: scripts/scrape_props.py reads",
+    "it out of React Native and writes docs/react-native-props.json, and",
+    "scripts/check_support.js renders the page from the two together. A prop added",
+    "upstream therefore has no status, and the check fails until somebody says what",
+    "this platform does with it -- which is the whole reason the list is scraped.",
     "",
-    "Statuses:",
-    "  yes       the host implements it",
-    "  partial   the host implements some of it; `why` says which part is missing",
-    "  no        the host does not; `why` says where that is written down",
-    "  upstream  ReactCommon consumes it, so no host reads it and none should",
-    "  ignored   deliberately not implemented on any host; `why` says why"
+    "Statuses: yes, partial, no, upstream (ReactCommon consumes it), ignored",
+    "`reads` on a row names the spelling that counts as evidence for a prop a host",
+    "reaches through something else -- resolveBorderMetrics, allShadows,",
+    "resolveTransform -- so the check stays tight for everything else.",
+    "(deliberately not implemented). Anything but `yes` everywhere needs a `why`,",
+    "which is a key into `whys` below.",
+    "",
+    "A grep cannot prove behaviour and this file does not pretend to: what proves a",
+    "prop behaves is the scenario in scripts/integration_test.py that exercises it",
+    "on every host. The check does assert that a host claiming a prop reads it.",
+    "",
+    "A prop that exists only on React Native main has no row here on purpose: the",
+    "inventory is scraped from the pinned release, so the row appears -- and this",
+    "file is asked for a status -- on the commit that moves the pin."
   ],
   "platforms": [
     {
@@ -38,316 +40,653 @@
       "toolkit": "Win32"
     }
   ],
+  "whys": {
+    "win-style": {
+      "text": "Direct2D draws it, nothing reads the prop",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-outline": {
+      "text": "DrawRoundedRectangle and a stroke style",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-shadow": {
+      "text": "CLSID_D2D1Shadow",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-filter": {
+      "text": "CLSID_D2D1ColorMatrix and friends",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-gradient": {
+      "text": "the gradient brushes",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-blend": {
+      "text": "CLSID_D2D1Blend",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-cursor": {
+      "text": "WM_SETCURSOR needs a hit test",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-hitslop": {
+      "text": "one line against the insets it already has",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-text": {
+      "text": "DirectWrite is given it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-a11y": {
+      "text": "the UIA provider",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "mac-dropshadow": {
+      "text": "macOS draws the first of a list",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md"
+    },
+    "gtk-pluslighter": {
+      "text": "GSK has no plus-lighter",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+    },
+    "cannot-arrive": {
+      "text": "the prop cannot arrive: only the iOS view config declares it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+    },
+    "no-group": {
+      "text": "no public way to composite a subtree as a group",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+    },
+    "hints": {
+      "text": "performance hints, and one cannot arrive",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+    },
+    "reactcommon": {
+      "text": "ReactCommon consumes it, and a scenario proves it here",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+    },
+    "text-ignored": {
+      "text": "on the ignored list, with the call named",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "text-shadow-one": {
+      "text": "one shadow per paragraph, not per fragment",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "text-ios": {
+      "text": "iOS's own, with no desktop equivalent",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "measurelines": {
+      "text": "the cxx TextLayoutManager has no measureLines",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/upstream.md"
+    },
+    "a11y-ignored": {
+      "text": "on the ignored list",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+    },
+    "a11y-ios": {
+      "text": "iOS's own, with no desktop equivalent",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+    }
+  },
+  "statuses": {
+    "BaseViewProps.opacity": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "BaseViewProps.backgroundColor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "BaseViewProps.borderRadii": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borders.borderRadii"
+      ]
+    },
+    "BaseViewProps.borderColors": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borders.borderColors"
+      ]
+    },
+    "BaseViewProps.borderCurves": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "cannot-arrive"
+    },
+    "BaseViewProps.borderStyles": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-style"
+    },
+    "BaseViewProps.outlineColor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-outline"
+    },
+    "BaseViewProps.outlineOffset": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-outline"
+    },
+    "BaseViewProps.outlineStyle": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-outline"
+    },
+    "BaseViewProps.outlineWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-outline"
+    },
+    "BaseViewProps.shadowColor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-shadow",
+      "reads": [
+        "allShadows"
+      ]
+    },
+    "BaseViewProps.shadowOffset": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-shadow",
+      "reads": [
+        "allShadows"
+      ]
+    },
+    "BaseViewProps.shadowOpacity": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-shadow",
+      "reads": [
+        "allShadows"
+      ]
+    },
+    "BaseViewProps.shadowRadius": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-shadow",
+      "reads": [
+        "allShadows"
+      ]
+    },
+    "BaseViewProps.cursor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-cursor"
+    },
+    "BaseViewProps.boxShadow": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-shadow",
+      "reads": [
+        "allShadows"
+      ]
+    },
+    "BaseViewProps.filter": {
+      "linux": "yes",
+      "macos": "partial",
+      "windows": "no",
+      "why": "mac-dropshadow"
+    },
+    "BaseViewProps.backgroundImage": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-gradient"
+    },
+    "BaseViewProps.backgroundSize": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-gradient"
+    },
+    "BaseViewProps.backgroundPosition": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-gradient"
+    },
+    "BaseViewProps.backgroundRepeat": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-gradient"
+    },
+    "BaseViewProps.mixBlendMode": {
+      "linux": "partial",
+      "macos": "yes",
+      "windows": "no",
+      "why": "gtk-pluslighter"
+    },
+    "BaseViewProps.isolation": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "no-group"
+    },
+    "BaseViewProps.transform": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "resolveTransform"
+      ]
+    },
+    "BaseViewProps.transformOrigin": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "resolveTransform"
+      ]
+    },
+    "BaseViewProps.backfaceVisibility": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "BaseViewProps.shouldRasterize": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "hints"
+    },
+    "BaseViewProps.zIndex": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "BaseViewProps.pointerEvents": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "BaseViewProps.hitSlop": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-hitslop"
+    },
+    "BaseViewProps.onLayout": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "reactcommon"
+    },
+    "BaseViewProps.events": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "reactcommon"
+    },
+    "BaseViewProps.collapsable": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "reactcommon"
+    },
+    "BaseViewProps.collapsableChildren": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "reactcommon"
+    },
+    "BaseViewProps.removeClippedSubviews": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "hints"
+    },
+    "AccessibilityProps.accessible": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.accessibilityState": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.accessibilityLabel": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.accessibilityOrder": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.accessibilityLabelledBy": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-a11y"
+    },
+    "AccessibilityProps.accessibilityLiveRegion": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-a11y"
+    },
+    "AccessibilityProps.accessibilityTraits": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ios"
+    },
+    "AccessibilityProps.accessibilityRole": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.accessibilityHint": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.accessibilityLanguage": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.accessibilityLargeContentTitle": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ios"
+    },
+    "AccessibilityProps.accessibilityValue": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-a11y"
+    },
+    "AccessibilityProps.accessibilityActions": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.accessibilityShowsLargeContentViewer": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ios"
+    },
+    "AccessibilityProps.accessibilityViewIsModal": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.accessibilityElementsHidden": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.accessibilityIgnoresInvertColors": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ios"
+    },
+    "AccessibilityProps.accessibilityRespondsToUserInteraction": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.onAccessibilityTap": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.onAccessibilityMagicTap": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ios"
+    },
+    "AccessibilityProps.onAccessibilityEscape": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ios"
+    },
+    "AccessibilityProps.onAccessibilityAction": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.importantForAccessibility": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "AccessibilityProps.role": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "AccessibilityProps.testId": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "a11y-ignored"
+    },
+    "TextAttributes.foregroundColor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.backgroundColor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-text"
+    },
+    "TextAttributes.opacity": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.fontFamily": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.fontSize": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.fontSizeMultiplier": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-text"
+    },
+    "TextAttributes.fontWeight": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.fontStyle": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.fontVariant": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.allowFontScaling": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.maxFontSizeMultiplier": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.dynamicTypeRamp": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ios"
+    },
+    "TextAttributes.letterSpacing": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-text"
+    },
+    "TextAttributes.textTransform": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-text"
+    },
+    "TextAttributes.lineHeight": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.alignment": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
+    },
+    "TextAttributes.baseWritingDirection": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.lineBreakStrategy": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ios"
+    },
+    "TextAttributes.lineBreakMode": {
+      "linux": "no",
+      "macos": "yes",
+      "windows": "no",
+      "why": "text-ignored",
+      "reads": [
+        "style.lineBreakMode",
+        "lineBreakMode"
+      ]
+    },
+    "TextAttributes.textDecorationColor": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.textDecorationLineType": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-text"
+    },
+    "TextAttributes.textDecorationStyle": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.textShadowOffset": {
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "no",
+      "why": "text-shadow-one"
+    },
+    "TextAttributes.textShadowRadius": {
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "no",
+      "why": "text-shadow-one"
+    },
+    "TextAttributes.textShadowColor": {
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "no",
+      "why": "text-shadow-one"
+    },
+    "TextAttributes.isHighlighted": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ios"
+    },
+    "TextAttributes.isPressable": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ios"
+    },
+    "TextAttributes.layoutDirection": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.accessibilityRole": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.role": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "TextAttributes.textEffects": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ios"
+    }
+  },
   "areas": [
-    {
-      "title": "View style props",
-      "note": "Every field of `BaseViewProps`, walked field by field on 2026-10-09.",
-      "rows": [
-        {
-          "feature": "`opacity`",
-          "prop": "opacity",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`backgroundColor`",
-          "prop": "backgroundColor",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "Border widths, colours and per-corner radii",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes",
-          "reads": [
-            "borderRadii"
-          ]
-        },
-        {
-          "feature": "`borderStyle`, dotted and dashed",
-          "prop": "borderStyles",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "Direct2D stroke style",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`borderCurve`, iOS's continuous corners",
-          "prop": "borderCurves",
-          "linux": "ignored",
-          "macos": "ignored",
-          "windows": "ignored",
-          "why": {
-            "text": "the prop cannot arrive",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        },
-        {
-          "feature": "`outlineWidth`, `outlineColor`, `outlineOffset`, `outlineStyle`",
-          "prop": "outlineWidth",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "DrawRoundedRectangle",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`boxShadow`, outset and inset, any number",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "CLSID_D2D1Shadow",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          },
-          "reads": [
-            "allShadows"
-          ]
-        },
-        {
-          "feature": "`shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "shares the box shadow work",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          },
-          "reads": [
-            "allShadows"
-          ]
-        },
-        {
-          "feature": "`filter`: blur, brightness, contrast, grayscale, hueRotate, invert, opacity, saturate, sepia",
-          "prop": "filter",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "CLSID_D2D1ColorMatrix",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`filter: drop-shadow(...)`",
-          "linux": "yes",
-          "macos": "partial",
-          "windows": "no",
-          "why": {
-            "text": "macOS draws the first of a list",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md"
-          }
-        },
-        {
-          "feature": "`backgroundImage`: linear gradients",
-          "prop": "backgroundImage",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "ID2D1LinearGradientBrush",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`backgroundImage`: radial gradients",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "CreateRadialGradientBrush",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`backgroundSize`, `backgroundPosition`, `backgroundRepeat`",
-          "prop": "backgroundSize",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "needs the same brushes",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`mixBlendMode`",
-          "prop": "mixBlendMode",
-          "linux": "partial",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "GSK has no plus-lighter",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        },
-        {
-          "feature": "`isolation`",
-          "prop": "isolation",
-          "linux": "ignored",
-          "macos": "ignored",
-          "windows": "ignored",
-          "why": {
-            "text": "no public way to group a subtree",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        },
-        {
-          "feature": "`cursor`",
-          "prop": "cursor",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "WM_SETCURSOR needs a hit test",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`transform` and `transformOrigin`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes",
-          "reads": [
-            "resolveTransform"
-          ]
-        },
-        {
-          "feature": "3D transforms with perspective",
-          "linux": "partial",
-          "macos": "partial",
-          "windows": "partial",
-          "why": {
-            "text": "m34 is dropped on every host",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        },
-        {
-          "feature": "`backfaceVisibility`",
-          "prop": "backfaceVisibility",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`zIndex`",
-          "prop": "zIndex",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`pointerEvents`",
-          "prop": "pointerEvents",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`hitSlop`",
-          "prop": "hitSlop",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "one line against the same insets",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`onLayout`",
-          "linux": "upstream",
-          "macos": "upstream",
-          "windows": "upstream",
-          "why": {
-            "text": "dispatched by the Scheduler",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        },
-        {
-          "feature": "`collapsable`, `collapsableChildren`",
-          "linux": "upstream",
-          "macos": "upstream",
-          "windows": "upstream",
-          "why": {
-            "text": "view flattening is ReactCommon's",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        },
-        {
-          "feature": "`shouldRasterize`, `removeClippedSubviews`",
-          "linux": "ignored",
-          "macos": "ignored",
-          "windows": "ignored",
-          "why": {
-            "text": "hints, and one cannot arrive",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
-          }
-        }
-      ]
-    },
-    {
-      "title": "Text",
-      "note": "Laid out by Pango, Core Text and DirectWrite, so Yoga measures a paragraph the way it does on a phone.",
-      "rows": [
-        {
-          "feature": "Measurement, wrapping and `numberOfLines`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`textAlign`, including `justify`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`textTransform`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "LCMapStringEx",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "An inline `<View>` inside a `<Text>`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "DirectWrite reserves no box",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`alignItems: 'baseline'` and `onTextLayout`",
-          "linux": "no",
-          "macos": "no",
-          "windows": "no",
-          "why": {
-            "text": "the cxx TextLayoutManager has no measureLines",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/upstream.md"
-          }
-        }
-      ]
-    },
     {
       "title": "Image",
       "rows": [
@@ -387,63 +726,6 @@
           "why": {
             "text": "no host decodes a second frame",
             "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
-          }
-        }
-      ]
-    },
-    {
-      "title": "Accessibility",
-      "rows": [
-        {
-          "feature": "`accessibilityRole`, `accessibilityLabel`, `accessibilityHint`, `accessibilityState`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`accessibilityValue`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`accessibilityLabelledBy`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "UIA needs the provider",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`accessibilityLiveRegion`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "UIA_SystemAlertEventId",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
-          "feature": "`accessibilityActions`",
-          "linux": "no",
-          "macos": "no",
-          "windows": "no",
-          "why": {
-            "text": "IMountingManager declares them and nothing calls them",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
-          }
-        },
-        {
-          "feature": "Tested against a real screen reader",
-          "linux": "no",
-          "macos": "no",
-          "windows": "no",
-          "why": {
-            "text": "the properties are asserted, Orca and VoiceOver are not",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
           }
         }
       ]
