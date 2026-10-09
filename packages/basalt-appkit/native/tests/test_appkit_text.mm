@@ -1050,3 +1050,93 @@ TEST(appkit_a_fragment_opacity_multiplies_the_colour_alpha) {
     EXPECT(std::fabs(alphaOf(0.25, true) - 0.25) < 0.01);
   }
 }
+
+// `baseWritingDirection`, which decides which edge a paragraph starts from.
+//
+// The GTK suite asks the same two questions: that the engine was told, and that
+// the ink moved. The second matters more than it looks -- on GTK the direction
+// reached Pango and the glyphs stayed against the left edge, because Pango
+// flips a natural alignment only when it is deciding the direction itself.
+// `NSTextAlignmentNatural` has no such condition, which is what this confirms.
+namespace {
+
+NSAttributedString *directed(std::optional<facebook::react::WritingDirection> direction) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 24.0F;
+  attributes.foregroundColor = facebook::react::colorFromComponents(
+      facebook::react::ColorComponents{0.0F, 0.0F, 0.0F, 1.0F});
+  attributes.baseWritingDirection = direction;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = "abc";
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  return basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{}).attributedString;
+}
+
+} // namespace
+
+TEST(appkit_a_base_writing_direction_reaches_the_paragraph_style) {
+  @autoreleasepool {
+    using facebook::react::WritingDirection;
+    const auto directionOf = [](std::optional<WritingDirection> asked) {
+      NSParagraphStyle *style = [directed(asked) attribute:NSParagraphStyleAttributeName
+                                                  atIndex:0
+                                           effectiveRange:nullptr];
+      return style == nil ? NSWritingDirectionNatural : style.baseWritingDirection;
+    };
+
+    EXPECT_EQ(directionOf(WritingDirection::RightToLeft), NSWritingDirectionRightToLeft);
+    EXPECT_EQ(directionOf(WritingDirection::LeftToRight), NSWritingDirectionLeftToRight);
+    // Natural is set rather than skipped: a nested <Text> inherits this style,
+    // and an unset direction would let the enclosing paragraph's stand where
+    // the app asked for the algorithm's answer.
+    EXPECT_EQ(directionOf(WritingDirection::Natural), NSWritingDirectionNatural);
+  }
+}
+
+TEST(appkit_a_right_to_left_paragraph_draws_against_the_right_edge) {
+  @autoreleasepool {
+    using facebook::react::WritingDirection;
+    const CGSize size = CGSizeMake(200, 60);
+
+    const auto inkCentre = [&](std::optional<WritingDirection> asked) {
+      RnTextLayout *layout = [RnTextLayout layoutWithAttributedString:directed(asked)
+                                                maximumNumberOfLines:0
+                                                      truncationType:kCTLineTruncationEnd
+                                                           truncates:YES];
+      CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width,
+                                                   (size_t)size.height, 8, 0, space,
+                                                   kCGImageAlphaPremultipliedLast);
+      CGColorSpaceRelease(space);
+      CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+      CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+      [layout drawInContext:context size:size];
+
+      auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+      const size_t stride = CGBitmapContextGetBytesPerRow(context);
+      long total = 0;
+      long weight = 0;
+      for (size_t y = 0; y < (size_t)size.height; y++) {
+        for (size_t x = 0; x < (size_t)size.width; x++) {
+          if (pixels[y * stride + x * 4] < 200) {  // any ink
+            total += (long)x;
+            weight++;
+          }
+        }
+      }
+      CGContextRelease(context);
+      return weight > 0 ? (double)total / (double)weight : -1.0;
+    };
+
+    const double ltr = inkCentre(WritingDirection::LeftToRight);
+    const double rtl = inkCentre(WritingDirection::RightToLeft);
+    EXPECT(ltr >= 0.0);
+    EXPECT(rtl >= 0.0);
+    EXPECT(ltr < 100.0);
+    EXPECT(rtl > 100.0);
+  }
+}

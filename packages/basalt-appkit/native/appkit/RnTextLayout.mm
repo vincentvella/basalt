@@ -184,8 +184,23 @@
     case NSTextAlignmentRight:
       return 1.0;
     default:
-      return 0;
+      break;
   }
+
+  // A natural alignment follows the writing direction, and nothing above this
+  // line does that for us. `NSTextAlignmentNatural` means "whichever edge the
+  // direction starts from", which a frame would resolve; this draws its own
+  // lines, so the frame never gets the chance, and a right-to-left paragraph
+  // drew flush left with its glyphs in the right order inside the line.
+  //
+  // Measured on both hosts and wrong on both at first: Pango flips a natural
+  // alignment only while it is deciding the direction itself, and Core Text
+  // only inside a frame. The two fixes are in different places and are the same
+  // decision. See PangoTextLayout.cpp.
+  if (style.baseWritingDirection == NSWritingDirectionRightToLeft) {
+    return 1.0;
+  }
+  return 0;
 }
 
 - (void)drawInContext:(CGContextRef)context size:(CGSize)size {

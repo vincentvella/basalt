@@ -510,6 +510,11 @@ void rn_view_set_test_id(RnView *self, const char *test_id);
 // rather than reading the views behind it. GTK spells it `aria-modal`.
 void rn_view_set_accessible_modal(RnView *self, gboolean modal);
 
+// `writingDirection`, for the tree dump: "ltr", "rtl", "natural", or nullptr
+// when the app asked for nothing. The direction itself is in the PangoLayout,
+// which this view only paints. Takes a static string and does not copy it.
+void rn_view_set_writing_direction(RnView *self, const char *direction);
+
 // The view's `nativeID`, verbatim.
 //
 // Only the hidden title bar reads it, to find the regions an app marked with

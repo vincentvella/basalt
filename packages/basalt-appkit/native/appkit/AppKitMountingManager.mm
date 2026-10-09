@@ -8,6 +8,7 @@
 #include "ComponentRegistry.h"
 #include "BackgroundLayers.h"
 #include "TextShadows.h"
+#include "WritingDirections.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
 #include "CursorNames.h"
@@ -772,6 +773,12 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   // that asks for a shadow decides it. The standard deviation crosses unchanged,
   // `CGContextSetShadowWithColor`'s blur being one, where the GTK side doubles
   // it for GSK.
+  // The paragraph's writing direction, for the dump: the paragraph style the
+  // layout carries is what actually decides it.
+  const char *const direction =
+      basalt::writingDirectionName(basalt::writingDirection(data.attributedString));
+  view.rnWritingDirection = direction != nullptr ? @(direction) : nil;
+
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     layout.shadowOffset = CGSizeMake(shadow->dx, shadow->dy);
     layout.shadowStandardDeviation = shadow->standardDeviation;

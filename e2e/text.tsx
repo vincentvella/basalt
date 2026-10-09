@@ -49,6 +49,11 @@ const styles = StyleSheet.create({
   // small caps changes the glyphs depends on the font having the table, so what
   // the hosts' own suites assert is the feature reaching the engine; these are
   // here so both hosts ask for it on a real paragraph.
+  // writingDirection, which decides which edge a paragraph starts from. Latin
+  // text in a right-to-left paragraph is the case worth having: the box and the
+  // string are identical, so only the pixels differ, which is why each host's
+  // suite asserts this with a picture and the dump only reports what was asked.
+  rtl: {fontSize: 16, color: '#2b3445', writingDirection: 'rtl'},
   variants: {fontSize: 16, color: '#2b3445', fontVariant: ['small-caps', 'tabular-nums']},
   faded: {fontSize: 16, color: '#2b3445', opacity: 0.4},
   dotted: {
@@ -130,6 +135,7 @@ function App() {
         <Text style={styles.dotted}>Dotted both ways</Text>
         <Text style={styles.variants}>Small caps 1234567890</Text>
         <Text style={styles.faded}>Faded to two fifths</Text>
+        <Text style={styles.rtl}>Right to left, in Latin</Text>
         <Text style={styles.clipped}>
           Plain, then <Text style={styles.emphasis}>bold amber</Text> and{' '}
           <Text style={styles.italic}>italic green</Text> in one paragraph.

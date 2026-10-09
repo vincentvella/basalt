@@ -625,6 +625,11 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // which is the same idea as ARIA's `aria-modal` and UIA's `IsDialog`.
 @property(nonatomic, assign) BOOL rnAccessibleModal;
 
+// `writingDirection`, for the tree dump: "ltr", "rtl", "natural", or nil when
+// the app asked for nothing. The direction itself is in the paragraph style the
+// layout carries; this is so the two hosts' dumps compare line by line.
+@property(nonatomic, copy, nullable) NSString *rnWritingDirection;
+
 // The `cursor` style property, as the CSS keyword React Native uses: "pointer",
 // "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
 // whatever encloses this view, which is what `cursor: 'auto'` means.

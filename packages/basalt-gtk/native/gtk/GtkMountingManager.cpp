@@ -8,6 +8,7 @@
 #include "ExpoImageComponent.h"
 #include "BackgroundLayers.h"
 #include "TextShadows.h"
+#include "WritingDirections.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
 #include "CursorNames.h"
@@ -1072,6 +1073,11 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // asks for a shadow decides it. GSK's shadow radius is CSS's, which is twice
   // the standard deviation React Native hands over -- the same conversion a
   // `dropShadow()` filter needs, in the same direction.
+  // The paragraph's writing direction, for the dump: the layout has the
+  // direction itself, through the context it was built on.
+  rn_view_set_writing_direction(
+      view, basalt::writingDirectionName(basalt::writingDirection(data.attributedString)));
+
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     const GdkRGBA shadowColor{shadow->red, shadow->green, shadow->blue, shadow->alpha};
     rn_view_set_text_shadow(

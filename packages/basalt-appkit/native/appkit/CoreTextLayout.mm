@@ -187,6 +187,26 @@ NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes) {
     style.alignment = toTextAlignment(*textAttributes.alignment);
   }
 
+  // `baseWritingDirection`, which is the same call upstream's iOS half makes in
+  // `RCTAttributedTextUtils.mm`. `Natural` is the paragraph style's own default
+  // and means the Unicode bidi algorithm decides from the first strong
+  // character, so it is set explicitly rather than skipped: a nested <Text>
+  // inherits this style, and leaving it unset would let the enclosing
+  // paragraph's direction stand where the app asked for the natural one.
+  if (textAttributes.baseWritingDirection) {
+    switch (*textAttributes.baseWritingDirection) {
+      case facebook::react::WritingDirection::Natural:
+        style.baseWritingDirection = NSWritingDirectionNatural;
+        break;
+      case facebook::react::WritingDirection::LeftToRight:
+        style.baseWritingDirection = NSWritingDirectionLeftToRight;
+        break;
+      case facebook::react::WritingDirection::RightToLeft:
+        style.baseWritingDirection = NSWritingDirectionRightToLeft;
+        break;
+    }
+  }
+
   // React Native's lineHeight is the total line box height, and setting both
   // bounds to it is how that is said in AppKit. Leaving one of them out gives a
   // minimum or a maximum, which is a different thing and only shows up on text

@@ -189,6 +189,10 @@ struct _RnView {
   // `accessibilityViewIsModal`, kept so the dump can report it: the property
   // itself goes straight to GTK and cannot be read back without an AT.
   gboolean accessible_modal;
+  // `writingDirection`, as React Native's own word: "ltr", "rtl" or "natural".
+  // The layout has the direction itself; this is for the dump, which is
+  // compared with the AppKit one line by line.
+  const char *writing_direction;
   // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
   // to GDK so the tree dump can report what the app asked for.
   char *cursor_name;
@@ -1177,6 +1181,7 @@ static void rn_view_init(RnView *self) {
   self->role_name = nullptr;
   self->test_id = nullptr;
   self->accessible_modal = FALSE;
+  self->writing_direction = nullptr;
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
   self->gradients = nullptr;
@@ -1372,6 +1377,13 @@ void rn_view_set_accessible_text(RnView *self, const char *label, const char *de
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, description, -1);
   }
+}
+
+void rn_view_set_writing_direction(RnView *self, const char *direction) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  // A literal from the mounting manager rather than a copy: the three names are
+  // static strings, and nothing else ever sets this.
+  self->writing_direction = direction;
 }
 
 void rn_view_set_accessible_modal(RnView *self, gboolean modal) {
@@ -2656,6 +2668,14 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
       g_string_append_printf(out, " text=\"%s\"", escaped);
       g_free(escaped);
     }
+  }
+  // The paragraph's writing direction, when an app asked for one. Nothing else
+  // in this dump shows it: a right-to-left paragraph of Latin text has the same
+  // box and the same string, and only the pixels differ. `natural` is printed
+  // too, because asking for it is not the same as saying nothing -- a nested
+  // <Text> inherits the enclosing direction otherwise.
+  if (self->writing_direction != nullptr) {
+    g_string_append_printf(out, " writing-dir=%s", self->writing_direction);
   }
   // The paragraph's text shadow, which no other line of this dump can show: a
   // shadowed paragraph has the same text, the same colour and the same box. The

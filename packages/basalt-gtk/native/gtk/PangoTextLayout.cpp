@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <thread>
+#include <optional>
 #include <string>
 
 namespace basalt {
@@ -170,24 +171,66 @@ PangoEllipsizeMode toPangoEllipsize(EllipsizeMode mode) {
 // the thread that built it. That holds today because `GtkMountingManager` builds
 // its layouts on the main thread and the measuring path never lets one escape the
 // function, but it holds incidentally rather than by construction.
-PangoContext *threadPangoContext() {
+// One per thread *per base direction*, which is three.
+//
+// `baseWritingDirection` is a paragraph's direction, and Pango keeps a base
+// direction on the **context** rather than on the layout: a layout with
+// `auto_dir` off takes its context's. Setting it on the one shared context
+// before each build and putting it back afterwards would be a race with
+// measurement, which happens later and off this thread -- Pango resolves
+// direction when the extents are asked for, not when the text is set.
+//
+// So each direction gets its own context, cached beside the other two. The cost
+// is two more font maps per thread in an app that uses them; the alternative is
+// a paragraph whose direction depends on what was measured after it.
+PangoContext *threadPangoContext(PangoDirection direction) {
   // Reloaded when a font is registered at runtime. Each thread's map is
   // invalidated separately, which is the price of not sharing one, and
   // `fontGeneration` is what makes that detectable here. Without this a family
   // that appeared after a thread's first measurement would be missing from that
   // thread's map for the life of the process.
-  static thread_local PangoContext *context = nullptr;
+  static thread_local PangoContext *contexts[3] = {nullptr, nullptr, nullptr};
   static thread_local unsigned long generation = 0;
 
+  const int slot = direction == PANGO_DIRECTION_LTR ? 1
+      : direction == PANGO_DIRECTION_RTL            ? 2
+                                                    : 0;
+
   const unsigned long current = basalt::fontGeneration();
-  if (context != nullptr && current != generation) {
-    g_clear_object(&context);
-  }
-  if (context == nullptr) {
-    context = pango_font_map_create_context(pango_cairo_font_map_get_default());
+  if (current != generation) {
+    for (PangoContext *&cached : contexts) {
+      g_clear_object(&cached);
+    }
     generation = current;
   }
-  return context;
+  if (contexts[slot] == nullptr) {
+    contexts[slot] = pango_font_map_create_context(pango_cairo_font_map_get_default());
+    if (slot != 0) {
+      pango_context_set_base_dir(contexts[slot], direction);
+    }
+  }
+  return contexts[slot];
+}
+
+// React Native's three writing directions against Pango's.
+//
+// `Natural` is not a direction here: it asks for the Unicode bidi algorithm's
+// answer, which Pango gives through `auto_dir` on the layout rather than a base
+// direction on the context. So it maps to neutral and the caller turns auto
+// direction on; see buildTextLayout.
+PangoDirection toPangoDirection(std::optional<facebook::react::WritingDirection> direction) {
+  if (!direction.has_value()) {
+    return PANGO_DIRECTION_NEUTRAL;
+  }
+  switch (*direction) {
+    case facebook::react::WritingDirection::LeftToRight:
+      return PANGO_DIRECTION_LTR;
+    case facebook::react::WritingDirection::RightToLeft:
+      return PANGO_DIRECTION_RTL;
+    case facebook::react::WritingDirection::Natural:
+      return PANGO_DIRECTION_NEUTRAL;
+  }
+  return PANGO_DIRECTION_NEUTRAL;
 }
 
 
@@ -421,7 +464,23 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
                              const ParagraphAttributes &paragraphAttributes,
                              float maxWidth) {
 
-  PangoLayout *layout = pango_layout_new(threadPangoContext());
+  // `baseWritingDirection`, which decides the context this layout is built on
+  // and therefore has to be read before the layout exists. From the first
+  // fragment, like the alignment below: React Native resolves a paragraph's
+  // attributes onto every fragment in it.
+  const auto &first = attributedString.getFragments();
+  const auto direction = first.empty()
+      ? std::optional<facebook::react::WritingDirection>{}
+      : first.front().textAttributes.baseWritingDirection;
+
+  PangoLayout *layout = pango_layout_new(threadPangoContext(toPangoDirection(direction)));
+  // Natural means the Unicode bidi algorithm decides from the first strong
+  // character, which is what Pango calls auto direction and has on by default.
+  // Anything else is an app overriding that, so auto direction goes off and the
+  // context's base direction stands.
+  pango_layout_set_auto_dir(
+      layout,
+      !direction.has_value() || *direction == facebook::react::WritingDirection::Natural);
   PangoAttrList *attributes = pango_attr_list_new();
 
   // Fragment ranges are byte offsets into the concatenated UTF-8 string, which
@@ -446,10 +505,31 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // Paragraph-level settings come from the first fragment, since React Native
   // resolves alignment onto every fragment from the <Text> that owns them.
   const auto &fragments = attributedString.getFragments();
+  const bool rightToLeft = direction.has_value()
+      && *direction == facebook::react::WritingDirection::RightToLeft;
   if (!fragments.empty() && fragments.front().textAttributes.alignment) {
     const auto alignment = *fragments.front().textAttributes.alignment;
-    pango_layout_set_alignment(layout, toPangoAlignment(alignment));
+    // A natural alignment in a right-to-left paragraph means the right edge,
+    // and Pango will not work that out here: it flips `ALIGN_LEFT` for a
+    // right-to-left line only when `auto_dir` is on, which is exactly the case
+    // an explicit `baseWritingDirection` turns off. Measured rather than
+    // assumed -- the first version of this set the direction, Pango resolved
+    // the line as right-to-left, and the glyphs stayed against the left edge.
+    //
+    // AppKit needs none of this: `NSTextAlignmentNatural` with a right-to-left
+    // paragraph style is right-aligned by definition.
+    const bool natural = alignment == TextAlignment::Natural
+#if BASALT_RN_MINOR >= 87
+        || alignment == TextAlignment::Start
+#endif
+        ;
+    pango_layout_set_alignment(
+        layout, natural && rightToLeft ? PANGO_ALIGN_RIGHT : toPangoAlignment(alignment));
     pango_layout_set_justify(layout, alignment == TextAlignment::Justified);
+  } else if (rightToLeft) {
+    // No alignment at all is the same question as a natural one: React Native's
+    // default is to follow the writing direction.
+    pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
   }
 
   if (maxWidth >= 0) {

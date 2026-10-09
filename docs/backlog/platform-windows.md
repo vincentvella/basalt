@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (19):**
+**Open (20):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -25,6 +25,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 18. The desktop's text scale is not read, so large text does not enlarge text
 19. No text decoration, so an underline or a strikethrough is not drawn
 20. `fontVariant` and a fragment's `opacity` are not read
+21. `writingDirection` is not read, so a right-to-left paragraph starts on the left
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -319,6 +320,20 @@ and none of it is a missing half.
   backlog/correctness.md has what the other two decided, including which
   backdrop each of them blends with and why the two differ. The end-to-end
   scenario is skipped here by name.
+
+- **`writingDirection` is not read, so a right-to-left paragraph starts on the
+  left.** The other two hosts read it as of 2026-10-09, and DirectWrite has the
+  call: `IDWriteTextLayout::SetReadingDirection` with
+  `DWRITE_READING_DIRECTION_RIGHT_TO_LEFT`.
+
+  The part worth knowing before starting is the second half, because both other
+  hosts got it wrong first. Setting the direction gets the glyphs into the right
+  order inside the line and leaves the line itself against the left edge: a
+  *natural* alignment has to follow the direction, and neither engine does that
+  for you unless it is also choosing the direction. DirectWrite is the same
+  shape -- `SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING)` is what a natural
+  alignment means in a right-to-left paragraph -- and `RnWin32TextLayout`
+  already sets alignment per run, so it is the same place.
 
 - **`fontVariant` and a fragment's `opacity` are not read.** Both are one call
   away and the arithmetic is already shared.

@@ -148,6 +148,10 @@
     "a11y-language": {
       "text": "GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+    },
+    "win-reading-direction": {
+      "text": "IDWriteTextLayout::SetReadingDirection, and a natural alignment that follows it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     }
   },
   "statuses": {
@@ -650,10 +654,14 @@
       "windows": "yes"
     },
     "TextAttributes.baseWritingDirection": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "yes",
+      "macos": "yes",
       "windows": "no",
-      "why": "text-ignored"
+      "why": "win-reading-direction",
+      "reads": [
+        "baseWritingDirection",
+        "writingDirection("
+      ]
     },
     "TextAttributes.lineBreakStrategy": {
       "linux": "no",

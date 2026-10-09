@@ -161,9 +161,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   whose longest line is below the cut.
 - Ignored, and now counted: walking `TextAttributes` field by field on
   2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
-  -- the fields no host reads are `fontVariationSettings`,
-  `baseWritingDirection`, `layoutDirection`, and the `accessibilityRole` and
-  `role` that ride along on a fragment. `lineBreakMode` is read on AppKit only. Beside those,
+  -- the fields no host reads are `fontVariationSettings`, `layoutDirection`,
+  and the `accessibilityRole` and `role` that ride along on a fragment. `lineBreakMode` is read on AppKit only. Beside those,
   `adjustsFontSizeToFit`, `textBreakStrategy` and hyphenation are
   `ParagraphAttributes` and equally ignored.
 
@@ -172,9 +171,34 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   behaviours, and `isHighlighted` and `isPressable` are the internals of iOS's
   pressable text. `textEffects` is newer than the pin.
 
-  What is left of that list is `baseWritingDirection`, the RTL question: bigger
-  than it looks, and it belongs with `layoutDirection` rather than on its own.
-  `fontVariationSettings` is newer than the pin.
+  What is left of that list is `fontVariationSettings`, which is newer than the
+  pin.
+
+  **`baseWritingDirection` came off it on 2026-10-09**, and it is a smaller
+  thing than "RTL support", which this entry used to conflate it with: the prop
+  sets one paragraph's direction, where RTL as a whole means mirroring a layout
+  and is `layoutDirection`'s question.
+
+  Both engines take the direction directly -- a Pango context's base direction,
+  an `NSParagraphStyle`'s `baseWritingDirection`, which is the same call
+  upstream's iOS half makes -- and **both of them left the line against the left
+  edge anyway**, which is the part worth writing down:
+
+  - Pango flips a natural alignment for a right-to-left line only while
+    `auto_dir` is on, and an explicit direction is exactly what turns that off.
+  - Core Text resolves a natural alignment inside a *frame*, and `RnTextLayout`
+    draws its own lines so that it can honour `numberOfLines`, so the frame
+    never gets the chance.
+
+  So each host needed the same decision in a different place: a natural
+  alignment follows the writing direction. Found by a pixel test on each side
+  rather than by reading, twice: the direction reached the engine, the glyphs
+  came out in the right order inside the line, and the line sat on the wrong
+  edge. An assertion about the attribute alone would have passed.
+
+  The dump reports the direction as `writing-dir=`, from the first fragment
+  that asks, which carries the same limit as the text shadow: one direction per
+  paragraph, a nested `<Text>` with its own being recorded rather than drawn.
 
   None of this was written down before the support page needed a status per
   attribute, which is the argument for having one.

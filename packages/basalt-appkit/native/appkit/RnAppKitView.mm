@@ -2772,6 +2772,13 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
       [out appendFormat:@" text=\"%@\"", escaped];
     }
   }
+  // The paragraph's writing direction, when an app asked for one. Nothing else
+  // here shows it: a right-to-left paragraph of Latin text has the same box and
+  // the same string, and only the pixels differ. `natural` is printed too,
+  // asking for the algorithm's answer not being the same as saying nothing.
+  if (self.rnWritingDirection.length > 0) {
+    [out appendFormat:@" writing-dir=%@", self.rnWritingDirection];
+  }
   // The paragraph's text shadow, spelled as GTK spells it: no other line can
   // show it, a shadowed paragraph having the same text, colour and box. The
   // standard deviation React Native parsed, which is also what this context was

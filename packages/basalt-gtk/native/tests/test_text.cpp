@@ -915,3 +915,82 @@ TEST(gtk_a_fragment_opacity_lightens_the_glyphs) {
   EXPECT(half > 90 && half < 160);
   EXPECT(quarter > half);
 }
+
+// `baseWritingDirection`, which decides which edge a paragraph starts from.
+//
+// Asserted two ways, because each catches what the other cannot: Pango's own
+// answer for the line it laid out, and where the ink actually landed. A layout
+// built on a context with the wrong base direction would still report the
+// direction it was asked for if only the first were checked.
+TEST(gtk_a_base_writing_direction_resolves_and_moves_the_ink) {
+  using facebook::react::WritingDirection;
+
+  const auto laidOut = [](std::optional<WritingDirection> direction) {
+    AttributedString::Fragment fragment;
+    fragment.string = "abc";
+    TextAttributes attributes;
+    attributes.fontSize = 24.0F;
+    attributes.foregroundColor = facebook::react::colorFromComponents(
+        facebook::react::ColorComponents{0.0F, 0.0F, 0.0F, 1.0F});
+    attributes.baseWritingDirection = direction;
+    fragment.textAttributes = attributes;
+    AttributedString text;
+    text.appendFragment(std::move(fragment));
+    // A width, so there is somewhere for a right-aligned line to go.
+    return basalt::buildTextLayout(text, ParagraphAttributes{}, 200.0F);
+  };
+
+  // Pango's resolved direction for the first line, which is the engine's own
+  // answer rather than ours.
+  const auto resolvedOf = [](PangoLayout *layout) {
+    PangoLayoutLine *line = pango_layout_get_line_readonly(layout, 0);
+    return line != nullptr ? line->resolved_dir : PANGO_DIRECTION_NEUTRAL;
+  };
+
+  PangoLayout *natural = laidOut(std::nullopt);
+  PangoLayout *ltr = laidOut(WritingDirection::LeftToRight);
+  PangoLayout *rtl = laidOut(WritingDirection::RightToLeft);
+
+  // "abc" is strongly left-to-right, so the natural answer is LTR and the
+  // explicit LTR cannot be told from it. The RTL one is the interesting case:
+  // the app overrode the algorithm.
+  EXPECT(resolvedOf(natural) == PANGO_DIRECTION_LTR);
+  EXPECT(resolvedOf(ltr) == PANGO_DIRECTION_LTR);
+  EXPECT(resolvedOf(rtl) == PANGO_DIRECTION_RTL);
+
+  // And where the ink is. Pango reads alignment relative to the base
+  // direction, so the same unaligned paragraph starts at the left edge in LTR
+  // and the right edge in RTL.
+  const auto inkCentre = [](PangoLayout *layout) {
+    RnView *view = rn_view_new(1);
+    g_object_ref_sink(view);
+    rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 60.0F);
+    const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+    rn_view_set_text_layout(view, layout, &black);
+    const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 200, 60);
+    long total = 0;
+    long weight = 0;
+    for (int x = 0; x < 200; x++) {
+      for (int y = 0; y < 60; y++) {
+        if (pixels.at(x, y).alpha > 40) {
+          total += x;
+          weight++;
+        }
+      }
+    }
+    g_object_unref(view);
+    return weight > 0 ? static_cast<double>(total) / static_cast<double>(weight) : -1.0;
+  };
+
+  const double ltrCentre = inkCentre(ltr);
+  const double rtlCentre = inkCentre(rtl);
+  EXPECT(ltrCentre >= 0.0);
+  EXPECT(rtlCentre >= 0.0);
+  // Left half against right half, with the whole width between them.
+  EXPECT(ltrCentre < 100.0);
+  EXPECT(rtlCentre > 100.0);
+
+  g_object_unref(natural);
+  g_object_unref(ltr);
+  g_object_unref(rtl);
+}

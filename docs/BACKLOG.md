@@ -38,7 +38,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 
 | Area | Open | What is left there |
 | --- | --- | --- |
-| [Windows, the platform](backlog/platform-windows.md) | 19 | A peer since phase 47. What is left is named, and two entries are missing halves: an inline <View> inside a <Text>, and six style props. |
+| [Windows, the platform](backlog/platform-windows.md) | 20 | A peer since phase 47. What is left is named, and two entries are missing halves: an inline <View> inside a <Text>, and six style props. |
 | [macOS](backlog/platform-macos.md) | 7 | Justified text, fonts, the rest of accessibility. |
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |

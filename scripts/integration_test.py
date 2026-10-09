@@ -4995,6 +4995,62 @@ def test_font_scaling(bundle: Path) -> None:
         )
 
 
+def test_writing_direction(bundle: Path) -> None:
+    """`writingDirection` reaches the paragraph.
+
+    The prop decides which edge a paragraph starts from, and each engine takes
+    it in its own terms: a Pango context's base direction, an
+    `NSParagraphStyle`'s `baseWritingDirection`, DirectWrite's
+    `SetReadingDirection`. Neither of the two implemented hosts honoured it
+    until 2026-10-09.
+
+    What this asserts is the arrival, which is the half only an app can prove:
+    `writingDirection` is a *style* prop, so it travels through
+    `ReactNativeStyleAttributes` and the style flattener rather than through
+    `validAttributes`, and a prop that is dropped there reaches no host at all.
+    Whether each engine then *honoured* it is a picture, and both hosts' suites
+    take one: Latin text in a right-to-left paragraph has the same box and the
+    same string, so the pixels are the only difference.
+
+    Windows reads no direction yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("DirectWrite is given no reading direction yet")
+
+    app = bundle_app(bundle.parent, "text")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltText"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    directed = [line for line in tree.splitlines() if "writing-dir=" in line]
+    if len(directed) != 1:
+        raise Failure(
+            f"{len(directed)} paragraphs report a writing direction; e2e/text.tsx "
+            f"sets one.\n{tree}"
+        )
+    if "writing-dir=rtl" not in directed[0]:
+        raise Failure(
+            f"the paragraph's direction is not the one the app asked for.\n{directed[0]}"
+        )
+
+
 def test_text_shadow(bundle: Path) -> None:
     """`textShadowColor`, `textShadowOffset` and `textShadowRadius` reach the view.
 
@@ -6506,6 +6562,7 @@ SCENARIOS = [
     ("a radial gradient reaches the view, resolved", test_radial_gradient),
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),
+    ("writingDirection reaches the paragraph", test_writing_direction),
     ("a text shadow reaches the paragraph", test_text_shadow),
     ("a desktop text scale, and the props that refuse it", test_font_scaling),
     ("textTransform changes what the engine lays out", test_text_transform),
