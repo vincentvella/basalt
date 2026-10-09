@@ -5062,6 +5062,109 @@ def test_font_scaling(bundle: Path) -> None:
         )
 
 
+def test_runtime_font(bundle: Path) -> None:
+    """A font loaded while the app runs is the font the paragraph is laid out in.
+
+    `expo-font` on a non-web platform is one call, `ExpoFontLoader.loadAsync`,
+    and then `fontFamily` working afterwards. The app chose the name, the file
+    calls itself something else, and core/FontRegistry.h is what makes the two
+    the same font. Both hosts' suites assert the platform half; what only an app
+    can show is the whole path -- JavaScript, the JSI host function, the
+    registry, the measurement cache, the paragraph on screen.
+
+    Two paragraphs with the same string at the same size: one in the host's
+    default font, one in the loaded family. The widths must differ, which they
+    only can if the family was found. A monospaced file is loaded for that
+    reason, since two proportional faces can measure a string identically.
+
+    **The load happens after the first render**, which is how `useFonts` works
+    and the reason the hosts drop their measurement caches when a font arrives.
+    The second paragraph is mounted by the state change the load causes, so it
+    is measured on the far side of the registration.
+
+    e2e/fonts.tsx tries several paths for a monospaced system font. Which exist
+    is a property of the machine, so a box with none of them skips rather than
+    fails, and the skip names what was tried.
+    """
+    app = bundle_app(bundle.parent, "fonts")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "4000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW",
+                 "BASALT_TEST_FONT_SCALE"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltFonts"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    said = result.stderr
+    if "font: no ExpoFontLoader" in said:
+        # The whole Expo runtime is behind BASALT_HAS_EXPO, so a plain checkout
+        # and every CI job have no loader to call: runtime fonts are an Expo
+        # feature on every React Native platform, not only on these. Both hosts'
+        # own suites assert the registry and the layout without it.
+        raise Skipped(
+            "needs a host built with -DBASALT_EXPO_MODULES_CORE; without Expo "
+            "there is no ExpoFontLoader to call"
+        )
+    if "font: none of the candidates loaded" in said:
+        tried = [line.split("font: ", 1)[1] for line in said.splitlines() if "did not load" in line]
+        raise Skipped(
+            "this machine has no monospaced font at any of the paths e2e/fonts.tsx "
+            f"knows: {'; '.join(tried) or 'none reported'}"
+        )
+
+    loaded = [line for line in said.splitlines() if "font: loaded " in line]
+    if len(loaded) != 1:
+        raise Failure(
+            f"{len(loaded)} fonts reported as loaded; the app loads one.\n"
+            f"{tail_text(said, 30)}"
+        )
+    if "font: isLoaded true" not in said:
+        raise Failure(
+            "the loader does not consider the font loaded immediately after "
+            f"resolving, which is what `useFonts` asks it.\n{tail_text(said, 30)}"
+        )
+    if "font: names BasaltRuntimeFont" not in said:
+        raise Failure(
+            "getLoadedFonts does not report the name the app chose, which is the "
+            f"only name the app knows it by.\n{tail_text(said, 30)}"
+        )
+
+    widths = []
+    for line in tree.splitlines():
+        if 'text="Handgloves 0123"' not in line:
+            continue
+        frame = re.search(r"frame=\(([-\d.]+),([-\d.]+) ([\d.]+)x([\d.]+)\)", line)
+        if frame is None:
+            raise Failure(f"no frame on a specimen's line: {line}")
+        widths.append(float(frame.group(3)))
+
+    if len(widths) != 2:
+        raise Failure(
+            f"{len(widths)} specimens in the tree rather than 2, so the loaded "
+            f"font's paragraph never mounted.\n{tree}"
+        )
+    if abs(widths[0] - widths[1]) < 1.0:
+        raise Failure(
+            "the same string measures the same in the loaded font as in the "
+            f"default one ({widths[0]} and {widths[1]}), so the family was not "
+            f"found and the paragraph fell back.\n{tree}"
+        )
+
+
 def test_text_checking(bundle: Path) -> None:
     """`spellCheck` and `autoCorrect` reach the field.
 
@@ -6706,6 +6809,7 @@ SCENARIOS = [
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),
     ("spellCheck and autoCorrect reach the field", test_text_checking),
+    ("a font loaded at runtime is the font the paragraph uses", test_runtime_font),
     ("writingDirection reaches the paragraph", test_writing_direction),
     ("a text shadow reaches the paragraph", test_text_shadow),
     ("a desktop text scale, and the props that refuse it", test_font_scaling),

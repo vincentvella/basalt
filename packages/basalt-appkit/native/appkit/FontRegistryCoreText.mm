@@ -11,11 +11,12 @@
 // and to nothing else on the machine, which is what an app loading a bundled
 // font wants and the only scope that needs no user consent.
 //
-// Nothing on this platform renders text yet -- there is no Core Text
-// TextLayoutManager, which is the seam phase 19 found. So `resolveFontFamily`
-// currently has no reader. It is implemented anyway, because the alternative is
-// a registry that silently records nothing and a font milestone that starts by
-// debugging this file.
+// `resolveFontFamily` had no reader when this was written: there was no Core
+// Text TextLayoutManager, the seam phase 19 found. There is one now, and
+// CoreTextLayout.mm's `fontFor` asks this for every paragraph with a
+// `fontFamily`. tests/test_appkit_fonts.mm is where that path is checked,
+// including a family the machine does not have, which is the case a loader
+// exists for.
 
 #include "FontRegistry.h"
 

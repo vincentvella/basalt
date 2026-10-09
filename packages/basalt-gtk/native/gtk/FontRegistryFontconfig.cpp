@@ -82,8 +82,16 @@ bool registerFont(const std::string &name, const std::string &path) {
 
   // Pango caches which fonts exist. Adding one to fontconfig behind its back
   // leaves it looking at the old list, so the family would not be found until
-  // something else happened to invalidate it. Only meaningful for a fontconfig
-  // backed map, which is not the only kind Pango has.
+  // something else happened to invalidate it.
+  //
+  // Only meaningful for a fontconfig backed map, which is not the only kind
+  // Pango has, and the other kind is reachable: on a Mac, Homebrew's Pango
+  // answers this with a `PangoCairoCoreTextFontMap`, which does not consult
+  // fontconfig at all. A font loaded at runtime is then registered here and
+  // invisible to the text engine. That is a property of running the GTK host on
+  // macOS, which is a comparison arrangement rather than a target, and
+  // tests/test_fonts.cpp stops at the mapping when it sees that map. docs/
+  // TESTING.md records it.
   PangoFontMap *fontMap = pango_cairo_font_map_get_default();
   if (PANGO_IS_FC_FONT_MAP(fontMap)) {
     pango_fc_font_map_config_changed(PANGO_FC_FONT_MAP(fontMap));

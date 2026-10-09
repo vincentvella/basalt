@@ -6,10 +6,10 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (4):**
+**Open (3):**
 
 1. ~~Justified text~~, which worked all along
-2. Fonts loaded at runtime are untested
+2. ~~Fonts loaded at runtime are untested~~
 3. ~~`keyboardType`, `autoCapitalize`, `autoCorrect` and `spellCheck`~~: two
    done on both hosts, two recorded here as having no macOS call at all
 4. Nothing tested against a real screen reader
@@ -70,9 +70,56 @@ If an entry here is about to be picked up, run the thing it describes first.
   to the same width changes nothing. Sabotaging it is what showed the feature
   working without it -- the test passed with the new code disabled, which is the
   signal that the code was not what made it pass.
-- **Fonts loaded at runtime are untested.** `resolveFontFamily` is wired into
-  the Core Text font lookup, and `expo-font` on macOS has never been run end to
-  end.
+- ~~**Fonts loaded at runtime are untested.**~~ Tested on both hosts, and run
+  end to end on macOS, 2026-10-09. Four tests each in
+  `tests/test_appkit_fonts.mm` and `tests/test_fonts.cpp`, plus `e2e/fonts.tsx`
+  and a scenario.
+
+  **The case a loader exists for is a family the machine does not have**, and
+  three quarters of a font test can pass without ever meeting it. Registering a
+  system font under a second, app-chosen name proves the mapping and nothing
+  underneath it, because every layer already knew that family. So
+  `tests/RenamedFontFile.h` makes a font the machine lacks out of one it has: it
+  copies a real file and replaces one byte of the family name wherever the name
+  table spells it, in ASCII and in the UTF-16BE of a Windows-platform name
+  record, so nothing in the file moves and no checksum has to be recomputed.
+  Shipping a fixture font was the alternative, and it would have had to be
+  renamed anyway to be sure the machine lacked it.
+
+  What each test pins, and the sabotage that showed it discriminates:
+
+  | Test | Fails when |
+  | --- | --- |
+  | the mapping | `resolveFontFamily` returns its argument |
+  | the paragraph is laid out in it | the same |
+  | a measurement from before stops counting | the cache is not emptied on a new font generation |
+  | a family the system lacks becomes usable | `CTFontManagerRegisterFontsForURL` is never called |
+
+  The third is the one a real app depends on and the easiest to lose: every
+  loader resolves after the first render, so a paragraph measured in the
+  fallback has to be measured again, and `fontGeneration` is the only thing that
+  makes that detectable. The AppKit sabotage of the registration call fails the
+  fourth test alone, which is the shape a good test row has.
+
+  **The end-to-end half found a real instrument bug rather than a platform
+  one.** `expo-font` on a non-web platform is one call, and the host's half of
+  it only exists in a build with `-DBASALT_EXPO_MODULES_CORE`, so the scenario
+  skips by name without one and the hosts' own suites carry the proof. Run for
+  real against Expo 57: the first version of `e2e/fonts.tsx` reported both
+  paragraphs at 852 points wide, because a `<Text>` in a column stretches and
+  its frame is then the box it was given rather than the width it measured.
+  `alignSelf: 'flex-start'` is what makes the frame the measurement. With that,
+  the loaded font measures differently and forgetting the mapping puts both back
+  to one number, which is the scenario's own sabotage.
+
+  **GTK on macOS cannot see a runtime font at all**, which is worth writing down
+  because the GTK suite runs next to the AppKit one here. Homebrew's Pango
+  answers `pango_cairo_font_map_get_default` with a
+  `PangoCairoCoreTextFontMap`, and that map never consults fontconfig, so
+  `FcConfigAppFontAddFile` succeeds and the family stays invisible. The test
+  asserts the mapping and stops, saying why. It also means the Pango-context
+  reload in `PangoTextLayout.cpp` is caught by nothing on a Mac: sabotaging it
+  leaves all 580 tests passing here, and Linux is where that one is proved.
 - ~~**No `maxLength` on macOS.**~~ Done, on both peers:
   `textinput_max_length_is_enforced_on_both_peers`.
 - ~~**No multiline `<TextInput>`**~~ Done on both: the NSTextView and

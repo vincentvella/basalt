@@ -45,6 +45,11 @@ APPS=(
   # window manager had an opinion. That is a property of the machine rather
   # than of the platform, the same reason e2e/hover.js is not here.
   "probe:BasaltProbe"
+  # e2e/fonts.js is deliberately absent too, for a sharper version of the same
+  # reason: it loads a monospaced font by path, and the paths are each
+  # operating system's own. The two hosts would be comparing different fonts,
+  # which is a fact about the machines and not about the platforms.
+  #
   # e2e/hover.js is deliberately absent. Its tree depends on where the cursor
   # is: a box under the pointer takes a different background, and a window that
   # opens under someone's mouse is hovered before either host has drawn

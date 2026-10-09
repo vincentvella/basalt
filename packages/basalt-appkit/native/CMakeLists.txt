@@ -274,6 +274,10 @@ if(TARGET basalt_core)
     # package header it was never given the include path for.
     ${BASALT_PACKAGE_TESTS}
     tests/test_appkit_mounting.mm
+    # Fonts loaded at runtime: core/FontRegistry.h's macOS half, and the
+    # measurement cache a late registration has to invalidate. Needs React
+    # Native, for the AttributedString a paragraph is measured from.
+    tests/test_appkit_fonts.mm
     # Hit testing lives with the touch dispatcher, which the host builds; the
     # tests need it too, and it pulls in nothing else.
     appkit/AppKitFocus.mm

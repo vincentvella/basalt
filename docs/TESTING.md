@@ -1094,6 +1094,23 @@ drawn anything. `e2e/hover.tsx` is left out of `scripts/compare_all.sh` for that
 reason, and the end-to-end suite asserts the order events arrive in rather than
 that nothing else happens.
 
+## Fonts loaded at runtime, and the font map on a Mac
+
+Three of the four font tests in each host's suite register a font the machine
+already has, under a second name of the app's choosing, which is the mapping
+`expo-font` needs and all a portable test can arrange. The fourth registers one
+the machine does *not* have, because that is the case a loader exists for, and
+it gets there without a fixture font: `tests/RenamedFontFile.h` copies a real
+file and renames the family inside it, one byte per occurrence of the name, so
+no offset in the file moves and no checksum has to be recomputed.
+
+**The GTK suite stops early for that fourth test on a Mac**, and it says so
+rather than failing. Homebrew's Pango answers
+`pango_cairo_font_map_get_default` with a `PangoCairoCoreTextFontMap`, which
+never consults fontconfig, so a font added to fontconfig is registered and
+invisible. Running the GTK host next to the AppKit one is a comparison
+arrangement rather than a target, and the Linux fact is proved on Linux.
+
 ## Expo, and the apps that need it
 
 Two of the apps in `e2e/` import an Expo package, `notifications.tsx` imports
@@ -1111,6 +1128,22 @@ The same app for both, so that Expo's C++ and its JavaScript are the same
 version, the same reason the host builds against the app's React Native.
 Without them the host has no Expo at all and the scenario skips saying so, which
 is what a plain checkout and every CI job do.
+
+`e2e/fonts.tsx` needs the host's half and not the app's: it reaches
+`expo.modules.ExpoFontLoader` through the global rather than importing
+`expo-font`, so only the build flag matters and no package is borrowed.
+
+```bash
+cmake -B build-expo -G Ninja -DRN_DIR=../react-native/packages/react-native \
+  -DBASALT_EXPO_MODULES_CORE=/path/to/app/node_modules/expo-modules-core
+cmake --build build-expo --target basalt_appkit
+scripts/bundle.sh --prod --platform macos --entry index.tsx --out main.jsbundle \
+  --build-dir build-expo
+scripts/integration_test.py --build-dir build-expo -k "font loaded at runtime"
+```
+
+That is how it was first run, against Expo 57 and a host built on React Native
+main, on 2026-10-09.
 
 ## Notifications, and the daemon that is never there
 

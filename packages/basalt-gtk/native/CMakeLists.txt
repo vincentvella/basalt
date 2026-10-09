@@ -323,6 +323,10 @@ if(TARGET basalt_core)
     tests/test_mounting.cpp
     tests/test_view.cpp
     tests/test_text.cpp
+    # Fonts loaded at runtime: core/FontRegistry.h's GTK half, the Pango
+    # context a late registration has to reload, and the measurement cache it
+    # has to empty.
+    tests/test_fonts.cpp
     tests/test_focus.cpp
     tests/test_key_events_gtk.cpp
     tests/test_hittest.cpp
