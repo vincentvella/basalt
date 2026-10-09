@@ -6,7 +6,7 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (5):**
+**Open (4):**
 
 1. ~~Justified text~~, which worked all along
 2. Fonts loaded at runtime are untested
@@ -16,7 +16,8 @@ If an entry here is about to be picked up, run the thing it describes first.
 5. ~~No accessibility subroles~~
 6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
 7. No animated images
-8. No gesture cancellation from the platform
+8. ~~No gesture cancellation from the platform~~, and the half of it that
+   was already handled
 9. Only the first `dropShadow()` in a filter list is drawn
 
 - ~~**Hit testing ignores `transform`.**~~ Fixed, the way Windows already did
@@ -194,10 +195,37 @@ If an entry here is about to be picked up, run the thing it describes first.
 - ~~**Nothing is reachable by Tab**~~ Done: Tab visits focusable views in tree
   order and wraps, and what counts as focusable is what `accessible` marks,
   `focus_tab_visits_focusable_views_in_tree_order_and_wraps`.
-- **No gesture cancellation from the platform.** `dispatchTouchCancel` exists
-  and nothing calls it: AppKit has no equivalent of GTK's gesture `cancel`, and
-  the case it covers (a press interrupted by the window losing focus) has no
-  handler yet.
+- ~~**No gesture cancellation from the platform.**~~ Done, and **half of this
+  entry's premise was wrong.** It said `dispatchTouchCancel` exists and nothing
+  calls it. Something did, and had for as long as drag-out has been here:
+  `AppKitTouchDispatcher.mm:48` cancels the press when
+  `beginDraggingSessionWithItems:` takes the gesture, because AppKit then runs
+  its own loop until the drop and the touch that started the drag can never
+  end. The case with no handler was the other one the entry named, a press
+  interrupted by the window losing focus.
+
+  The notification is `NSWindowDidResignKeyNotification`, and the dispatcher
+  observes it itself rather than taking it from the app delegate.
+  `main_appkit.mm` is not linked into the test suite, so a delegate method
+  there would have put the part worth testing out of reach of any test: that
+  the notification reaches a press in flight. It registers with `object:nil`
+  and filters on delivery against `surfaceRoot_.window`, since another window
+  losing focus is not this surface's press being interrupted.
+
+  `dispatchTouchCancel()` already does nothing when nothing is down, so the
+  observer needs no state of its own; the destructor removes it.
+
+  Two tests, each with the sabotage that proves it discriminates.
+  `a_press_is_cancelled_when_the_window_stops_being_key` fails when the cancel
+  call is dropped, and `a_press_survives_another_windows_focus_loss` fails when
+  the window filter is. Both drive the real path, a real `NSWindow`,
+  `rnMouseDownAt:` with no release, and the notification posted for real, so
+  neither is asserting on a helper of its own.
+
+  **GTK needed nothing**, which is the part of the entry that held up:
+  `GtkGestureClick` has a `cancel` signal, wired at
+  `GtkTouchDispatcher.cpp:65` since the gestures landed. AppKit having no
+  equivalent is why this was a macOS entry.
 - ~~Within `<View>`: per-corner radii, borders, transform, z-index and
   pointer-events are unmapped.~~ All five are mapped, and have been since
   2026-09-13; see "The borders macOS was never drawing". The entry outlived

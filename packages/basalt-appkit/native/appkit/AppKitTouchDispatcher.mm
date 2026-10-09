@@ -125,9 +125,35 @@ AppKitTouchDispatcher::AppKitTouchDispatcher(AppKitMountingManager *mountingMana
   // The root's tracking area is only wanted once there is somewhere to send
   // hover, and AppKit will not ask again just because a property changed.
   [surfaceRoot_ updateTrackingAreas];
+
+  // A press that the window stops being able to finish. Registered with no
+  // object, and filtered on delivery: at construction the root is not in a
+  // window yet, so there is nothing to register *for*.
+  resignObserver_ = [NSNotificationCenter.defaultCenter
+      addObserverForName:NSWindowDidResignKeyNotification
+                  object:nil
+                   queue:nil
+              usingBlock:^(NSNotification *notification) {
+                this->windowResignedKey((__bridge void *)notification.object);
+              }];
+}
+
+void AppKitTouchDispatcher::windowResignedKey(void *window) {
+  // Only this root's window. Another window losing focus is not this press's
+  // business, and with several windows open every one of them would otherwise
+  // cancel every other's touch.
+  if (surfaceRoot_ == nil || surfaceRoot_.window != (__bridge NSWindow *)window) {
+    return;
+  }
+  // A no-op when nothing is down, which is why this needs no state of its own.
+  dispatchTouchCancel();
 }
 
 AppKitTouchDispatcher::~AppKitTouchDispatcher() {
+  if (resignObserver_ != nil) {
+    [NSNotificationCenter.defaultCenter removeObserver:resignObserver_];
+    resignObserver_ = nil;
+  }
   // The root's reference is weak, so it goes nil on its own; clearing the back
   // pointer first means an event already in flight cannot reach a dead object.
   ((RnAppKitInputTarget *)inputTarget_).dispatcher = nullptr;

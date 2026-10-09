@@ -13,6 +13,11 @@
 
 #include "TestHarness.h"
 
+#include "EventRecorder.h"
+
+#include <algorithm>
+#include <string>
+
 #include "PointerButtons.h"
 
 #import "AppKitFocus.h"
@@ -941,5 +946,116 @@ TEST(appkit_hit_slop_is_reported_in_the_tree) {
     const CGFloat insets[4] = {1, 2, 3, 4};
     [view setRnHitSlop:insets];
     EXPECT([[view describeTree] containsString:@"hit-slop=(1,2,3,4)"]);
+  }
+}
+
+namespace {
+
+// The recorder reports every event it saw, in order; these two tests ask only
+// whether a kind arrived at all.
+bool saw(const basalt::testing::EventRecorder &recorder, const std::string &type) {
+  const auto seen = recorder.seen();
+  return std::find(seen.begin(), seen.end(), type) != seen.end();
+}
+
+} // namespace
+
+// A press the window cannot finish, which is React Native's `touchCancel`.
+//
+// A touch has to end one of two ways. A press that simply stops is the shape
+// that leaves a `<Pressable>` highlighted for the rest of the screen's life:
+// `onPressOut` never runs and the responder is never released. GTK gets this
+// from its gesture recogniser's `cancelled` signal; AppKit has none, so the
+// dispatcher watches for its window to stop being key, which is what happens
+// when the person switches app mid-press.
+//
+// The whole path is here rather than just the cancel: the press goes in through
+// the same input handler AppKit calls, the notification is the real one, and
+// the event comes out of a real emitter.
+TEST(a_press_is_cancelled_when_the_window_stops_being_key) {
+  @autoreleasepool {
+    const basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    ShadowView view = makeView(10, 40, 50, 120, 60);
+    view.eventEmitter = recorder.emitter<facebook::react::TouchEventEmitter>();
+    ShadowViewMutationList mutations;
+    mutations.push_back(ShadowViewMutation::CreateMutation(view));
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, view, 0));
+    apply(manager, std::move(mutations));
+
+    // A window, because the notification this listens for names one and an
+    // unparented root belongs to none.
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    // Not released when closed: see test_appkit_services.mm.
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:root];
+
+    basalt::AppKitTouchDispatcher dispatcher(&manager, root);
+
+    // Down and *not* up, which is the state the cancel is about.
+    [root.rnInputHandler rnMouseDownAt:NSMakePoint(50, 60) button:0];
+    EXPECT(saw(recorder, "topTouchStart"));
+    EXPECT(!saw(recorder, "topTouchCancel"));
+
+    [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidResignKeyNotification
+                                                      object:window];
+    EXPECT(saw(recorder, "topTouchCancel"));
+    // And not an end: a cancelled touch is not a completed one, and a
+    // `<Pressable>` treats the two differently.
+    EXPECT(!saw(recorder, "topTouchEnd"));
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// Another window losing focus is not this press's business. With several
+// windows open, a dispatcher that cancelled on every notification would cancel
+// every other window's touch.
+TEST(a_press_survives_another_windows_focus_loss) {
+  @autoreleasepool {
+    const basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    ShadowView view = makeView(10, 40, 50, 120, 60);
+    view.eventEmitter = recorder.emitter<facebook::react::TouchEventEmitter>();
+    ShadowViewMutationList mutations;
+    mutations.push_back(ShadowViewMutation::CreateMutation(view));
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, view, 0));
+    apply(manager, std::move(mutations));
+
+    NSWindow *mine = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                 styleMask:NSWindowStyleMaskTitled
+                                                   backing:NSBackingStoreBuffered
+                                                     defer:NO];
+    mine.releasedWhenClosed = NO;
+    [mine.contentView addSubview:root];
+    NSWindow *other = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 200, 100)
+                                                  styleMask:NSWindowStyleMaskTitled
+                                                    backing:NSBackingStoreBuffered
+                                                      defer:NO];
+    other.releasedWhenClosed = NO;
+
+    basalt::AppKitTouchDispatcher dispatcher(&manager, root);
+    [root.rnInputHandler rnMouseDownAt:NSMakePoint(50, 60) button:0];
+    EXPECT(saw(recorder, "topTouchStart"));
+
+    [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidResignKeyNotification
+                                                      object:other];
+    EXPECT(!saw(recorder, "topTouchCancel"));
+
+    [mine orderOut:nil];
+    [mine close];
+    [other close];
+    manager.destroySurfaceRoot(kSurfaceId);
   }
 }

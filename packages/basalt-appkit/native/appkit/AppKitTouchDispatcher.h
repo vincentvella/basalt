@@ -93,6 +93,22 @@ class AppKitTouchDispatcher {
  private:
   enum class TouchKind { Start, Move, End, Cancel };
 
+  // The window stopped being key while the mouse was down.
+  //
+  // React Native expects a touch to end one of two ways, and a press that
+  // simply stops is the shape that leaves a `<Pressable>` highlighted for the
+  // rest of the screen's life: `onPressOut` never runs and the responder is
+  // never released. AppKit has no gesture recogniser to cancel, which is what
+  // the GTK host uses (`GtkGesture::cancelled`); this is the nearest thing, and
+  // it is what happens when the person switches app or a panel takes over
+  // mid-press.
+  //
+  // Observed here rather than in the host's window delegate so that the whole
+  // path has a test: the delegate is in `main_appkit.mm`, which the suite does
+  // not link, and the part worth testing is that the notification reaches the
+  // press.
+  void windowResignedKey(void *window);
+
   // Hands the pointer to a gesture recogniser that has activated, cancelling
   // React Native's touch. True when that happened, which means the caller has
   // nothing left to report.
@@ -123,6 +139,9 @@ class AppKitTouchDispatcher {
   // The Objective-C object the root forwards mouse events to. Held so it
   // outlives the root's weak reference to it.
   id inputTarget_;
+  // The notification observer for a window that stops being key; see
+  // windowResignedKey.
+  id resignObserver_;
 
   // The view a gesture started on. React Native reports every touch in a
   // gesture against the target it began on, even after the pointer leaves that
