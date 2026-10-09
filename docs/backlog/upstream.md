@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (19):**
+**Open (20):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -47,6 +47,7 @@ workaround and the comment explaining it, which is already written.
     defaults shadow it
 19. The TypeScript API omits `backgroundSize`, `backgroundPosition` and
     `backgroundRepeat`, which the Flow types and the C++ both have
+20. `accessibilityViewIsModal` is parsed for every platform and declared only by iOS
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -289,3 +290,22 @@ workaround and the comment explaining it, which is already written.
   narrow union is, and recorded here because a cast in an app is a cost paid by
   every app that wants a tiled gradient. The fix upstream is whatever regenerates
   that snapshot; the props are already in the Flow types it is meant to mirror.
+
+- **`accessibilityViewIsModal` is parsed for every platform and declared only by
+  iOS.** `AccessibilityProps.cpp` reads the raw prop with no condition on the
+  platform, in both the constructor and the prop-iterator switch, and
+  `AccessibilityProps::accessibilityViewIsModal` is in the struct every platform
+  compiles. The only declaration is in `BaseViewConfig.ios.js`; Android's omits
+  it.
+
+  So on any platform whose view config is built from Android's, React never
+  sends the prop and the field is always false. A desktop needs it exactly as
+  iOS does, and arguably more, every one of these platforms having real modal
+  windows: GTK has `GTK_ACCESSIBLE_PROPERTY_MODAL`, AppKit
+  `accessibilityModal`, and UIA `IsDialog`.
+
+  The same shape as entry 3, and the same workaround: one line in
+  `src/overrides/BaseViewConfig.ts`. Worth sending upstream as a line in
+  Android's config rather than as an argument about which platform the prop
+  belongs to, since Android's own TalkBack honours `aria-modal`'s equivalent
+  through `importantForAccessibility` on siblings.

@@ -9,7 +9,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
 4. accessibilityActions is ignored (~~accessibilityLabelledBy~~ and
    ~~accessibilityLiveRegion~~ are done on GTK and AppKit)
-5. Thirteen more AccessibilityProps fields that no host reads, counted rather
+5. Twelve more AccessibilityProps fields that no host reads, counted rather
    than guessed
 
 - Not tested against a real screen reader. GTK's assertions say the properties
@@ -147,14 +147,15 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   (`focus_*`) and two on AppKit. A view that stops being accessible leaves the
   tab order, which is the part that had to be got right rather than added.
 
-- **Thirteen more fields that no host reads, counted 2026-10-09.** Walking
+- **Twelve more fields that no host reads, counted 2026-10-09.** Walking
   `AccessibilityProps` field by field, which is what `scripts/scrape_props.py`
   now does for the support page: what the three hosts read is `accessible`,
   `accessibilityState`, `accessibilityLabel`, `accessibilityRole`,
   `accessibilityHint`, `accessibilityElementsHidden` and
   `importantForAccessibility`, plus `accessibilityValue`,
   `accessibilityLabelledBy` and `accessibilityLiveRegion` on GTK and AppKit, and
-  `testId` on all three. Everything else in the struct is ignored.
+  `testId` and `accessibilityViewIsModal` on all three. Everything else in the
+  struct is ignored.
 
   **Which splits three ways rather than being one gap.** Six are iOS's own with
   no desktop equivalent -- `accessibilityTraits`, `accessibilityLargeContentTitle`,
@@ -163,14 +164,48 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   family, which is entry 2: `accessibilityActions`, `onAccessibilityAction`,
   `onAccessibilityTap` and `accessibilityRespondsToUserInteraction`.
 
-  The remaining three are worth doing and are small. `accessibilityOrder` is the
-  reading order, which AT-SPI has as a relation and NSAccessibility as
-  `accessibilityChildren`; `accessibilityLanguage` is one attribute on each
-  platform and matters for a screen reader's pronunciation; and
-  `accessibilityViewIsModal` is `aria-modal`'s equivalent, which is what makes a
-  `<Modal>` trap a screen reader rather than letting it wander behind. GTK has
-  `GTK_ACCESSIBLE_PROPERTY_MODAL` for the last of those and AppKit has
-  `accessibilityModal`, so it is the next one to take.
+  The remaining two are `accessibilityOrder`, which is the reading order and
+  which AT-SPI has as a relation and NSAccessibility as
+  `accessibilityChildren`, and `accessibilityLanguage`.
+
+  **`accessibilityLanguage` was written here as "one attribute on each
+  platform", and that is wrong.** Checked against the three SDKs on 2026-10-09:
+
+  - **GTK has no accessible language property.** `GtkAccessibleProperty` has
+    nineteen values -- label, description, placeholder, level, sort, the three
+    value ones, modal, and the rest -- and none of them is a language. The
+    nearest thing is `pango_attr_language_new`, which tells the *shaper* what
+    language the text is in and says nothing to AT-SPI.
+  - **AppKit has two, and the one that fits needs macOS 26.**
+    `NSAccessibilityLanguageAttribute` is "a BCP-47 language code for the whole
+    object" and is `API_AVAILABLE(macos(26.0))`.
+    `NSAccessibilityLanguageTextAttribute` has been there since 10.13 but is an
+    *attributed string* key: it marks a segment of text, so it reaches a
+    `<Text>` and not a view.
+  - **Win32 has an exact property and wants a different vocabulary.**
+    `UIA_CulturePropertyId` is an LCID rather than a BCP-47 tag, so it needs
+    `LocaleNameToLCID` on the way out.
+
+  So the prop is one call on Windows, a text attribute on macOS with a view-wide
+  version arriving in 26, and nothing at all on GTK. Worth doing in that order,
+  and worth saying plainly that a `<View accessibilityLanguage="fr">` cannot be
+  honoured on Linux by any call that exists today.
+
+  **`accessibilityViewIsModal` came off this list on 2026-10-09**, and it is
+  the first prop here that needed a line of *JavaScript* rather than three of
+  C++. All three toolkits have the flag -- `GTK_ACCESSIBLE_PROPERTY_MODAL`,
+  AppKit's `accessibilityModal`, UIA's `IsDialog` -- and ReactCommon parses the
+  prop with no condition on the platform, but only `BaseViewConfig.ios.js`
+  declares it. A view config built from Android's therefore never sends it, so
+  the prop was always false whatever the hosts did with it.
+
+  `packages/basalt-core/src/overrides/BaseViewConfig.ts` declares it now, beside
+  the three pointer events that are there for the same kind of reason. The other
+  prop in that position is `borderCurve`, and backlog/correctness.md already says
+  what this one proves: the view-config line is what makes such a prop arrive at
+  all. It stays unimplemented there for a different reason, which that entry
+  gives -- AppKit has `kCACornerCurveContinuous` and GSK has no squircle, so the
+  two desktops would draw different corners from the same stylesheet.
 
   **`testId` came off this list on 2026-10-09**, and it is the one with a
   version in it. Each platform has an exact equivalent -- UIA's automation id,

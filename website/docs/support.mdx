@@ -28,7 +28,7 @@ is the one in the row and ReactCommon's is under it.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 61 of 96 | 63 of 96 | 34 of 96 |
+| Done | 62 of 96 | 64 of 96 | 35 of 96 |
 | | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `███████░░░░░░░░░░░░░` |
 
 Counting a row as done when the host implements it or ReactCommon does.
@@ -61,7 +61,7 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 | `backgroundColor` | ✅ | ✅ | ✅ |  |
 | `borderRadius` <sub>`borderRadii`</sub> | ✅ | ✅ | ✅ |  |
 | `borderColor` <sub>`borderColors`</sub> | ✅ | ✅ | ✅ |  |
-| `borderCurve` <sub>`borderCurves`</sub> | – | – | – | [the prop cannot arrive: only the iOS view config declares it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
+| `borderCurve` <sub>`borderCurves`</sub> | – | – | – | [only the iOS view config declares it, and the two desktops would draw different corners](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `borderStyle` <sub>`borderStyles`</sub> | ✅ | ✅ | ✖ | [Direct2D draws it, nothing reads the prop](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `outlineColor` | ✅ | ✅ | ✖ | [DrawRoundedRectangle and a stroke style](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `outlineOffset` | ✅ | ✅ | ✖ | [DrawRoundedRectangle and a stroke style](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
@@ -125,12 +125,12 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `accessibilityLiveRegion` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `accessibilityRole` | ✅ | ✅ | ✅ |  |
 | `accessibilityHint` | ✅ | ✅ | ✅ |  |
-| `accessibilityLanguage` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityLanguage` | ✖ | ✖ | ✖ | [GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityLargeContentTitle` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityValue` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `accessibilityActions` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityShowsLargeContentViewer` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `accessibilityViewIsModal` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityViewIsModal` | ✅ | ✅ | ✅ |  |
 | `accessibilityElementsHidden` | ✅ | ✅ | ✅ |  |
 | `accessibilityIgnoresInvertColors` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityRespondsToUserInteraction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |

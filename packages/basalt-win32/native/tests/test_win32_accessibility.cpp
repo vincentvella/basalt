@@ -299,3 +299,30 @@ TEST(accessibility_no_test_id_leaves_the_automation_id_unset) {
   EXPECT(provider != nullptr);
   EXPECT_EQ(propertyType(provider, UIA_AutomationIdPropertyId), VT_EMPTY);
 }
+
+// `accessibilityViewIsModal`, which UIA calls a dialog: a client that honours
+// `IsDialog` stops offering what is behind the element.
+TEST(accessibility_a_modal_view_is_a_dialog) {
+  RnAccessibleInfo info = withRole("button");
+  info.label = "Save";
+  info.modal = true;
+
+  auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_IsDialogPropertyId), VT_BOOL);
+  EXPECT(boolProperty(provider, UIA_IsDialogPropertyId));
+
+  auto view = std::make_unique<RnWin32View>(5);
+  view->setFrame(0, 0, 100, 40);
+  view->setAccessibleInfo(info);
+  EXPECT_EQ(view->describeTree(),
+            std::string("view tag=5 frame=(0,0 100x40) role=button modal\n"));
+}
+
+// Unset rather than false: "this is not a dialog" is a claim, and the other two
+// hosts stay quiet about it too.
+TEST(accessibility_a_plain_view_claims_no_dialog) {
+  auto provider = providerFor(withRole("button"));
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_IsDialogPropertyId), VT_EMPTY);
+}

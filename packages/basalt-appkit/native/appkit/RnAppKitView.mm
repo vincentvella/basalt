@@ -821,6 +821,13 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   self.accessibilityIdentifier = _rnTestId.length > 0 ? _rnTestId : nil;
 }
 
+- (void)setRnAccessibleModal:(BOOL)modal {
+  _rnAccessibleModal = modal;
+  // AppKit's own flag, which VoiceOver reads: inside a modal element it stops
+  // offering the siblings behind it.
+  self.accessibilityModal = modal;
+}
+
 - (void)setRnAccessibleHidden:(BOOL)hidden {
   if (hidden) {
     self.accessibilityElement = NO;
@@ -2844,6 +2851,11 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   // make this dump differ between two machines running the same app.
   if (self.rnFocusable) {
     [out appendString:@" focusable"];
+  }
+  // `accessibilityViewIsModal`, after `focusable` because that is the order the
+  // GTK side prints and this dump is diffed line by line.
+  if (self.rnAccessibleModal) {
+    [out appendString:@" modal"];
   }
   [out appendString:@"\n"];
 

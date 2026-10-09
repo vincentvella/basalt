@@ -332,3 +332,22 @@ TEST(a_test_id_becomes_the_accessibility_identifier) {
     EXPECT(std::string([view describeTree].UTF8String).find("testid=") == std::string::npos);
   }
 }
+
+// `accessibilityViewIsModal`, which AppKit spells `accessibilityModal`: inside
+// a modal element VoiceOver stops offering the siblings behind it.
+TEST(a_modal_view_sets_accessibility_modal) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    EXPECT(!view.isAccessibilityModal);
+    EXPECT(std::string([view describeTree].UTF8String).find(" modal") == std::string::npos);
+
+    view.rnAccessibleModal = YES;
+    EXPECT(view.isAccessibilityModal);
+    EXPECT(std::string([view describeTree].UTF8String).find(" modal") != std::string::npos);
+
+    // And back, because a <Modal> that closes has to stop trapping the reader.
+    view.rnAccessibleModal = NO;
+    EXPECT(!view.isAccessibilityModal);
+    EXPECT(std::string([view describeTree].UTF8String).find(" modal") == std::string::npos);
+  }
+}

@@ -4,6 +4,13 @@ Not scheduled. One file per area, because this was a single 1,200-line document
 and finding anything in it meant reading all of it.
 
 Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
+`scripts/check_backlog.js` holds each count against the file it counts.
+
+**A new entry goes at the end of its file's list, and the numbers are
+identifiers rather than an order.** Entries are cross-referenced by number --
+"entry 14 of upstream.md" -- so inserting one in the middle silently retargets
+every reference past it. Inserting `accessibilityViewIsModal` as entry 4 of
+upstream.md moved sixteen entries and broke two references that nothing checks.
 
 ## What a desktop still owes
 
@@ -36,7 +43,7 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |
 | [Testing](backlog/testing.md) | 9 | What the suites cannot see. Was two sections with the same name, 800 lines apart; merged. |
-| [Upstream](backlog/upstream.md) | 19 | Bugs and gaps in React Native and Expo, with the workarounds here. |
+| [Upstream](backlog/upstream.md) | 20 | Bugs and gaps in React Native and Expo, with the workarounds here. |
 
 ## How to use this
 

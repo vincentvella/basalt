@@ -66,6 +66,9 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+# Filled in by javascript_built_at() on first use.
+_JAVASCRIPT_BUILT_AT: float | None = None
 # Which host, and therefore which binary and which bundle. Rebound by
 # --platform and --build-dir: testing against a second React Native version
 # means a second build tree, and the suite has to run the host from it.
@@ -950,6 +953,22 @@ def app_source(entry: str) -> Path:
     raise Failure(f"no e2e/{entry}.(tsx|ts|js)")
 
 
+def javascript_built_at() -> float:
+    """When this repository's own JavaScript was last built.
+
+    Walked once and remembered: thirty-one apps ask, and the answer cannot
+    change while the suite runs -- `scripts/test_all.sh` builds the packages
+    before any scenario starts.
+    """
+    global _JAVASCRIPT_BUILT_AT
+    if _JAVASCRIPT_BUILT_AT is None:
+        newest = 0.0
+        for built in (REPO / "packages" / "basalt-core" / "dist").rglob("*.js"):
+            newest = max(newest, built.stat().st_mtime)
+        _JAVASCRIPT_BUILT_AT = newest
+    return _JAVASCRIPT_BUILT_AT
+
+
 def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
     """Bundles e2e/<entry>.js for this platform, unless it is already there.
 
@@ -963,7 +982,15 @@ def bundle_app(build: Path, entry: str, dev: bool = False) -> Path:
     # Older than the file it was built from means a scenario would silently test
     # the last version of the app rather than this one -- which is exactly what
     # happened the first time this helper was used twice.
-    if bundled.exists() and bundled.stat().st_mtime >= source.stat().st_mtime:
+    #
+    # And "the file it was built from" is not only the app. A bundle also
+    # carries this repository's JavaScript: the view-config override decides
+    # which props React sends at all, so a change there is invisible to an app
+    # whose source has not moved. That cost an hour: `accessibilityViewIsModal`
+    # was added to the override, the scenario kept failing, and the bundle it
+    # was testing had been built before the override changed.
+    newest = max(source.stat().st_mtime, javascript_built_at())
+    if bundled.exists() and bundled.stat().st_mtime >= newest:
         return bundled
     arguments = [
         "--dev" if dev else "--prod",
@@ -4263,6 +4290,50 @@ def test_test_id(bundle: Path) -> None:
         )
 
 
+def test_modal_view(bundle: Path) -> None:
+    """`accessibilityViewIsModal` reaches the view, and the platform's flag.
+
+    One prop, three names: ARIA's `aria-modal` on GTK, `accessibilityModal` on
+    AppKit, and UIA's `IsDialog` on Windows. All three mean the same thing to a
+    screen reader, which is to stay inside the element rather than reading the
+    views behind it, and none of the three hosts read it until 2026-10-09.
+
+    The dump carries React Native's word, so this runs everywhere; that each
+    platform really set its own flag is asserted in each host's own suite.
+    """
+    app = bundle_app(bundle.parent, "a11y")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltA11y"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    modal = [line for line in tree.splitlines() if " modal" in line]
+    if len(modal) != 1:
+        raise Failure(
+            f"{len(modal)} views report being modal; e2e/a11y.tsx marks one.\n{tree}"
+        )
+    # On the view that asked, which is the checkbox: the prop does not inherit,
+    # and a host that set it on every descendant would fail the count above.
+    if "role=checkbox" not in modal[0]:
+        raise Failure(f"the modal flag landed on the wrong view.\n{modal[0]}")
+
+
 def test_accessibility_live_region(bundle: Path) -> None:
     """`accessibilityLiveRegion` reads a status message out when it changes.
 
@@ -6440,6 +6511,7 @@ SCENARIOS = [
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("a testID reaches the view and the platform", test_test_id),
+    ("accessibilityViewIsModal reaches the view", test_modal_view),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),

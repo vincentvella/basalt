@@ -186,6 +186,9 @@ struct _RnView {
   // person sees. GTK publishes it as the accessible id; see
   // rn_view_accessible_init.
   char *test_id;
+  // `accessibilityViewIsModal`, kept so the dump can report it: the property
+  // itself goes straight to GTK and cannot be read back without an AT.
+  gboolean accessible_modal;
   // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
   // to GDK so the tree dump can report what the app asked for.
   char *cursor_name;
@@ -1173,6 +1176,7 @@ static void rn_view_init(RnView *self) {
   self->texture_fit = RN_IMAGE_FIT_COVER;
   self->role_name = nullptr;
   self->test_id = nullptr;
+  self->accessible_modal = FALSE;
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
   self->gradients = nullptr;
@@ -1368,6 +1372,16 @@ void rn_view_set_accessible_text(RnView *self, const char *label, const char *de
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, description, -1);
   }
+}
+
+void rn_view_set_accessible_modal(RnView *self, gboolean modal) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  self->accessible_modal = modal;
+  // ARIA's `aria-modal`, which is what GTK's property is: it tells a screen
+  // reader to stay inside this element rather than wandering through the views
+  // behind it, which is React Native's `accessibilityViewIsModal`.
+  gtk_accessible_update_property(
+      GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_MODAL, modal, -1);
 }
 
 static void rn_view_apply_flag(RnView *self, GtkAccessibleState state, RnAccessibleFlag flag) {
@@ -2713,6 +2727,11 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // two machines running the same app.
   if (gtk_accessible_get_platform_state(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PLATFORM_STATE_FOCUSABLE)) {
     g_string_append(out, " focusable");
+  }
+  // `accessibilityViewIsModal`, in React Native's words like the role and the
+  // testID above. What each toolkit did with it is asserted in its own suite.
+  if (self->accessible_modal) {
+    g_string_append(out, " modal");
   }
 
   g_string_append_c(out, '\n');

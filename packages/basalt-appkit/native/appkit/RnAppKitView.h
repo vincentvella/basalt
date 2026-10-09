@@ -620,6 +620,11 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // the way React Native spelled it.
 @property(nonatomic, copy, nullable) NSString *rnTestId;
 
+// `accessibilityViewIsModal`: a screen reader should stay inside this view
+// rather than reading what is behind it. Sets AppKit's `accessibilityModal`,
+// which is the same idea as ARIA's `aria-modal` and UIA's `IsDialog`.
+@property(nonatomic, assign) BOOL rnAccessibleModal;
+
 // The `cursor` style property, as the CSS keyword React Native uses: "pointer",
 // "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
 // whatever encloses this view, which is what `cursor: 'auto'` means.

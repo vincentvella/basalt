@@ -886,6 +886,9 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       ? nil
       : [NSString stringWithUTF8String:props->testId.c_str()];
 
+  // `accessibilityViewIsModal`, which keeps VoiceOver inside a <Modal>.
+  view.rnAccessibleModal = props->accessibilityViewIsModal ? YES : NO;
+
   view.rnNativeId = props->nativeId.empty()
       ? nil
       : [NSString stringWithUTF8String:props->nativeId.c_str()];

@@ -90,7 +90,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
     },
     "cannot-arrive": {
-      "text": "the prop cannot arrive: only the iOS view config declares it",
+      "text": "only the iOS view config declares it, and the two desktops would draw different corners",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
     },
     "no-group": {
@@ -143,6 +143,10 @@
     },
     "gtk-accessible-id": {
       "text": "GTK publishes an accessible id from 4.22; CI's 4.14 carries it and cannot publish it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+    },
+    "a11y-language": {
+      "text": "GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     }
   },
@@ -428,7 +432,7 @@
       "linux": "no",
       "macos": "no",
       "windows": "no",
-      "why": "a11y-ignored"
+      "why": "a11y-language"
     },
     "AccessibilityProps.accessibilityLargeContentTitle": {
       "linux": "no",
@@ -455,10 +459,12 @@
       "why": "a11y-ios"
     },
     "AccessibilityProps.accessibilityViewIsModal": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "accessibilityViewIsModal"
+      ]
     },
     "AccessibilityProps.accessibilityElementsHidden": {
       "linux": "yes",

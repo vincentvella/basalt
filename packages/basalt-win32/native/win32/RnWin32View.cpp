@@ -1276,6 +1276,11 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
   if (focusable_) {
     out += " focusable";
   }
+  // `accessibilityViewIsModal`, after `focusable` because that is where the
+  // other two hosts print it and this dump is diffed line by line.
+  if (accessible_.modal) {
+    out += " modal";
+  }
 
   out += "\n";
 

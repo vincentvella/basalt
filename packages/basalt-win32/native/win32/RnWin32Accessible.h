@@ -62,6 +62,10 @@ struct RnAccessibleInfo {
   // calls an automation id. Not a label -- nothing reads it aloud -- and not
   // `nativeID`, which is how an app names a view to itself.
   std::string testId;
+  // `accessibilityViewIsModal`. UIA calls this a dialog: a client that honours
+  // `IsDialog` stops offering what is behind the element, which is the same
+  // behaviour ARIA's `aria-modal` and AppKit's `accessibilityModal` ask for.
+  bool modal = false;
   RnAccessibleState state;
   // accessible={false} and accessibilityElementsHidden.
   bool hidden = false;

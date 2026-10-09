@@ -72,7 +72,12 @@ function App() {
           style={styles.chip}
           accessibilityRole="checkbox"
           accessibilityLabel="Wrap lines"
-          accessibilityState={{checked: true}}>
+          accessibilityState={{checked: true}}
+          // accessibilityViewIsModal: a screen reader should stay inside this
+          // view rather than reading the ones behind it. Each platform has its
+          // own name for it -- aria-modal, accessibilityModal, UIA's IsDialog
+          // -- and the dump prints React Native's.
+          accessibilityViewIsModal={true}>
           <Text style={styles.label}>Checked</Text>
         </Pressable>
 

@@ -663,3 +663,38 @@ TEST(accessibility_no_test_id_is_no_accessible_id) {
   g_free(id);
 #endif
 }
+
+// `accessibilityViewIsModal`, which GTK spells `aria-modal`: a screen reader
+// stays inside the element rather than reading the views behind it.
+TEST(accessibility_a_modal_view_says_so) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                            props.accessibilityViewIsModal = true;
+                          }));
+
+  char *mismatch = gtk_test_accessible_check_property(
+      GTK_ACCESSIBLE(view), GTK_ACCESSIBLE_PROPERTY_MODAL, TRUE);
+  EXPECT(mismatch == nullptr);
+  g_free(mismatch);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string dump = text != nullptr ? text : "";
+  g_free(text);
+  EXPECT(dump.find(" modal") != std::string::npos);
+}
+
+// And a view that said nothing claims nothing. "Not modal" is a claim, and the
+// three hosts agree to stay quiet rather than make it.
+TEST(accessibility_a_plain_view_is_not_modal) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(10, [](ViewProps &) {}));
+
+  char *text = rn_view_describe_tree(view);
+  const std::string dump = text != nullptr ? text : "";
+  g_free(text);
+  EXPECT(dump.find(" modal") == std::string::npos);
+}

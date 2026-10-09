@@ -1109,6 +1109,10 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // itself, the other is how a test runner outside the process finds it. Every
   // React Native app under test sets the second, and no host read it.
   rn_view_set_test_id(view, props->testId.c_str());
+
+  // `accessibilityViewIsModal`, which is what stops a screen reader wandering
+  // out of a <Modal> into the screen behind it.
+  rn_view_set_accessible_modal(view, props->accessibilityViewIsModal ? TRUE : FALSE);
   // And remember which view it names, which is what `accessibilityLabelledBy`
   // needs: that prop names other views by their nativeID and nothing else here
   // can look one up. See core/LabelRegistry.h.

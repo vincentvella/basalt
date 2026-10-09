@@ -153,6 +153,16 @@ class AccessibleProvider final : public IRawElementProviderSimple {
         }
         return S_OK;
 
+      case UIA_IsDialogPropertyId:
+        // React Native's `accessibilityViewIsModal`. Left unset rather than
+        // VARIANT_FALSE when the app did not ask: "this is not a dialog" is a
+        // claim, and the other two hosts say nothing in that case either.
+        if (info_.modal) {
+          value->vt = VT_BOOL;
+          value->boolVal = VARIANT_TRUE;
+        }
+        return S_OK;
+
       case UIA_HelpTextPropertyId:
         // React Native's `accessibilityHint` is "what happens if you do this",
         // which is what UIA calls help text. AppKit puts it in the

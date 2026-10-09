@@ -1,5 +1,6 @@
 /**
- * React Native's own base view config, plus three props it forgot to declare.
+ * React Native's own base view config, plus the props it does not declare for
+ * this platform.
  *
  * `onPointerDown`, `onPointerUp` and `onPointerCancel` are registered in
  * `bubblingEventTypes` -- `topPointerDown` and friends, with their bubbled and
@@ -18,8 +19,14 @@
  * press. The effect here is that a right-click cannot be answered at all, which
  * is what this platform needed them for; see core/PointerButtons.h.
  *
- * Reported rather than forked: the whole file is React Native's, this adds five
- * keys, and it goes away when upstream adds them. See docs/BACKLOG.md.
+ * `accessibilityViewIsModal` is the second kind of gap and the simpler one:
+ * ReactCommon parses it for every platform and only the *iOS* view config
+ * declares it, so on a config built from Android's it never arrives. One line
+ * fixes that, and it is the line that lets a <Modal> tell a screen reader to
+ * stay inside it.
+ *
+ * Reported rather than forked: the whole file is React Native's, this adds six
+ * keys, and each goes away when upstream adds it. See docs/BACKLOG.md.
  *
  * @format
  */
@@ -69,5 +76,16 @@ export default {
     onPointerUpCapture: true,
     onPointerCancel: true,
     onPointerCancelCapture: true,
+    // `accessibilityViewIsModal`, which ReactCommon parses for every platform
+    // -- `AccessibilityProps.cpp` reads the raw prop with no condition on it --
+    // and which only `BaseViewConfig.ios.js` declares. Without the declaration
+    // React never sends it, so the three hosts read a prop that is always
+    // false and a <Modal> cannot tell a screen reader to stay inside it.
+    //
+    // A desktop needs it for the same reason iOS does, and more: every one of
+    // these platforms has a real modal window. GTK publishes it as
+    // `aria-modal`, AppKit as `accessibilityModal` and Win32 as UIA's
+    // `IsDialog`.
+    accessibilityViewIsModal: true,
   },
 };
