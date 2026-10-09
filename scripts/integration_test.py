@@ -147,15 +147,44 @@ def check_output(stderr: str, returncode: int, allow_js_errors: bool = False) ->
             raise Failure(f"javascript error: {line}")
 
 
-def click_with_xdotool(points: list[tuple[int, int]]) -> None:
+def pick_window_of(windows: list[str], pid: int) -> str:
+    """The window belonging to this host, not whichever one came back first.
+
+    `xdotool search --name basalt-core` matches every host on the display, and
+    a leftover one from an earlier scenario answers to the same name. Taking
+    the first match meant clicking a window that was not under test, which
+    looks exactly like the feature being broken. _NET_WM_PID says which is
+    which, and GTK sets it; a window that does not answer is only usable when
+    it is the only candidate.
+    """
+    unidentified = []
+    for window in windows:
+        owner = subprocess.run(
+            ["xdotool", "getwindowpid", window], capture_output=True, text=True
+        )
+        if owner.returncode != 0 or not owner.stdout.strip().isdigit():
+            unidentified.append(window)
+            continue
+        if int(owner.stdout.strip()) == pid:
+            return window
+    if len(windows) == 1 and unidentified == windows:
+        return windows[0]
+    raise Failure(
+        f"none of the {len(windows)} windows named basalt-core belongs to the "
+        f"host that was launched (pid {pid}); a leftover host is on the display"
+    )
+
+
+def click_with_xdotool(points: list[tuple[int, int]], pid: int) -> None:
     """Clicks through the X server, so GDK delivers the event itself."""
-    window = subprocess.run(
+    windows = subprocess.run(
         ["xdotool", "search", "--name", "basalt-core"],
         capture_output=True,
         text=True,
     ).stdout.split()
-    if not window:
+    if not windows:
         raise Failure("could not find the host window with xdotool")
+    window = [pick_window_of(windows, pid)]
 
     geometry = subprocess.run(
         ["xdotool", "getwindowgeometry", "--shell", window[0]],
@@ -166,6 +195,14 @@ def click_with_xdotool(points: list[tuple[int, int]]) -> None:
         line.split("=", 1) for line in geometry.splitlines() if "=" in line
     )
     x0, y0 = int(origin.get("X", 0)), int(origin.get("Y", 0))
+
+    # Raised for the same reason the macOS path raises: the pointer is moved to
+    # a screen point and the X server delivers the press to whatever is on top
+    # there. `windowraise` rather than `windowactivate` because it is plain X
+    # and needs no window manager, which CI's Xvfb does not run; it is allowed
+    # to fail for the same reason.
+    subprocess.run(["xdotool", "windowraise", window[0]], check=False)
+    time.sleep(0.3)
 
     for x, y in points:
         subprocess.run(["xdotool", "mousemove", str(x0 + x), str(y0 + y)], check=True)
@@ -183,7 +220,7 @@ def type_with_xdotool(text: str) -> None:
 # --- A real click, which is the only kind that can focus a field -------------
 
 
-def click_field_with_cgevent(surface_height: int) -> None:
+def click_field_with_cgevent(surface_height: int, pid: int) -> None:
     """Clicks the demo's <TextInput> with a real mouse event, on macOS.
 
     Not `BASALT_TEST_TAP`, and not System Events' `click at`. The first enters
@@ -208,13 +245,30 @@ def click_field_with_cgevent(surface_height: int) -> None:
     # bar's height as the difference between that and the surface, which the
     # caller read out of a tree dump. Nothing here has to know what AppKit's
     # title bar measures.
-    script = """
+    # By pid, not by name. `every process whose name contains "basalt"` also
+    # matches basalt_appkit_tests and any host left over from an earlier
+    # scenario, and `item 1` of that list is whichever the window server
+    # answered with. Both hosts open a 900x700 window at the same default
+    # position, so clicking the wrong one lands on a *different* process's
+    # field and the scenario reports this feature broken. The caller launched
+    # the host and knows which process it is.
+    # The window is raised before it is measured, and that is not politeness.
+    # CGEventPost delivers to whatever window is topmost at the screen point,
+    # which need not be the one the point was computed from: an editor or a
+    # Finder window over that corner of the screen swallows the click and the
+    # scenario reports the feature broken. Measured, not guessed -- with
+    # another application's window covering the field the scenario failed 3 of
+    # 3 runs, and 0 of 5 without it.
+    script = f"""
     tell application "System Events"
-      set procs to (every process whose name contains "basalt")
-      if (count of procs) = 0 then error "no host process"
-      set w to first window of (item 1 of procs)
-      set {wx, wy} to position of w
-      set {ww, wh} to size of w
+      set procs to (every process whose unix id is {pid})
+      if (count of procs) = 0 then error "no host process for pid {pid}"
+      set proc to item 1 of procs
+      set frontmost of proc to true
+      set w to first window of proc
+      perform action "AXRaise" of w
+      set {{wx, wy}} to position of w
+      set {{ww, wh}} to size of w
       return (wx as text) & "," & (wy as text) & "," & (ww as text) & "," & (wh as text)
     end tell
     """
@@ -239,6 +293,9 @@ def click_field_with_cgevent(surface_height: int) -> None:
             "could not find the host window after 20 seconds: "
             f"{found.stderr.strip() if found is not None else 'never asked'}"
         )
+    # The raise has to reach the window server before the click is posted, or
+    # the click arrives while the old window is still in front.
+    time.sleep(0.5)
     wx, wy, _ww, wh = (int(part) for part in found.stdout.strip().split(","))
 
     chrome = wh - surface_height
@@ -270,15 +327,15 @@ def click_field_with_cgevent(surface_height: int) -> None:
         time.sleep(0.15)
 
 
-def click_field_for_real(surface_height: int) -> None:
+def click_field_for_real(surface_height: int, pid: int) -> None:
     """The platform's way of producing a click a window system believes in."""
     if PLATFORM == "macos":
-        click_field_with_cgevent(surface_height)
+        click_field_with_cgevent(surface_height, pid)
         return
     if PLATFORM == "linux":
         # The demo's field, from e2e/index.js. xdotool goes through the X server,
         # so GDK delivers the press itself.
-        click_with_xdotool([(FIELD_POINT[0], FIELD_POINT[1])])
+        click_with_xdotool([(FIELD_POINT[0], FIELD_POINT[1])], pid)
         return
     raise Skipped(f"no real click on {PLATFORM}")
 
@@ -315,7 +372,7 @@ def run_host(bundle: Path, taps: str = "", run_ms: int = 4000, typing: str = "")
             # The window has to exist before it can be clicked.
             time.sleep(4)
             try:
-                click_with_xdotool(points)
+                click_with_xdotool(points, process.pid)
                 if typing:
                     type_with_xdotool(typing)
             finally:
@@ -1635,7 +1692,7 @@ def test_click_focuses_a_field(bundle: Path) -> None:
         # The window has to exist, and be where the system thinks it is.
         time.sleep(5)
         try:
-            click_field_for_real(surface_height)
+            click_field_for_real(surface_height, process.pid)
             time.sleep(2)
         finally:
             _, stderr = process.communicate(timeout=90)

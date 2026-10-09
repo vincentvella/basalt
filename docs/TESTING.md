@@ -599,6 +599,38 @@ on Windows that meant the quit timer stopping going through `WM_CLOSE`, because
 otherwise the app would have refused the harness too and the failure would have
 been a hang rather than a test.
 
+### A real click lands where the window server says, not where the test aimed
+
+`click a TextInput with a real mouse and see it focus` posts a `CGEvent` at a
+*screen* point, computed from the host window's position. The window server then
+delivers that click to whichever window is topmost at that point, which is not
+necessarily the window the point came from. An editor or a Finder window over
+that corner of the screen takes the click instead, the field under test stays
+unfocused, and the scenario reports the feature broken.
+
+That is measured, not reasoned. With another application's window placed over
+the field the scenario failed 3 of 3 runs; without it, 0 of 5. It is why the
+scenario failed once on a developer Mac in a run whose only change was a text
+shadow.
+
+So the scenario raises the host before it measures it: `frontmost` on the
+process and `AXRaise` on the window, then half a second for the raise to reach
+the window server. With the raise in place the same covering window produces 3
+of 3 passes. The raise is not what focuses the field, which is worth stating
+because it would be a comfortable way to make the scenario pass for the wrong
+reason: raise the window and post no click, and the scenario still fails.
+
+The host is also addressed by pid rather than by name. `every process whose name
+contains "basalt"` matches `basalt_appkit_tests` and any host left over from an
+earlier scenario, and `item 1` of that list is whichever the window server
+answered with first. The Linux path had the same shape, `xdotool search --name
+basalt-core` taking the first match, and now prefers the window whose
+`_NET_WM_PID` is the host's. Neither bug was the cause of the failure above:
+every host opens a 900x700 window at the same default position, so the measured
+rectangle is identical and the click lands in the same place either way, which
+a run with a leftover host confirmed by passing. They are fixed because the
+next scenario that moves a window would have been debugging the wrong thing.
+
 ## Skia, where the tests do not run in CI
 
 `tests/test_appkit_skia.mm` is compiled only when the build was pointed at an app

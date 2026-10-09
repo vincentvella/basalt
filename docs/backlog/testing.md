@@ -428,12 +428,27 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and the first pass. That is a correlation and nothing more; it was not
   tested by reproducing it.
 
-  Worth doing before trusting it: reproduce deliberately, leave a host
-  running and start another, and if that is it, have the scenario fail with
-  "another host is already running" rather than with a focus error, which is
-  the misleading half. If it cannot be reproduced that way, the next suspect
-  is the quartz backend itself, and the answer is that this scenario should
-  not be believed off a real Linux session at all.
+  **The stray-host suspicion was tested on 2026-10-09 and is wrong.** Two
+  leftover `basalt_gtk` hosts and a leftover `basalt_appkit` host were left on
+  screen, all three with their own windows, and the scenario passed 3 of 3 runs.
+  So the one thing that happened between the last failure and the first pass
+  does not reproduce the failure, and the correlation recorded above is only
+  that.
+
+  Window activation was tested at the same time, because it is the other
+  obvious candidate on a backend where focus is the window server's to give:
+  another application's window was made active and placed over the host's, and
+  the scenario passed 4 of 4. GTK's `focus()` does not need its window to be
+  active on quartz. For the macOS host's *real-click* scenario that same
+  condition is fatal rather than harmless, 0 of 3, which is a different bug and
+  is fixed; `docs/TESTING.md` records it.
+
+  So the next suspect is what the entry already named, the quartz backend
+  itself, and the answer stands: this scenario should not be believed off a
+  real Linux session at all. What is left to try is a run under `--input real`
+  on a real Linux session against the same build, which is the only
+  configuration CI has never been red in and a developer Mac has never been
+  green in.
 
 - ~~CI has no rendering assertions, so it cannot catch what the cairo renderer
   did.~~ It has them, on Windows: the job runs `basalt_win32_tests.exe`, and
