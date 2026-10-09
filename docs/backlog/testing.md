@@ -699,6 +699,35 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and both of the bugs left in this file are in that one function, the other
   being `quitSynchronous` above.
 
+  **It failed again on 2026-10-09, at b4aaf98, and it is a different stack.**
+  Not `reportMount`, which is the one the paragraph above worked around:
+
+      MountingWalk<AppKitMountingManager>::destroy(int) + 320
+        <- applyMutations <- AppKitMountingManager::applyTransaction
+          <- applyPendingMount <- _dispatch_main_queue_drain
+
+  `host exited -11` on CI's macOS runner, same scenario, every other shard
+  green. So a Delete is being walked during the teardown gap and something
+  `destroy()` tells about the tag -- a live region, a label relation, a scroll
+  controller, a text peer, a Skia canvas, or the view's own release -- is gone
+  already. The guard and the epoch both passed, honestly, for the same reason
+  the previous one did: React Native tells a mounting manager nothing until
+  three statements after the damage.
+
+  **Which of those it is cannot be said yet, and the reason is this file's
+  fault rather than the crash's.** `check_output` printed the last 2000
+  characters of stderr, and a 64-frame stack is longer than that, so the report
+  arrived with frames 0 to 4 and the handler's marker line -- the signal, the
+  faulting address, which thread -- cut off the front. That is exactly the half
+  core/CrashHandler.cpp exists to print. Fixed: `crash_or_tail` keeps the
+  marker and the frames nearest the fault, so the next occurrence answers the
+  question this one could not.
+
+  Not reproduced on a developer Mac: 6 runs of the scenario alone, then 4 more
+  with ten `yes` processes loading the machine, on the theory that CI's runner
+  is slower and the gap therefore wider. All ten passed, which is the same
+  answer this bug has given every time it has been asked locally.
+
   **What is not checked, and should be said rather than implied:** nothing in
   the suite asserts that a mount hook ever ran. The call exists for Reanimated,
   the only animation scenario is `scrollTo({animated: true})` which does not go

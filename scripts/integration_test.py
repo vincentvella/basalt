@@ -134,9 +134,40 @@ def real_input_available() -> bool:
     return bool(os.environ.get("DISPLAY")) and shutil.which("xdotool") is not None
 
 
+def crash_or_tail(stderr: str, budget: int = 2600) -> str:
+    """The crash, if there was one, and otherwise the end of the output.
+
+    The last 2000 characters was the whole story until a host died and the
+    report said this:
+
+        host exited -11
+        ntingWalkINS_21AppKitMountingManagerE...destroyEi + 320
+
+    Frames 0 to 4 and the handler's own marker line -- the signal, the faulting
+    address and which thread it was -- had been cut off the front, which is the
+    half that says *what* was dereferenced. core/CrashHandler.cpp prints that
+    marker precisely so a CI failure answers the question, and a tail-shaped
+    budget threw it away.
+
+    So: from the marker when there is one, and from the end when there is not.
+    """
+    marker = stderr.rfind("*** basalt: ")
+    if marker == -1:
+        return stderr[-budget:]
+    # A little of what came before it, which is often the log line that says
+    # what the host was doing, and then as much of the stack as the budget
+    # allows -- from the top, the frames nearest the fault being the ones worth
+    # keeping.
+    # Each clipped, because a glog line carrying a whole shadow tree would
+    # otherwise push the stack back out of the budget it was just rescued from.
+    preamble = [line[-200:] for line in stderr[:marker].rstrip().splitlines()[-3:]]
+    head = ("\n".join(preamble) + "\n") if preamble else ""
+    return head + stderr[marker:marker + budget]
+
+
 def check_output(stderr: str, returncode: int, allow_js_errors: bool = False) -> None:
     if returncode != 0:
-        raise Failure(f"host exited {returncode}\n{stderr[-2000:]}")
+        raise Failure(f"host exited {returncode}\n{crash_or_tail(stderr)}")
     if allow_js_errors:
         # For the one scenario whose whole point is an error: e2e/logbox.js calls
         # console.error deliberately, and LogBox is what is being tested.
