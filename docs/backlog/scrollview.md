@@ -2,12 +2,13 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (5):**
 
 1. Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11
 2. contentBoundingRect
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
+5. `ScrollViewProps` has no rows on the support page
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -85,3 +86,19 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - `contentBoundingRect.origin` is assumed to be zero; iOS positions its
   container view at that origin.
 - `disableViewCulling` is never set, which will matter once AT-SPI lands.
+
+- **`ScrollViewProps` has no rows on the support page.** The last group of the
+  shape the layout props, `<Image>` and `<TextInput>` each had: a ReactCommon
+  struct nothing scrapes, so the props an app writes on a `<ScrollView>` are
+  neither implemented-and-ticked nor missing-and-recorded. They are absent.
+
+  `BaseScrollViewProps.h` has the same `#pragma mark - Props` shape the scraped
+  structs have, so the scrape is one entry in `STRUCTS` in
+  `scripts/scrape_props.py`. The judgement per field is the work, and a good
+  deal of it is already known from the entries in this file: the indicators,
+  momentum and elasticity, snapping and `contentInset` all landed between
+  2026-10-05 and 2026-10-08, with Windows behind on some of them.
+
+  Worth doing the same way the other three were: grep each host for the prop
+  rather than trusting this file, which is how the `<TextInput>` rows found two
+  stale claims in backlog/textinput.md on the day they were added.

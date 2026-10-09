@@ -518,6 +518,211 @@
       ]
     },
     {
+      "name": "BaseTextInputProps",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/textinput/BaseTextInputProps.h",
+      "note": "What a <TextInput> carries on every platform: the text, the placeholder, the tint colours and what the field will accept.",
+      "styleFrom": [],
+      "props": [
+        {
+          "name": "paragraphAttributes",
+          "kind": "internal"
+        },
+        {
+          "name": "defaultValue",
+          "kind": "component"
+        },
+        {
+          "name": "placeholder",
+          "kind": "component"
+        },
+        {
+          "name": "placeholderTextColor",
+          "kind": "component"
+        },
+        {
+          "name": "cursorColor",
+          "kind": "component"
+        },
+        {
+          "name": "selectionColor",
+          "kind": "component"
+        },
+        {
+          "name": "selectionHandleColor",
+          "kind": "component"
+        },
+        {
+          "name": "underlineColorAndroid",
+          "kind": "component"
+        },
+        {
+          "name": "maxLength",
+          "kind": "component"
+        },
+        {
+          "name": "text",
+          "kind": "component"
+        },
+        {
+          "name": "mostRecentEventCount",
+          "kind": "internal"
+        },
+        {
+          "name": "autoFocus",
+          "kind": "component"
+        },
+        {
+          "name": "autoCapitalize",
+          "kind": "component"
+        },
+        {
+          "name": "editable",
+          "kind": "component"
+        },
+        {
+          "name": "readOnly",
+          "kind": "component"
+        },
+        {
+          "name": "submitBehavior",
+          "kind": "component"
+        },
+        {
+          "name": "multiline",
+          "kind": "component"
+        },
+        {
+          "name": "disableKeyboardShortcuts",
+          "kind": "component"
+        },
+        {
+          "name": "acceptDragAndDropTypes",
+          "kind": "internal"
+        }
+      ]
+    },
+    {
+      "name": "TextInputProps",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputProps.h",
+      "note": "The iOS variant, which this platform reuses rather than forking: see docs/DECISIONS.md. It adds the selection and holds the traits below.",
+      "styleFrom": [],
+      "props": [
+        {
+          "name": "traits",
+          "kind": "internal"
+        },
+        {
+          "name": "selection",
+          "kind": "component"
+        },
+        {
+          "name": "inputAccessoryViewID",
+          "kind": "component"
+        },
+        {
+          "name": "inputAccessoryViewButtonLabel",
+          "kind": "component"
+        },
+        {
+          "name": "onKeyPressSync",
+          "kind": "internal"
+        },
+        {
+          "name": "onChangeSync",
+          "kind": "internal"
+        }
+      ]
+    },
+    {
+      "name": "TextInputTraits",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/primitives.h",
+      "note": "The keyboard and editing behaviour a field asks for. Declared with no section marker, so this one is read as a whole class.",
+      "styleFrom": [],
+      "props": [
+        {
+          "name": "autocapitalizationType",
+          "kind": "component",
+          "javascript": "autoCapitalize"
+        },
+        {
+          "name": "autoCorrect",
+          "kind": "component"
+        },
+        {
+          "name": "contextMenuHidden",
+          "kind": "component"
+        },
+        {
+          "name": "editable",
+          "kind": "component"
+        },
+        {
+          "name": "enablesReturnKeyAutomatically",
+          "kind": "component"
+        },
+        {
+          "name": "keyboardAppearance",
+          "kind": "component"
+        },
+        {
+          "name": "spellCheck",
+          "kind": "component"
+        },
+        {
+          "name": "caretHidden",
+          "kind": "component"
+        },
+        {
+          "name": "clearButtonMode",
+          "kind": "component"
+        },
+        {
+          "name": "scrollEnabled",
+          "kind": "component"
+        },
+        {
+          "name": "secureTextEntry",
+          "kind": "component"
+        },
+        {
+          "name": "clearTextOnFocus",
+          "kind": "component"
+        },
+        {
+          "name": "keyboardType",
+          "kind": "component"
+        },
+        {
+          "name": "showSoftInputOnFocus",
+          "kind": "component"
+        },
+        {
+          "name": "returnKeyType",
+          "kind": "component"
+        },
+        {
+          "name": "selectTextOnFocus",
+          "kind": "component"
+        },
+        {
+          "name": "dataDetectorTypes",
+          "kind": "component"
+        },
+        {
+          "name": "textContentType",
+          "kind": "component"
+        },
+        {
+          "name": "passwordRules",
+          "kind": "component"
+        },
+        {
+          "name": "smartInsertDelete",
+          "kind": "component"
+        }
+      ]
+    },
+    {
       "name": "ParagraphAttributes",
       "header": "packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h",
       "note": "What belongs to a whole paragraph rather than to a fragment: how many lines it may take, how it is truncated, and whether it shrinks to fit.",

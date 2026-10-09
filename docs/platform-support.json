@@ -192,6 +192,38 @@
     "win-image-blur": {
       "text": "CLSID_D2D1GaussianBlur, the same shape of work as the AppKit half",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "ti-ios": {
+      "text": "iOS's own, with no desktop equivalent",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-android": {
+      "text": "Android's own",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-soft-keyboard": {
+      "text": "a soft keyboard, which a desktop does not have",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-ignored": {
+      "text": "on the ignored list in that file, with what each would take",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-trait": {
+      "text": "read through the iOS variant's trait of the same name, which has its own row",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-default-value": {
+      "text": "TextInput.js folds it into `text` before a host sees anything",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-colours": {
+      "text": "AppKit paints the system colours through a borrowed field editor, and a Win32 EDIT has no form of them at all",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "win-textinput": {
+      "text": "the Win32 EDIT peer does not read it yet",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     }
   },
   "statuses": {
@@ -1433,6 +1465,313 @@
       "macos": "ignored",
       "windows": "ignored",
       "why": "image-android"
+    },
+    "BaseTextInputProps.paragraphAttributes": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "reactcommon"
+    },
+    "BaseTextInputProps.defaultValue": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "ti-default-value"
+    },
+    "BaseTextInputProps.placeholder": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->placeholder",
+        "props.placeholder"
+      ]
+    },
+    "BaseTextInputProps.placeholderTextColor": {
+      "linux": "yes",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-colours"
+    },
+    "BaseTextInputProps.cursorColor": {
+      "linux": "yes",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-colours"
+    },
+    "BaseTextInputProps.selectionColor": {
+      "linux": "yes",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-colours"
+    },
+    "BaseTextInputProps.selectionHandleColor": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-android"
+    },
+    "BaseTextInputProps.underlineColorAndroid": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-android"
+    },
+    "BaseTextInputProps.maxLength": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->maxLength",
+        "props.maxLength"
+      ]
+    },
+    "BaseTextInputProps.text": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->text",
+        "props.text"
+      ]
+    },
+    "BaseTextInputProps.mostRecentEventCount": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "mostRecentEventCount"
+      ]
+    },
+    "BaseTextInputProps.autoFocus": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "autoFocus"
+      ]
+    },
+    "BaseTextInputProps.autoCapitalize": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-trait"
+    },
+    "BaseTextInputProps.editable": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-trait"
+    },
+    "BaseTextInputProps.readOnly": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "readOnly"
+      ]
+    },
+    "BaseTextInputProps.submitBehavior": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "BaseTextInputProps.multiline": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-textinput"
+    },
+    "BaseTextInputProps.disableKeyboardShortcuts": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "BaseTextInputProps.acceptDragAndDropTypes": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputProps.traits": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->traits",
+        "props.traits"
+      ]
+    },
+    "TextInputProps.selection": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-textinput"
+    },
+    "TextInputProps.inputAccessoryViewID": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputProps.inputAccessoryViewButtonLabel": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputProps.onKeyPressSync": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputProps.onChangeSync": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputTraits.autocapitalizationType": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-textinput",
+      "reads": [
+        "traits.autocapitalizationType"
+      ]
+    },
+    "TextInputTraits.autoCorrect": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-textinput",
+      "reads": [
+        "traits.autoCorrect"
+      ]
+    },
+    "TextInputTraits.contextMenuHidden": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputTraits.editable": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "traits.editable"
+      ]
+    },
+    "TextInputTraits.enablesReturnKeyAutomatically": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputTraits.keyboardAppearance": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputTraits.spellCheck": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-textinput",
+      "reads": [
+        "traits.spellCheck"
+      ]
+    },
+    "TextInputTraits.caretHidden": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputTraits.clearButtonMode": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputTraits.scrollEnabled": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored",
+      "reads": [
+        "traits.scrollEnabled"
+      ]
+    },
+    "TextInputTraits.secureTextEntry": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "traits.secureTextEntry"
+      ]
+    },
+    "TextInputTraits.clearTextOnFocus": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputTraits.keyboardType": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-textinput",
+      "reads": [
+        "traits.keyboardType"
+      ]
+    },
+    "TextInputTraits.showSoftInputOnFocus": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-soft-keyboard"
+    },
+    "TextInputTraits.returnKeyType": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputTraits.selectTextOnFocus": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "ti-ignored"
+    },
+    "TextInputTraits.dataDetectorTypes": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputTraits.textContentType": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputTraits.passwordRules": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
+    },
+    "TextInputTraits.smartInsertDelete": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-ios"
     }
   },
   "areas": [

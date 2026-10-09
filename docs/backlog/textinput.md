@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
@@ -11,9 +11,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 5. ~~`blur` grabs focus for the window rather than dropping it~~
 6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored **
 7. src/overrides/TextInput
-8. autoCapitalize, autoCorrect, spellCheck, keyboardType, returnKeyType, clearBut
+8. returnKeyType, clearButtonMode, selectTextOnFocus and clearTextOnFocus are
+   ignored, and ~~autoCapitalize, autoCorrect, spellCheck and keyboardType~~ are
+   done on two hosts
 9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
-10. `TextInputProps` and its traits have no rows on the support page
+10. ~~`TextInputProps` and its traits have no rows on the support page~~
 
 - ~~**An uncontrolled field loses what was typed into it.**~~ Found on Windows
   in phase 46 and fixed on all three in phase 47. React Native's `TextInput.js`
@@ -106,8 +108,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `gtk_window_get_focus` is NULL after the command, in a real window, and fails
   on the old behaviour.
 - `placeholderTextColor`, `selectionColor` and `cursorColor` are parsed and
-  ignored **on Windows**. Done on GTK 2026-10-07; AppKit already honoured the
-  placeholder colour, so Windows is the one host left.
+  ignored **on AppKit and on Windows**. Done on GTK 2026-10-07.
+
+  **This entry said AppKit already honoured the placeholder colour, and that was
+  wrong**, found on 2026-10-09 when every `TextInput` prop got a row on the
+  support page and the audit asked which host reads which.
+  `AppKitTextInput.mm` paints `NSColor.placeholderTextColor`, which is the
+  *system's* placeholder grey, and never reads `props->placeholderTextColor`. An
+  app asking for a red placeholder gets grey, and the entry made that look done.
+
+  What AppKit would take is known and is the awkward shape this host keeps
+  hitting: the placeholder is an attributed string, so its colour is a line
+  beside the font it already sets. The caret and the selection are not. They are
+  `NSTextView.insertionPointColor` and `selectedTextAttributes`, and an
+  `NSTextField` has no text view of its own: it borrows the window's shared
+  field editor while it is focused, which is the same thing that made
+  `spellCheck` reapply on `becomeFirstResponder`. So those two want setting when
+  the field takes focus rather than when its props arrive, and resetting when it
+  loses focus, or the next field inherits them.
 
   Not through a per-widget provider, which is what the entry used to propose.
   The only per-widget route is `gtk_widget_get_style_context`, deprecated since
@@ -133,9 +151,28 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   caret is a bitmap you install yourself.
 - `src/overrides/TextInput.js` is a fork of React Native's component, and the only fork
   in the tree. Every prop upstream adds is a prop it will not have.
-- `autoCapitalize`, `autoCorrect`, `spellCheck`, `keyboardType`,
+- **`autoCapitalize`, `autoCorrect`, `spellCheck` and `keyboardType` are done
+  on GTK and AppKit**, 2026-10-09, and the four beside them are still ignored:
   `returnKeyType`, `clearButtonMode`, `selectTextOnFocus` and
-  `clearTextOnFocus` are ignored.
+  `clearTextOnFocus`. Windows reads none of the eight.
+
+  What the four took, and what each toolkit really has, is in
+  backlog/platform-macos.md: GTK has one input-hint bitmask that needs
+  read-modify-write and no hint for `autoCorrect`; AppKit has
+  `continuousSpellCheckingEnabled` and `automaticSpellingCorrectionEnabled` on
+  the text view a field borrows, and no form of `keyboardType` at all, which is
+  reported in the tree rather than pretended.
+
+  The support page added a row per trait on 2026-10-09, which is how the rest of
+  this list stopped being a sentence: `contextMenuHidden`, `caretHidden`,
+  `scrollEnabled`, `selectTextOnFocus`, `clearTextOnFocus`, `returnKeyType`,
+  `submitBehavior`, `onKeyPressSync`, `onChangeSync` and
+  `acceptDragAndDropTypes` are the ones that read "not yet" there rather than
+  "deliberately not", and each is a desktop question nobody has answered.
+  `enablesReturnKeyAutomatically`, `keyboardAppearance`, `clearButtonMode`,
+  `dataDetectorTypes`, `textContentType`, `passwordRules`, `smartInsertDelete`,
+  `inputAccessoryViewID` and `disableKeyboardShortcuts` are iOS's own, and
+  `showSoftInputOnFocus` wants a soft keyboard a desktop does not have.
 
 - ~~**`autoFocus` selected the field's text, on two hosts, for the same
   reason.**~~ Fixed 2026-10-07, after the fix above and separately from it.
@@ -170,21 +207,33 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   discarding the `BOOL` from `makeFirstResponder:` and messaging a nil window
   being a no-op; AppKit now says which of the two happened.
 
-- **`TextInputProps` and its traits have no rows on the support page.** The page
-  scrapes four prop structs plus Yoga's, and neither `BaseTextInputProps` nor
-  the `TextInputTraits` beside it is one of them. So the thirty-odd props an app
-  writes on a `<TextInput>` have no row at all: `autoCapitalize`,
-  `keyboardType`, `secureTextEntry`, `returnKeyType`, `selectionColor`,
-  `maxLength`, `multiline`, `placeholder` and the rest. That is the same hole
-  the layout props had until 2026-10-09, which is neither implemented nor
-  recorded but absent, with nothing able to say so.
+- ~~**`TextInputProps` and its traits have no rows on the support page.**~~ Done
+  2026-10-09: forty-five rows across `BaseTextInputProps`, the iOS
+  `TextInputProps` this platform reuses, and `TextInputTraits`. Reading the
+  traits needed one change to the scrape, since that class has no
+  `#pragma mark` region to find its fields by and is read as a whole class
+  instead.
 
-  Several of them are done and some are deliberately not, which is exactly why
-  the rows are worth having: `maxLength`, `multiline`, `spellCheck`,
-  `autoCorrect`, `autoCapitalize` and `keyboardType` landed between 2026-10-05
-  and 2026-10-09, two of them as "no macOS call at all" rather than as work;
-  entries 6 and 8 here cover others. A reader cannot tell which from this file,
-  and that is what a table is for.
+  **Two things the rows found**, which is twice now that a scraped table has
+  corrected this file: the entry about the placeholder and caret colours claimed
+  AppKit already honoured the placeholder, and it paints the system grey; and
+  entry 8's list of eight ignored props had four of them done since earlier the
+  same day. Both are corrected above.
+
+  Which host reads which was measured rather than assumed, by grepping each
+  host's text-input file for the prop: the hosts read the *trait* rather than
+  `BaseTextInputProps`' own `autoCapitalize` and `editable`, which is why those
+  two rows say "deliberately not" and point at the traits beside them.
+
+  What the entry said when it was open, kept because the argument is the
+  reusable part: the page scraped four prop structs plus Yoga's and neither
+  `BaseTextInputProps` nor the `TextInputTraits` beside it was one of them, so
+  the thirty-odd props an app writes on a `<TextInput>` had no row at all.
+  Several of them were done and some deliberately not, which is exactly why the
+  rows were worth having: `maxLength`, `multiline`, `spellCheck`, `autoCorrect`,
+  `autoCapitalize` and `keyboardType` landed between 2026-10-05 and 2026-10-09,
+  two of them as "no macOS call at all" rather than as work. A reader could not
+  tell which from this file, and that is what a table is for.
 
   `BaseTextInputProps.h` has the same `#pragma mark - Props` shape the four
   scraped structs have, so the scrape is one entry in `STRUCTS`. The judgement

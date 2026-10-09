@@ -149,6 +149,29 @@ STRUCTS = [
         "fills its box, and the Android and iOS extras.",
     ),
     (
+        "BaseTextInputProps",
+        "packages/react-native/ReactCommon/react/renderer/components/textinput/BaseTextInputProps.h",
+        "Props",
+        "What a <TextInput> carries on every platform: the text, the placeholder, "
+        "the tint colours and what the field will accept.",
+    ),
+    (
+        "TextInputProps",
+        "packages/react-native/ReactCommon/react/renderer/components/textinput/"
+        "platform/ios/react/renderer/components/iostextinput/TextInputProps.h",
+        "Props",
+        "The iOS variant, which this platform reuses rather than forking: see "
+        "docs/DECISIONS.md. It adds the selection and holds the traits below.",
+    ),
+    (
+        "TextInputTraits",
+        "packages/react-native/ReactCommon/react/renderer/components/textinput/"
+        "platform/ios/react/renderer/components/iostextinput/primitives.h",
+        "class TextInputTraits",
+        "The keyboard and editing behaviour a field asks for. Declared with no "
+        "section marker, so this one is read as a whole class.",
+    ),
+    (
         "ParagraphAttributes",
         "packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h",
         "Fields",
@@ -236,6 +259,8 @@ ALIASES = {
     "alignment": "textAlign",
     "baseWritingDirection": "writingDirection",
     "textDecorationLineType": "textDecorationLine",
+    # A trait whose name is the behaviour and whose prop is the switch.
+    "autocapitalizationType": "autoCapitalize",
     # Capitalisation, which is the whole difference.
     "testId": "testID",
     "nativeId": "nativeID",
@@ -313,6 +338,9 @@ FIELD = re.compile(
 # is reported rather than dropped.
 SKIP = re.compile(
     r"^\s*(//|/\*|\*|#|\}|\{|$)|\busing\b|\bstruct\b|\bclass\b|\benum\b|\bstatic\b"
+    # An access specifier, which a class body has and a `#pragma mark` region
+    # does not: reading a whole class brought `public:` along.
+    r"|^\s*(public|private|protected):"
 )
 
 
@@ -427,11 +455,45 @@ def props_region(text: str, section: str) -> list[str]:
     return lines[start:]
 
 
+def class_body(text: str, name: str) -> list[str]:
+    """The lines inside `class <name>` or `struct <name>`, or none.
+
+    For a struct that declares its fields without a `#pragma mark` to find them
+    by. `TextInputTraits` is the one: twenty props an app writes on a
+    `<TextInput>`, in a class body with nothing but comments between them, and
+    no section marker anywhere in the file.
+
+    Brace-counted from the declaration, so a nested type inside it ends where it
+    ends rather than closing the class early.
+    """
+    declaration = re.search(
+        r"^(?:class|struct)\s+" + re.escape(name) + r"\b[^{;]*\{", text, re.M
+    )
+    if declaration is None:
+        return []
+    depth = 0
+    lines: list[str] = []
+    for line in text[declaration.end() - 1 :].splitlines():
+        if depth == 1:
+            lines.append(line)
+        depth += line.count("{") - line.count("}")
+        if depth <= 0:
+            break
+    return lines
+
+
 def scrape(text: str, section: str) -> tuple[list[str], list[str]]:
     """The field names, and the lines that looked like fields and did not parse."""
     names: list[str] = []
     unread: list[str] = []
-    for line in props_region(text, section):
+    # `class Name` asks for the whole class body: a struct that declares its
+    # fields with no `#pragma mark` to find them by. Anything else is a section.
+    region = (
+        class_body(text, section[len("class ") :])
+        if section.startswith("class ")
+        else props_region(text, section)
+    )
+    for line in region:
         match = FIELD.match(line)
         if match is not None and not OPERATOR.search(line):
             names.append(match.group("name"))

@@ -306,11 +306,10 @@ function render(inventory, data) {
   lines.push('this page until somebody went looking for `padding`, and nothing could have');
   lines.push('said so.');
   lines.push('');
-  lines.push('**What is not here yet**: the props of a `<TextInput>`, which has');
-  lines.push('ReactCommon structs of its own that nothing scrapes, so some thirty names an');
-  lines.push('app writes on one have no row. `backlog/textinput.md` records it with the');
-  lines.push('shape of the fix, which is the one `<Image>` and the layout props already');
-  lines.push('had.');
+  lines.push('**What is not here yet**: the props of a `<ScrollView>`, which has a');
+  lines.push('ReactCommon struct of its own that nothing scrapes. `backlog/scrollview.md`');
+  lines.push('records it with the shape of the fix, which is the one the layout props,');
+  lines.push('`<Image>` and `<TextInput>` have each already had.');
   lines.push('');
   lines.push('Each struct is split the way reactnative.dev splits a component page: the');
   lines.push('style props a `style={{...}}` takes, then the props written on the element');

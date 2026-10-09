@@ -32,11 +32,10 @@ makes this list complete rather than long: the layout props were missing from
 this page until somebody went looking for `padding`, and nothing could have
 said so.
 
-**What is not here yet**: the props of a `<TextInput>`, which has
-ReactCommon structs of its own that nothing scrapes, so some thirty names an
-app writes on one have no row. `backlog/textinput.md` records it with the
-shape of the fix, which is the one `<Image>` and the layout props already
-had.
+**What is not here yet**: the props of a `<ScrollView>`, which has a
+ReactCommon struct of its own that nothing scrapes. `backlog/scrollview.md`
+records it with the shape of the fix, which is the one the layout props,
+`<Image>` and `<TextInput>` have each already had.
 
 Each struct is split the way reactnative.dev splits a component page: the
 style props a `style={{...}}` takes, then the props written on the element
@@ -50,8 +49,8 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 143 of 195 | 145 of 195 | 124 of 195 |
-| | `███████████████░░░░░` | `███████████████░░░░░` | `█████████████░░░░░░░` |
+| Done | 163 of 240 | 162 of 240 | 135 of 240 |
+| | `██████████████░░░░░░` | `██████████████░░░░░░` | `███████████░░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
 Yoga does it for every host: a layout prop never reaches one of these
@@ -268,6 +267,98 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `shouldNotifyLoadEvents` | – | – | – | [every host emits load events unconditionally, as iOS does](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+
+## BaseTextInputProps
+
+What a `<TextInput>` carries on every platform: the text, the placeholder, the tint colours and what the field will accept. From `packages/react-native/ReactCommon/react/renderer/components/textinput/BaseTextInputProps.h`.
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `defaultValue` | △ | △ | △ | [TextInput.js folds it into `text` before a host sees anything](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `placeholder` | ✅ | ✅ | ✅ |  |
+| `placeholderTextColor` | ✅ | ✖ | ✖ | [AppKit paints the system colours through a borrowed field editor, and a Win32 EDIT has no form of them at all](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `cursorColor` | ✅ | ✖ | ✖ | [AppKit paints the system colours through a borrowed field editor, and a Win32 EDIT has no form of them at all](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `selectionColor` | ✅ | ✖ | ✖ | [AppKit paints the system colours through a borrowed field editor, and a Win32 EDIT has no form of them at all](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `selectionHandleColor` | – | – | – | [Android's own](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `underlineColorAndroid` | – | – | – | [Android's own](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `maxLength` | ✅ | ✅ | ✅ |  |
+| `text` | ✅ | ✅ | ✅ |  |
+| `autoFocus` | ✅ | ✅ | ✅ |  |
+| `autoCapitalize` | – | – | – | [read through the iOS variant's trait of the same name, which has its own row](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `editable` | – | – | – | [read through the iOS variant's trait of the same name, which has its own row](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `readOnly` | ✅ | ✅ | ✅ |  |
+| `submitBehavior` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `multiline` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `disableKeyboardShortcuts` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `paragraphAttributes` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
+| `mostRecentEventCount` | ✅ | ✅ | ✅ |  |
+| `acceptDragAndDropTypes` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+
+## TextInputProps
+
+The iOS variant, which this platform reuses rather than forking: see docs/DECISIONS.md. It adds the selection and holds the traits below. From `packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputProps.h`.
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `selection` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `inputAccessoryViewID` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `inputAccessoryViewButtonLabel` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `traits` | ✅ | ✅ | ✅ |  |
+| `onKeyPressSync` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `onChangeSync` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+
+## TextInputTraits
+
+The keyboard and editing behaviour a field asks for. Declared with no section marker, so this one is read as a whole class. From `packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/primitives.h`.
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `autoCapitalize` <sub>`autocapitalizationType`</sub> | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `autoCorrect` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `contextMenuHidden` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `editable` | ✅ | ✅ | ✅ |  |
+| `enablesReturnKeyAutomatically` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `keyboardAppearance` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `spellCheck` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `caretHidden` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `clearButtonMode` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `scrollEnabled` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `secureTextEntry` | ✅ | ✅ | ✅ |  |
+| `clearTextOnFocus` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `keyboardType` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `showSoftInputOnFocus` | – | – | – | [a soft keyboard, which a desktop does not have](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `returnKeyType` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `selectTextOnFocus` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `dataDetectorTypes` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `textContentType` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `passwordRules` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `smartInsertDelete` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 
 ## ParagraphAttributes
 
