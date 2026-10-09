@@ -13,6 +13,8 @@
 
 #import "AppKitTitleBar.h"
 
+#include "WindowControl.h"
+
 TEST(titlebar_native_style_costs_the_app_nothing) {
   @autoreleasepool {
     NSWindow *window = [[NSWindow alloc]
@@ -103,5 +105,37 @@ TEST(titlebar_actions_are_safe_with_no_window) {
     basalt::titleBar().close();
     basalt::titleBar().startDrag();
     EXPECT(true);
+  }
+}
+
+// Which window `core/WindowControl.h` answers about, when the app is not the
+// active one.
+//
+// `NSApp.keyWindow` and `NSApp.mainWindow` are both nil for a background app,
+// and this file's suite *is* a background app: nothing here activates. So a
+// bounds read that only asked those two reported zero, which is what
+// `e2e/window.tsx` was seeing -- `getBounds()` answering 0x0 for the whole life
+// of a host that was launched while something else had focus.
+TEST(appkit_window_bounds_do_not_need_the_app_to_be_active) {
+  @autoreleasepool {
+    NSWindow *window = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 640, 480)
+                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    // Ordered front rather than made key: the point is a window that exists and
+    // is visible without the app being frontmost.
+    [window orderFront:nil];
+
+    const basalt::WindowBounds bounds = basalt::windowBounds();
+    // The frame rather than the content rect, which is what `getBounds()`
+    // reports and is taller by the title bar.
+    EXPECT(bounds.width >= 640.0);
+    EXPECT(bounds.height >= 480.0);
+    EXPECT_EQ(bounds.width, window.frame.size.width);
+    EXPECT_EQ(bounds.height, window.frame.size.height);
+
+    [window orderOut:nil];
+    [window close];
   }
 }

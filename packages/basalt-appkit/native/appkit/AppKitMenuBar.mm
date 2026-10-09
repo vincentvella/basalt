@@ -23,6 +23,8 @@
 
 #include "MenuModel.h"
 
+#import "AppKitAppWindow.h"
+
 #import <Cocoa/Cocoa.h>
 
 #include <string>
@@ -347,10 +349,25 @@ void performMenuRole(const std::string &role) {
   if (selector == nullptr) {
     return;
   }
-  // `to:nil` is what makes this work without knowing who should answer: AppKit
-  // walks the responder chain from the key window's first responder up to
-  // NSApp, so `copy:` reaches whichever field has focus and `terminate:`
-  // reaches the application. It is the same routing the bar's items get.
+
+  // The app's own window first, and this is not belt and braces: `sendAction:`
+  // with `to:nil` walks the responder chain from the **key window's** first
+  // responder, and an app that is not the active one has no key window. So a
+  // `paste` role reached nothing at all whenever the host was launched behind
+  // something else, which is most of the time under the harness. The scenario
+  // "a role in a context menu performs it" found it by failing on a developer
+  // Mac while every CI shard passed, CI's runner having nothing else on screen.
+  //
+  // `tryToPerform:with:` walks from the responder it is sent to, which is the
+  // same walk with a different starting point: the field that has focus in the
+  // window this process owns.
+  NSWindow *const target = appWindow();
+  if (target != nil && [target.firstResponder tryToPerform:selector with:nil]) {
+    return;
+  }
+
+  // And then the usual routing, which is what answers for a role no responder
+  // wants: `terminate:` belongs to the application and not to a field.
   [NSApp sendAction:selector to:nil from:nil];
 }
 

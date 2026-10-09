@@ -611,6 +611,35 @@ on Windows that meant the quit timer stopping going through `WM_CLOSE`, because
 otherwise the app would have refused the harness too and the failure would have
 been a hang rather than a test.
 
+### The suite is a background app, and macOS treats those differently
+
+A host the harness launches does not get focus on a developer's Mac: the
+terminal running the suite keeps it. CI's macOS runner has nothing else on
+screen, so there the host *does* become active, and that difference hid two real
+bugs for as long as this suite has existed.
+
+`NSApp.keyWindow` and `NSApp.mainWindow` are both nil for an app that is not
+active. Two things asked only those two:
+
+- `windowBounds()` answered 0x0, and because the bounds cache is primed once at
+  startup and rewritten only on a move or a resize, an app that was launched
+  behind another window believed it was 0x0 for its whole life. `getBounds()`
+  returned zeros and `setSize` silently did nothing.
+- `performMenuRole` sent through `[NSApp sendAction:to:nil]`, which walks the
+  responder chain from the key window's first responder, so a `paste` role
+  reached nothing.
+
+Both now go through `appWindow()` (appkit/AppKitAppWindow.h), which is GTK's
+rule: prefer the active window, fall back to the first visible one that is not a
+panel. Both are covered by unit tests that work *because* the suite is a
+background app, which is the useful half of this: `basalt_appkit_tests` has no
+key window either, so a test that passes there has exercised the case a
+developer's machine is always in.
+
+The lesson for the next one: a scenario that passes on CI's Mac and fails on
+yours is not automatically flaky. It may be the only machine where the app is
+not frontmost.
+
 ### A real click lands where the window server says, not where the test aimed
 
 `click a TextInput with a real mouse and see it focus` posts a `CGEvent` at a

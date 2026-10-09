@@ -14,6 +14,8 @@
 #include <vector>
 #include "WindowControl.h"
 
+#import "AppKitAppWindow.h"
+
 #import <Cocoa/Cocoa.h>
 
 namespace basalt {
@@ -21,9 +23,27 @@ namespace basalt {
 namespace {
 
 
-NSWindow *window() {
-  return NSApp.keyWindow != nil ? NSApp.keyWindow : NSApp.mainWindow;
-}
+// The window this process owns, which is a different question from which window
+// has the keyboard.
+//
+// `NSApp.keyWindow` and `NSApp.mainWindow` are both nil whenever the app is not
+// the active one: a background app has no key window and no main window. Asking
+// only those two meant an app that was not frontmost read a *zero* size out of
+// `getBounds()` and had `setSize` silently do nothing.
+//
+// That is worse than it sounds, because the bounds cache is primed once at
+// startup, immediately after `activateIgnoringOtherApps:`, and activation is
+// asynchronous. If the window server had not granted it by then the cache was
+// zeroed, and nothing corrected it: the only thing that writes the cache again
+// is a move or a resize, and a window nobody is using gets neither. An app
+// launched while another window had focus therefore believed it was 0x0 for its
+// whole life, which is how `e2e/window.tsx` found this.
+//
+// GTK had the rule right already -- GtkWindowControl.cpp prefers the active
+// toplevel and falls back to the first visible one -- so this is the same rule
+// rather than a new idea. A panel is skipped: LogBox and the dev menu are
+// windows too, and neither is what an app means by "my window".
+NSWindow *window() { return appWindow(); }
 
 // The height AppKit measures y from. `NSScreen.screens.firstObject` is the
 // primary display, which is the one AppKit's global coordinates are anchored
@@ -34,6 +54,21 @@ CGFloat primaryHeight() {
 }
 
 } // namespace
+
+NSWindow *appWindow() {
+  if (NSApp.keyWindow != nil) {
+    return NSApp.keyWindow;
+  }
+  if (NSApp.mainWindow != nil) {
+    return NSApp.mainWindow;
+  }
+  for (NSWindow *candidate in NSApp.windows) {
+    if (candidate.isVisible && ![candidate isKindOfClass:NSPanel.class]) {
+      return candidate;
+    }
+  }
+  return nil;
+}
 
 std::vector<DisplayInfo> displays() {
   std::vector<DisplayInfo> found;

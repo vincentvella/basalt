@@ -5,6 +5,7 @@
 
 #include "TestHarness.h"
 
+#include "MenuModel.h"
 #include "PlatformServices.h"
 
 #import <Cocoa/Cocoa.h>
@@ -55,3 +56,42 @@ TEST(can_open_url_answers_by_scheme) {
 // e2e/alert.js instead, which keeps a 300ms heartbeat running and shows an alert
 // half a second in -- the ticks carry straight on past it, which a blocking
 // implementation could not do.
+
+// A menu role reaching the field that has focus, in an app that is not the
+// active one. See AppKitAppWindow.h.
+//
+// `performMenuRole` used to be one line, `[NSApp sendAction:selector to:nil
+// from:nil]`, which walks the responder chain from the **key window's** first
+// responder. A background app has no key window, so a `paste` role reached
+// nothing at all -- and this suite is a background app, which is what makes the
+// test possible without a harness around it.
+//
+// Uses the real clipboard and puts back what was there, the same courtesy
+// `clipboard_round_trips` above extends.
+TEST(a_menu_role_reaches_the_focused_field_without_the_app_being_active) {
+  @autoreleasepool {
+    const std::string original = basalt::clipboardText();
+
+    NSWindow *window = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 320, 80)
+                  styleMask:NSWindowStyleMaskTitled
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 10, 300, 24)];
+    [window.contentView addSubview:field];
+    [window orderFront:nil];
+    // First responder without the app being active, which AppKit allows: what
+    // it does not do is make the window *key*.
+    EXPECT([window makeFirstResponder:field]);
+    EXPECT(NSApp.keyWindow == nil || NSApp.keyWindow == window);
+
+    basalt::setClipboardText("pasted by a role");
+    basalt::performMenuRole("paste");
+
+    EXPECT_EQ(std::string(field.stringValue.UTF8String), std::string("pasted by a role"));
+
+    [window orderOut:nil];
+    [window close];
+    basalt::setClipboardText(original);
+  }
+}
