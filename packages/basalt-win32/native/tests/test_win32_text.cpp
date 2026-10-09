@@ -15,9 +15,11 @@
 #include "RnWin32View.h"
 #include "Win32Snapshot.h"
 
+#include <algorithm>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 using basalt::win32::RnTextAlign;
 using basalt::win32::RnTextSize;
@@ -474,4 +476,174 @@ TEST(text_font_features_do_not_break_the_layout) {
   // not exist in Segoe UI, and either way the paragraph is still that text at
   // that size rather than nothing.
   EXPECT(with.height > without.height * 0.5f);
+}
+
+// ---------------------------------------------------------------------------
+// The text shadow: `textShadowColor`, `textShadowOffset` and
+// `textShadowRadius`.
+//
+// One shadow per paragraph, as on the other two hosts and for the same reason:
+// no engine here can draw a different one per run. The blur is an effect, so
+// the first thing asserted is that an effect can be had at all -- a render
+// target made by a Direct2D 1.1 factory answers `ID2D1DeviceContext`, and if
+// that ever stops being true on a runner, a failure here says so rather than a
+// shadow quietly going hard.
+// ---------------------------------------------------------------------------
+
+TEST(text_a_shadow_is_drawn_under_the_glyphs) {
+  RnTextStyle style;
+  style.fontSize = 28.0f;
+  // White text, so the shadow is the only dark ink in the picture.
+  style.color[0] = 1.0f;
+  style.color[1] = 1.0f;
+  style.color[2] = 1.0f;
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 200, 60);
+  auto layout = RnWin32TextLayout::create("Shadow", style, 0);
+  EXPECT(layout != nullptr);
+  const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  layout->setShadow(6.0f, 6.0f, 2.0f, black);
+  root->setTextLayout(std::move(layout));
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+
+  int dark = 0;
+  int light = 0;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      const auto pixel = pixels.at(x, y);
+      if (pixel.alpha < 64) {
+        continue;
+      }
+      if (pixel.red < 80 && pixel.green < 80 && pixel.blue < 80) {
+        dark++;
+      }
+      if (pixel.red > 200 && pixel.green > 200 && pixel.blue > 200) {
+        light++;
+      }
+    }
+  }
+
+  // Both: the glyphs and something dark under them, which is the shadow. A
+  // shadow drawn over the text instead would leave no light ink at all.
+  EXPECT(light > 0);
+  EXPECT(dark > 0);
+}
+
+TEST(text_a_shadow_follows_its_offset) {
+  const auto inkBounds = [](float dx, float dy) {
+    RnTextStyle style;
+    style.fontSize = 28.0f;
+    style.color[0] = 1.0f;
+    style.color[1] = 1.0f;
+    style.color[2] = 1.0f;
+
+    auto root = std::make_unique<RnWin32View>(1);
+    root->setFrame(0, 0, 200, 60);
+    auto layout = RnWin32TextLayout::create("Shadow", style, 0);
+    const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    layout->setShadow(dx, dy, 0.0f, black);
+    root->setTextLayout(std::move(layout));
+
+    const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+    int right = 0;
+    int bottom = 0;
+    for (unsigned y = 0; y < pixels.height(); y++) {
+      for (unsigned x = 0; x < pixels.width(); x++) {
+        const auto pixel = pixels.at(x, y);
+        if (pixel.alpha > 64 && pixel.red < 80 && pixel.green < 80 && pixel.blue < 80) {
+          right = (std::max)(right, static_cast<int>(x));
+          bottom = (std::max)(bottom, static_cast<int>(y));
+        }
+      }
+    }
+    return std::pair<int, int>{right, bottom};
+  };
+
+  const auto [rightNear, bottomNear] = inkBounds(2.0f, 2.0f);
+  const auto [rightFar, bottomFar] = inkBounds(12.0f, 12.0f);
+
+  // A bigger offset puts the shadow further right and further down. Both axes,
+  // because one offset read into both is the mistake this catches.
+  EXPECT(rightFar > rightNear + 5);
+  EXPECT(bottomFar > bottomNear + 5);
+}
+
+// The blur, which is the half that needs an effect.
+TEST(text_a_shadow_radius_spreads_it) {
+  const auto darkInk = [](float standardDeviation) {
+    RnTextStyle style;
+    style.fontSize = 28.0f;
+    style.color[0] = 1.0f;
+    style.color[1] = 1.0f;
+    style.color[2] = 1.0f;
+
+    auto root = std::make_unique<RnWin32View>(1);
+    root->setFrame(0, 0, 200, 60);
+    auto layout = RnWin32TextLayout::create("Shadow", style, 0);
+    const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    layout->setShadow(4.0f, 4.0f, standardDeviation, black);
+    root->setTextLayout(std::move(layout));
+
+    const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+    int ink = 0;
+    for (unsigned y = 0; y < pixels.height(); y++) {
+      for (unsigned x = 0; x < pixels.width(); x++) {
+        const auto pixel = pixels.at(x, y);
+        // Anything that is not white and not empty: a blur spreads the shadow
+        // into partly covered pixels, which is exactly what is being counted.
+        if (pixel.alpha > 24 && pixel.red < 200) {
+          ink++;
+        }
+      }
+    }
+    return ink;
+  };
+
+  const int hard = darkInk(0.0f);
+  const int blurred = darkInk(4.0f);
+
+  EXPECT(hard > 0);
+  // A blurred shadow covers more pixels than a hard one, which is what says
+  // the effect ran. Without a device context the fallback draws the hard
+  // shadow for both and these are equal, which is the case this test exists to
+  // notice.
+  EXPECT(blurred > hard);
+}
+
+TEST(text_no_shadow_colour_is_no_shadow) {
+  RnTextStyle style;
+  style.fontSize = 28.0f;
+
+  auto layout = RnWin32TextLayout::create("Shadow", style, 0);
+  EXPECT(!layout->hasShadow());
+
+  // A transparent colour is a shadow an app asked to be invisible, which
+  // core/TextShadows.h refuses before it gets here; this is the view layer
+  // agreeing.
+  const float invisible[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  layout->setShadow(4.0f, 4.0f, 2.0f, invisible);
+  EXPECT(!layout->hasShadow());
+
+  const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  layout->setShadow(4.0f, 4.0f, 2.0f, black);
+  EXPECT(layout->hasShadow());
+}
+
+TEST(text_a_shadow_is_reported_in_the_tree) {
+  RnTextStyle style;
+  style.fontSize = 16.0f;
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 200, 60);
+  auto layout = RnWin32TextLayout::create("Shadow", style, 0);
+  // The same numbers e2e/text.tsx asks for, so the line this prints is the line
+  // the end-to-end scenario reads on the other two hosts.
+  const float blue[4] = {77.0f / 255.0f, 140.0f / 255.0f, 242.0f / 255.0f, 1.0f};
+  layout->setShadow(2.0f, 3.0f, 4.0f, blue);
+  root->setTextLayout(std::move(layout));
+
+  EXPECT(root->describeTree().find("text-shadow=(2,3,4,#4d8cf2ff)") != std::string::npos);
 }

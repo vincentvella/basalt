@@ -140,6 +140,21 @@ class RnWin32TextLayout {
   const RnTextStyle &style() const { return style_; }
   int maximumNumberOfLines() const { return maximumNumberOfLines_; }
 
+  // `textShadowColor`, `textShadowOffset` and `textShadowRadius`: one shadow
+  // for the whole paragraph, resolved by `core/TextShadows.h`.
+  //
+  // One rather than one per fragment, which is the same decision both other
+  // hosts made for the same reason: neither engine can draw a different shadow
+  // per run, so the first fragment that asks for one decides it. `sd` is the
+  // gaussian's standard deviation, which is what Direct2D's shadow effect takes
+  // too, so nothing converts here.
+  void setShadow(float dx, float dy, float standardDeviation, const float colour[4]);
+  bool hasShadow() const { return shadowColour_[3] > 0.0f; }
+  float shadowDx() const { return shadowDx_; }
+  float shadowDy() const { return shadowDy_; }
+  float shadowStandardDeviation() const { return shadowStandardDeviation_; }
+  const float *shadowColour() const { return shadowColour_; }
+
   // The size this paragraph needs at `maxWidth`. Pass a negative width for
   // unconstrained. In React Native's density-independent pixels, like every
   // other coordinate here: DirectWrite measures in DIPs at 96 dpi and nothing
@@ -179,11 +194,23 @@ class RnWin32TextLayout {
     RnTextStyle style;
   };
 
+  // Drawing a shadow needs an effect, which needs a device context: the view
+  // layer hands over an ID2D1RenderTarget, and this asks it for one. See
+  // `draw`.
+  void drawShadow(ID2D1RenderTarget *target,
+                  IDWriteTextLayout *layout,
+                  float width,
+                  float height) const;
+
   std::string utf8_;
   std::wstring utf16_;
   RnTextStyle style_;
   std::vector<ResolvedRun> runs_;
   int maximumNumberOfLines_ = 0;
+  float shadowDx_ = 0.0f;
+  float shadowDy_ = 0.0f;
+  float shadowStandardDeviation_ = 0.0f;
+  float shadowColour_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   IDWriteTextFormat *format_ = nullptr;
 };
 

@@ -699,19 +699,19 @@
     "TextAttributes.textShadowOffset": {
       "linux": "partial",
       "macos": "partial",
-      "windows": "no",
+      "windows": "partial",
       "why": "text-shadow-one"
     },
     "TextAttributes.textShadowRadius": {
       "linux": "partial",
       "macos": "partial",
-      "windows": "no",
+      "windows": "partial",
       "why": "text-shadow-one"
     },
     "TextAttributes.textShadowColor": {
       "linux": "partial",
       "macos": "partial",
-      "windows": "no",
+      "windows": "partial",
       "why": "text-shadow-one"
     },
     "TextAttributes.isHighlighted": {

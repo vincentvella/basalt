@@ -5,6 +5,8 @@
 #include <windows.h>
 
 #include <d2d1.h>
+#include <d2d1_1.h>
+#include <d2d1effects.h>
 #include <dwrite.h>
 #include <wrl/client.h>
 
@@ -336,6 +338,98 @@ RnTextSize RnWin32TextLayout::measure(float maxWidth) const {
   return size;
 }
 
+void RnWin32TextLayout::setShadow(float dx,
+                                  float dy,
+                                  float standardDeviation,
+                                  const float colour[4]) {
+  shadowDx_ = dx;
+  shadowDy_ = dy;
+  shadowStandardDeviation_ = standardDeviation > 0.0f ? standardDeviation : 0.0f;
+  for (int component = 0; component < 4; component++) {
+    shadowColour_[component] = colour != nullptr ? colour[component] : 0.0f;
+  }
+}
+
+// The shadow, under the text.
+//
+// A blurred shadow is an effect, and an effect needs an `ID2D1DeviceContext`
+// where the view layer hands over an `ID2D1RenderTarget`. A render target made
+// by a Direct2D 1.1 factory answers that interface, and both of this host's
+// targets are -- the window's and the suite's WIC bitmap -- so this asks rather
+// than threading a second type through the view layer.
+//
+// The shape is the one `CLSID_D2D1Shadow` wants: the text is drawn into a
+// compatible bitmap, the effect blurs that bitmap's *alpha* and colours it, and
+// the result is drawn at the offset. Which is why the text in the bitmap is
+// drawn in the shadow's own colour only as a formality; the effect's colour
+// property is what decides it.
+//
+// Without a device context there is no blur to be had, and the fallback is the
+// honest one: the same text drawn once at the offset in the shadow colour,
+// which is a hard shadow. backlog/platform-windows.md records that.
+void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
+                                   IDWriteTextLayout *layout,
+                                   float width,
+                                   float height) const {
+  const D2D1_COLOR_F colour = D2D1::ColorF(
+      shadowColour_[0], shadowColour_[1], shadowColour_[2], shadowColour_[3]);
+
+  ComPtr<ID2D1DeviceContext> context;
+  const bool haveContext = SUCCEEDED(target->QueryInterface(IID_PPV_ARGS(&context)));
+
+  if (!haveContext || shadowStandardDeviation_ <= 0.0f) {
+    ComPtr<ID2D1SolidColorBrush> brush;
+    if (FAILED(target->CreateSolidColorBrush(colour, brush.GetAddressOf()))) {
+      return;
+    }
+    target->DrawTextLayout(D2D1::Point2F(shadowDx_, shadowDy_),
+                           layout,
+                           brush.Get(),
+                           D2D1_DRAW_TEXT_OPTIONS_NONE);
+    return;
+  }
+
+  // The bitmap is the size of the box the text is laid out in. A shadow spreads
+  // beyond the glyphs, so the blur is given room by drawing the result at an
+  // offset rather than by growing the bitmap: the effect's own output is larger
+  // than its input and Direct2D composites all of it.
+  ComPtr<ID2D1BitmapRenderTarget> offscreen;
+  if (FAILED(target->CreateCompatibleRenderTarget(D2D1::SizeF(width, height),
+                                                  offscreen.GetAddressOf())) ||
+      !offscreen) {
+    return;
+  }
+
+  ComPtr<ID2D1SolidColorBrush> opaque;
+  if (FAILED(offscreen->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black, 1.0f),
+                                              opaque.GetAddressOf()))) {
+    return;
+  }
+  offscreen->BeginDraw();
+  offscreen->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+  offscreen->DrawTextLayout(
+      D2D1::Point2F(0.0f, 0.0f), layout, opaque.Get(), D2D1_DRAW_TEXT_OPTIONS_NONE);
+  if (FAILED(offscreen->EndDraw())) {
+    return;
+  }
+
+  ComPtr<ID2D1Bitmap> glyphs;
+  if (FAILED(offscreen->GetBitmap(glyphs.GetAddressOf())) || !glyphs) {
+    return;
+  }
+
+  ComPtr<ID2D1Effect> shadow;
+  if (FAILED(context->CreateEffect(CLSID_D2D1Shadow, shadow.GetAddressOf())) || !shadow) {
+    return;
+  }
+  shadow->SetInput(0, glyphs.Get());
+  shadow->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, shadowStandardDeviation_);
+  const D2D1_VECTOR_4F tint{colour.r, colour.g, colour.b, colour.a};
+  shadow->SetValue(D2D1_SHADOW_PROP_COLOR, tint);
+
+  context->DrawImage(shadow.Get(), D2D1::Point2F(shadowDx_, shadowDy_));
+}
+
 void RnWin32TextLayout::draw(ID2D1RenderTarget *target, float width, float height) const {
   if (target == nullptr) {
     return;
@@ -380,6 +474,11 @@ void RnWin32TextLayout::draw(ID2D1RenderTarget *target, float width, float heigh
     }
     layout->SetDrawingEffect(runBrush.Get(), DWRITE_TEXT_RANGE{run.start, run.length});
     runBrushes.push_back(std::move(runBrush));
+  }
+
+  // The shadow first, so the glyphs land on top of it.
+  if (hasShadow()) {
+    drawShadow(target, layout.Get(), width, height);
   }
 
   target->DrawTextLayout(

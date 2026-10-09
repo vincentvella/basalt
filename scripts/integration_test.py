@@ -5375,10 +5375,10 @@ def test_text_shadow(bundle: Path) -> None:
     `CGContextSetShadowWithColor` unchanged and GTK doubles it for `GskShadow`,
     so both dumps print what React Native parsed. e2e/text.tsx asks for 4.
 
-    Windows draws no text shadow yet, so it is skipped by name.
+    All three hosts print it, and the third takes the standard deviation
+    unchanged too: `CLSID_D2D1Shadow`'s blur property is a standard deviation,
+    so nothing converts there either.
     """
-    if PLATFORM == "windows":
-        raise Skipped("DirectWrite is given no text shadow yet")
 
     app = bundle_app(bundle.parent, "text")
 

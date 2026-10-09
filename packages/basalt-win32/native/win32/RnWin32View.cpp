@@ -1409,6 +1409,22 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     if (textLayout_->style().rightToLeft) {
       out += " writing-dir=rtl";
     }
+    // The paragraph's text shadow, spelled as the other two hosts spell it: no
+    // other line can show it, a shadowed paragraph having the same text, the
+    // same colour and the same box. The standard deviation React Native parsed,
+    // which is also what the shadow effect was given.
+    if (textLayout_->hasShadow()) {
+      const float *const colour = textLayout_->shadowColour();
+      appendFormat(out,
+                   " text-shadow=(%g,%g,%g,#%02x%02x%02x%02x)",
+                   static_cast<double>(textLayout_->shadowDx()),
+                   static_cast<double>(textLayout_->shadowDy()),
+                   static_cast<double>(textLayout_->shadowStandardDeviation()),
+                   static_cast<unsigned>(colour[0] * 255.0f + 0.5f),
+                   static_cast<unsigned>(colour[1] * 255.0f + 0.5f),
+                   static_cast<unsigned>(colour[2] * 255.0f + 0.5f),
+                   static_cast<unsigned>(colour[3] * 255.0f + 0.5f));
+    }
   }
 
   // A text field's content lives in its EDIT peer, not in a layout, so it would

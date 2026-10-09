@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (15):**
+**Open (14):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -21,7 +21,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
 15. ~~The `outline` family is not drawn~~
 16. `mixBlendMode` blends nothing
-17. No text shadow, so `textShadowColor` and friends do nothing
+17. ~~No text shadow, so `textShadowColor` and friends do nothing~~
 18. The desktop's text scale is not read, so large text does not enlarge text
 19. ~~No text decoration~~, except the styles DirectWrite has no form of
 20. ~~`fontVariant` and a fragment's `opacity` are not read~~
@@ -477,19 +477,34 @@ and none of it is a missing half.
   macOS publishes no scale either. The scenario is skipped by name on Windows
   because the *platform* half is what is missing.
 
-- **No text shadow, so `textShadowColor` and friends do nothing.** The other two
-  hosts draw one shadow per paragraph -- the props are per fragment and neither
-  engine can draw a different shadow per run -- from the first fragment that
-  asks, with the offset and the standard deviation `core/TextShadows.h` resolves.
-  So the arithmetic and the decision are already shared; what is left here is the
-  drawing.
+- ~~**No text shadow, so `textShadowColor` and friends do nothing.**~~ Done,
+  2026-10-09, the second of the two ways this entry named: `CLSID_D2D1Shadow`
+  over a compatible bitmap the text is drawn into, which blurs that bitmap's
+  alpha and colours it, drawn at the offset and under the glyphs. The standard
+  deviation `core/TextShadows.h` resolves is what the effect's blur property
+  takes, so nothing converts, and one shadow per paragraph is the same decision
+  the other two hosts made for the same reason.
 
-  Two ways in. `DrawTextLayout` a second time underneath, offset and in the
-  shadow colour, which gives a hard shadow and no blur and is a handful of lines.
-  Or the effect graph `filter` already needs: `CLSID_D2D1Shadow` takes a blurred
-  alpha mask of what is drawn, which is exactly a text shadow with a radius. The
-  standard deviation is what Direct2D's shadow takes too, so nothing converts.
-  The end-to-end scenario is skipped here by name.
+  **This is the first effect in this host, and what it needed is worth
+  recording**: an effect wants an `ID2D1DeviceContext` where the view layer
+  hands over an `ID2D1RenderTarget`. A target made by a Direct2D 1.1 factory
+  answers that interface, and both of this host's targets are -- the window's
+  `ID2D1HwndRenderTarget` and the suite's WIC bitmap -- so `drawShadow` asks the
+  target for one rather than threading a second type through the view layer.
+  `filter` and `mixBlendMode`, which are the other two entries that need
+  effects, can take the same route.
+
+  The fallback is the first way this entry named, and it is still here: without
+  a device context there is no blur to be had, so the text is drawn once at the
+  offset in the shadow colour, which is a hard shadow.
+  `text_a_shadow_radius_spreads_it` is what notices the difference, by counting
+  the pixels a blur covers and a hard edge does not, so a runner that stopped
+  answering for a device context would fail rather than quietly go hard.
+
+  Five tests: the shadow under the glyphs with both still visible, an offset
+  that moves it on both axes, the blur that spreads it, a transparent colour
+  that is no shadow, and the dump. The end-to-end scenario now reads
+  `text-shadow=(2,3,4,#4d8cf2ff)` on all three hosts.
 
 - **An animated GIF is painted as a still.** The other two hosts play one as of
   2026-10-09: the frames and their delays come from each platform's decoder and

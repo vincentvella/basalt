@@ -6,6 +6,7 @@
 #include "FontVariants.h"
 #include "TextColors.h"
 #include "TextDecorations.h"
+#include "TextShadows.h"
 
 #include <windows.h>
 
@@ -291,8 +292,21 @@ buildTextLayout(const AttributedString &attributedString,
                              buildTextStyle(fragment.textAttributes)});
   }
 
-  return RnWin32TextLayout::createFromRuns(
+  auto layout = RnWin32TextLayout::createFromRuns(
       runs, static_cast<int>(paragraphAttributes.maximumNumberOfLines));
+
+  // The text shadow, which `core/TextShadows.h` resolves: one per paragraph,
+  // from the first fragment that asks for one, because no engine here can draw
+  // a different shadow per run. The standard deviation it answers with is what
+  // Direct2D's shadow effect takes, so nothing converts.
+  if (layout != nullptr) {
+    if (const auto shadow = basalt::textShadow(attributedString)) {
+      const float colour[4] = {shadow->red, shadow->green, shadow->blue, shadow->alpha};
+      layout->setShadow(shadow->dx, shadow->dy, shadow->standardDeviation, colour);
+    }
+  }
+
+  return layout;
 }
 
 } // namespace basalt::win32
