@@ -897,3 +897,84 @@ TEST(textinput_spell_check_reaches_a_multiline_peer) {
 
   g_object_unref(view);
 }
+
+// `autoCapitalize`, which GTK has as three more input hints.
+//
+// React Native's default is `sentences`, as on iOS, and the prop is a plain
+// enum with no "did not say" -- so a field that mentions nothing still asks for
+// sentence capitalisation, which is faithful rather than surprising. The test
+// pins that, because it is the kind of behaviour a later reader would take for
+// a bug.
+TEST(textinput_auto_capitalize_becomes_input_hints) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  const auto hintsOf = [&](const char *value) {
+    manager.update(view,
+                   makeTextInput(10, folly::dynamic::object("autoCapitalize", value)));
+    return gtk_text_get_input_hints(GTK_TEXT(rn_view_get_editable(view)));
+  };
+
+  EXPECT((hintsOf("characters") & GTK_INPUT_HINT_UPPERCASE_CHARS) != 0);
+  EXPECT((hintsOf("words") & GTK_INPUT_HINT_UPPERCASE_WORDS) != 0);
+  EXPECT((hintsOf("sentences") & GTK_INPUT_HINT_UPPERCASE_SENTENCES) != 0);
+  // Exclusive: asking for one takes the others off, the three sharing a mask.
+  EXPECT((hintsOf("sentences") & GTK_INPUT_HINT_UPPERCASE_CHARS) == 0);
+  EXPECT((hintsOf("sentences") & GTK_INPUT_HINT_UPPERCASE_WORDS) == 0);
+
+  // `none` is the absence of all three rather than GTK_INPUT_HINT_LOWERCASE,
+  // which would ask the input method to lowercase what was typed.
+  const GtkInputHints none = hintsOf("none");
+  EXPECT((none & GTK_INPUT_HINT_UPPERCASE_CHARS) == 0);
+  EXPECT((none & GTK_INPUT_HINT_UPPERCASE_WORDS) == 0);
+  EXPECT((none & GTK_INPUT_HINT_UPPERCASE_SENTENCES) == 0);
+  EXPECT((none & GTK_INPUT_HINT_LOWERCASE) == 0);
+
+  g_object_unref(view);
+}
+
+// The two hint groups share one mask, so one must not take the other off.
+TEST(textinput_spell_check_and_capitalisation_do_not_clear_each_other) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("spellCheck", false)(
+                                   "autoCapitalize", "characters")));
+  const GtkInputHints hints = gtk_text_get_input_hints(GTK_TEXT(rn_view_get_editable(view)));
+  EXPECT((hints & GTK_INPUT_HINT_NO_SPELLCHECK) != 0);
+  EXPECT((hints & GTK_INPUT_HINT_UPPERCASE_CHARS) != 0);
+
+  g_object_unref(view);
+}
+
+// `keyboardType`, which GTK has as an input purpose: what the text is for.
+TEST(textinput_keyboard_type_becomes_an_input_purpose) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  const auto purposeOf = [&](const char *value) {
+    manager.update(view, makeTextInput(10, folly::dynamic::object("keyboardType", value)));
+    return gtk_text_get_input_purpose(GTK_TEXT(rn_view_get_editable(view)));
+  };
+
+  EXPECT(purposeOf("email-address") == GTK_INPUT_PURPOSE_EMAIL);
+  EXPECT(purposeOf("url") == GTK_INPUT_PURPOSE_URL);
+  EXPECT(purposeOf("phone-pad") == GTK_INPUT_PURPOSE_PHONE);
+  // Digits only against a number: a number pad types digits, where `numeric`
+  // and `decimal-pad` allow a separator and a sign.
+  EXPECT(purposeOf("number-pad") == GTK_INPUT_PURPOSE_DIGITS);
+  EXPECT(purposeOf("numeric") == GTK_INPUT_PURPOSE_NUMBER);
+  EXPECT(purposeOf("decimal-pad") == GTK_INPUT_PURPOSE_NUMBER);
+  // And the ones with no purpose to map to, which are ordinary text rather than
+  // a refusal.
+  EXPECT(purposeOf("default") == GTK_INPUT_PURPOSE_FREE_FORM);
+  EXPECT(purposeOf("twitter") == GTK_INPUT_PURPOSE_FREE_FORM);
+  EXPECT(purposeOf("visible-password") == GTK_INPUT_PURPOSE_FREE_FORM);
+
+  g_object_unref(view);
+}

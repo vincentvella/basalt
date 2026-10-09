@@ -292,6 +292,55 @@ void rn_peer_set_spell_check(GtkWidget *peer, int flag) {
       GTK_TEXT_VIEW(peer), static_cast<GtkInputHints>((hints & ~unwanted) | wanted));
 }
 
+void rn_peer_set_auto_capitalize(GtkWidget *peer, int type) {
+  if (peer == nullptr) {
+    return;
+  }
+  // The three are exclusive and this owns all of them, so the mask is cleared
+  // before one is set -- and `none` sets none at all, which is the honest way
+  // to say "do not capitalise for me": GTK_INPUT_HINT_LOWERCASE would ask the
+  // input method to lowercase what the person typed, which no app asked for.
+  const GtkInputHints owned = static_cast<GtkInputHints>(
+      GTK_INPUT_HINT_UPPERCASE_CHARS | GTK_INPUT_HINT_UPPERCASE_WORDS
+      | GTK_INPUT_HINT_UPPERCASE_SENTENCES);
+  GtkInputHints wanted = GTK_INPUT_HINT_NONE;
+  switch (type) {
+    case 1:
+      wanted = GTK_INPUT_HINT_UPPERCASE_WORDS;
+      break;
+    case 2:
+      wanted = GTK_INPUT_HINT_UPPERCASE_SENTENCES;
+      break;
+    case 3:
+      wanted = GTK_INPUT_HINT_UPPERCASE_CHARS;
+      break;
+    default:
+      break;
+  }
+
+  if (!rn_peer_is_multiline(peer)) {
+    const GtkInputHints hints = gtk_text_get_input_hints(GTK_TEXT(peer));
+    gtk_text_set_input_hints(GTK_TEXT(peer),
+                             static_cast<GtkInputHints>((hints & ~owned) | wanted));
+    return;
+  }
+  const GtkInputHints hints = gtk_text_view_get_input_hints(GTK_TEXT_VIEW(peer));
+  gtk_text_view_set_input_hints(GTK_TEXT_VIEW(peer),
+                                static_cast<GtkInputHints>((hints & ~owned) | wanted));
+}
+
+void rn_peer_set_input_purpose(GtkWidget *peer, int purpose) {
+  if (peer == nullptr) {
+    return;
+  }
+  if (!rn_peer_is_multiline(peer)) {
+    gtk_text_set_input_purpose(GTK_TEXT(peer), static_cast<GtkInputPurpose>(purpose));
+    return;
+  }
+  gtk_text_view_set_input_purpose(GTK_TEXT_VIEW(peer),
+                                  static_cast<GtkInputPurpose>(purpose));
+}
+
 void rn_peer_set_editable(GtkWidget *peer, gboolean editable) {
   if (peer == nullptr) {
     return;

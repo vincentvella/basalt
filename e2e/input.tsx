@@ -68,6 +68,12 @@ function App() {
         placeholder="query"
         spellCheck={false}
         autoCorrect={false}
+        // autoCapitalize and keyboardType, which GTK turns into input hints and
+        // an input purpose and macOS can act on neither of: no per-field
+        // automatic capitalisation, and no software keyboard to lay out. Both
+        // hosts report what was asked so the dumps compare.
+        autoCapitalize="none"
+        keyboardType="email-address"
       />
 
       <Text style={styles.echo}>{shouted === '' ? '(nothing yet)' : shouted}</Text>

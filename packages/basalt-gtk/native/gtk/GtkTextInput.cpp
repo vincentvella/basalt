@@ -60,6 +60,53 @@ GtkTextInputManager::GtkTextInputManager(EmitterLookup lookup) : lookup_(std::mo
 // Mutations
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// React Native's fourteen keyboard types against GTK's eleven input purposes.
+//
+// A purpose is what the text is *for*, which is the honest half of
+// `keyboardType` on a desktop: there is no on-screen keyboard to choose a
+// layout for, and an input method reads the purpose to decide what to offer. On
+// a Linux tablet the purpose is what brings up a number pad.
+//
+// Several of React Native's types have no purpose to map to and fall to
+// `FREE_FORM`, which is GTK's "ordinary text" rather than a refusal:
+// `ascii-capable` and `numbers-and-punctuation` describe a *keyboard* rather
+// than a kind of text, `twitter` and `web-search` are iOS keyboards with no
+// equivalent idea here, and `visible-password` is Android's password that shows
+// -- GTK's `PASSWORD` purpose is for one that does not, and `secureTextEntry`
+// is the prop that makes a field secure here.
+GtkInputPurpose toInputPurpose(facebook::react::KeyboardType type) {
+  switch (type) {
+    case facebook::react::KeyboardType::EmailAddress:
+      return GTK_INPUT_PURPOSE_EMAIL;
+    case facebook::react::KeyboardType::URL:
+      return GTK_INPUT_PURPOSE_URL;
+    case facebook::react::KeyboardType::PhonePad:
+    case facebook::react::KeyboardType::NamePhonePad:
+      return GTK_INPUT_PURPOSE_PHONE;
+    // Digits only, which is what a number pad offers.
+    case facebook::react::KeyboardType::NumberPad:
+    case facebook::react::KeyboardType::ASCIICapableNumberPad:
+      return GTK_INPUT_PURPOSE_DIGITS;
+    // A number, which allows a decimal separator and a sign where DIGITS does
+    // not -- so `numeric` and `decimal-pad` are this and not that.
+    case facebook::react::KeyboardType::Numeric:
+    case facebook::react::KeyboardType::DecimalPad:
+      return GTK_INPUT_PURPOSE_NUMBER;
+    case facebook::react::KeyboardType::Default:
+    case facebook::react::KeyboardType::ASCIICapable:
+    case facebook::react::KeyboardType::NumbersAndPunctuation:
+    case facebook::react::KeyboardType::Twitter:
+    case facebook::react::KeyboardType::WebSearch:
+    case facebook::react::KeyboardType::VisiblePassword:
+      break;
+  }
+  return GTK_INPUT_PURPOSE_FREE_FORM;
+}
+
+} // namespace
+
 void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   const Tag tag = shadowView.tag;
   auto [it, inserted] = entries_.try_emplace(tag);
@@ -237,6 +284,11 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   static_assert(static_cast<int>(basalt::TextCheckingFlag::Unset) == 0);
   static_assert(static_cast<int>(basalt::TextCheckingFlag::On) == 1);
   static_assert(static_cast<int>(basalt::TextCheckingFlag::Off) == 2);
+  // And the capitalisation order the peer's ints rely on, for the same reason.
+  static_assert(static_cast<int>(facebook::react::AutocapitalizationType::None) == 0);
+  static_assert(static_cast<int>(facebook::react::AutocapitalizationType::Words) == 1);
+  static_assert(static_cast<int>(facebook::react::AutocapitalizationType::Sentences) == 2);
+  static_assert(static_cast<int>(facebook::react::AutocapitalizationType::Characters) == 3);
   // `spellCheck`, resolved in core/TextChecking.h so this host and AppKit agree
   // that unset is not false. `autoCorrect` has no GTK hint and is recorded
   // rather than approximated; see the peer's header.
@@ -247,6 +299,18 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   // first, and the line is what the two hosts compare on.
   rn_view_set_text_checking(
       view, basalt::textCheckingName(spellCheck), basalt::textCheckingName(autoCorrect));
+
+  // `autoCapitalize` and `keyboardType`, which this host can express and AppKit
+  // cannot: three more input hints and an input purpose. Both are plain enums
+  // with no "did not say", and React Native's default for the first is
+  // `sentences` -- iOS's -- so a hint is always set.
+  rn_peer_set_auto_capitalize(entry.editable,
+                              static_cast<int>(props->traits.autocapitalizationType));
+  rn_peer_set_input_purpose(entry.editable,
+                            static_cast<int>(toInputPurpose(props->traits.keyboardType)));
+  rn_view_set_input_kinds(view,
+                          basalt::autoCapitalizeName(props->traits.autocapitalizationType),
+                          basalt::keyboardTypeName(props->traits.keyboardType));
 
   rn_peer_set_max_length(
       entry.editable,

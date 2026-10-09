@@ -871,3 +871,44 @@ TEST(textinput_a_single_line_field_checks_its_editor_when_it_focuses) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// `autoCapitalize` and `keyboardType`, which this platform reports and cannot
+// act on: there is no per-field automatic capitalisation on macOS
+// (`NSSpellChecker`'s is the person's system setting) and no software keyboard
+// to choose a layout for.
+//
+// Asserted anyway, and in the words GTK prints: the dumps are diffed line by
+// line, so a field that asked for something has to say the same thing on both
+// hosts and the difference belongs in the support page rather than in a missing
+// line.
+TEST(textinput_reports_the_capitalisation_and_keyboard_it_cannot_honour) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager,
+                                    10,
+                                    folly::dynamic::object("autoCapitalize", "characters")(
+                                        "keyboardType", "email-address"));
+
+    const std::string dumped = [view describeTree].UTF8String;
+    EXPECT(dumped.find("autocapitalize=characters") != std::string::npos);
+    EXPECT(dumped.find("keyboard=email-address") != std::string::npos);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// And the default, which React Native decides rather than this platform:
+// `sentences`, as on iOS. A field that mentions neither prop still reports
+// both, because both are plain enums with a default rather than optionals.
+TEST(textinput_reports_react_natives_own_defaults_for_the_pair) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("text", "plain"));
+
+    const std::string dumped = [view describeTree].UTF8String;
+    EXPECT(dumped.find("autocapitalize=sentences") != std::string::npos);
+    EXPECT(dumped.find("keyboard=default") != std::string::npos);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}

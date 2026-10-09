@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <react/renderer/components/iostextinput/primitives.h>
+
 #include <optional>
 
 namespace basalt {
@@ -59,6 +61,73 @@ inline const char *textCheckingName(TextCheckingFlag flag) {
       return nullptr;
   }
   return nullptr;
+}
+
+// `autoCapitalize` and `keyboardType`, which are the other half of the same
+// entry and the other way round: GTK can express both and macOS neither.
+//
+// Both are plain enums rather than optionals, so there is no "did not say"
+// here: React Native's default for capitalisation **is** sentences, which is
+// what iOS does, and a host that treated the default as "no opinion" would be
+// quietly disagreeing with every other platform. So the hint is set either way
+// and the comment above each mapping says what it means.
+//
+// Nothing resolves them in core beyond naming them for the dump: a GTK input
+// purpose and a GTK input hint are GTK's vocabulary, and AppKit has no
+// vocabulary to translate into. What is shared is the word both dumps print.
+
+// `autoCapitalize`, as React Native spells it in JavaScript.
+inline const char *autoCapitalizeName(
+    facebook::react::AutocapitalizationType type) {
+  switch (type) {
+    case facebook::react::AutocapitalizationType::None:
+      return "none";
+    case facebook::react::AutocapitalizationType::Words:
+      return "words";
+    case facebook::react::AutocapitalizationType::Sentences:
+      return "sentences";
+    case facebook::react::AutocapitalizationType::Characters:
+      return "characters";
+  }
+  return "sentences";
+}
+
+// `keyboardType`, as React Native spells it. The iOS-only and Android-only
+// members are named as they are written in a stylesheet rather than collapsed,
+// because a dump that said "default" for four different asks would hide which
+// one an app made.
+inline const char *keyboardTypeName(facebook::react::KeyboardType type) {
+  switch (type) {
+    case facebook::react::KeyboardType::Default:
+      return "default";
+    case facebook::react::KeyboardType::EmailAddress:
+      return "email-address";
+    case facebook::react::KeyboardType::Numeric:
+      return "numeric";
+    case facebook::react::KeyboardType::PhonePad:
+      return "phone-pad";
+    case facebook::react::KeyboardType::NumberPad:
+      return "number-pad";
+    case facebook::react::KeyboardType::DecimalPad:
+      return "decimal-pad";
+    case facebook::react::KeyboardType::ASCIICapable:
+      return "ascii-capable";
+    case facebook::react::KeyboardType::NumbersAndPunctuation:
+      return "numbers-and-punctuation";
+    case facebook::react::KeyboardType::URL:
+      return "url";
+    case facebook::react::KeyboardType::NamePhonePad:
+      return "name-phone-pad";
+    case facebook::react::KeyboardType::Twitter:
+      return "twitter";
+    case facebook::react::KeyboardType::WebSearch:
+      return "web-search";
+    case facebook::react::KeyboardType::ASCIICapableNumberPad:
+      return "ascii-capable-number-pad";
+    case facebook::react::KeyboardType::VisiblePassword:
+      return "visible-password";
+  }
+  return "default";
 }
 
 } // namespace basalt

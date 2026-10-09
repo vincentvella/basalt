@@ -6,12 +6,12 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (7):**
+**Open (6):**
 
 1. ~~Justified text~~, which worked all along
 2. Fonts loaded at runtime are untested
-3. No `keyboardType` or `autoCapitalize` (~~`autoCorrect`~~ and ~~`spellCheck`~~
-   are done)
+3. ~~`keyboardType`, `autoCapitalize`, `autoCorrect` and `spellCheck`~~: two
+   done on both hosts, two recorded here as having no macOS call at all
 4. Nothing tested against a real screen reader
 5. No accessibility subroles
 6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
@@ -115,8 +115,33 @@ If an entry here is about to be picked up, run the thing it describes first.
     developer's Mac, which is the shape of flake this project has already spent
     a day on.
 
-  What is left here is `autoCapitalize` and `keyboardType`, both of which GTK
-  can express and macOS cannot. They are the next unit.
+  **`autoCapitalize` and `keyboardType` are done too, 2026-10-09, and on this
+  host that means *reported and not acted on*.** GTK turns the first into three
+  more input hints -- capitalise characters, words or sentences -- and the
+  second into an input purpose, which is what an input method reads and what
+  brings up a number pad on a Linux tablet. macOS has neither: no per-field
+  automatic capitalisation, and no software keyboard whose layout a purpose
+  could choose.
+
+  So both hosts print what the app asked for in the tree dump, in the same
+  words, and this file is where the difference is written down rather than
+  being a missing line in a diff. Two details worth keeping:
+
+  - **React Native's default for capitalisation is `sentences`**, as on iOS, and
+    the prop is a plain enum with no "did not say" -- so every field asks for
+    sentence capitalisation unless it says otherwise, and GTK sets the hint. A
+    test pins that, because it is the kind of behaviour a later reader takes
+    for a bug.
+  - **`none` is the absence of the three hints, not `GTK_INPUT_HINT_LOWERCASE`.**
+    That hint asks the input method to lowercase what the person typed, which
+    no app asked for.
+
+  The mapping from fourteen keyboard types to eleven purposes is in
+  `GtkTextInput.cpp` with its reasoning: `number-pad` is `DIGITS` where
+  `numeric` and `decimal-pad` are `NUMBER`, which allows a separator and a
+  sign; `ascii-capable`, `numbers-and-punctuation`, `twitter`, `web-search` and
+  `visible-password` describe keyboards rather than kinds of text and are
+  ordinary `FREE_FORM`.
 - **Nothing tested against a real screen reader**, on either platform.
   VoiceOver and Orca are both a manual step nobody has taken; the unit tests
   assert the properties were set and cannot assert the result is usable.

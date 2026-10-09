@@ -5120,6 +5120,23 @@ def test_text_checking(bundle: Path) -> None:
             f"false.\n{tree}"
         )
 
+    # `autoCapitalize` and `keyboardType` ride along on the same field, and are
+    # the other way round: GTK honours both and AppKit can honour neither, so
+    # both hosts *report* them and the support page carries the difference.
+    # Every field reports these two, both props being plain enums with React
+    # Native's own defaults rather than optionals.
+    if "autocapitalize=none" not in asked[0] or "keyboard=email-address" not in asked[0]:
+        raise Failure(
+            f"the field did not ask for the capitalisation and keyboard the app "
+            f"wrote.\n{asked[0]}"
+        )
+    defaults = [line for line in tree.splitlines() if "autocapitalize=sentences" in line]
+    if not defaults:
+        raise Failure(
+            "no field reports React Native's default capitalisation, which every "
+            f"field that said nothing should.\n{tree}"
+        )
+
 
 def test_writing_direction(bundle: Path) -> None:
     """`writingDirection` reaches the paragraph.

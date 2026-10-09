@@ -523,6 +523,13 @@ void rn_view_set_text_checking(RnView *self,
                                const char *spell_check,
                                const char *auto_correct);
 
+// `autoCapitalize` and `keyboardType`, for the tree dump, as React Native
+// spells them. Takes static strings and does not copy them. What this host
+// *does* with them is in GtkTextPeer.h: three input hints and an input purpose.
+void rn_view_set_input_kinds(RnView *self,
+                             const char *auto_capitalize,
+                             const char *keyboard_type);
+
 // The view's `nativeID`, verbatim.
 //
 // Only the hidden title bar reads it, to find the regions an app marked with

@@ -57,6 +57,27 @@ void rn_peer_set_editable(GtkWidget *peer, gboolean editable);
 // such.
 void rn_peer_set_spell_check(GtkWidget *peer, int flag);
 
+// `autoCapitalize`, which GTK has as three more input hints: capitalise every
+// character, every word, or the first word of each sentence. `none` is the
+// absence of all three rather than `GTK_INPUT_HINT_LOWERCASE`, which asks for
+// something else entirely -- lowercasing what was typed.
+//
+// React Native's default is `sentences`, as on iOS, and the prop is a plain
+// enum with no "did not say", so a hint is always set. 0 none, 1 words,
+// 2 sentences, 3 characters, matching core's enum order.
+void rn_peer_set_auto_capitalize(GtkWidget *peer, int type);
+
+// `keyboardType`, which GTK has as an input *purpose*: what the text is for,
+// which is what decides an on-screen keyboard's layout and what an input
+// method offers. A desktop with a hardware keyboard shows nothing different,
+// which is why this is a purpose rather than a keyboard -- and why a Linux
+// tablet is the machine where it shows.
+//
+// Takes GTK's own enum value, chosen in GtkTextInput.cpp from React Native's
+// fourteen keyboard types: the mapping is a platform decision and belongs
+// beside the platform.
+void rn_peer_set_input_purpose(GtkWidget *peer, int purpose);
+
 // Where the "changed" and cursor signals live: the widget for a GtkText, the
 // buffer for a GtkTextView. Callers connect to this rather than to the peer.
 GObject *rn_peer_signal_source(GtkWidget *peer);

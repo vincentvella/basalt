@@ -346,6 +346,13 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
   entry.view.rnSpellCheck = name(props->traits.spellCheck);
   entry.view.rnAutoCorrect = name(props->traits.autoCorrect);
 
+  // `autoCapitalize` and `keyboardType`, reported and not acted on: this
+  // platform has no per-field automatic capitalisation and no software
+  // keyboard. backlog/platform-macos.md says so with the calls that do not
+  // exist, and the GTK host honours both.
+  entry.view.rnAutoCapitalize = @(basalt::autoCapitalizeName(props->traits.autocapitalizationType));
+  entry.view.rnKeyboardType = @(basalt::keyboardTypeName(props->traits.keyboardType));
+
   // Zero means no limit, and so does the absurd default React Native uses when
   // the prop is absent.
   RnPeerSetMaxLength(entry.field,

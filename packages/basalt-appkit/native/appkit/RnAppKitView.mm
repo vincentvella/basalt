@@ -2813,6 +2813,14 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (self.rnAutoCorrect.length > 0) {
     [out appendFormat:@" autocorrect=%@", self.rnAutoCorrect];
   }
+  // What the app asked for about capitalisation and the keyboard, neither of
+  // which this platform can act on. The words are GTK's so the dumps compare.
+  if (self.rnAutoCapitalize.length > 0) {
+    [out appendFormat:@" autocapitalize=%@", self.rnAutoCapitalize];
+  }
+  if (self.rnKeyboardType.length > 0) {
+    [out appendFormat:@" keyboard=%@", self.rnKeyboardType];
+  }
   // The paragraph's text shadow, spelled as GTK spells it: no other line can
   // show it, a shadowed paragraph having the same text, colour and box. The
   // standard deviation React Native parsed, which is also what this context was

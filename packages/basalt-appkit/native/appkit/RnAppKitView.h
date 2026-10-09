@@ -642,6 +642,16 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 @property(nonatomic, copy, nullable) NSString *rnSpellCheck;
 @property(nonatomic, copy, nullable) NSString *rnAutoCorrect;
 
+// `autoCapitalize` and `keyboardType`, for the tree dump, as React Native
+// spells them. **This host acts on neither**, and says so rather than
+// pretending: macOS has no per-field automatic capitalisation
+// (`NSSpellChecker`'s is the person's system setting) and no software keyboard
+// to choose a layout for. GTK turns both into input hints and an input
+// purpose, so printing the same words is what keeps the two dumps comparable
+// and puts the difference in the support page, where it belongs.
+@property(nonatomic, copy, nullable) NSString *rnAutoCapitalize;
+@property(nonatomic, copy, nullable) NSString *rnKeyboardType;
+
 // The `cursor` style property, as the CSS keyword React Native uses: "pointer",
 // "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
 // whatever encloses this view, which is what `cursor: 'auto'` means.

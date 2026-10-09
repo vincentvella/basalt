@@ -193,6 +193,11 @@ struct _RnView {
   // absent. Absent is the third state and not a default: see core/TextChecking.h.
   const char *spell_check;
   const char *auto_correct;
+  // `autoCapitalize` and `keyboardType`, as React Native's own words. Always
+  // present for a field: both props are plain enums with a default rather than
+  // optionals, so there is no third state to leave out.
+  const char *auto_capitalize;
+  const char *keyboard_type;
   // `writingDirection`, as React Native's own word: "ltr", "rtl" or "natural".
   // The layout has the direction itself; this is for the dump, which is
   // compared with the AppKit one line by line.
@@ -1191,6 +1196,8 @@ static void rn_view_init(RnView *self) {
   self->writing_direction = nullptr;
   self->spell_check = nullptr;
   self->auto_correct = nullptr;
+  self->auto_capitalize = nullptr;
+  self->keyboard_type = nullptr;
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
   self->gradients = nullptr;
@@ -1387,6 +1394,12 @@ void rn_view_set_accessible_text(RnView *self, const char *label, const char *de
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, description, -1);
   }
+}
+
+void rn_view_set_input_kinds(RnView *self, const char *auto_capitalize, const char *keyboard_type) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  self->auto_capitalize = auto_capitalize;
+  self->keyboard_type = keyboard_type;
 }
 
 void rn_view_set_text_checking(RnView *self, const char *spell_check, const char *auto_correct) {
@@ -2745,6 +2758,15 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   }
   if (self->auto_correct != nullptr) {
     g_string_append_printf(out, " autocorrect=%s", self->auto_correct);
+  }
+  // `autoCapitalize` and `keyboardType`, which this host turns into input hints
+  // and an input purpose. Printed as the app wrote them so the two dumps
+  // compare: AppKit can act on neither and says the same words.
+  if (self->auto_capitalize != nullptr) {
+    g_string_append_printf(out, " autocapitalize=%s", self->auto_capitalize);
+  }
+  if (self->keyboard_type != nullptr) {
+    g_string_append_printf(out, " keyboard=%s", self->keyboard_type);
   }
   // The paragraph's text shadow, which no other line of this dump can show: a
   // shadowed paragraph has the same text, the same colour and the same box. The
