@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (17):**
+**Open (19):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -23,6 +23,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 16. `mixBlendMode` blends nothing
 17. No text shadow, so `textShadowColor` and friends do nothing
 18. The desktop's text scale is not read, so large text does not enlarge text
+19. No text decoration, so an underline or a strikethrough is not drawn
+20. `fontVariant` and a fragment's `opacity` are not read
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -317,6 +319,42 @@ and none of it is a missing half.
   backlog/correctness.md has what the other two decided, including which
   backdrop each of them blends with and why the two differ. The end-to-end
   scenario is skipped here by name.
+
+- **`fontVariant` and a fragment's `opacity` are not read.** Both are one call
+  away and the arithmetic is already shared.
+
+  `fontVariant` is the easier of the two here than on either other host:
+  `core/FontVariants.h` resolves the bitmask to OpenType tags -- `smcp`, `tnum`,
+  `ss07` -- and `fontFeatureSettings()` returns them in the form Pango takes.
+  DirectWrite wants the same tags as `DWRITE_FONT_FEATURE_TAG`, which is
+  `DWRITE_MAKE_OPENTYPE_TAG('s','m','c','p')`, added to an
+  `IDWriteTypography` with `AddFontFeature` and set on the range with
+  `IDWriteTextLayout::SetTypography`. No table to copy: the tags are in core.
+  AppKit is the host that needs a translation, Core Text wanting Apple's older
+  AAT selectors instead.
+
+  `opacity` multiplies the alpha of the foreground and the background, which
+  `core/TextColors.h` does; what is left is for `buildTextStyle` to take its
+  colour from `textForegroundColor()` rather than reading the prop itself. That
+  would also pick up React Native's default of opaque black, which this host
+  currently spells for itself.
+
+- **No text decoration, so `textDecorationLine` and the two props beside it
+  draw nothing.** The other two hosts read all three as of 2026-10-09, through
+  `core/TextDecorations.h`, and this host reads none.
+
+  Two of the three are a call each: `IDWriteTextLayout::SetUnderline(TRUE,
+  range)` and `SetStrikethrough(TRUE, range)`, over the whole text range, which
+  is where `RnWin32TextLayout` already sets the font size and weight per run.
+
+  The third is not. DirectWrite draws an underline in the text's own colour and
+  with no pattern, so `textDecorationColor` and `textDecorationStyle` need a
+  custom renderer: `IDWriteTextRenderer::DrawUnderline` and `DrawStrikethrough`
+  are the callbacks, and they hand over a `DWRITE_UNDERLINE` with the geometry
+  already worked out, so what is left is a `FillRectangle` in the asked-for
+  colour, or a dashed `ID2D1StrokeStyle` for a dotted or dashed one. That would
+  make this host the *most* capable of the three for style, since neither Pango
+  nor Core Text has all five.
 
 - **The desktop's text scale is not read, so Windows's large-text setting does
   not enlarge anything.** `allowFontScaling` and `maxFontSizeMultiplier` *are*

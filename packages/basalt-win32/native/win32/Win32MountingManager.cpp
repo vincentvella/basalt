@@ -565,6 +565,9 @@ void Win32MountingManager::applyAccessibility(RnWin32View *view, const ShadowVie
     info.label = view->textLayout()->text();
   }
   info.hint = props->accessibilityHint;
+  // `testID`, which no host read until 2026-10-09. UIA publishes it as the
+  // automation id; see RnWin32Accessible.cpp.
+  info.testId = props->testId;
 
   const auto &state = props->accessibilityState;
   if (state.has_value()) {

@@ -182,6 +182,10 @@ struct _RnView {
   float image_blur;
   GdkRGBA image_tint;
   char *role_name;
+  // `testID`, which is an identifier for a test runner rather than anything a
+  // person sees. GTK publishes it as the accessible id; see
+  // rn_view_accessible_init.
+  char *test_id;
   // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
   // to GDK so the tree dump can report what the app asked for.
   char *cursor_name;
@@ -347,7 +351,36 @@ void rn_view_set_resize_callback(RnView *self, RnViewResizeFunc callback, gpoint
   self->resize_data = user_data;
 }
 
+#if GTK_CHECK_VERSION(4, 22, 0)
+// `testID` reaches AT-SPI as the accessible id, and the only way to say what it
+// is is to answer for it: `GtkAccessibleIface::get_accessible_id` is a vfunc and
+// GTK has no setter. GtkWidget implements GtkAccessible already, and a subclass
+// re-implementing the interface overrides only the vfuncs it sets, which is what
+// this does.
+//
+// Measured before it was written: `gtk_widget_set_name` does *not* feed the
+// accessible id, and a widget built in code has no buildable id either, so both
+// of the obvious ways report null.
+//
+// 4.22 is when the vfunc arrived. Before that GTK has nowhere to put this at
+// all, so the whole thing is compiled out and backlog/accessibility.md records
+// the version: Ubuntu 24.04, which CI runs, has 4.14.
+static void rn_view_accessible_init(GtkAccessibleInterface *iface);
+
+G_DEFINE_TYPE_WITH_CODE(RnView, rn_view, GTK_TYPE_WIDGET,
+                        G_IMPLEMENT_INTERFACE(GTK_TYPE_ACCESSIBLE, rn_view_accessible_init))
+
+static char *rn_view_get_accessible_id(GtkAccessible *accessible) {
+  RnView *self = RN_VIEW(accessible);
+  return self->test_id != nullptr ? g_strdup(self->test_id) : nullptr;
+}
+
+static void rn_view_accessible_init(GtkAccessibleInterface *iface) {
+  iface->get_accessible_id = rn_view_get_accessible_id;
+}
+#else
 G_DEFINE_TYPE(RnView, rn_view, GTK_TYPE_WIDGET)
+#endif
 
 static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   RnView *self = RN_VIEW(widget);
@@ -1083,6 +1116,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_object(&self->text_layout);
   g_clear_object(&self->texture);
   g_clear_pointer(&self->role_name, g_free);
+  g_clear_pointer(&self->test_id, g_free);
   g_clear_pointer(&self->native_id, g_free);
   g_clear_pointer(&self->cursor_name, g_free);
   g_clear_pointer(&self->blend_name, g_free);
@@ -1138,6 +1172,7 @@ static void rn_view_init(RnView *self) {
   self->texture = nullptr;
   self->texture_fit = RN_IMAGE_FIT_COVER;
   self->role_name = nullptr;
+  self->test_id = nullptr;
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
   self->gradients = nullptr;
@@ -1693,6 +1728,12 @@ void rn_view_set_role_name(RnView *self, const char *name) {
   g_return_if_fail(RN_IS_VIEW(self));
   g_free(self->role_name);
   self->role_name = name != nullptr && *name != '\0' ? g_strdup(name) : nullptr;
+}
+
+void rn_view_set_test_id(RnView *self, const char *test_id) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  g_free(self->test_id);
+  self->test_id = test_id != nullptr && *test_id != '\0' ? g_strdup(test_id) : nullptr;
 }
 
 void rn_view_set_native_id(RnView *self, const char *native_id) {
@@ -2655,6 +2696,14 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // a platform question belongs.
   if (self->role_name != nullptr && *self->role_name != '\0') {
     g_string_append_printf(out, " role=%s", self->role_name);
+  }
+  // `testID`, printed as the host was given it rather than as the platform
+  // publishes it, which is the same division the role above uses: three hosts
+  // reporting their own toolkit's answer would be a diff on every line, and
+  // whether *this* toolkit really published it is a question for
+  // tests/test_accessibility.cpp.
+  if (self->test_id != nullptr && *self->test_id != '\0') {
+    g_string_append_printf(out, " testid=%s", self->test_id);
   }
   // Whether Tab stops here. GTK's own answer rather than the flag this project
   // set, which is the stronger statement: it says the widget really did join

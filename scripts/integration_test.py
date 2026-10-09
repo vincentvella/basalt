@@ -4205,6 +4205,64 @@ def test_accessibility_labelled_by(bundle: Path) -> None:
         )
 
 
+def test_test_id(bundle: Path) -> None:
+    """`testID` reaches the view, and the platform's identifier for it.
+
+    The prop every app under test sets, and no host read it until 2026-10-09:
+    an identifier for whoever is driving the app from outside, which each
+    platform has its own name for.
+
+    | Host | Where it goes |
+    | --- | --- |
+    | GTK | the accessible id, `GtkAccessibleIface::get_accessible_id` |
+    | AppKit | `accessibilityIdentifier` |
+    | Win32 | UIA's `UIA_AutomationIdPropertyId` |
+
+    This asserts the dump, which carries React Native's spelling on all three so
+    that the trees compare. That each *platform* published it is asserted in
+    each host's own suite, which is the same division the `role=` line uses --
+    and on GTK it needs 4.22, the version where the vfunc arrived, so there the
+    unit test is the one with a version guard on it and this is not.
+    """
+    app = bundle_app(bundle.parent, "a11y")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltA11y"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "testid=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a testID; e2e/a11y.tsx sets one.\n{tree}"
+        )
+    if "testid=save-button" not in carrying[0]:
+        raise Failure(f"the testID is not the one the app set.\n{carrying[0]}")
+    # On the view that asked for it, which is the button rather than the <Text>
+    # inside it: `testID` does not inherit, and a host that put it on every
+    # descendant would pass the count above only by accident.
+    if "role=button" not in carrying[0]:
+        raise Failure(
+            "the testID landed on a view that is not the button that set it.\n"
+            f"{carrying[0]}"
+        )
+
+
 def test_accessibility_live_region(bundle: Path) -> None:
     """`accessibilityLiveRegion` reads a status message out when it changes.
 
@@ -6381,6 +6439,7 @@ SCENARIOS = [
     ("a desktop text scale, and the props that refuse it", test_font_scaling),
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
+    ("a testID reaches the view and the platform", test_test_id),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),

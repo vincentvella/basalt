@@ -808,6 +808,19 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   (void)busy;
 }
 
+- (void)setRnTestId:(NSString *)testId {
+  if (_rnTestId == testId || [_rnTestId isEqualToString:testId]) {
+    return;
+  }
+  _rnTestId = [testId copy];
+  // The platform half, and the reason this is a setter rather than a plain
+  // property: `accessibilityIdentifier` is what XCTest and the Accessibility
+  // Inspector look a view up by, and it is the nearest thing macOS has to
+  // UIA's automation id. An empty `testID` sets nil rather than an empty
+  // string, which is what AppKit means by "no identifier".
+  self.accessibilityIdentifier = _rnTestId.length > 0 ? _rnTestId : nil;
+}
+
 - (void)setRnAccessibleHidden:(BOOL)hidden {
   if (hidden) {
     self.accessibilityElement = NO;
@@ -2817,6 +2830,12 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   // applied is asserted in each platform's unit tests instead.
   if (_roleName != nil) {
     [out appendFormat:@" role=%@", _roleName];
+  }
+  // `testID`, as React Native spelled it rather than as AppKit publishes it,
+  // which is the same division as the role: that this platform really set
+  // `accessibilityIdentifier` is asserted in tests/test_appkit_accessibility.mm.
+  if (self.rnTestId.length > 0) {
+    [out appendFormat:@" testid=%@", self.rnTestId];
   }
   // Whether Tab stops here, after `role=` because that is where the GTK side
   // prints it and this dump is diffed line by line. Whether it is focused *now*

@@ -780,3 +780,273 @@ TEST(appkit_max_font_size_multiplier_is_a_ceiling) {
 TEST(appkit_text_scale_is_one_because_macos_publishes_none) {
   EXPECT(std::fabs(basalt::appKitTextScale() - 1.0F) < 0.001F);
 }
+
+// `textDecorationColor` and `textDecorationStyle`, the pair the GTK suite asks
+// about in its own terms. Both read through `buildTextLayout`, so what is
+// asserted is what Core Text was handed, and then that it drew it.
+namespace {
+
+NSAttributedString *decorated(
+    std::optional<facebook::react::TextDecorationStyle> style,
+    bool coloured,
+    facebook::react::TextDecorationLineType line =
+        facebook::react::TextDecorationLineType::Underline) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 24.0F;
+  attributes.foregroundColor = facebook::react::colorFromComponents(
+      facebook::react::ColorComponents{0.0F, 0.0F, 0.0F, 1.0F});
+  attributes.textDecorationLineType = line;
+  attributes.textDecorationStyle = style;
+  if (coloured) {
+    attributes.textDecorationColor = facebook::react::colorFromComponents(
+        facebook::react::ColorComponents{1.0F, 0.0F, 0.0F, 1.0F});
+  }
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = "Hxy";
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  return basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{}).attributedString;
+}
+
+} // namespace
+
+TEST(appkit_a_decoration_style_maps_to_core_texts_bitmask) {
+  @autoreleasepool {
+    using facebook::react::TextDecorationStyle;
+    const auto underline = [](std::optional<TextDecorationStyle> style) {
+      NSNumber *value = [decorated(style, false) attribute:NSUnderlineStyleAttributeName
+                                                  atIndex:0
+                                           effectiveRange:nullptr];
+      return value == nil ? NSInteger(-1) : value.integerValue;
+    };
+
+    EXPECT_EQ(underline(std::nullopt), NSInteger(NSUnderlineStyleSingle));
+    EXPECT_EQ(underline(TextDecorationStyle::Solid), NSInteger(NSUnderlineStyleSingle));
+    EXPECT_EQ(underline(TextDecorationStyle::Double), NSInteger(NSUnderlineStyleDouble));
+    // The pattern rides in the same bitmask, which is what AppKit has and Pango
+    // does not.
+    EXPECT_EQ(underline(TextDecorationStyle::Dotted),
+              NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDot));
+    EXPECT_EQ(underline(TextDecorationStyle::Dashed),
+              NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDash));
+    // And the one that is exact on GTK and not here: no wavy pattern exists, so
+    // it is a single line and recorded as such.
+    EXPECT_EQ(underline(TextDecorationStyle::Wavy), NSInteger(NSUnderlineStyleSingle));
+  }
+}
+
+TEST(appkit_a_strikethrough_takes_the_same_style_and_colour) {
+  @autoreleasepool {
+    NSAttributedString *string =
+        decorated(facebook::react::TextDecorationStyle::Dotted, true,
+                  facebook::react::TextDecorationLineType::UnderlineStrikethrough);
+    NSNumber *strike = [string attribute:NSStrikethroughStyleAttributeName
+                                atIndex:0
+                         effectiveRange:nullptr];
+    EXPECT(strike != nil);
+    EXPECT(strike != nil
+           && strike.integerValue == NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDot));
+    EXPECT([string attribute:NSStrikethroughColorAttributeName
+                    atIndex:0
+             effectiveRange:nullptr] != nil);
+  }
+}
+
+// An unset colour is the text's own, which means *no* attribute: setting one
+// would be this platform choosing a colour React Native did not.
+TEST(appkit_an_unset_decoration_colour_sets_no_attribute) {
+  @autoreleasepool {
+    EXPECT([decorated(std::nullopt, false) attribute:NSUnderlineColorAttributeName
+                                            atIndex:0
+                                     effectiveRange:nullptr] == nil);
+    EXPECT([decorated(std::nullopt, true) attribute:NSUnderlineColorAttributeName
+                                           atIndex:0
+                                    effectiveRange:nullptr] != nil);
+  }
+}
+
+// And it reaches the page. Black text, a red underline, and a red pixel is one
+// the glyphs cannot have drawn.
+TEST(appkit_a_decoration_colour_reaches_the_underline) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 60);
+    const auto redPixels = [&](bool coloured) {
+      RnTextLayout *layout = [RnTextLayout
+          layoutWithAttributedString:decorated(std::nullopt, coloured)
+                maximumNumberOfLines:0
+                      truncationType:kCTLineTruncationEnd
+                           truncates:YES];
+      CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width,
+                                                   (size_t)size.height, 8, 0, space,
+                                                   kCGImageAlphaPremultipliedLast);
+      CGColorSpaceRelease(space);
+      CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+      CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+      [layout drawInContext:context size:size];
+
+      auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+      const size_t stride = CGBitmapContextGetBytesPerRow(context);
+      int red = 0;
+      for (size_t y = 0; y < (size_t)size.height; y++) {
+        for (size_t x = 0; x < (size_t)size.width; x++) {
+          const unsigned char *pixel = pixels + y * stride + x * 4;
+          if (pixel[0] > 150 && pixel[1] < 110 && pixel[2] < 110) {
+            red++;
+          }
+        }
+      }
+      CGContextRelease(context);
+      return red;
+    };
+
+    // The negative control: black text with an uncoloured underline puts no red
+    // on the page at all.
+    EXPECT_EQ(redPixels(false), 0);
+    EXPECT(redPixels(true) > 0);
+  }
+}
+
+// `fontVariant`, in Core Text's vocabulary rather than OpenType's.
+//
+// What is asserted is the feature settings on the font, not a picture: whether
+// `smcp` *changes* anything depends on the font having a small-caps table, and
+// the font here is whatever the machine has. The AAT pair is this platform's
+// half of the job and is where a wrong number would hide.
+namespace {
+
+// The mapping, not what a font kept of it: `[NSFont fontWithDescriptor:]`
+// drops features the resolved font does not have, and the system font has
+// neither oldstyle figures nor twenty stylistic sets. Asking the font would be
+// asking this machine's font catalogue.
+NSArray *featuresOf(std::optional<facebook::react::FontVariant> variant) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 20.0F;
+  attributes.fontVariant = variant;
+  return basalt::fontFeaturesFor(attributes);
+}
+
+// And the half that only a real font can answer: a feature the system font does
+// have has to survive onto the font the layout uses.
+NSFont *fontWith(facebook::react::FontVariant variant) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 20.0F;
+  attributes.fontVariant = variant;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = "Figures 123";
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  return [basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{})
+                 .attributedString attribute:NSFontAttributeName
+                                    atIndex:0
+                             effectiveRange:nullptr];
+}
+
+bool hasFeature(NSArray *features, int type, int selector) {
+  for (NSDictionary *feature in features) {
+    if ([feature[NSFontFeatureTypeIdentifierKey] intValue] == type
+        && [feature[NSFontFeatureSelectorIdentifierKey] intValue] == selector) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+TEST(appkit_a_font_variant_becomes_core_text_feature_settings) {
+  @autoreleasepool {
+    using facebook::react::FontVariant;
+    // Nothing asked means no settings at all, rather than an empty array that
+    // would rebuild the font for nothing.
+    EXPECT(featuresOf(std::nullopt) == nil || [featuresOf(std::nullopt) count] == 0);
+
+    NSArray *smallCaps = featuresOf(FontVariant::SmallCaps);
+    EXPECT(smallCaps != nil && smallCaps.count == 1);
+    EXPECT(hasFeature(smallCaps, kLowerCaseType, kLowerCaseSmallCapsSelector));
+
+    // The two number cases are the same AAT type and differ by selector, which
+    // is the pair most likely to be swapped.
+    EXPECT(hasFeature(featuresOf(FontVariant::OldstyleNums), kNumberCaseType,
+                      kLowerCaseNumbersSelector));
+    EXPECT(hasFeature(featuresOf(FontVariant::LiningNums), kNumberCaseType,
+                      kUpperCaseNumbersSelector));
+    EXPECT(hasFeature(featuresOf(FontVariant::TabularNums), kNumberSpacingType,
+                      kMonospacedNumbersSelector));
+    EXPECT(hasFeature(featuresOf(FontVariant::ProportionalNums), kNumberSpacingType,
+                      kProportionalNumbersSelector));
+
+    NSArray *both = featuresOf(static_cast<FontVariant>(
+        static_cast<int>(FontVariant::SmallCaps) | static_cast<int>(FontVariant::TabularNums)));
+    EXPECT(both != nil && both.count == 2);
+
+    // And that it reaches a real font, which the mapping alone cannot say.
+    // Small caps because the system font has them; a feature it lacks would be
+    // dropped by Core Text and prove nothing either way.
+    NSArray *kept =
+        [fontWith(FontVariant::SmallCaps).fontDescriptor objectForKey:NSFontFeatureSettingsAttribute];
+    EXPECT(kept != nil && hasFeature(kept, kLowerCaseType, kLowerCaseSmallCapsSelector));
+    // A fragment that asked for nothing is left on the plain font.
+    EXPECT([fontWith(FontVariant::Default).fontDescriptor
+               objectForKey:NSFontFeatureSettingsAttribute] == nil);
+  }
+}
+
+// The stylistic alternates are a formula rather than twenty table entries, so
+// the formula is checked against the SDK's own constants rather than against
+// the comment that states it.
+TEST(appkit_a_stylistic_alternate_selector_is_twice_its_number) {
+  @autoreleasepool {
+    using facebook::react::FontVariant;
+    EXPECT_EQ(kStylisticAltOneOnSelector, 1 * 2);
+    EXPECT_EQ(kStylisticAltTwentyOnSelector, 20 * 2);
+    EXPECT(hasFeature(featuresOf(FontVariant::StylisticOne), kStylisticAlternativesType,
+                      kStylisticAltOneOnSelector));
+    EXPECT(hasFeature(featuresOf(FontVariant::StylisticSeven), kStylisticAlternativesType,
+                      kStylisticAltSevenOnSelector));
+    EXPECT(hasFeature(featuresOf(FontVariant::StylisticTwenty), kStylisticAlternativesType,
+                      kStylisticAltTwentyOnSelector));
+  }
+}
+
+// `TextAttributes::opacity`, which multiplies the alpha of both colours.
+TEST(appkit_a_fragment_opacity_multiplies_the_colour_alpha) {
+  @autoreleasepool {
+    const auto alphaOf = [](double opacity, bool background) {
+      facebook::react::TextAttributes attributes;
+      attributes.fontSize = 20.0F;
+      attributes.opacity = opacity;
+      attributes.foregroundColor = facebook::react::colorFromComponents(
+          facebook::react::ColorComponents{1.0F, 0.0F, 0.0F, 1.0F});
+      if (background) {
+        attributes.backgroundColor = facebook::react::colorFromComponents(
+            facebook::react::ColorComponents{0.0F, 0.0F, 1.0F, 1.0F});
+      }
+
+      facebook::react::AttributedString::Fragment fragment;
+      fragment.string = "half";
+      fragment.textAttributes = attributes;
+      facebook::react::AttributedString string;
+      string.appendFragment(std::move(fragment));
+
+      NSAttributedString *laid =
+          basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{}).attributedString;
+      NSColor *color = [laid attribute:(background ? NSBackgroundColorAttributeName
+                                                   : NSForegroundColorAttributeName)
+                              atIndex:0
+                       effectiveRange:nullptr];
+      return color == nil ? -1.0 : (double)color.alphaComponent;
+    };
+
+    EXPECT(std::fabs(alphaOf(1.0, false) - 1.0) < 0.01);
+    EXPECT(std::fabs(alphaOf(0.5, false) - 0.5) < 0.01);
+    // Both colours, which is upstream's rule and not only the foreground.
+    EXPECT(std::fabs(alphaOf(0.25, true) - 0.25) < 0.01);
+  }
+}

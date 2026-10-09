@@ -48,6 +48,19 @@ NSString *transformedFragmentText(const facebook::react::AttributedString::Fragm
 NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(
     const facebook::react::TextAttributes &textAttributes);
 
+// `fontVariant` in Core Text's vocabulary, which is not OpenType's: Apple's
+// older AAT pairs, a feature type and a selector inside it, as upstream's
+// `RCTFontFeatures` uses.
+//
+// Exposed for the suite rather than for callers. The mapping is the part this
+// platform owns and a wrong selector would be invisible: `[NSFont
+// fontWithDescriptor:]` resolves against a real font and **drops features that
+// font does not have**, so asking the resolved font what it kept measures the
+// machine's fonts rather than this code. The system font has small caps and
+// tabular figures and has neither oldstyle figures nor a twentieth stylistic
+// set, which is how that was found.
+NSArray *fontFeaturesFor(const facebook::react::TextAttributes &textAttributes);
+
 // The desktop's text scale, which on macOS is 1 and is a function anyway.
 //
 // macOS publishes no scalar for this. Accessibility's "Text size" works through

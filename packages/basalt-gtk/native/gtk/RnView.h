@@ -501,6 +501,11 @@ void rn_view_set_accessible_text(RnView *self, const char *label, const char *de
 // cannot disagree. Pass NULL or "" for no role.
 void rn_view_set_role_name(RnView *self, const char *name);
 
+// `testID`: an identifier for whoever is driving the app from outside, which is
+// what UIA calls an automation id and AppKit an accessibility identifier. GTK
+// publishes it as the accessible id, from 4.22 on; see RnView.cpp.
+void rn_view_set_test_id(RnView *self, const char *test_id);
+
 // The view's `nativeID`, verbatim.
 //
 // Only the hidden title bar reads it, to find the regions an app marked with

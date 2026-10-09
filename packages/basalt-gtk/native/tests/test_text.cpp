@@ -719,3 +719,199 @@ TEST(gtk_a_text_scale_grows_what_a_paragraph_measures) {
   EXPECT(std::fabs(widthAt(1.5F, false) - plain) < 0.5F);
   EXPECT(widthAt(1.5F, true) > plain);
 }
+
+// `textDecorationColor`, in pixels rather than in attributes.
+//
+// Asserting the PangoAttrList would only prove this file and PangoTextLayout.cpp
+// agree. What a picture proves is that Pango draws the underline in the colour
+// it was given, which is the claim the support page makes.
+//
+// The text is white on nothing and the underline is red, so "a red pixel
+// anywhere" is the whole assertion and it cannot be the glyphs: a white glyph
+// has every channel high.
+TEST(gtk_a_decoration_colour_reaches_the_underline) {
+  const auto renderWith = [](bool coloured) {
+    AttributedString::Fragment fragment;
+    fragment.string = "Hxy";
+    TextAttributes attributes;
+    attributes.fontSize = 40.0F;
+    attributes.foregroundColor = facebook::react::colorFromComponents(
+        facebook::react::ColorComponents{1.0F, 1.0F, 1.0F, 1.0F});
+    attributes.textDecorationLineType = facebook::react::TextDecorationLineType::Underline;
+    if (coloured) {
+      attributes.textDecorationColor = facebook::react::colorFromComponents(
+          facebook::react::ColorComponents{1.0F, 0.0F, 0.0F, 1.0F});
+    }
+    fragment.textAttributes = attributes;
+    AttributedString string;
+    string.appendFragment(std::move(fragment));
+
+    PangoLayout *layout = basalt::buildTextLayout(string, ParagraphAttributes{}, 200.0F);
+    RnView *view = rn_view_new(1);
+    g_object_ref_sink(view);
+    rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 100.0F);
+    const GdkRGBA white{1.0F, 1.0F, 1.0F, 1.0F};
+    rn_view_set_text_layout(view, layout, &white);
+    const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 200, 100);
+    g_object_unref(view);
+    g_object_unref(layout);
+
+    int red = 0;
+    for (int x = 0; x < 200; x++) {
+      for (int y = 0; y < 100; y++) {
+        const basalt::testing::RnPixel pixel = pixels.at(x, y);
+        if (pixel.alpha > 40 && pixel.red > 150 && pixel.green < 110 && pixel.blue < 110) {
+          red++;
+        }
+      }
+    }
+    return red;
+  };
+
+  // The negative control, and the reason this is two renders: an underline in
+  // the text's own colour must put no red on the surface at all, or the count
+  // below would be measuring something else.
+  EXPECT_EQ(renderWith(false), 0);
+  EXPECT(renderWith(true) > 0);
+}
+
+// `textDecorationStyle`, which Pango takes as an enum with no patterns in it.
+// Double is a value it has; dotted and dashed are not, and fall back to a
+// single line. Asserted through the attribute list, there being no honest
+// picture of "a line that should have been dotted".
+TEST(gtk_a_decoration_style_maps_to_what_pango_has) {
+  const auto underlineOf = [](std::optional<facebook::react::TextDecorationStyle> style) {
+    AttributedString::Fragment fragment;
+    fragment.string = "Hxy";
+    TextAttributes attributes;
+    attributes.fontSize = 20.0F;
+    attributes.textDecorationLineType = facebook::react::TextDecorationLineType::Underline;
+    attributes.textDecorationStyle = style;
+    fragment.textAttributes = attributes;
+    AttributedString string;
+    string.appendFragment(std::move(fragment));
+
+    PangoLayout *layout = basalt::buildTextLayout(string, ParagraphAttributes{}, 200.0F);
+    PangoAttrList *list = pango_layout_get_attributes(layout);
+    PangoUnderline found = PANGO_UNDERLINE_NONE;
+    if (list != nullptr) {
+      PangoAttrIterator *iterator = pango_attr_list_get_iterator(list);
+      do {
+        const PangoAttribute *attribute =
+            pango_attr_iterator_get(iterator, PANGO_ATTR_UNDERLINE);
+        if (attribute != nullptr) {
+          found = static_cast<PangoUnderline>(
+              reinterpret_cast<const PangoAttrInt *>(attribute)->value);
+        }
+      } while (pango_attr_iterator_next(iterator));
+      pango_attr_iterator_destroy(iterator);
+    }
+    g_object_unref(layout);
+    return found;
+  };
+
+  using facebook::react::TextDecorationStyle;
+  EXPECT(underlineOf(std::nullopt) == PANGO_UNDERLINE_SINGLE);
+  EXPECT(underlineOf(TextDecorationStyle::Solid) == PANGO_UNDERLINE_SINGLE);
+  EXPECT(underlineOf(TextDecorationStyle::Double) == PANGO_UNDERLINE_DOUBLE);
+  // The wavy one a spell checker draws, which is what `wavy` means.
+  EXPECT(underlineOf(TextDecorationStyle::Wavy) == PANGO_UNDERLINE_ERROR);
+  // Pango has no pattern for either, so both are a single line and the gap is
+  // recorded rather than approximated with something it does have.
+  EXPECT(underlineOf(TextDecorationStyle::Dotted) == PANGO_UNDERLINE_SINGLE);
+  EXPECT(underlineOf(TextDecorationStyle::Dashed) == PANGO_UNDERLINE_SINGLE);
+}
+
+// `fontVariant`, as the feature string Pango takes.
+//
+// Asserted as an attribute rather than in pixels, and that is a limit worth
+// naming: whether `smcp=1` *changes* anything depends on the font having a
+// small-caps table, and the font here is whatever the machine has. What this
+// platform is responsible for is asking, which is what this checks.
+TEST(gtk_a_font_variant_becomes_a_pango_feature_string) {
+  const auto featuresOf = [](std::optional<facebook::react::FontVariant> variant) {
+    AttributedString::Fragment fragment;
+    fragment.string = "Figures 123";
+    TextAttributes attributes;
+    attributes.fontSize = 20.0F;
+    attributes.fontVariant = variant;
+    fragment.textAttributes = attributes;
+    AttributedString text;
+    text.appendFragment(std::move(fragment));
+
+    PangoLayout *layout = basalt::buildTextLayout(text, ParagraphAttributes{}, -1.0F);
+    PangoAttrList *list = pango_layout_get_attributes(layout);
+    std::string found;
+    if (list != nullptr) {
+      PangoAttrIterator *iterator = pango_attr_list_get_iterator(list);
+      do {
+        const PangoAttribute *attribute =
+            pango_attr_iterator_get(iterator, PANGO_ATTR_FONT_FEATURES);
+        if (attribute != nullptr) {
+          found = reinterpret_cast<const PangoAttrString *>(attribute)->value;
+        }
+      } while (pango_attr_iterator_next(iterator));
+      pango_attr_iterator_destroy(iterator);
+    }
+    g_object_unref(layout);
+    return found;
+  };
+
+  using facebook::react::FontVariant;
+  EXPECT_EQ(featuresOf(std::nullopt), std::string());
+  EXPECT_EQ(featuresOf(FontVariant::SmallCaps), std::string("smcp=1"));
+  // A bitmask, in core's order rather than the order a stylesheet listed them.
+  EXPECT_EQ(featuresOf(static_cast<FontVariant>(
+                static_cast<int>(FontVariant::TabularNums)
+                | static_cast<int>(FontVariant::SmallCaps))),
+            std::string("smcp=1,tnum=1"));
+}
+
+// `TextAttributes::opacity`, in pixels, because an alpha attribute Pango
+// ignored would look exactly like one it honoured.
+TEST(gtk_a_fragment_opacity_lightens_the_glyphs) {
+  const auto darkestInk = [](double opacity) {
+    AttributedString::Fragment fragment;
+    fragment.string = "H";
+    TextAttributes attributes;
+    attributes.fontSize = 48.0F;
+    attributes.foregroundColor = facebook::react::colorFromComponents(
+        facebook::react::ColorComponents{0.0F, 0.0F, 0.0F, 1.0F});
+    attributes.opacity = opacity;
+    fragment.textAttributes = attributes;
+    AttributedString text;
+    text.appendFragment(std::move(fragment));
+
+    PangoLayout *layout = basalt::buildTextLayout(text, ParagraphAttributes{}, -1.0F);
+    RnView *view = rn_view_new(1);
+    g_object_ref_sink(view);
+    rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 80.0F);
+    // An opaque white backing, so "how dark did the glyph get" is a question
+    // about the text and not about what is behind it.
+    const GdkRGBA white{1.0F, 1.0F, 1.0F, 1.0F};
+    rn_view_set_background_color(view, TRUE, &white);
+    const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+    rn_view_set_text_layout(view, layout, &black);
+
+    const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 100, 80);
+    int darkest = 255;
+    for (int x = 0; x < 100; x++) {
+      for (int y = 0; y < 80; y++) {
+        darkest = std::min<int>(darkest, pixels.at(x, y).red);
+      }
+    }
+    g_object_unref(view);
+    g_object_unref(layout);
+    return darkest;
+  };
+
+  // Opaque black ink reaches black; half-opaque cannot, and a quarter is
+  // lighter still. Thresholds rather than exact values: antialiasing decides
+  // the last few levels and the font decides how much ink there is.
+  const int opaque = darkestInk(1.0);
+  const int half = darkestInk(0.5);
+  const int quarter = darkestInk(0.25);
+  EXPECT(opaque < 40);
+  EXPECT(half > 90 && half < 160);
+  EXPECT(quarter > half);
+}

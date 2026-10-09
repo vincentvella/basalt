@@ -28,8 +28,8 @@ is the one in the row and ReactCommon's is under it.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 58 of 96 | 59 of 96 | 33 of 96 |
-| | `████████████░░░░░░░░` | `████████████░░░░░░░░` | `███████░░░░░░░░░░░░░` |
+| Done | 61 of 96 | 63 of 96 | 34 of 96 |
+| | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `███████░░░░░░░░░░░░░` |
 
 Counting a row as done when the host implements it or ReactCommon does.
 
@@ -139,7 +139,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `onAccessibilityAction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `importantForAccessibility` | ✅ | ✅ | ✅ |  |
 | `role` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `testID` <sub>`testId`</sub> | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `testID` <sub>`testId`</sub> | ◐ | ✅ | ✅ | [GTK publishes an accessible id from 4.22; CI's 4.14 carries it and cannot publish it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 
 ### Neither
 
@@ -162,20 +162,20 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 | --- | --- | --- | --- | --- |
 | `color` <sub>`foregroundColor`</sub> | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `opacity` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `opacity` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `fontFamily` | ✅ | ✅ | ✅ |  |
 | `fontSize` | ✅ | ✅ | ✅ |  |
 | `fontWeight` | ✅ | ✅ | ✅ |  |
 | `fontStyle` | ✅ | ✅ | ✅ |  |
-| `fontVariant` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `fontVariant` | ✅ | ✅ | ✖ | [DWRITE_FONT_FEATURE_TAG takes the same tags core resolves](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `letterSpacing` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `textTransform` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `lineHeight` | ✅ | ✅ | ✅ |  |
 | `textAlign` <sub>`alignment`</sub> | ✅ | ✅ | ✅ |  |
 | `writingDirection` <sub>`baseWritingDirection`</sub> | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `textDecorationColor` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textDecorationColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `textDecorationLine` <sub>`textDecorationLineType`</sub> | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `textDecorationStyle` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textDecorationStyle` | ◐ | ◐ | ✖ | [each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowOffset` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowRadius` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowColor` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |

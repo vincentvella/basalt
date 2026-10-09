@@ -611,3 +611,55 @@ TEST(accessibility_a_live_region_that_stops_being_one_goes_quiet) {
   // Still the old announcement: nothing new was said.
   EXPECT_EQ(std::string(rn_view_get_last_announcement(status)), std::string("Saved"));
 }
+
+// `testID`, which GTK publishes as the accessible id.
+//
+// The id is the only one of these three hosts' answers that needs a version:
+// `GtkAccessibleIface::get_accessible_id` arrived in GTK 4.22, and before that
+// GTK has nowhere to put an identifier at all -- measured rather than assumed,
+// `gtk_widget_set_name` does not feed it and a widget built in code has no
+// buildable id. So the assertion is compiled out where the vfunc does not
+// exist, which includes CI's Ubuntu 24.04 (GTK 4.14).
+//
+// The dump line is asserted either way, because carrying the prop is this
+// host's job whatever the toolkit does with it.
+TEST(accessibility_a_test_id_reaches_the_platform) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(10, [](ViewProps &props) {
+                            props.testId = "save-button";
+                          }));
+
+  char *text = rn_view_describe_tree(view);
+  const std::string dump = text != nullptr ? text : "";
+  g_free(text);
+  EXPECT(dump.find("testid=save-button") != std::string::npos);
+
+#if GTK_CHECK_VERSION(4, 22, 0)
+  char *id = gtk_accessible_get_accessible_id(GTK_ACCESSIBLE(view));
+  EXPECT(id != nullptr);
+  EXPECT(id != nullptr && std::string(id) == "save-button");
+  g_free(id);
+#endif
+}
+
+// And a view with no testID says nothing, rather than an empty id: a test
+// runner searching for "" would otherwise match the first view it saw.
+TEST(accessibility_no_test_id_is_no_accessible_id) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(10, [](ViewProps &) {}));
+
+  char *text = rn_view_describe_tree(view);
+  const std::string dump = text != nullptr ? text : "";
+  g_free(text);
+  EXPECT(dump.find("testid=") == std::string::npos);
+
+#if GTK_CHECK_VERSION(4, 22, 0)
+  char *id = gtk_accessible_get_accessible_id(GTK_ACCESSIBLE(view));
+  EXPECT(id == nullptr);
+  g_free(id);
+#endif
+}

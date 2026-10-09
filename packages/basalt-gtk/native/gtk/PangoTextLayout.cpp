@@ -2,6 +2,9 @@
 
 #include "FontRegistry.h"
 #include "FontScaling.h"
+#include "FontVariants.h"
+#include "TextColors.h"
+#include "TextDecorations.h"
 // For rn_pango_clip_height, which is how much of a paragraph `numberOfLines`
 // leaves visible. It lives with the widgets because the widget layer has no
 // React Native in it and so cannot include this header; the dependency only
@@ -49,6 +52,27 @@ float fromPangoUnits(int units) {
 
 bool isSet(facebook::react::Float value) {
   return !std::isnan(value);
+}
+
+// React Native's five decoration styles against the three Pango has.
+//
+// `ERROR` is the wavy one a spell checker draws, which is what `wavy` means, so
+// that pair is exact. Dotted and dashed have no Pango value at all -- the enum
+// carries no patterns -- and fall back to a single line, which is visible and
+// wrong rather than missing and invisible. core/TextDecorations.h says why that
+// is the choice, and backlog/text.md names the call that would close it.
+PangoUnderline toPangoUnderline(facebook::react::TextDecorationStyle style) {
+  switch (style) {
+    case facebook::react::TextDecorationStyle::Double:
+      return PANGO_UNDERLINE_DOUBLE;
+    case facebook::react::TextDecorationStyle::Wavy:
+      return PANGO_UNDERLINE_ERROR;
+    case facebook::react::TextDecorationStyle::Solid:
+    case facebook::react::TextDecorationStyle::Dotted:
+    case facebook::react::TextDecorationStyle::Dashed:
+      return PANGO_UNDERLINE_SINGLE;
+  }
+  return PANGO_UNDERLINE_SINGLE;
 }
 
 // Pango's colour channels are 16-bit; React Native's are floats in 0..1.
@@ -212,20 +236,35 @@ void applyFragmentAttributes(PangoAttrList *attributes,
   addAttribute(pango_attr_font_desc_new(font));
   pango_font_description_free(font);
 
-  if (textAttributes.foregroundColor) {
-    const auto components = colorComponentsFromColor(textAttributes.foregroundColor);
-    addAttribute(pango_attr_foreground_new(toPangoChannel(components.red),
-                                           toPangoChannel(components.green),
-                                           toPangoChannel(components.blue)));
-    addAttribute(pango_attr_foreground_alpha_new(toPangoChannel(components.alpha)));
+  // `fontVariant`, as the feature string Pango takes: `smcp=1,tnum=1`. The
+  // flags and their OpenType tags are core/FontVariants.h's, so GTK and Win32
+  // ask for the same features in the same order and AppKit maps the same flags
+  // to Core Text's older selectors.
+  const std::string features = basalt::fontFeatureSettings(textAttributes);
+  if (!features.empty()) {
+    addAttribute(pango_attr_font_features_new(features.c_str()));
   }
 
-  if (textAttributes.backgroundColor) {
-    const auto components = colorComponentsFromColor(textAttributes.backgroundColor);
-    addAttribute(pango_attr_background_new(toPangoChannel(components.red),
-                                           toPangoChannel(components.green),
-                                           toPangoChannel(components.blue)));
-    addAttribute(pango_attr_background_alpha_new(toPangoChannel(components.alpha)));
+  // The foreground, with `opacity` already multiplied in: core/TextColors.h has
+  // that rule, React Native's default of opaque black with it. An unset colour
+  // still needs the attribute now, because opacity alone changes it.
+  {
+    const basalt::TextColor color = basalt::textForegroundColor(textAttributes);
+    if (textAttributes.foregroundColor || color.alpha < 1.0F) {
+      addAttribute(pango_attr_foreground_new(toPangoChannel(color.red),
+                                             toPangoChannel(color.green),
+                                             toPangoChannel(color.blue)));
+      addAttribute(pango_attr_foreground_alpha_new(toPangoChannel(color.alpha)));
+    }
+  }
+
+  // And the background, which stays nothing when nothing asked for one: an
+  // opacity of a colour that does not exist is still no colour.
+  if (const auto background = basalt::textBackgroundColor(textAttributes)) {
+    addAttribute(pango_attr_background_new(toPangoChannel(background->red),
+                                           toPangoChannel(background->green),
+                                           toPangoChannel(background->blue)));
+    addAttribute(pango_attr_background_alpha_new(toPangoChannel(background->alpha)));
   }
 
   if (isSet(textAttributes.letterSpacing)) {
@@ -239,20 +278,32 @@ void applyFragmentAttributes(PangoAttrList *attributes,
         pango_attr_line_height_new_absolute(toPangoUnits(static_cast<float>(textAttributes.lineHeight))));
   }
 
-  if (textAttributes.textDecorationLineType) {
-    switch (*textAttributes.textDecorationLineType) {
-      case TextDecorationLineType::Underline:
-        addAttribute(pango_attr_underline_new(PANGO_UNDERLINE_SINGLE));
-        break;
-      case TextDecorationLineType::Strikethrough:
-        addAttribute(pango_attr_strikethrough_new(TRUE));
-        break;
-      case TextDecorationLineType::UnderlineStrikethrough:
-        addAttribute(pango_attr_underline_new(PANGO_UNDERLINE_SINGLE));
-        addAttribute(pango_attr_strikethrough_new(TRUE));
-        break;
-      case TextDecorationLineType::None:
-        break;
+  // Which lines, in which colour, in which style: resolved in
+  // core/TextDecorations.h so that both hosts agree about what was asked for,
+  // and mapped here to what Pango has.
+  if (const auto decoration = basalt::textDecoration(textAttributes)) {
+    if (decoration->underline) {
+      addAttribute(pango_attr_underline_new(toPangoUnderline(decoration->style)));
+    }
+    if (decoration->strikethrough) {
+      // A boolean, with no style of its own: Pango draws one line through the
+      // text and takes no pattern for it. backlog/text.md records that.
+      addAttribute(pango_attr_strikethrough_new(TRUE));
+    }
+    if (decoration->hasColor) {
+      const guint16 red = toPangoChannel(decoration->red);
+      const guint16 green = toPangoChannel(decoration->green);
+      const guint16 blue = toPangoChannel(decoration->blue);
+      // Per line, because Pango has one attribute for each and no shared
+      // "decoration colour". An alpha attribute would apply to the glyphs as
+      // well, so a translucent decoration colour is recorded rather than
+      // half-applied.
+      if (decoration->underline) {
+        addAttribute(pango_attr_underline_color_new(red, green, blue));
+      }
+      if (decoration->strikethrough) {
+        addAttribute(pango_attr_strikethrough_color_new(red, green, blue));
+      }
     }
   }
 }

@@ -58,6 +58,10 @@ struct RnAccessibleInfo {
   std::string role;
   std::string label;
   std::string hint;
+  // `testID`: an identifier for whoever drives the app from outside, which UIA
+  // calls an automation id. Not a label -- nothing reads it aloud -- and not
+  // `nativeID`, which is how an app names a view to itself.
+  std::string testId;
   RnAccessibleState state;
   // accessible={false} and accessibilityElementsHidden.
   bool hidden = false;

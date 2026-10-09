@@ -9,7 +9,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
 4. accessibilityActions is ignored (~~accessibilityLabelledBy~~ and
    ~~accessibilityLiveRegion~~ are done on GTK and AppKit)
-5. Fourteen more AccessibilityProps fields that no host reads, counted rather
+5. Thirteen more AccessibilityProps fields that no host reads, counted rather
    than guessed
 
 - Not tested against a real screen reader. GTK's assertions say the properties
@@ -147,14 +147,14 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   (`focus_*`) and two on AppKit. A view that stops being accessible leaves the
   tab order, which is the part that had to be got right rather than added.
 
-- **Fourteen more fields that no host reads, counted 2026-10-09.** Walking
+- **Thirteen more fields that no host reads, counted 2026-10-09.** Walking
   `AccessibilityProps` field by field, which is what `scripts/scrape_props.py`
   now does for the support page: what the three hosts read is `accessible`,
   `accessibilityState`, `accessibilityLabel`, `accessibilityRole`,
   `accessibilityHint`, `accessibilityElementsHidden` and
   `importantForAccessibility`, plus `accessibilityValue`,
-  `accessibilityLabelledBy` and `accessibilityLiveRegion` on GTK and AppKit.
-  Everything else in the struct is ignored.
+  `accessibilityLabelledBy` and `accessibilityLiveRegion` on GTK and AppKit, and
+  `testId` on all three. Everything else in the struct is ignored.
 
   **Which splits three ways rather than being one gap.** Six are iOS's own with
   no desktop equivalent -- `accessibilityTraits`, `accessibilityLargeContentTitle`,
@@ -163,13 +163,29 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   family, which is entry 2: `accessibilityActions`, `onAccessibilityAction`,
   `onAccessibilityTap` and `accessibilityRespondsToUserInteraction`.
 
-  The remaining four are worth doing and are small. `accessibilityOrder` is the
+  The remaining three are worth doing and are small. `accessibilityOrder` is the
   reading order, which AT-SPI has as a relation and NSAccessibility as
   `accessibilityChildren`; `accessibilityLanguage` is one attribute on each
-  platform and matters for a screen reader's pronunciation;
-  `accessibilityViewIsModal` is `aria-modal`'s equivalent and is what makes a
-  `<Modal>` trap a screen reader rather than letting it wander behind;
-  `testId` is what an automation tool outside this repository would look for.
+  platform and matters for a screen reader's pronunciation; and
+  `accessibilityViewIsModal` is `aria-modal`'s equivalent, which is what makes a
+  `<Modal>` trap a screen reader rather than letting it wander behind. GTK has
+  `GTK_ACCESSIBLE_PROPERTY_MODAL` for the last of those and AppKit has
+  `accessibilityModal`, so it is the next one to take.
+
+  **`testId` came off this list on 2026-10-09**, and it is the one with a
+  version in it. Each platform has an exact equivalent -- UIA's automation id,
+  AppKit's `accessibilityIdentifier` -- except GTK, where the only hook is
+  `GtkAccessibleIface::get_accessible_id`, a vfunc that arrived in **4.22**.
+  There is no setter: a widget answers for its own id, which `RnView` now does
+  by re-implementing `GtkAccessible`.
+
+  Both of the obvious alternatives were measured and neither works:
+  `gtk_widget_set_name` does not feed the accessible id, and a widget built in
+  code has no buildable id to fall back on. So on GTK before 4.22 -- which
+  includes Ubuntu 24.04, and therefore CI -- the prop is carried and shown in
+  the tree dump and the toolkit has nowhere to put it. That is why the support
+  page says `partial` for Linux and why the unit assertion is the one with the
+  version guard, the end-to-end scenario asserting what every host carries.
 
   **And one wrong claim, found the same day.** The support page said
   `accessibilityValue` worked on Windows. It does not: nothing in the Win32 host

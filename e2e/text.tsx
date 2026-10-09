@@ -34,6 +34,30 @@ const styles = StyleSheet.create({
   tall: {fontSize: 16, lineHeight: 32, color: '#2b3445'},
   underlined: {fontSize: 16, textDecorationLine: 'underline', color: '#2563eb'},
   struck: {fontSize: 16, textDecorationLine: 'line-through', color: '#b91c1c'},
+  // textDecorationColor and textDecorationStyle, which the hosts read as of
+  // 2026-10-09. No dump line shows a decoration -- it is per fragment and the
+  // dump is per view -- so what asserts these is the pixel and attribute tests
+  // in each host's suite; these are here so both hosts actually draw them.
+  decorated: {
+    fontSize: 16,
+    color: '#2b3445',
+    textDecorationLine: 'underline',
+    textDecorationColor: '#16a34a',
+    textDecorationStyle: 'double',
+  },
+  // fontVariant and a fragment's opacity, both read as of 2026-10-09. Whether
+  // small caps changes the glyphs depends on the font having the table, so what
+  // the hosts' own suites assert is the feature reaching the engine; these are
+  // here so both hosts ask for it on a real paragraph.
+  variants: {fontSize: 16, color: '#2b3445', fontVariant: ['small-caps', 'tabular-nums']},
+  faded: {fontSize: 16, color: '#2b3445', opacity: 0.4},
+  dotted: {
+    fontSize: 16,
+    color: '#2b3445',
+    textDecorationLine: 'underline line-through',
+    textDecorationColor: '#d97706',
+    textDecorationStyle: 'dotted',
+  },
   clipped: {fontSize: 16, color: '#2b3445'},
   // textTransform, which changes the string the engine lays out rather than how
   // it is drawn: the tree dump shows the transformed text, so both hosts can be
@@ -102,6 +126,10 @@ function App() {
       <View style={styles.card}>
         <Text style={styles.underlined}>Underlined</Text>
         <Text style={styles.struck}>Struck through</Text>
+        <Text style={styles.decorated}>Double, in its own colour</Text>
+        <Text style={styles.dotted}>Dotted both ways</Text>
+        <Text style={styles.variants}>Small caps 1234567890</Text>
+        <Text style={styles.faded}>Faded to two fifths</Text>
         <Text style={styles.clipped}>
           Plain, then <Text style={styles.emphasis}>bold amber</Text> and{' '}
           <Text style={styles.italic}>italic green</Text> in one paragraph.

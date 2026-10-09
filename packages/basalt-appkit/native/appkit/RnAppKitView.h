@@ -613,6 +613,13 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // same idea. Stored and never drawn.
 @property(nonatomic, copy, nullable) NSString *rnNativeId;
 
+// The app's `testID`, which is not `nativeID`: one is how an app names a view
+// to itself, the other is how something driving the app from outside finds it.
+// Setting it sets `accessibilityIdentifier`, which is what XCTest, Appium and
+// the Accessibility Inspector all look for, and it is printed in the tree dump
+// the way React Native spelled it.
+@property(nonatomic, copy, nullable) NSString *rnTestId;
+
 // The `cursor` style property, as the CSS keyword React Native uses: "pointer",
 // "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
 // whatever encloses this view, which is what `cursor: 'auto'` means.

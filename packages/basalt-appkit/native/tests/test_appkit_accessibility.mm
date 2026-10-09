@@ -304,3 +304,31 @@ TEST(accessibility_labelled_by_takes_the_first_of_several) {
     EXPECT(described.find("labelled-by=20,30") != std::string::npos);
   }
 }
+
+// `testID`, which on this platform is `accessibilityIdentifier`: what XCTest,
+// Appium and the Accessibility Inspector look a view up by, and the nearest
+// thing macOS has to UIA's automation id.
+TEST(a_test_id_becomes_the_accessibility_identifier) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    EXPECT(view.accessibilityIdentifier == nil || view.accessibilityIdentifier.length == 0);
+
+    view.rnTestId = @"save-button";
+    // Through a nil-safe read, because the sabotage that proves this test --
+    // taking the identifier away -- would otherwise make `std::string(nullptr)`
+    // crash the whole suite instead of failing this one test. A test that dies
+    // reports nothing about the other 543.
+    const char *identifier = view.accessibilityIdentifier.UTF8String;
+    EXPECT_EQ(std::string(identifier != nullptr ? identifier : ""), std::string("save-button"));
+    // And React Native's spelling in the dump, which is what the cross-platform
+    // diff compares.
+    EXPECT(std::string([view describeTree].UTF8String).find("testid=save-button")
+           != std::string::npos);
+
+    // Taken away again: nil rather than an empty identifier, because a runner
+    // searching for "" would otherwise match the first view it saw.
+    view.rnTestId = @"";
+    EXPECT(view.accessibilityIdentifier == nil);
+    EXPECT(std::string([view describeTree].UTF8String).find("testid=") == std::string::npos);
+  }
+}

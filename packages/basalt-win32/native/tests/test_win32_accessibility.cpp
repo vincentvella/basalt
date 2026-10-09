@@ -269,3 +269,33 @@ TEST(accessibility_role_can_change_after_mount) {
   asCheckbox.Attach(view->createAccessibleProvider());
   EXPECT_EQ(controlTypeOf(asCheckbox), static_cast<long>(UIA_CheckBoxControlTypeId));
 }
+
+// `testID`, which UIA calls the automation id: the property every Windows test
+// runner looks a control up by, and the same idea as AppKit's
+// `accessibilityIdentifier` and GTK's accessible id.
+TEST(accessibility_a_test_id_becomes_the_automation_id) {
+  RnAccessibleInfo info = withRole("button");
+  info.label = "Save";
+  info.testId = "save-button";
+
+  auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(stringProperty(provider, UIA_AutomationIdPropertyId), std::string("save-button"));
+  // Not the name: a runner searching by automation id and a screen reader
+  // reading the label are different questions, and `testID` answers only one.
+  EXPECT_EQ(stringProperty(provider, UIA_NamePropertyId), std::string("Save"));
+
+  auto view = std::make_unique<RnWin32View>(4);
+  view->setFrame(0, 0, 100, 40);
+  view->setAccessibleInfo(info);
+  EXPECT_EQ(view->describeTree(),
+            std::string("view tag=4 frame=(0,0 100x40) role=button testid=save-button\n"));
+}
+
+// And a view with no testID leaves the property unset rather than empty: a
+// runner searching for "" would otherwise match the first control it saw.
+TEST(accessibility_no_test_id_leaves_the_automation_id_unset) {
+  auto provider = providerFor(withRole("button"));
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_AutomationIdPropertyId), VT_EMPTY);
+}

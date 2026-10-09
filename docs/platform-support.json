@@ -132,6 +132,18 @@
     "win-textscale": {
       "text": "the scale is there, as UISettings.TextScaleFactor, and needs WinRT",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "text-decoration-style": {
+      "text": "each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "win-textvariant": {
+      "text": "DWRITE_FONT_FEATURE_TAG takes the same tags core resolves",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "gtk-accessible-id": {
+      "text": "GTK publishes an accessible id from 4.22; CI's 4.14 carries it and cannot publish it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     }
   },
   "statuses": {
@@ -501,27 +513,44 @@
       "why": "a11y-ignored"
     },
     "AccessibilityProps.testId": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "partial",
+      "macos": "yes",
+      "windows": "yes",
+      "why": "gtk-accessible-id",
+      "reads": [
+        "testId"
+      ]
     },
     "TextAttributes.foregroundColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "yes"
+      "windows": "yes",
+      "reads": [
+        "textForegroundColor(",
+        "attributes.foregroundColor",
+        "textAttributes.foregroundColor"
+      ]
     },
     "TextAttributes.backgroundColor": {
       "linux": "yes",
       "macos": "yes",
       "windows": "no",
-      "why": "win-text"
+      "why": "win-text",
+      "reads": [
+        "textBackgroundColor(",
+        "attributes.backgroundColor",
+        "textAttributes.backgroundColor"
+      ]
     },
     "TextAttributes.opacity": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "yes",
+      "macos": "yes",
       "windows": "no",
-      "why": "text-ignored"
+      "why": "win-text",
+      "reads": [
+        "textForegroundColor(",
+        "textBackgroundColor("
+      ]
     },
     "TextAttributes.fontFamily": {
       "linux": "yes",
@@ -559,10 +588,14 @@
       "windows": "yes"
     },
     "TextAttributes.fontVariant": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "yes",
+      "macos": "yes",
       "windows": "no",
-      "why": "text-ignored"
+      "why": "win-textvariant",
+      "reads": [
+        "fontFeatureSettings(",
+        "fontVariants("
+      ]
     },
     "TextAttributes.allowFontScaling": {
       "linux": "yes",
@@ -633,22 +666,32 @@
       ]
     },
     "TextAttributes.textDecorationColor": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "yes",
+      "macos": "yes",
       "windows": "no",
-      "why": "text-ignored"
+      "why": "win-text",
+      "reads": [
+        "textDecoration("
+      ]
     },
     "TextAttributes.textDecorationLineType": {
       "linux": "yes",
       "macos": "yes",
       "windows": "no",
-      "why": "win-text"
+      "why": "win-text",
+      "reads": [
+        "textDecoration(",
+        "textDecorationLineType"
+      ]
     },
     "TextAttributes.textDecorationStyle": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "partial",
+      "macos": "partial",
       "windows": "no",
-      "why": "text-ignored"
+      "why": "text-decoration-style",
+      "reads": [
+        "textDecoration("
+      ]
     },
     "TextAttributes.textShadowOffset": {
       "linux": "partial",

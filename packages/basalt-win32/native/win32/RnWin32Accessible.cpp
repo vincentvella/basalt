@@ -143,6 +143,16 @@ class AccessibleProvider final : public IRawElementProviderSimple {
         }
         return S_OK;
 
+      case UIA_AutomationIdPropertyId:
+        // React Native's `testID`. UIA's automation id is the property every
+        // Windows test runner looks a control up by, and it is the same idea as
+        // AppKit's `accessibilityIdentifier` and GTK's accessible id.
+        if (!info_.testId.empty()) {
+          value->vt = VT_BSTR;
+          value->bstrVal = toBstr(info_.testId);
+        }
+        return S_OK;
+
       case UIA_HelpTextPropertyId:
         // React Native's `accessibilityHint` is "what happens if you do this",
         // which is what UIA calls help text. AppKit puts it in the

@@ -8,9 +8,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
    upstream's
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
-4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, fontVariant,
-   fontVariationSettings (~~textTransform~~, ~~textShadow*~~ and
-   ~~the font-scaling three~~ are done on GTK and AppKit)
+4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation,
+   fontVariationSettings (~~textTransform~~, ~~textShadow*~~,
+   ~~the font-scaling three~~, ~~the decoration pair~~, ~~fontVariant~~ and
+   ~~a fragment's opacity~~ are done on GTK and AppKit)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
@@ -160,11 +161,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   whose longest line is below the cut.
 - Ignored, and now counted: walking `TextAttributes` field by field on
   2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
-  -- the fields no host reads are `opacity`, `fontVariant`,
-  `fontVariationSettings`, `baseWritingDirection`, `textDecorationColor`,
-  `textDecorationStyle`,
-  `layoutDirection`, and the `accessibilityRole` and `role` that ride along on a
-  fragment. `lineBreakMode` is read on AppKit only. Beside those,
+  -- the fields no host reads are `fontVariationSettings`,
+  `baseWritingDirection`, `layoutDirection`, and the `accessibilityRole` and
+  `role` that ride along on a fragment. `lineBreakMode` is read on AppKit only. Beside those,
   `adjustsFontSizeToFit`, `textBreakStrategy` and hyphenation are
   `ParagraphAttributes` and equally ignored.
 
@@ -173,16 +172,71 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   behaviours, and `isHighlighted` and `isPressable` are the internals of iOS's
   pressable text. `textEffects` is newer than the pin.
 
-  The rest are real and small. `fontVariant` is one Pango attribute and one
-  `kCTFontFeatureSettingsAttribute`; `textDecorationColor` and
-  `textDecorationStyle` are one more attribute each beside the line type that is
-  already there; `baseWritingDirection` is the RTL question, which is bigger than
-  it looks and belongs with `layoutDirection` rather than on its own. `opacity`
-  on a fragment multiplies the colour's alpha, which is two lines where the
-  colour is built.
+  What is left of that list is `baseWritingDirection`, the RTL question: bigger
+  than it looks, and it belongs with `layoutDirection` rather than on its own.
+  `fontVariationSettings` is newer than the pin.
 
   None of this was written down before the support page needed a status per
   attribute, which is the argument for having one.
+
+  **`fontVariant` and a fragment's `opacity` came off this list on 2026-10-09**,
+  into `core/FontVariants.h` and `core/TextColors.h`. Two notes:
+
+  - The twenty-five flags are resolved to OpenType tags in core, which serves
+    GTK and would serve Win32 unchanged. AppKit is the host that needs a
+    translation: Core Text takes Apple's older AAT pairs, a feature type and a
+    selector inside it, so the flags are walked in core and each host spells
+    them its own way. Upstream's iOS half does the same in `RCTFontFeatures`,
+    which is where the AppKit table was copied from.
+  - Whether a variant *changes* anything depends on the font. The system font
+    has small caps and tabular figures and has neither oldstyle figures nor a
+    twentieth stylistic set, and `[NSFont fontWithDescriptor:]` silently drops
+    features the resolved font does not have. So the AppKit suite asserts the
+    mapping rather than what a font kept of it, and separately that one feature
+    the system font does have survives onto the font. The first version of that
+    test asked the font and failed on three of eight variants, which is a
+    failure that looks like a wrong mapping and is not.
+
+  `TextColors.h` took two rules that were spelled twice and one that was spelled
+  nowhere: React Native's default foreground is opaque black rather than the
+  platform's label colour, a background nobody set is nothing rather than
+  transparent black, and `opacity` multiplies both alphas. That last is
+  upstream's `RCTEffectiveForegroundColorFromTextAttributes`, including the
+  detail that it applies to the default black as well.
+
+  **`textDecorationColor` and `textDecorationStyle` came off this list on
+  2026-10-09**, into `core/TextDecorations.h`, and the style is `partial` on
+  both hosts rather than done. That is not laziness, it is the two engines:
+
+  | Style | Pango | Core Text |
+  | --- | --- | --- |
+  | solid | `PANGO_UNDERLINE_SINGLE` | `NSUnderlineStyleSingle` |
+  | double | `PANGO_UNDERLINE_DOUBLE` | `NSUnderlineStyleDouble` |
+  | dotted | nothing | `...Single \| ...PatternDot` |
+  | dashed | nothing | `...Single \| ...PatternDash` |
+  | wavy | `PANGO_UNDERLINE_ERROR` | nothing |
+
+  Pango's underline is an enum with no patterns in it and its strikethrough is a
+  boolean with no style at all, so dotted and dashed fall back to a single line
+  there; Core Text has no wavy, so that falls back here. Each host draws a line
+  rather than nothing, which is wrong in a way a reader can see instead of
+  wrong in a way that looks like the prop being ignored.
+
+  What would close it is the same work on both: draw the decoration rather than
+  ask for it. GTK already has the hook, `rn_view`'s snapshot, and Pango gives
+  the position and thickness through `pango_font_metrics_get_underline_position`
+  and `..._underline_thickness`; the line itself is a `gtk_snapshot_append_color`
+  per dash. AppKit would need an `NSLayoutManager` subclass or the same manual
+  pass in `RnTextLayout`, which draws through `CTLineDraw` and would have to ask
+  `CTFontGetUnderlinePosition` for the same two numbers.
+
+  There is also no end-to-end scenario for the pair, and that is deliberate. A
+  decoration is per *fragment* and the tree dump is per view, so there is
+  nothing in a dump to assert on; a dump line could only say what was asked for,
+  which on GTK would read `dotted` beside a solid line. What asserts these is a
+  pixel test per host, which is the thing a dump cannot do: the GTK one renders
+  white text with a red underline and counts red pixels, and the AppKit one does
+  the same in reverse, each with the uncoloured render as its negative control.
 
   **`allowFontScaling` and `maxFontSizeMultiplier` came off this list on
   2026-10-09**, with `fontSizeMultiplier`, into `core/FontScaling.h`. Two things

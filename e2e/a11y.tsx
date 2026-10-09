@@ -58,7 +58,13 @@ function App() {
           style={styles.chip}
           accessibilityRole="button"
           accessibilityLabel="Save"
-          accessibilityHint="Writes the file to disk">
+          accessibilityHint="Writes the file to disk"
+          // The prop every app under test sets and no host read until
+          // 2026-10-09: an identifier for whoever is driving the app from
+          // outside. Each platform publishes it its own way -- UIA's automation
+          // id, AppKit's accessibility identifier, GTK's accessible id -- and
+          // the tree dump carries React Native's spelling so all three compare.
+          testID="save-button">
           <Text style={styles.label}>Save</Text>
         </Pressable>
 

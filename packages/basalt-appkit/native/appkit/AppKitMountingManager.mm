@@ -880,6 +880,12 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
   // can look one up. See core/LabelRegistry.h.
   labels_.setNativeId(shadowView.tag, props->nativeId);
 
+  // `testID`, which is not `nativeID`: one is how an app names a view to
+  // itself, the other is how something outside the process finds it.
+  view.rnTestId = props->testId.empty()
+      ? nil
+      : [NSString stringWithUTF8String:props->testId.c_str()];
+
   view.rnNativeId = props->nativeId.empty()
       ? nil
       : [NSString stringWithUTF8String:props->nativeId.c_str()];

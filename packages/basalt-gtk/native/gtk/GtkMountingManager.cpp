@@ -1104,6 +1104,11 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // same comment, which is the point: the two hosts have to agree about what
   // reaches them, or a header drags on one desktop and not the other.
   rn_view_set_native_id(view, props->nativeId.c_str());
+
+  // `testID`, which is not `nativeID`: one is how an app names a view to
+  // itself, the other is how a test runner outside the process finds it. Every
+  // React Native app under test sets the second, and no host read it.
+  rn_view_set_test_id(view, props->testId.c_str());
   // And remember which view it names, which is what `accessibilityLabelledBy`
   // needs: that prop names other views by their nativeID and nothing else here
   // can look one up. See core/LabelRegistry.h.

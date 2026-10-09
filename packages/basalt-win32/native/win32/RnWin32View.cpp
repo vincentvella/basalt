@@ -1262,6 +1262,12 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
   if (!accessible_.role.empty()) {
     appendFormat(out, " role=%s", accessible_.role.c_str());
   }
+  // `testID`, as React Native spelled it: the same division as the role above,
+  // and that UIA really published it as the automation id is asserted in
+  // tests/test_win32_accessibility.cpp.
+  if (!accessible_.testId.empty()) {
+    appendFormat(out, " testid=%s", accessible_.testId.c_str());
+  }
   // Whether Tab stops here, after `role=` because that is where the other two
   // hosts print it and this dump is diffed line by line. Whether it is focused
   // *now* is deliberately not printed: that depends on what the window manager
