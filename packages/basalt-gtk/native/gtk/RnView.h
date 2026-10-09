@@ -116,6 +116,18 @@ typedef struct {
   graphene_point_t center;
   float radius_x;
   float radius_y;
+  // Where the image goes and how it tiles, from `backgroundSize`,
+  // `backgroundPosition` and `backgroundRepeat`. Resolved in
+  // core/BackgroundLayers.h: `area` is the rectangle the gradient itself fills,
+  // in this view's coordinates, and `tile` is what it repeats in -- the same
+  // rectangle for `repeat`, wider for `space`, and the whole painting area on an
+  // axis that does not repeat.
+  //
+  // The gradient's own geometry above is resolved against `area`'s size and
+  // offset to its origin, so this layer draws rather than positions.
+  graphene_rect_t area;
+  graphene_rect_t tile;
+  gboolean repeats;
   const RnGradientStop *stops;
   int stop_count;
 } RnGradient;

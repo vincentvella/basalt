@@ -469,14 +469,24 @@ Pixel pixelAt(RnAppKitView *view, CGSize size, int x, int y) {
 
 // A `backgroundImage` entry of each kind, since the struct the view takes
 // carries both and only some of its fields mean anything to either.
+// The rectangle an image fills, which the mounting manager resolves from
+// `backgroundSize` and friends and these tests do not otherwise care about: the
+// view's own box, drawn once, which is what the defaults come to for a view with
+// no border. The tiling is asserted in core's tests and in the tests below it.
+CGRect wholeBox(CGSize size) { return CGRectMake(0, 0, size.width, size.height); }
+
 RnAppKitGradient linearGradient(CGPoint start,
                                 CGPoint end,
                                 const RnAppKitGradientStop *stops,
-                                NSInteger count) {
+                                NSInteger count,
+                                CGRect area) {
   RnAppKitGradient gradient{};
   gradient.kind = RnAppKitGradientKindLinear;
   gradient.start = start;
   gradient.end = end;
+  gradient.area = area;
+  gradient.tile = area;
+  gradient.repeats = false;
   gradient.stops = stops;
   gradient.stopCount = count;
   return gradient;
@@ -486,12 +496,16 @@ RnAppKitGradient radialGradient(CGPoint center,
                                 CGFloat radiusX,
                                 CGFloat radiusY,
                                 const RnAppKitGradientStop *stops,
-                                NSInteger count) {
+                                NSInteger count,
+                                CGRect area) {
   RnAppKitGradient gradient{};
   gradient.kind = RnAppKitGradientKindRadial;
   gradient.center = center;
   gradient.radiusX = radiusX;
   gradient.radiusY = radiusY;
+  gradient.area = area;
+  gradient.tile = area;
+  gradient.repeats = false;
   gradient.stops = stops;
   gradient.stopCount = count;
   return gradient;
@@ -510,7 +524,7 @@ TEST(gradient_a_left_to_right_ramp_is_drawn_across_the_box) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2);
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     EXPECT_EQ((long)view.rnGradientCount, 1L);
@@ -535,7 +549,7 @@ TEST(gradient_extends_beyond_the_ends_of_its_line) {
     const CGSize size = CGSizeMake(100, 40);
     // A line covering only the middle fifth of the box.
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = linearGradient(CGPointMake(40, 0), CGPointMake(60, 0), stops, 2);
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(40, 0), CGPointMake(60, 0), stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     const Pixel left = pixelAt(view, size, 2, 20);
@@ -553,7 +567,7 @@ TEST(gradient_the_first_in_the_list_is_on_top) {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop top[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 1, 0, 0)};
     const RnAppKitGradientStop bottom[2] = {gradientStop(0, 0, 1, 0), gradientStop(1, 0, 1, 0)};
-    const RnAppKitGradient gradients[2] = {linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), top, 2), linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), bottom, 2)};
+    const RnAppKitGradient gradients[2] = {linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), top, 2, wholeBox(size)), linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), bottom, 2, wholeBox(size))};
     RnAppKitView *view = gradientView(gradients, 2, size);
 
     EXPECT_EQ((long)view.rnGradientCount, 2L);
@@ -567,7 +581,7 @@ TEST(gradient_can_be_taken_away_again) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2);
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     [view setRnGradients:nullptr count:0];
@@ -583,7 +597,7 @@ TEST(gradient_is_clipped_to_the_rounded_box) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2);
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
     [view setRnCornerRadius:20];
 
@@ -604,7 +618,7 @@ TEST(gradient_a_radial_ramp_runs_from_its_centre) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 100);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = radialGradient(CGPointMake(50, 50), 25, 25, stops, 2);
+    const RnAppKitGradient gradient = radialGradient(CGPointMake(50, 50), 25, 25, stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     EXPECT_EQ((long)view.rnGradientCount, 1L);
@@ -628,7 +642,7 @@ TEST(gradient_a_radial_ramp_uses_each_radius_on_its_own_axis) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 100);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = radialGradient(CGPointMake(50, 50), 40, 20, stops, 2);
+    const RnAppKitGradient gradient = radialGradient(CGPointMake(50, 50), 40, 20, stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     // 35 to the left, of a 40 radius: inside, so short of the last stop.
@@ -648,7 +662,7 @@ TEST(gradient_a_radial_ramp_is_centred_where_it_was_told) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 100);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = radialGradient(CGPointMake(20, 20), 15, 15, stops, 2);
+    const RnAppKitGradient gradient = radialGradient(CGPointMake(20, 20), 15, 15, stops, 2, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     const Pixel centre = pixelAt(view, size, 20, 20);
@@ -666,8 +680,8 @@ TEST(gradient_a_radial_and_a_linear_one_keep_their_order) {
     const RnAppKitGradientStop red[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 1, 0, 0)};
     const RnAppKitGradientStop green[2] = {gradientStop(0, 0, 1, 0), gradientStop(1, 0, 1, 0)};
     const RnAppKitGradient gradients[2] = {
-        radialGradient(CGPointMake(50, 50), 40, 40, red, 2),
-        linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), green, 2),
+        radialGradient(CGPointMake(50, 50), 40, 40, red, 2, wholeBox(size)),
+        linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), green, 2, wholeBox(size)),
     };
     RnAppKitView *view = gradientView(gradients, 2, size);
 
@@ -683,6 +697,120 @@ TEST(gradient_a_radial_and_a_linear_one_keep_their_order) {
   }
 }
 
+// `backgroundSize`, `backgroundPosition` and `backgroundRepeat`, in pixels.
+//
+// The arithmetic is core's and is tested there. What only a picture can say is
+// whether this layer uses it -- and on this host the tiling is a loop rather
+// than a node, so the loop's bounds, its step and its per-tile clip are all
+// things a resolved-numbers test cannot see.
+//
+// Flat gradients throughout, two stops of one colour, so a painted pixel is one
+// colour and a gap is the white the view was drawn onto.
+namespace {
+
+RnAppKitGradient flatImage(CGRect area, CGRect tile, bool repeats) {
+  static const RnAppKitGradientStop red[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 1, 0, 0)};
+  RnAppKitGradient gradient{};
+  gradient.kind = RnAppKitGradientKindLinear;
+  gradient.start = CGPointMake(area.origin.x, area.origin.y);
+  gradient.end = CGPointMake(CGRectGetMaxX(area), area.origin.y);
+  gradient.area = area;
+  gradient.tile = tile;
+  gradient.repeats = repeats;
+  gradient.stops = red;
+  gradient.stopCount = 2;
+  return gradient;
+}
+
+} // namespace
+
+// A size smaller than the view, drawn once. Before these props were read a
+// gradient filled the view whatever the stylesheet asked for, and the clip per
+// tile is what keeps it in its rectangle: the gradient itself is drawn with
+// `kCGGradientDrawsAfterEndLocation`, which fills whatever it is clipped to.
+TEST(gradient_an_image_fills_its_own_rectangle) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const CGRect area = CGRectMake(0, 0, 50, 50);
+    const RnAppKitGradient gradient = flatImage(area, area, false);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const Pixel inside = pixelAt(view, size, 25, 25);
+    EXPECT(inside.red > 200 && inside.green < 60);
+    // Outside it, the white it was drawn onto rather than the gradient.
+    const Pixel outside = pixelAt(view, size, 75, 75);
+    EXPECT(outside.green > 200);
+  }
+}
+
+TEST(gradient_an_image_is_drawn_where_it_was_positioned) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const CGRect area = CGRectMake(40, 60, 30, 30);
+    const RnAppKitGradient gradient = flatImage(area, area, false);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const Pixel inside = pixelAt(view, size, 55, 75);
+    EXPECT(inside.red > 200 && inside.green < 60);
+    // The corner the default would have painted.
+    const Pixel corner = pixelAt(view, size, 5, 5);
+    EXPECT(corner.green > 200);
+  }
+}
+
+// `repeat`: one 25pt image over a 100pt box is four tiles each way. A loop that
+// ran once leaves three quarters of each axis white, which is what the far
+// corners check.
+TEST(gradient_an_image_repeats_across_the_painting_area) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const CGRect area = CGRectMake(0, 0, 25, 25);
+    const RnAppKitGradient gradient = flatImage(area, area, true);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    for (const CGPoint point :
+         {CGPointMake(12, 12), CGPointMake(87, 12), CGPointMake(12, 87), CGPointMake(87, 87)}) {
+      const Pixel pixel = pixelAt(view, size, (int)point.x, (int)point.y);
+      EXPECT(pixel.red > 200 && pixel.green < 60);
+    }
+  }
+}
+
+// `space`, where the tile is wider than the image and the gaps are real: this is
+// what tells the per-tile clip from a gradient left to fill its tile.
+TEST(gradient_a_spaced_image_leaves_the_gaps_empty) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const RnAppKitGradient gradient =
+        flatImage(CGRectMake(0, 0, 30, 100), CGRectMake(0, 0, 50, 100), true);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const Pixel first = pixelAt(view, size, 15, 50);
+    const Pixel gap = pixelAt(view, size, 40, 50);
+    const Pixel second = pixelAt(view, size, 65, 50);
+    EXPECT(first.red > 200 && first.green < 60);
+    EXPECT(gap.green > 200);
+    EXPECT(second.red > 200 && second.green < 60);
+  }
+}
+
+// One axis only, which arrives as a tile spanning the painting area downwards:
+// a band rather than a grid.
+TEST(gradient_an_image_can_repeat_in_one_axis_only) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const RnAppKitGradient gradient =
+        flatImage(CGRectMake(0, 40, 20, 20), CGRectMake(0, 0, 20, 100), true);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const Pixel band = pixelAt(view, size, 90, 50);
+    EXPECT(band.red > 200 && band.green < 60);
+    // Nothing above or below it, which says the other axis did not repeat too.
+    const Pixel above = pixelAt(view, size, 10, 10);
+    EXPECT(above.green > 200);
+  }
+}
+
 // And the gradients are in the tree dump, spelled as GTK spells them, which is
 // what makes the wiring testable: the angle and the stops are resolved in
 // AppKitMountingManager and the tests above hand the view the answer.
@@ -691,11 +819,14 @@ TEST(gradients_are_reported_in_the_tree) {
     const CGSize size = CGSizeMake(100, 60);
     const RnAppKitGradientStop stops[3] = {
         gradientStop(0, 1, 0, 0), gradientStop(0.5, 0, 1, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 60), CGPointMake(0, 0), stops, 3);
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 60), CGPointMake(0, 0), stops, 3, wholeBox(size));
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     const std::string described = [view describeTree].UTF8String;
-    EXPECT(described.find("gradient=((0,60)-(0,0),3 stops)") != std::string::npos);
+    // The line carries where the image goes as well, which is what the three
+    // background props come to: the view's own box, drawn once.
+    EXPECT(described.find("gradient=((0,60)-(0,0),3 stops,at=(0,0 100x60))") !=
+           std::string::npos);
   }
 }
 

@@ -153,7 +153,27 @@ for entry in "${APPS[@]}"; do
       continue
     fi
     bundle="$build/$name.$platform.jsbundle.js"
+    # Missing or older than the app it was built from. The second half matters as
+    # much as the first: this script's job is to diff two hosts, and a bundle per
+    # platform built at a different time diffs two *programs* -- which read as
+    # "macOS mounts a view Linux does not" on 2026-10-09 and cost two false reds
+    # before compare_hosts.sh started refusing a stale bundle outright.
+    #
+    # One app rebuilds every time and that is expected: the Fast Refresh scenario
+    # edits e2e/index.tsx and puts it back, which leaves the mtime newer than any
+    # bundle built before it ran. Two bundles of one app is a few seconds; a
+    # comparison of two different programs is a morning.
+    stale=""
     if [[ ! -f "$bundle" ]]; then
+      stale="missing"
+    else
+      for extension in tsx jsx ts js; do
+        [[ -f "e2e/$name.$extension" ]] || continue
+        [[ "e2e/$name.$extension" -nt "$bundle" ]] && stale="stale"
+        break
+      done
+    fi
+    if [[ -n "$stale" ]]; then
       echo "  building $bundle"
       scripts/bundle.sh --platform "$platform" --entry "$name" \
         --out "$name.$platform.jsbundle" --build-dir "$build" >/dev/null 2>&1

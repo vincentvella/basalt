@@ -24,6 +24,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, StyleSheet, View} from 'react-native';
+import type {LayoutChangeEvent} from 'react-native';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 
@@ -152,6 +153,33 @@ const styles = StyleSheet.create({
     outlineColor: '#e0484d',
     outlineStyle: 'dashed',
   },
+  // backgroundSize, backgroundPosition and backgroundRepeat, which apply to a
+  // gradient because CSS treats one as an image. A 20pt tile stepping every 30pt
+  // over a 60x40 box: the size shrinks it, the repeat tiles it, and `space`
+  // would share the slack instead -- all three resolved in core/BackgroundLayers.h
+  // and read back out of the dump.
+  tiled: {
+    width: 60,
+    height: 40,
+    backgroundImage: 'linear-gradient(90deg, #4d8cf2 0%, #e0484d 100%)',
+    backgroundSize: '20px 20px',
+    backgroundPosition: 'left 5px top 5px',
+    backgroundRepeat: 'repeat',
+  },
+  // View flattening, which `collapsable` turns off. A view with nothing to draw
+  // -- no background, no border, no shadow -- forms no view at all:
+  // `ViewShadowNode::initialize` leaves the FormsView trait unset and the
+  // differentiator never mounts it. Two sizes, so the dump can say which of the
+  // two arrived: the 7x3 one should be flattened away and the 9x3 one, which
+  // asks not to be, should be there.
+  flattened: {
+    width: 7,
+    height: 3,
+  },
+  kept: {
+    width: 9,
+    height: 3,
+  },
   // A radial gradient, whose ending shape is the half that is specified and
   // easy to get wrong: `circle at 30% 30%` on a 60x40 box is a circle through
   // the farthest corner from there, which is 42 x 28 away, so its radius is
@@ -204,6 +232,18 @@ const styles = StyleSheet.create({
   },
 });
 
+// `onLayout`, which is the one prop in `BaseViewProps` that no host reads and
+// none should: ReactCommon collects the nodes whose layout changed and the
+// Scheduler dispatches the event, so the whole path is upstream's. Nothing here
+// had ever proved it fires, which is what this logs and the scenario asserts.
+//
+// The size rather than the position, because a fixed 40x40 box is the same
+// number on every host where its place in a flex row is not.
+function onDotLayout(event: LayoutChangeEvent) {
+  const {width, height} = event.nativeEvent.layout;
+  console.log(`onLayout ${width}x${height}`);
+}
+
 function App() {
   return (
     <View style={styles.page}>
@@ -222,11 +262,15 @@ function App() {
         <View style={styles.dropShadowed} />
         <View style={styles.shadowed} />
         <View style={styles.outlined} />
+        <View style={styles.tiled} />
         <View style={styles.radial} />
         <View style={styles.legacyShadowed} />
         <View style={styles.blendParent}>
           <View style={styles.blended} />
         </View>
+        <View style={styles.flattened} />
+        <View collapsable={false} style={styles.kept} />
+        <View style={styles.dot} onLayout={onDotLayout} />
         <View style={styles.handy} />
         <View style={styles.draggable} />
         <View style={styles.dot} />

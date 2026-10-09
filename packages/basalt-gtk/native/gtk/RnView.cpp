@@ -287,8 +287,32 @@ struct RnGradientRecord {
   graphene_point_t center;
   float radius_x;
   float radius_y;
+  // Where the image goes and the tile it repeats in. See RnGradient.
+  graphene_rect_t area;
+  graphene_rect_t tile;
+  gboolean repeats;
   GArray *stops;
 };
+
+// The `at=` and `tile=` half of a gradient's line, which both hosts spell the
+// same way. Separate because the linear and radial branches share it.
+static void rn_view_describe_gradient_layer(GString *out, const RnGradientRecord &gradient) {
+  g_string_append_printf(out,
+                         ",at=(%g,%g %gx%g)",
+                         static_cast<double>(gradient.area.origin.x),
+                         static_cast<double>(gradient.area.origin.y),
+                         static_cast<double>(gradient.area.size.width),
+                         static_cast<double>(gradient.area.size.height));
+  if (gradient.repeats) {
+    g_string_append_printf(out,
+                           ",tile=(%g,%g %gx%g)",
+                           static_cast<double>(gradient.tile.origin.x),
+                           static_cast<double>(gradient.tile.origin.y),
+                           static_cast<double>(gradient.tile.size.width),
+                           static_cast<double>(gradient.tile.size.height));
+  }
+  g_string_append(out, ")");
+}
 
 static void rn_gradient_record_clear(gpointer data) {
   auto *record = static_cast<RnGradientRecord *>(data);
@@ -487,17 +511,33 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   // rounded box for the reason the background colour is: a gradient that
   // squared off the corners would be a worse bug than no gradient.
   //
-  // Back to front, the first in the list being the one on top. The points and
-  // the stops were resolved against this view's size in the mounting manager,
-  // which runs again on every layout, so a resized view is a resized gradient.
+  // Back to front, the first in the list being the one on top. The geometry and
+  // the stops were resolved against the image's own size in the mounting
+  // manager, which runs again on every layout, so a resized view is a resized
+  // gradient.
+  //
+  // The image fills `area` and repeats in `tile`, which is what
+  // `backgroundSize`, `backgroundPosition` and `backgroundRepeat` come to. The
+  // repeat is one `gtk_snapshot_push_repeat`, which tiles in both axes at once
+  // from the tile it is given -- so an axis that does not repeat arrives with
+  // the painting area as its tile and comes out drawn once. See
+  // core/BackgroundLayers.h.
   if (self->gradients != nullptr) {
     for (guint i = self->gradients->len; i > 0; i--) {
       const RnGradientRecord &gradient = g_array_index(self->gradients, RnGradientRecord, i - 1);
       if (gradient.stops == nullptr || gradient.stops->len == 0) {
         continue;
       }
+      if (gradient.area.size.width <= 0.0f || gradient.area.size.height <= 0.0f) {
+        continue;
+      }
       if (self->has_border_radii) {
         gtk_snapshot_push_rounded_clip(snapshot, &box);
+      }
+      if (gradient.repeats) {
+        // The painting area is the border box, which is what CSS clips a
+        // background to, and the tile is the period.
+        gtk_snapshot_push_repeat(snapshot, &bounds, &gradient.tile);
       }
       // RnGradientStop has GskColorStop's layout, so the array is handed over as
       // it stands rather than copied a field at a time.
@@ -505,10 +545,11 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
         // 0 and 1 are where the gradient starts and ends along the radius, as a
         // fraction of it: the ending shape is the radius, which is what CSS
         // means by one. GSK fills the rest of the bounds with the last stop,
-        // which is also what CSS does past the ending shape.
+        // which is also what CSS does past the ending shape -- so the node's
+        // bounds are the image's rectangle rather than the box.
         gtk_snapshot_append_radial_gradient(
             snapshot,
-            &bounds,
+            &gradient.area,
             &gradient.center,
             gradient.radius_x,
             gradient.radius_y,
@@ -519,11 +560,14 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       } else {
         gtk_snapshot_append_linear_gradient(
             snapshot,
-            &bounds,
+            &gradient.area,
             &gradient.start,
             &gradient.end,
             reinterpret_cast<const GskColorStop *>(gradient.stops->data),
             gradient.stops->len);
+      }
+      if (gradient.repeats) {
+        gtk_snapshot_pop(snapshot);
       }
       if (self->has_border_radii) {
         gtk_snapshot_pop(snapshot);
@@ -1814,6 +1858,8 @@ void rn_view_set_gradients(RnView *self, const RnGradient *gradients, int count)
              graphene_point_equal(&have.end, &want.end) &&
              graphene_point_equal(&have.center, &want.center) &&
              have.radius_x == want.radius_x && have.radius_y == want.radius_y &&
+             graphene_rect_equal(&have.area, &want.area) &&
+             graphene_rect_equal(&have.tile, &want.tile) && have.repeats == want.repeats &&
              have.stops->len == static_cast<guint>(want.stop_count) &&
              memcmp(have.stops->data,
                     want.stops,
@@ -1844,6 +1890,9 @@ void rn_view_set_gradients(RnView *self, const RnGradient *gradients, int count)
                             gradient.center,
                             gradient.radius_x,
                             gradient.radius_y,
+                            gradient.area,
+                            gradient.tile,
+                            gradient.repeats,
                             nullptr};
     const guint stops = gradient.stop_count > 0 ? static_cast<guint>(gradient.stop_count) : 0;
     record.stops = g_array_sized_new(FALSE, FALSE, sizeof(RnGradientStop), MAX(stops, 1));
@@ -2269,29 +2318,37 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
           out, " border-style=%s", self->border_style == RN_BORDER_DOTTED ? "dotted" : "dashed");
     }
   }
-  // Gradients: how many, and each one's line and stop count. Not every stop,
-  // which a transition hint can turn into eleven of: what a cross-host diff and
-  // an end-to-end run need is that the same gradient arrived with the same
-  // geometry, and the stop fixup itself is asserted in core's own tests.
+  // Gradients: how many, each one's line and stop count, where the image goes
+  // and the tile it repeats in. Not every stop, which a transition hint can turn
+  // into eleven of: what a cross-host diff and an end-to-end run need is that
+  // the same gradient arrived with the same geometry, and the stop fixup itself
+  // is asserted in core's own tests.
+  //
+  // `at=` is the rectangle the image fills and `tile=` is the period, printed
+  // only when it repeats -- so a `no-repeat` background is the line without a
+  // tile. The three background props are invisible in every other line of this
+  // dump: they move and repeat the image without changing the view at all.
   if (self->gradients != nullptr) {
     for (guint i = 0; i < self->gradients->len; i++) {
       const RnGradientRecord &gradient = g_array_index(self->gradients, RnGradientRecord, i);
       if (gradient.kind == RN_GRADIENT_RADIAL) {
         g_string_append_printf(out,
-                               " gradient=(radial (%g,%g) %gx%g,%u stops)",
+                               " gradient=(radial (%g,%g) %gx%g,%u stops",
                                static_cast<double>(gradient.center.x),
                                static_cast<double>(gradient.center.y),
                                static_cast<double>(gradient.radius_x),
                                static_cast<double>(gradient.radius_y),
                                gradient.stops != nullptr ? gradient.stops->len : 0);
+        rn_view_describe_gradient_layer(out, gradient);
       } else {
         g_string_append_printf(out,
-                               " gradient=((%g,%g)-(%g,%g),%u stops)",
+                               " gradient=((%g,%g)-(%g,%g),%u stops",
                                static_cast<double>(gradient.start.x),
                                static_cast<double>(gradient.start.y),
                                static_cast<double>(gradient.end.x),
                                static_cast<double>(gradient.end.y),
                                gradient.stops != nullptr ? gradient.stops->len : 0);
+        rn_view_describe_gradient_layer(out, gradient);
       }
     }
   }

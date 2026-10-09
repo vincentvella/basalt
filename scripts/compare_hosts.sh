@@ -202,6 +202,25 @@ for entry in "${present[@]}"; do
     exit 1
   fi
 
+  # Older than the app it was built from is worse than missing, because it looks
+  # like an answer. This script's whole output is a diff between two hosts, so a
+  # bundle per platform that was built at a different time compares two
+  # *programs* and prints the difference as though the hosts disagreed -- which
+  # cost two false reds on 2026-10-09, the second one reading as "macOS mounts a
+  # view Linux does not" when one bundle simply predated an edit.
+  if [[ -z "$single_bundle" ]]; then
+    for extension in tsx jsx ts js; do
+      source_file="$(dirname "$0")/../e2e/$app.$extension"
+      [[ -f "$source_file" ]] || continue
+      if [[ "$source_file" -nt "$bundle" ]]; then
+        echo "$bundle is older than e2e/$app.$extension -- rebuild it with:" >&2
+        echo "  scripts/bundle.sh --platform $name --entry $app --out $app.$name.jsbundle" >&2
+        exit 1
+      fi
+      break
+    done
+  fi
+
   echo "running the $name host..."
   dump="$out/$name.txt"
   [[ "$name" == "windows" ]] && dump="$(native_path "$dump")"

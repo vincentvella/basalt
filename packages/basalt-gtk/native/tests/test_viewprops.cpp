@@ -99,14 +99,26 @@ int blurNodesIn(GskRenderNode *node) {
 
 // A `backgroundImage` entry of each kind, since the struct the widget takes
 // carries both and only some of its fields mean anything to either.
+// The rectangle an image fills, which the mounting manager resolves from
+// `backgroundSize` and friends and these tests do not otherwise care about: the
+// view's own box, drawn once, which is what the defaults come to for a view with
+// no border. The tiling is asserted in core's tests and in the pixel tests.
+graphene_rect_t wholeBox(float width, float height) {
+  return graphene_rect_t{{0.0F, 0.0F}, {width, height}};
+}
+
 RnGradient linearGradient(graphene_point_t start,
                           graphene_point_t end,
                           const RnGradientStop *stops,
-                          int count) {
+                          int count,
+                          graphene_rect_t area) {
   RnGradient gradient{};
   gradient.kind = RN_GRADIENT_LINEAR;
   gradient.start = start;
   gradient.end = end;
+  gradient.area = area;
+  gradient.tile = area;
+  gradient.repeats = FALSE;
   gradient.stops = stops;
   gradient.stop_count = count;
   return gradient;
@@ -116,12 +128,16 @@ RnGradient radialGradient(graphene_point_t center,
                           float radiusX,
                           float radiusY,
                           const RnGradientStop *stops,
-                          int count) {
+                          int count,
+                          graphene_rect_t area) {
   RnGradient gradient{};
   gradient.kind = RN_GRADIENT_RADIAL;
   gradient.center = center;
   gradient.radius_x = radiusX;
   gradient.radius_y = radiusY;
+  gradient.area = area;
+  gradient.tile = area;
+  gradient.repeats = FALSE;
   gradient.stops = stops;
   gradient.stop_count = count;
   return gradient;
@@ -981,10 +997,16 @@ TEST(a_box_shadow_is_an_outset_shadow_node_carrying_its_own_numbers) {
   // swapped still looks like a shadow.
   GskRenderNode *node = firstOutsetShadow(painted);
   EXPECT(node != nullptr);
-  EXPECT_EQ((double)gsk_outset_shadow_node_get_dx(node), 2.0);
-  EXPECT_EQ((double)gsk_outset_shadow_node_get_dy(node), 4.0);
-  EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(node), 8.0);
-  EXPECT_EQ((double)gsk_outset_shadow_node_get_spread(node), 1.0);
+  // Guarded rather than trusted: a missing node is a failure, and reading
+  // through it instead takes the rest of the suite down with a segfault. Which
+  // is not hypothetical -- adding a field to RnGradient skipped the paint, and
+  // the first thing anybody saw was a crash report rather than a red test.
+  if (node != nullptr) {
+    EXPECT_EQ((double)gsk_outset_shadow_node_get_dx(node), 2.0);
+    EXPECT_EQ((double)gsk_outset_shadow_node_get_dy(node), 4.0);
+    EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(node), 8.0);
+    EXPECT_EQ((double)gsk_outset_shadow_node_get_spread(node), 1.0);
+  }
   // And the outline is the view's own box, so a rounded card casts a rounded
   // shadow without anything here knowing the radii.
   const GskRoundedRect *outline = gsk_outset_shadow_node_get_outline(node);
@@ -1137,7 +1159,9 @@ TEST(a_negative_blur_radius_on_a_box_shadow_is_not_a_crash) {
   EXPECT_EQ(found.inset, 1);
   GskRenderNode *node = firstOutsetShadow(painted);
   EXPECT(node != nullptr);
-  EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(node), 0.0);
+  if (node != nullptr) {
+    EXPECT_EQ((double)gsk_outset_shadow_node_get_blur_radius(node), 0.0);
+  }
 
   if (painted != nullptr) {
     gsk_render_node_unref(painted);
@@ -1191,7 +1215,7 @@ TEST(a_linear_gradient_is_a_gradient_node_along_the_line_it_was_given) {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
       {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
   };
-  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 2);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 2, wholeBox(100.0F, 60.0F));
   rn_view_set_gradients(view, &gradient, 1);
   EXPECT_EQ(rn_view_get_gradient_count(view), 1);
 
@@ -1200,17 +1224,19 @@ TEST(a_linear_gradient_is_a_gradient_node_along_the_line_it_was_given) {
 
   GskRenderNode *node = firstGradient(painted);
   EXPECT(node != nullptr);
-  const graphene_point_t *start = gsk_linear_gradient_node_get_start(node);
-  const graphene_point_t *end = gsk_linear_gradient_node_get_end(node);
-  EXPECT_EQ((double)start->y, 60.0);
-  EXPECT_EQ((double)end->y, 0.0);
-  // And the stops reached GSK as they were given, offsets and colours.
-  EXPECT_EQ((long)gsk_linear_gradient_node_get_n_color_stops(node), 2L);
-  const GskColorStop *gskStops = gsk_linear_gradient_node_get_color_stops(node, nullptr);
-  EXPECT_EQ((double)gskStops[0].offset, 0.0);
-  EXPECT_EQ((double)gskStops[0].color.red, 1.0);
-  EXPECT_EQ((double)gskStops[1].offset, 1.0);
-  EXPECT_EQ((double)gskStops[1].color.blue, 1.0);
+  if (node != nullptr) {
+    const graphene_point_t *start = gsk_linear_gradient_node_get_start(node);
+    const graphene_point_t *end = gsk_linear_gradient_node_get_end(node);
+    EXPECT_EQ((double)start->y, 60.0);
+    EXPECT_EQ((double)end->y, 0.0);
+    // And the stops reached GSK as they were given, offsets and colours.
+    EXPECT_EQ((long)gsk_linear_gradient_node_get_n_color_stops(node), 2L);
+    const GskColorStop *gskStops = gsk_linear_gradient_node_get_color_stops(node, nullptr);
+    EXPECT_EQ((double)gskStops[0].offset, 0.0);
+    EXPECT_EQ((double)gskStops[0].color.red, 1.0);
+    EXPECT_EQ((double)gskStops[1].offset, 1.0);
+    EXPECT_EQ((double)gskStops[1].color.blue, 1.0);
+  }
 
   if (painted != nullptr) {
     gsk_render_node_unref(painted);
@@ -1231,8 +1257,8 @@ TEST(every_linear_gradient_in_the_list_is_painted) {
   const RnGradientStop second[2] = {
       {0.0F, GdkRGBA{1.0F, 1.0F, 1.0F, 0.5F}}, {1.0F, GdkRGBA{1.0F, 1.0F, 1.0F, 0.0F}}};
   const RnGradient gradients[2] = {
-      linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, first, 2),
-      linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, second, 2),
+      linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, first, 2, wholeBox(100.0F, 60.0F)),
+      linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, second, 2, wholeBox(100.0F, 60.0F)),
   };
   rn_view_set_gradients(view, gradients, 2);
 
@@ -1261,7 +1287,7 @@ TEST(a_linear_gradient_paints_over_the_background_colour) {
   rn_view_set_background_color(view, TRUE, &green);
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
-  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2, wholeBox(100.0F, 60.0F));
   rn_view_set_gradients(view, &gradient, 1);
 
   GskRenderNode *painted = paintedNode(view);
@@ -1303,7 +1329,7 @@ TEST(a_linear_gradient_is_clipped_to_the_rounded_box) {
   rn_view_set_border_radii(view, radii);
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
-  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2, wholeBox(100.0F, 60.0F));
   rn_view_set_gradients(view, &gradient, 1);
 
   GskRenderNode *painted = paintedNode(view);
@@ -1327,7 +1353,7 @@ TEST(a_linear_gradient_can_be_taken_away_again) {
 
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
-  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2, wholeBox(100.0F, 60.0F));
   rn_view_set_gradients(view, &gradient, 1);
   rn_view_set_gradients(view, nullptr, 0);
   EXPECT_EQ(rn_view_get_gradient_count(view), 0);
@@ -1353,7 +1379,7 @@ TEST(a_radial_gradient_is_a_radial_gradient_node_with_its_own_centre_and_radii) 
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
   const RnGradient gradient =
-      radialGradient(graphene_point_t{60.0F, 30.0F}, 80.0F, 40.0F, stops, 2);
+      radialGradient(graphene_point_t{60.0F, 30.0F}, 80.0F, 40.0F, stops, 2, wholeBox(200.0F, 100.0F));
   rn_view_set_gradients(view, &gradient, 1);
   EXPECT_EQ(rn_view_get_gradient_count(view), 1);
 
@@ -1396,8 +1422,8 @@ TEST(a_radial_and_a_linear_gradient_keep_their_order) {
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
   const RnGradient gradients[2] = {
-      radialGradient(graphene_point_t{50.0F, 30.0F}, 50.0F, 30.0F, stops, 2),
-      linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2),
+      radialGradient(graphene_point_t{50.0F, 30.0F}, 50.0F, 30.0F, stops, 2, wholeBox(100.0F, 60.0F)),
+      linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2, wholeBox(100.0F, 60.0F)),
   };
   rn_view_set_gradients(view, gradients, 2);
   EXPECT_EQ(rn_view_get_gradient_count(view), 2);
@@ -1426,7 +1452,7 @@ TEST(a_radial_gradient_can_be_taken_away_again) {
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
   const RnGradient gradient =
-      radialGradient(graphene_point_t{50.0F, 30.0F}, 50.0F, 30.0F, stops, 2);
+      radialGradient(graphene_point_t{50.0F, 30.0F}, 50.0F, 30.0F, stops, 2, wholeBox(100.0F, 60.0F));
   rn_view_set_gradients(view, &gradient, 1);
   rn_view_set_gradients(view, nullptr, 0);
   EXPECT_EQ(rn_view_get_gradient_count(view), 0);
@@ -1450,13 +1476,14 @@ TEST(radial_gradients_are_reported_in_the_tree) {
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
   const RnGradient gradient =
-      radialGradient(graphene_point_t{60.0F, 30.0F}, 80.0F, 40.0F, stops, 2);
+      radialGradient(graphene_point_t{60.0F, 30.0F}, 80.0F, 40.0F, stops, 2, wholeBox(200.0F, 100.0F));
   rn_view_set_gradients(view, &gradient, 1);
 
   char *text = rn_view_describe_tree(view);
   const std::string dumped(text);
   g_free(text);
-  EXPECT(dumped.find("gradient=(radial (60,30) 80x40,2 stops)") != std::string::npos);
+  EXPECT(dumped.find("gradient=(radial (60,30) 80x40,2 stops,at=(0,0 200x100))") !=
+         std::string::npos);
 
   g_object_unref(view);
 }
@@ -1479,13 +1506,15 @@ TEST(linear_gradients_are_reported_in_the_tree) {
       {0.5F, GdkRGBA{0.0F, 1.0F, 0.0F, 1.0F}},
       {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
   };
-  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 3);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 3, wholeBox(100.0F, 60.0F));
   rn_view_set_gradients(view, &gradient, 1);
 
   text = rn_view_describe_tree(view);
   const std::string dumped(text);
   g_free(text);
-  EXPECT(dumped.find("gradient=((0,60)-(0,0),3 stops)") != std::string::npos);
+  // The line carries where the image goes as well, which is what the three
+  // background props come to: the view's own box, drawn once.
+  EXPECT(dumped.find("gradient=((0,60)-(0,0),3 stops,at=(0,0 100x60))") != std::string::npos);
 
   g_object_unref(view);
 }

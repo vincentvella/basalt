@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (3):**
+**Open (2):**
 
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
@@ -12,8 +12,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    What is left is entry 6
 5. ~~A type check used as a liveness check~~, fixed in four places; the ordering
    it depended on is now core's
-6. backgroundSize, backgroundPosition and backgroundRepeat are ignored, and they
-   apply to the gradients that are implemented
+6. ~~backgroundSize, backgroundPosition and backgroundRepeat are ignored~~,
+   done on GTK and AppKit; what is left of `backgroundImage` is an image loader
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -131,6 +131,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   - ~~`shouldRasterize` and `removeClippedSubviews`~~: **both deliberately not
     implemented, written down 2026-10-08** with the measurements that decide it.
     At the end of this entry.
+  - ~~`borderCurves`, `collapsable`, `collapsableChildren` and `onLayout`~~:
+    four more fields that no host read and nothing mentioned, found 2026-10-09
+    by walking the struct again. None of them is a host's to read, for three
+    different reasons, and two of them are now asserted end to end. At the end
+    of this entry.
   - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, all nine functions.
     What the work turned out to be is at the end of this entry.
   - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
@@ -604,13 +609,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   props nothing said anything about, which is the thing this entry exists to
   stop.
 
-- **`backgroundSize`, `backgroundPosition` and `backgroundRepeat` are ignored,
-  and the previous note about them was wrong.** It said they "have nothing to act
-  on until an image can be a background, which is a loader question rather than a
-  drawing one". That is false twice over: CSS treats a gradient as an image, so
-  all three apply to the gradients both hosts now draw, and React Native's iOS
-  half already applies them to exactly those. Written down 2026-10-08 after
-  reading that implementation rather than the prop names.
+- ~~**`backgroundSize`, `backgroundPosition` and `backgroundRepeat` are
+  ignored.**~~ Done on GTK and AppKit 2026-10-09. The note this entry replaced
+  was wrong twice over: it said they "have nothing to act on until an image can
+  be a background, which is a loader question rather than a drawing one", and
+  CSS treats a gradient as an image, so all three apply to the gradients both
+  hosts draw -- which React Native's iOS half already did.
 
   **What iOS does**, in `RCTViewComponentView.mm`'s background-image block: it
   takes the *padding* frame as the positioning area and the layer bounds as the
@@ -640,12 +644,98 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Windows would need the same geometry with
   `ID2D1BitmapBrush`'s extend modes.
 
-  The sizing is the specified part and belongs in `core/Gradients.h` beside the
-  rest: `cover` and `contain` against an intrinsic size a gradient does not have
-  (CSS says a gradient's intrinsic size is the positioning area, which is why
-  iOS passes the area in as `itemIntrinsicSize`), lengths and percentages, and
-  the four repeat keywords, of which `space` and `round` change the tile size
-  rather than only the step.
+  The sizing is the specified part and is shared, in `core/BackgroundLayers.h`
+  beside the gradient geometry: `cover` and `contain` come to the positioning
+  area, CSS saying that is a gradient's intrinsic size and iOS passing the area
+  in as `itemIntrinsicSize`; lengths and percentages resolve against the area
+  rather than the image; `round` divides the area into whole tiles *before*
+  anything is positioned, because it changes the size; and `space` changes the
+  step and the anchor but not the size, and stops repeating when one tile leaves
+  no slack to share, which is also the case that would divide by zero. Twelve
+  tests against those numbers.
+
+  **The two areas are the part that is easy to get wrong and the part that
+  changed existing behaviour.** A size and a position resolve against the
+  *padding* box -- `background-origin: padding-box` -- and the result is clipped
+  to the *border* box. Both hosts previously drew a gradient over the border box,
+  so a gradient on a view with a border now sizes itself inside the border and
+  tiles outward into it, which is what CSS and iOS do. The core tests use a
+  100x100 box with a 10pt border throughout, because an implementation that used
+  one area for both is invisible on a view with no border.
+
+  **The hosts diverge in mechanism and agree in the dump.** GTK is one
+  `gtk_snapshot_push_repeat` around the gradient node, whose bounds are the
+  image's rectangle rather than the view's; GSK tiles in both axes at once, so an
+  axis that does not repeat arrives with the painting area as its tile and comes
+  out drawn once. AppKit has no repeat, so it is the loop GSK is on the other
+  side, with each tile clipped to the image's rectangle -- the gradient is drawn
+  with `kCGGradientDrawsAfterEndLocation`, which fills whatever it is clipped to,
+  so the clip is what keeps a tile inside its tile. The loop is capped at 256
+  steps per axis, past the point where another tile changes a pixel, so a
+  one-point tile over a window cannot cost minutes a frame.
+
+  Five pixel tests on each host -- the rectangle, the position, `repeat`,
+  `space`'s gaps, and one axis repeating while the other does not -- and a
+  scenario on both reading `at=` and `tile=` out of the dump. Sabotage: the
+  repeat node, the node's bounds, the per-tile clip and each host's wiring all
+  fail tests of their own.
+
+  **Two bugs found on the way, one in each direction.** AppKit's loop trusted the
+  tile even when nothing repeated, so a `no-repeat` background drew a grid; its
+  own test for an image filling its rectangle caught it. And
+  `background-position: right 25%` turns out to be unreachable on iOS, because
+  `BackgroundPosition`'s constructor presets `top` and `left` and the parser
+  never clears them, so the near edge always wins there. This prefers the far
+  edge, which is correct for every position the JavaScript can emit; see
+  [upstream.md](upstream.md).
+
+  **Windows** needs the same two areas and `ID2D1BitmapBrush`'s extend modes, or
+  the same loop: the geometry is shared, so what is left there is one brush per
+  image and a clip per tile. Its scenario skips by name with the other gradient
+  ones.
+
+  **Four more fields with no line anywhere, walked 2026-10-09.** The nine above
+  were the props that *drew* something; these are the rest of what
+  `BaseViewProps` carries that no host mentions. None is a host's to read, and
+  saying so is the point -- "no host reads it" was the sentence that hid `cursor`
+  for weeks.
+
+  **`onLayout` is ReactCommon's, and now has a scenario.**
+  `YogaLayoutableShadowNode` collects the nodes whose layout changed into
+  `layoutContext.affectedNodes` and the Scheduler dispatches from them, so a host
+  that implemented it would implement it twice. What was missing is any evidence
+  that it fires *here*: "handled upstream" is a claim about code nobody in this
+  repository wrote, and the parts of ReactCommon this platform does not drive the
+  way Android and iOS do are exactly where the gaps have been -- the cxx
+  `TextLayoutManager` has no `measureLines` at all, and that was found by
+  asserting something that was assumed to work. So `e2e/views.tsx` logs a box's
+  size from `onLayout` and a scenario reads it back.
+
+  **`collapsable` and `collapsableChildren` are ReactCommon's too, and the thing
+  they control had never been tested.** `ViewShadowNode::initialize` leaves the
+  `FormsView` trait unset for a view with nothing to draw -- no background,
+  border, shadow, image, outline, transform, opacity, event handler or
+  accessibility of its own -- and the differentiator then never mounts it;
+  `collapsable: false` is the opt-out, and `collapsableChildren` the same for a
+  subtree. That is the difference between the view tree React describes and the
+  widget tree a host builds, and a host that mounted everything would be slower
+  and would still pass every other scenario in the suite. So there is now one
+  for it: a 7x3 bare view that must be absent from the dump and a 9x3 one, with
+  `collapsable={false}`, that must be in it.
+
+  **`borderCurves` cannot arrive, the same way `shouldRasterize` cannot.** The
+  raw prop is `borderCurve` and only `BaseViewConfig.ios.js` declares it, so
+  Android's config -- which this platform's override takes -- never sends it and
+  `BorderCurve::Circular` is what every host sees for every view.
+
+  Honouring it would mean one line on AppKit, `layer.cornerCurve =
+  kCACornerCurveContinuous`, which is exactly what `RCTViewComponentView` does.
+  GTK has nothing: GSK's rounded rect is a circular arc per corner, and a
+  squircle would be a path of its own, drawn by hand, for every rounded view.
+  So the two desktops would draw different corners from the same stylesheet,
+  which is the one thing this project's gradient and shadow work has been careful
+  not to do. Recorded rather than implemented, and the view config line is what
+  would make it testable at all if that changes.
 
 - ~~**A type check used as a liveness check.**~~ Found and fixed 2026-10-08, by
   accident, which is the part worth writing down.

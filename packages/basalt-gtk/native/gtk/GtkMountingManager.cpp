@@ -6,6 +6,7 @@
 
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
+#include "BackgroundLayers.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
 #include "CursorNames.h"
@@ -1196,15 +1197,52 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // resized view gets a resized gradient without the widget knowing anything
   // about angles or corners.
   {
-    const auto &size = shadowView.layoutMetrics.frame.size;
-    const auto width = static_cast<float>(size.width);
-    const auto height = static_cast<float>(size.height);
+    const auto &metrics = shadowView.layoutMetrics;
+    // The two areas CSS gives a background. The painting area is the border box,
+    // which is what it is clipped to; the positioning area is the padding box,
+    // which sizes and positions it. They differ on any view with a border.
+    const basalt::BackgroundArea painting{
+        0.0F,
+        0.0F,
+        static_cast<float>(metrics.frame.size.width),
+        static_cast<float>(metrics.frame.size.height)};
+    // getPaddingFrame's origin is already relative to the view -- it is the
+    // border widths -- so nothing here subtracts the frame's own position.
+    const auto paddingFrame = metrics.getPaddingFrame();
+    const basalt::BackgroundArea positioning{
+        static_cast<float>(paddingFrame.origin.x),
+        static_cast<float>(paddingFrame.origin.y),
+        static_cast<float>(paddingFrame.size.width),
+        static_cast<float>(paddingFrame.size.height)};
+
     std::vector<RnGradient> gradients;
     std::vector<std::vector<RnGradientStop>> stops;
     gradients.reserve(props->backgroundImage.size());
     stops.reserve(props->backgroundImage.size());
-    for (const auto &image : props->backgroundImage) {
+    for (size_t index = 0; index < props->backgroundImage.size(); index++) {
+      const auto &image = props->backgroundImage[index];
+      // Each list is indexed modulo its own length, which is CSS's rule for a
+      // list shorter than the image list and is what iOS does.
+      const basalt::BackgroundLayer layer = basalt::resolveBackgroundLayer(
+          positioning,
+          painting,
+          basalt::backgroundSizeAt(props->backgroundSize, index),
+          basalt::backgroundPositionAt(props->backgroundPosition, index),
+          basalt::backgroundRepeatAt(props->backgroundRepeat, index));
+      if (layer.empty()) {
+        continue;
+      }
+      // The gradient is resolved against the image's size and then offset to
+      // where the image goes: a gradient that resolved against the view would
+      // ignore `backgroundSize` even with the rectangle right.
+      const float width = layer.width;
+      const float height = layer.height;
+
       RnGradient converted{};
+      converted.area = graphene_rect_t{{layer.x, layer.y}, {layer.width, layer.height}};
+      converted.tile =
+          graphene_rect_t{{layer.tileX, layer.tileY}, {layer.tileWidth, layer.tileHeight}};
+      converted.repeats = layer.repeats() ? TRUE : FALSE;
       const std::vector<facebook::react::ColorStop> *colorStops = nullptr;
       float rayLength = 0.0F;
 
@@ -1212,8 +1250,8 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
         const auto &gradient = std::get<facebook::react::LinearGradient>(image);
         const basalt::GradientLine line = basalt::linearGradientLine(gradient, width, height);
         converted.kind = RN_GRADIENT_LINEAR;
-        converted.start = graphene_point_t{line.startX, line.startY};
-        converted.end = graphene_point_t{line.endX, line.endY};
+        converted.start = graphene_point_t{line.startX + layer.x, line.startY + layer.y};
+        converted.end = graphene_point_t{line.endX + layer.x, line.endY + layer.y};
         colorStops = &gradient.colorStops;
         rayLength = line.length();
       } else {
@@ -1221,7 +1259,7 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
         const basalt::GradientEllipse shape =
             basalt::radialGradientEllipse(gradient, width, height);
         converted.kind = RN_GRADIENT_RADIAL;
-        converted.center = graphene_point_t{shape.centerX, shape.centerY};
+        converted.center = graphene_point_t{shape.centerX + layer.x, shape.centerY + layer.y};
         converted.radius_x = shape.radiusX;
         converted.radius_y = shape.radiusY;
         colorStops = &gradient.colorStops;

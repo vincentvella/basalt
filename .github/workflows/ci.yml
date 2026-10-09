@@ -467,6 +467,15 @@ jobs:
           node --test scripts/test_check_backlog.js
           node scripts/check_backlog.js
 
+      - name: The platform support page
+        # website/docs/support.mdx is generated from docs/platform-support.json,
+        # and three columns of ticks are exactly the kind of thing that drifts
+        # from the code. The check searches each host for the props its column
+        # claims, and fails when the page on disk is not what the data renders.
+        run: |
+          node --test scripts/test_check_support.js
+          node scripts/check_support.js --check
+
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src
 

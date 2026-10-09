@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (17):**
+**Open (18):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -43,6 +43,8 @@ workaround and the comment explaining it, which is already written.
 16. `gtk_accessible_list_new_from_array` refuses every non-empty array
 17. The cxx `TextLayoutManager` has no `measureLines`, so baseline alignment and
     `onTextLayout` cannot work for any ReactCxxPlatform app
+18. `background-position` with `right` or `bottom` cannot be expressed: the
+    defaults shadow it
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -237,3 +239,31 @@ workaround and the comment explaining it, which is already written.
   no local workaround that does not mean shadowing an upstream header -- which is
   the one thing the text-measurement arrangement in `PangoTextLayoutManager.cpp`
   is careful not to do. See [text.md](text.md).
+
+- **`background-position` with `right` or `bottom` cannot be expressed.** The
+  far-edge syntax parses in JavaScript, reaches the C++ props, and is then
+  unreachable: `BackgroundPosition`'s constructor sets `top` and `left` to zero
+  points, and `fromRawValue` only *writes* the keys the style sent. So
+  `backgroundPosition: 'right 25% bottom 10%'` arrives with `right` and `bottom`
+  set **and** `top` and `left` still at their defaults, and
+  `RCTBackgroundImageUtils` asks for the near edges first:
+
+      if (backgroundPosition.top.has_value()) { ... }
+      else if (backgroundPosition.bottom.has_value()) { ... }
+
+  The near one always has a value, so the far one is never read and the image is
+  drawn in the top left corner. Found 2026-10-08 while porting that file.
+
+  The smallest fix is upstream's to choose: either the constructor leaves all
+  four unset and the drawing code defaults when it finds none, or the parser
+  clears the near edge when it writes the far one. The second is two lines and
+  cannot change any case that works today.
+
+  **Not worked around so much as decided differently here.**
+  `core/BackgroundLayers.h` prefers the far edge when it is present, which is
+  correct for every position the JavaScript can produce:
+  `processBackgroundPosition.js` emits exactly one of each pair -- `{top, left}`,
+  `{bottom, right}`, `{top, right}` or `{bottom, left}` -- so a `right` in the map
+  means the `left` beside it is React Native's default rather than the author's.
+  The two platforms therefore differ on exactly the declarations iOS draws in the
+  wrong corner.

@@ -3951,16 +3951,18 @@ def test_linear_gradient(bundle: Path) -> None:
             raise Failure("host wrote no widget tree")
         tree = dump.read_text()
 
-    # The linear ones, by their shape: the app also has a view with a radial
-    # gradient, which the same line reports differently -- see
-    # test_radial_gradient.
-    carrying = [line for line in tree.splitlines()
-                if "gradient=(" in line and "gradient=(radial" not in line]
+    # This one, by its own line: the app has a radial gradient too, which the
+    # same dump line reports differently, and a second linear one for the
+    # background-size scenario next door.
+    carrying = [line for line in tree.splitlines() if "gradient=((10,-10)-(70,50)" in line]
     if len(carrying) != 1:
+        others = [line for line in tree.splitlines() if "gradient=" in line]
         raise Failure(
-            f"{len(carrying)} views report a linear gradient; the app sets one.\n{tree}"
+            "no view reports the gradient line the spec's construction gives for "
+            "135 degrees on an 80x40 box. The gradients that did arrive are "
+            "below.\n" + "\n".join(others)
         )
-    if "gradient=((10,-10)-(70,50),2 stops)" not in carrying[0]:
+    if "gradient=((10,-10)-(70,50),2 stops,at=(0,0 80x40)" not in carrying[0]:
         raise Failure(
             "the gradient line is not where the spec puts it. The diagonal, "
             "(0,0)-(80,40), is the usual wrong answer; so is an angle measured "
@@ -4265,6 +4267,168 @@ def test_drop_shadow_filter(bundle: Path) -> None:
         )
 
 
+def test_view_flattening(bundle: Path) -> None:
+    """A view with nothing to draw is not mounted, and `collapsable` says so.
+
+    `ViewShadowNode::initialize` decides this, not a host: a view with no
+    background, border, shadow, image, outline, test id, transform, opacity,
+    event handler or accessibility of its own leaves the `FormsView` trait
+    unset, and the differentiator never mounts it. `collapsable: false` is the
+    opt-out, and `collapsableChildren` the same for a subtree.
+
+    So neither prop is for a host to read -- and that is worth one scenario
+    rather than a sentence, because flattening is the difference between the view
+    tree React describes and the widget tree a host builds, and nothing here had
+    ever checked that the two differ in the way Fabric intends. A host that
+    mounted everything would be slower and would still pass every other test in
+    this file.
+
+    e2e/views.tsx has two bare views: a 7x3 one that should be flattened away and
+    a 9x3 one that asks not to be. The sizes are what tells them apart, being
+    independent of where a flex row puts them.
+    """
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    flattened = [line for line in tree.splitlines() if "7x3" in line]
+    if flattened:
+        raise Failure(
+            "a view with nothing to draw was mounted anyway, so Fabric's view "
+            "flattening is not reaching this host.\n" + "\n".join(flattened)
+        )
+
+    kept = [line for line in tree.splitlines() if "9x3" in line]
+    if len(kept) != 1:
+        raise Failure(
+            f"{len(kept)} views match the one that asked not to be flattened; "
+            "`collapsable: false` is the only thing keeping it, so this is that "
+            f"prop being dropped.\n{tree}"
+        )
+
+
+def test_on_layout(bundle: Path) -> None:
+    """`onLayout` fires, which nothing here had ever checked.
+
+    It is the one prop in `BaseViewProps` that no host reads and none should:
+    `YogaLayoutableShadowNode` collects the nodes whose layout changed into
+    `layoutContext.affectedNodes` and the Scheduler dispatches the event from
+    them, so the whole path is ReactCommon's and a host that implemented it
+    would be implementing it twice.
+
+    Which is exactly why it is worth one scenario: "handled upstream" is a claim
+    about code nobody here wrote, and the parts of ReactCommon this platform does
+    not drive the way Android and iOS do are where the gaps have been -- the cxx
+    `TextLayoutManager` has no `measureLines` at all, and that was found the same
+    way, by asserting something that was assumed to work.
+
+    e2e/views.tsx logs the size of a fixed 40x40 box. The size rather than the
+    position, because that is the same number on every host where a place in a
+    flex row is not.
+    """
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    result = run_host_process(
+        [str(HOST), str(app), "BasaltViews"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+
+    expect_logged(
+        "onLayout 40x40",
+        "no onLayout event reached the app, so every component that measures "
+        "itself -- which is most of them -- is broken on this platform",
+    )
+
+
+def test_background_size_position_repeat(bundle: Path) -> None:
+    """`backgroundSize`, `backgroundPosition` and `backgroundRepeat` reach the view.
+
+    All three apply to a gradient, CSS treating one as an image, and all three
+    were ignored by every host until 2026-10-09 on a note that said they were
+    waiting for an image loader. React Native's iOS half applies them to
+    gradients too, and core/BackgroundLayers.h is ported from it.
+
+    The dump carries where the image goes and the tile it repeats in, which is
+    the whole of what these props do. e2e/views.tsx asks for a 20pt image 5pt in
+    from the top left of a 60x40 box, repeating -- and what is drawn is the
+    *first* tile, which is one period before the painting area so that the
+    pattern covers it rather than starting mid-box: 5 - 20 is -15. The authored
+    position is in there, 5 being -15 plus one period, and the three props are
+    still told apart by it:
+
+      a 60x40 image          the size was ignored
+      an image at (0,0)      the position was ignored, which backs up to 0
+      no tile at all         the repeat was ignored
+
+    Windows draws no gradients yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws no gradients from backgroundImage yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    # By the image's own rectangle: every gradient reports a tile, `repeat` being
+    # React Native's default for all of them.
+    carrying = [line for line in tree.splitlines() if "at=(-15,-15 20x20)" in line]
+    if len(carrying) != 1:
+        tiled = [line for line in tree.splitlines() if "gradient=" in line]
+        raise Failure(
+            "no view reports the 20pt image the three props ask for. The "
+            "gradients that did arrive are below.\n" + "\n".join(tiled)
+        )
+    if "at=(-15,-15 20x20),tile=(-15,-15 20x20)" not in carrying[0]:
+        raise Failure(
+            "the background image is not tiled the way the props ask.\n" + carrying[0]
+        )
+
+
 def test_radial_gradient(bundle: Path) -> None:
     """`backgroundImage: 'radial-gradient(...)'` reaches the view, resolved.
 
@@ -4313,7 +4477,7 @@ def test_radial_gradient(bundle: Path) -> None:
         raise Failure(
             f"{len(carrying)} views report a radial gradient; the app sets one.\n{tree}"
         )
-    if "gradient=(radial (18,12) 50.4777x50.4777,2 stops)" not in carrying[0]:
+    if "gradient=(radial (18,12) 50.4777x50.4777,2 stops,at=(0,0 60x40)" not in carrying[0]:
         raise Failure(
             "the ending shape is not the one CSS asks for: a circle through the "
             "farthest corner from (18,12), which is hypot(42,28). The closest "
@@ -5880,6 +6044,9 @@ SCENARIOS = [
     ("a filter list reaches the view, composed", test_filter),
     ("the outline family reaches the view", test_outline),
     ("a drop-shadow filter reaches the view", test_drop_shadow_filter),
+    ("onLayout fires with the view's size", test_on_layout),
+    ("a view with nothing to draw is flattened away", test_view_flattening),
+    ("backgroundSize, Position and Repeat reach the view", test_background_size_position_repeat),
     ("a radial gradient reaches the view, resolved", test_radial_gradient),
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),

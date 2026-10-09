@@ -11,6 +11,7 @@
 
 #include "PointerButtons.h"
 
+#include <algorithm>
 #include <cmath>
 
 #import "RnTextLayout.h"
@@ -171,6 +172,10 @@ struct RnAppKitGradientRecord {
   CGPoint center;
   CGFloat radiusX;
   CGFloat radiusY;
+  // Where the image goes and the tile it repeats in. See RnAppKitGradient.
+  CGRect area;
+  CGRect tile;
+  bool repeats;
   std::vector<RnAppKitGradientStop> stops;
 };
 
@@ -1842,6 +1847,9 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
                                     gradients[i].center,
                                     gradients[i].radiusX,
                                     gradients[i].radiusY,
+                                    gradients[i].area,
+                                    gradients[i].tile,
+                                    gradients[i].repeats,
                                     {}};
       if (gradients[i].stops != nullptr && gradients[i].stopCount > 0) {
         record.stops.assign(gradients[i].stops, gradients[i].stops + gradients[i].stopCount);
@@ -1857,6 +1865,9 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     bool same = true;
     for (size_t i = 0; i < wanted.size() && same; i++) {
       same = wanted[i].kind == _gradients[i].kind &&
+             CGRectEqualToRect(wanted[i].area, _gradients[i].area) &&
+             CGRectEqualToRect(wanted[i].tile, _gradients[i].tile) &&
+             wanted[i].repeats == _gradients[i].repeats &&
              CGPointEqualToPoint(wanted[i].start, _gradients[i].start) &&
              CGPointEqualToPoint(wanted[i].end, _gradients[i].end) &&
              CGPointEqualToPoint(wanted[i].center, _gradients[i].center) &&
@@ -1912,6 +1923,11 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
       continue;
     }
 
+    if (gradient->area.size.width <= 0 || gradient->area.size.height <= 0) {
+      CGGradientRelease(ramp);
+      continue;
+    }
+
     CGContextSaveGState(context);
     if (_hasBorderRadii || _cornerRadius > 0) {
       CGFloat radii[8];
@@ -1923,47 +1939,108 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
       CGContextClip(context);
       CGPathRelease(path);
     }
-    if (gradient->kind == RnAppKitGradientKindRadial) {
-      // Core Graphics draws radial gradients between two *circles*, so an
-      // ellipse is a scaled coordinate system rather than a different call:
-      // squash the y axis around the centre by the ratio of the radii and draw a
-      // circle of the horizontal radius. A host that drew a circle of one radius
-      // would be drawing a plausible gradient of the wrong shape.
-      const CGFloat radiusX = gradient->radiusX;
-      const CGFloat radiusY = gradient->radiusY;
-      if (radiusX <= 0 || radiusY <= 0) {
+
+    // Where the tiles go. Core Graphics has no repeat, so this is the loop GSK's
+    // repeat node is on the other host: from the first tile, stepping by the
+    // period until past the painting area. An axis that does not repeat arrives
+    // with the painting area as its tile, so it steps once.
+    const CGRect painting = CGRectMake(0, 0, size.width, size.height);
+    // Nothing repeating is one tile, whatever the tile says: the flag is what
+    // core resolved, and the GTK side reads it the same way by pushing no repeat
+    // node at all. Stepping by a tile that happens to equal the image would draw
+    // a grid for a `no-repeat` background, which is what the test for an image
+    // filling its own rectangle caught.
+    const CGFloat stepX = gradient->repeats && gradient->tile.size.width > 0
+        ? gradient->tile.size.width
+        : painting.size.width;
+    const CGFloat stepY = gradient->repeats && gradient->tile.size.height > 0
+        ? gradient->tile.size.height
+        : painting.size.height;
+    // Capped, because a stylesheet may ask for a one-point tile over a window:
+    // 256 steps per axis is past the point where another tile changes a pixel on
+    // any screen this runs on, and it keeps a pathological style from costing
+    // minutes a frame. GSK's node has its own bound for the same reason.
+    constexpr int kMaxTiles = 256;
+    const CGFloat originX = gradient->repeats ? gradient->tile.origin.x : gradient->area.origin.x;
+    const CGFloat originY = gradient->repeats ? gradient->tile.origin.y : gradient->area.origin.y;
+    const int countX = gradient->repeats && stepX > 0
+        ? (int)std::min<double>(kMaxTiles,
+                                std::floor((CGRectGetMaxX(painting) - originX) / stepX) + 1)
+        : 1;
+    const int countY = gradient->repeats && stepY > 0
+        ? (int)std::min<double>(kMaxTiles,
+                                std::floor((CGRectGetMaxY(painting) - originY) / stepY) + 1)
+        : 1;
+
+    for (int row = 0; row < std::max(countY, 1); row++) {
+      for (int column = 0; column < std::max(countX, 1); column++) {
+        const CGFloat dx = column * stepX;
+        const CGFloat dy = row * stepY;
+        const CGRect imageRect = CGRectOffset(gradient->area, dx, dy);
+        if (!CGRectIntersectsRect(imageRect, painting)) {
+          continue;
+        }
+
+        CGContextSaveGState(context);
+        // Clipped to the image's own rectangle: the gradient is drawn with
+        // `kCGGradientDrawsBeforeStartLocation` and its `After` twin, which fill
+        // the whole clip with the end colours -- so the clip is what keeps one
+        // tile inside its tile.
+        CGContextClipToRect(context, imageRect);
+        CGContextTranslateCTM(context, dx, dy);
+        [self rnDrawOneGradient:*gradient ramp:ramp context:context];
         CGContextRestoreGState(context);
-        CGGradientRelease(ramp);
-        continue;
       }
-      // Scaled *about the centre*, so the centre itself does not move and the
-      // circle of the horizontal radius comes out as an ellipse with the
-      // vertical one. Scaling about the origin instead would need the centre
-      // divided by the same ratio, which is the mistake this comment exists to
-      // stop: it draws an ellipse of the right shape in the wrong place.
-      CGContextTranslateCTM(context, gradient->center.x, gradient->center.y);
-      CGContextScaleCTM(context, 1.0, radiusY / radiusX);
-      CGContextTranslateCTM(context, -gradient->center.x, -gradient->center.y);
-      CGContextDrawRadialGradient(context,
-                                  ramp,
-                                  gradient->center,
-                                  0.0,
-                                  gradient->center,
-                                  radiusX,
-                                  kCGGradientDrawsBeforeStartLocation |
-                                      kCGGradientDrawsAfterEndLocation);
-    } else {
-      CGContextDrawLinearGradient(context,
-                                  ramp,
-                                  gradient->start,
-                                  gradient->end,
-                                  kCGGradientDrawsBeforeStartLocation |
-                                      kCGGradientDrawsAfterEndLocation);
     }
     CGContextRestoreGState(context);
     CGGradientRelease(ramp);
   }
   CGColorSpaceRelease(space);
+}
+
+// One gradient, at the rectangle its geometry was resolved against. The caller
+// has clipped and translated to the tile.
+- (void)rnDrawOneGradient:(const RnAppKitGradientRecord &)gradientRef
+                     ramp:(CGGradientRef)ramp
+                  context:(CGContextRef)context {
+  const RnAppKitGradientRecord *gradient = &gradientRef;
+  if (gradient->kind == RnAppKitGradientKindRadial) {
+    // Core Graphics draws radial gradients between two *circles*, so an ellipse
+    // is a scaled coordinate system rather than a different call: squash the y
+    // axis around the centre by the ratio of the radii and draw a circle of the
+    // horizontal radius. A host that drew a circle of one radius would be
+    // drawing a plausible gradient of the wrong shape.
+    const CGFloat radiusX = gradient->radiusX;
+    const CGFloat radiusY = gradient->radiusY;
+    if (radiusX <= 0 || radiusY <= 0) {
+      // An ending shape with no size. The caller's clip and state are undone by
+      // its own restore.
+      return;
+    }
+    // Scaled *about the centre*, so the centre itself does not move and the
+    // circle of the horizontal radius comes out as an ellipse with the vertical
+    // one. Scaling about the origin instead would need the centre divided by the
+    // same ratio, which is the mistake this comment exists to stop: it draws an
+    // ellipse of the right shape in the wrong place.
+    CGContextTranslateCTM(context, gradient->center.x, gradient->center.y);
+    CGContextScaleCTM(context, 1.0, radiusY / radiusX);
+    CGContextTranslateCTM(context, -gradient->center.x, -gradient->center.y);
+    CGContextDrawRadialGradient(context,
+                                ramp,
+                                gradient->center,
+                                0.0,
+                                gradient->center,
+                                radiusX,
+                                kCGGradientDrawsBeforeStartLocation |
+                                    kCGGradientDrawsAfterEndLocation);
+  } else {
+    CGContextDrawLinearGradient(context,
+                                ramp,
+                                gradient->start,
+                                gradient->end,
+                                kCGGradientDrawsBeforeStartLocation |
+                                    kCGGradientDrawsAfterEndLocation);
+  }
 }
 
 - (void)setRnBoxShadows:(const RnAppKitBoxShadow *)shadows count:(NSInteger)count {
@@ -2433,26 +2510,44 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
                         _borderStyle == RnAppKitBorderStyleDotted ? "dotted" : "dashed"];
     }
   }
-  // Gradients: how many, and each one's line and stop count, spelled as GTK
-  // spells them. Not every stop, which a transition hint can turn into eleven
-  // of: what a cross-host diff needs is that the same gradient arrived with the
-  // same geometry, and the stop fixup is asserted in core's own tests.
+  // Gradients: how many, each one's line and stop count, where the image goes
+  // and the tile it repeats in, spelled as GTK spells them. Not every stop,
+  // which a transition hint can turn into eleven of: what a cross-host diff
+  // needs is that the same gradient arrived with the same geometry, and the stop
+  // fixup is asserted in core's own tests.
+  //
+  // `at=` is the rectangle the image fills and `tile=` is the period, printed
+  // only when it repeats, so a `no-repeat` background is the line without a
+  // tile. The three background props are invisible in every other line here.
   for (const RnAppKitGradientRecord &gradient : _gradients) {
     if (gradient.kind == RnAppKitGradientKindRadial) {
-      [out appendFormat:@" gradient=(radial (%g,%g) %gx%g,%lu stops)",
+      [out appendFormat:@" gradient=(radial (%g,%g) %gx%g,%lu stops",
                         (double)gradient.center.x,
                         (double)gradient.center.y,
                         (double)gradient.radiusX,
                         (double)gradient.radiusY,
                         (unsigned long)gradient.stops.size()];
     } else {
-      [out appendFormat:@" gradient=((%g,%g)-(%g,%g),%lu stops)",
+      [out appendFormat:@" gradient=((%g,%g)-(%g,%g),%lu stops",
                         (double)gradient.start.x,
                         (double)gradient.start.y,
                         (double)gradient.end.x,
                         (double)gradient.end.y,
                         (unsigned long)gradient.stops.size()];
     }
+    [out appendFormat:@",at=(%g,%g %gx%g)",
+                      (double)gradient.area.origin.x,
+                      (double)gradient.area.origin.y,
+                      (double)gradient.area.size.width,
+                      (double)gradient.area.size.height];
+    if (gradient.repeats) {
+      [out appendFormat:@",tile=(%g,%g %gx%g)",
+                        (double)gradient.tile.origin.x,
+                        (double)gradient.tile.origin.y,
+                        (double)gradient.tile.size.width,
+                        (double)gradient.tile.size.height];
+    }
+    [out appendString:@")"];
   }
 
   // Box shadows, each in full and spelled as GTK spells them. Nothing else in

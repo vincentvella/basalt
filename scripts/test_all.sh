@@ -156,6 +156,11 @@ if command -v node >/dev/null 2>&1; then
   # enough that nobody could say since when. Same arrangement, tests first.
   step "backlog count tests" node --test scripts/test_check_backlog.js
   step "backlog counts" node scripts/check_backlog.js
+  # The platform support page, which is generated: its data file is checked for
+  # shape, each host is searched for the props it claims, and the page on disk
+  # has to be what the data renders to.
+  step "support matrix tests" node --test scripts/test_check_support.js
+  step "support matrix" node scripts/check_support.js --check
 else
   skip "node suites" "node is not installed"
 fi

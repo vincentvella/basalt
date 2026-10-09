@@ -1,0 +1,452 @@
+{
+  "comment": [
+    "What each host supports, as the source for the Platform support page on the",
+    "website. scripts/check_support.js renders website/docs/support.mdx from this",
+    "and checks what it can: every status is legal, anything short of `yes` says",
+    "why and points at a backlog file that exists, and -- for a row that names a",
+    "C++ prop -- each host's sources are grepped for it, so a box ticked without",
+    "an implementation and an implementation without the box both fail.",
+    "",
+    "A grep is not a proof and the file says so on the page: what proves a prop",
+    "`reads` overrides what counts as evidence for a row whose prop is read",
+    "indirectly -- borderRadii through resolveBorderMetrics, boxShadow through",
+    "core's allShadows, transform through resolveTransform.",
+    "behaves is the scenario in scripts/integration_test.py, which runs on every",
+    "host. This is the index, not the evidence.",
+    "",
+    "Statuses:",
+    "  yes       the host implements it",
+    "  partial   the host implements some of it; `why` says which part is missing",
+    "  no        the host does not; `why` says where that is written down",
+    "  upstream  ReactCommon consumes it, so no host reads it and none should",
+    "  ignored   deliberately not implemented on any host; `why` says why"
+  ],
+  "platforms": [
+    {
+      "key": "linux",
+      "label": "Linux",
+      "toolkit": "GTK4"
+    },
+    {
+      "key": "macos",
+      "label": "macOS",
+      "toolkit": "AppKit"
+    },
+    {
+      "key": "windows",
+      "label": "Windows",
+      "toolkit": "Win32"
+    }
+  ],
+  "areas": [
+    {
+      "title": "View style props",
+      "note": "Every field of `BaseViewProps`, walked field by field on 2026-10-09.",
+      "rows": [
+        {
+          "feature": "`opacity`",
+          "prop": "opacity",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`backgroundColor`",
+          "prop": "backgroundColor",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "Border widths, colours and per-corner radii",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes",
+          "reads": [
+            "borderRadii"
+          ]
+        },
+        {
+          "feature": "`borderStyle`, dotted and dashed",
+          "prop": "borderStyles",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "Direct2D stroke style",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`borderCurve`, iOS's continuous corners",
+          "prop": "borderCurves",
+          "linux": "ignored",
+          "macos": "ignored",
+          "windows": "ignored",
+          "why": {
+            "text": "the prop cannot arrive",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        },
+        {
+          "feature": "`outlineWidth`, `outlineColor`, `outlineOffset`, `outlineStyle`",
+          "prop": "outlineWidth",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "DrawRoundedRectangle",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`boxShadow`, outset and inset, any number",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "CLSID_D2D1Shadow",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          },
+          "reads": [
+            "allShadows"
+          ]
+        },
+        {
+          "feature": "`shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "shares the box shadow work",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          },
+          "reads": [
+            "allShadows"
+          ]
+        },
+        {
+          "feature": "`filter`: blur, brightness, contrast, grayscale, hueRotate, invert, opacity, saturate, sepia",
+          "prop": "filter",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "CLSID_D2D1ColorMatrix",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`filter: drop-shadow(...)`",
+          "linux": "yes",
+          "macos": "partial",
+          "windows": "no",
+          "why": {
+            "text": "macOS draws the first of a list",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md"
+          }
+        },
+        {
+          "feature": "`backgroundImage`: linear gradients",
+          "prop": "backgroundImage",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "ID2D1LinearGradientBrush",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`backgroundImage`: radial gradients",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "CreateRadialGradientBrush",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`backgroundSize`, `backgroundPosition`, `backgroundRepeat`",
+          "prop": "backgroundSize",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "needs the same brushes",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`mixBlendMode`",
+          "prop": "mixBlendMode",
+          "linux": "partial",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "GSK has no plus-lighter",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        },
+        {
+          "feature": "`isolation`",
+          "prop": "isolation",
+          "linux": "ignored",
+          "macos": "ignored",
+          "windows": "ignored",
+          "why": {
+            "text": "no public way to group a subtree",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        },
+        {
+          "feature": "`cursor`",
+          "prop": "cursor",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "WM_SETCURSOR needs a hit test",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`transform` and `transformOrigin`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes",
+          "reads": [
+            "resolveTransform"
+          ]
+        },
+        {
+          "feature": "3D transforms with perspective",
+          "linux": "partial",
+          "macos": "partial",
+          "windows": "partial",
+          "why": {
+            "text": "m34 is dropped on every host",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        },
+        {
+          "feature": "`backfaceVisibility`",
+          "prop": "backfaceVisibility",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`zIndex`",
+          "prop": "zIndex",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`pointerEvents`",
+          "prop": "pointerEvents",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`hitSlop`",
+          "prop": "hitSlop",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "one line against the same insets",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`onLayout`",
+          "linux": "upstream",
+          "macos": "upstream",
+          "windows": "upstream",
+          "why": {
+            "text": "dispatched by the Scheduler",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        },
+        {
+          "feature": "`collapsable`, `collapsableChildren`",
+          "linux": "upstream",
+          "macos": "upstream",
+          "windows": "upstream",
+          "why": {
+            "text": "view flattening is ReactCommon's",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        },
+        {
+          "feature": "`shouldRasterize`, `removeClippedSubviews`",
+          "linux": "ignored",
+          "macos": "ignored",
+          "windows": "ignored",
+          "why": {
+            "text": "hints, and one cannot arrive",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Text",
+      "note": "Laid out by Pango, Core Text and DirectWrite, so Yoga measures a paragraph the way it does on a phone.",
+      "rows": [
+        {
+          "feature": "Measurement, wrapping and `numberOfLines`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`textAlign`, including `justify`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`textTransform`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "LCMapStringEx",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "An inline `<View>` inside a `<Text>`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "DirectWrite reserves no box",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`alignItems: 'baseline'` and `onTextLayout`",
+          "linux": "no",
+          "macos": "no",
+          "windows": "no",
+          "why": {
+            "text": "the cxx TextLayoutManager has no measureLines",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/upstream.md"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Image",
+      "rows": [
+        {
+          "feature": "Files, `http(s)`, `data:` URIs, decoded off the main thread",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`resizeMode`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`tintColor`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`blurRadius`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "CLSID_D2D1GaussianBlur",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "Animated images",
+          "linux": "no",
+          "macos": "no",
+          "windows": "no",
+          "why": {
+            "text": "no host decodes a second frame",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Accessibility",
+      "rows": [
+        {
+          "feature": "`accessibilityRole`, `accessibilityLabel`, `accessibilityHint`, `accessibilityState`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`accessibilityValue`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "yes"
+        },
+        {
+          "feature": "`accessibilityLabelledBy`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "UIA needs the provider",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`accessibilityLiveRegion`",
+          "linux": "yes",
+          "macos": "yes",
+          "windows": "no",
+          "why": {
+            "text": "UIA_SystemAlertEventId",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+          }
+        },
+        {
+          "feature": "`accessibilityActions`",
+          "linux": "no",
+          "macos": "no",
+          "windows": "no",
+          "why": {
+            "text": "IMountingManager declares them and nothing calls them",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+          }
+        },
+        {
+          "feature": "Tested against a real screen reader",
+          "linux": "no",
+          "macos": "no",
+          "windows": "no",
+          "why": {
+            "text": "the properties are asserted, Orca and VoiceOver are not",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+          }
+        }
+      ]
+    }
+  ]
+}

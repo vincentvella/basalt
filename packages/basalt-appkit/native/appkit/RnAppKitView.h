@@ -331,6 +331,18 @@ typedef struct {
   CGPoint center;
   CGFloat radiusX;
   CGFloat radiusY;
+  // Where the image goes and how it tiles, from `backgroundSize`,
+  // `backgroundPosition` and `backgroundRepeat`, resolved in
+  // core/BackgroundLayers.h: `area` is the rectangle the gradient fills, in this
+  // view's coordinates, and `tile` is what it repeats in -- the same rectangle
+  // for `repeat`, wider for `space`, and the painting area's extent on an axis
+  // that does not repeat, so one step covers it.
+  //
+  // The gradient's own geometry above is resolved against `area`'s size and
+  // offset to its origin, so this layer draws rather than positions.
+  CGRect area;
+  CGRect tile;
+  bool repeats;
   const RnAppKitGradientStop *stops;
   NSInteger stopCount;
 } RnAppKitGradient;

@@ -636,6 +636,12 @@ RnView *radialBox(Tree &tree, RnView *root, float centerX, float centerY, float 
   gradient.center = graphene_point_t{centerX, centerY};
   gradient.radius_x = rx;
   gradient.radius_y = ry;
+  // The image fills the view and is drawn once, which is what the three
+  // background props come to by default for a view with no border. The tiling
+  // itself is asserted below.
+  gradient.area = graphene_rect_t{{0.0F, 0.0F}, {100.0F, 100.0F}};
+  gradient.tile = gradient.area;
+  gradient.repeats = FALSE;
   gradient.stops = stops;
   gradient.stop_count = 2;
   rn_view_set_gradients(view, &gradient, 1);
@@ -814,4 +820,125 @@ TEST(gtk_paint_a_drop_shadow_radius_is_a_css_radius) {
   EXPECT(shadowPixels.at(142, 35).alpha > shadowPixels.at(158, 35).alpha);
   EXPECT(shadowPixels.at(150, 35).alpha > 40);
   EXPECT(shadowPixels.at(150, 35).alpha < 215);
+}
+
+// `backgroundSize`, `backgroundPosition` and `backgroundRepeat`, in pixels.
+//
+// The arithmetic is core's and is tested there against the spec's numbers. What
+// only a picture can say is whether this layer *uses* it: the rectangle, and the
+// tiling, which is one `gtk_snapshot_push_repeat` and could be the wrong tile,
+// the wrong bounds, or absent without any test of the resolved numbers noticing.
+//
+// The gradient is flat -- two stops of the same colour -- so a painted pixel is
+// one colour and a gap is transparent, and the questions are about geometry
+// rather than about ramps.
+namespace {
+
+RnView *tiledGradient(Tree &tree,
+                      RnView *root,
+                      graphene_rect_t area,
+                      graphene_rect_t tile,
+                      gboolean repeats) {
+  RnView *view = tree.box(root, 2, 0, 0, 100, 100);
+  static const RnGradientStop flat[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
+      {1.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
+  };
+  RnGradient gradient{};
+  gradient.kind = RN_GRADIENT_LINEAR;
+  gradient.start = graphene_point_t{area.origin.x, area.origin.y};
+  gradient.end = graphene_point_t{area.origin.x + area.size.width, area.origin.y};
+  gradient.area = area;
+  gradient.tile = tile;
+  gradient.repeats = repeats;
+  gradient.stops = flat;
+  gradient.stop_count = 2;
+  rn_view_set_gradients(view, &gradient, 1);
+  return view;
+}
+
+} // namespace
+
+// A size smaller than the view, drawn once: the image fills its own rectangle
+// and nothing else. Before these props were read, a gradient covered the view
+// whatever the stylesheet said.
+TEST(gtk_paint_a_background_image_fills_its_own_rectangle) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  const graphene_rect_t area{{0.0F, 0.0F}, {50.0F, 50.0F}};
+  tiledGradient(tree, root, area, area, FALSE);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  EXPECT_PIXEL(pixels, 25, 25, 255, 0, 0, 255);
+  // Outside it, in the same view: nothing.
+  EXPECT_TRANSPARENT(pixels, 75, 25);
+  EXPECT_TRANSPARENT(pixels, 25, 75);
+  EXPECT_TRANSPARENT(pixels, 75, 75);
+}
+
+// And where the position put it, which is the other half of the rectangle.
+TEST(gtk_paint_a_background_image_is_drawn_where_it_was_positioned) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  const graphene_rect_t area{{40.0F, 60.0F}, {30.0F, 30.0F}};
+  tiledGradient(tree, root, area, area, FALSE);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  EXPECT_PIXEL(pixels, 55, 75, 255, 0, 0, 255);
+  // The corner the default would have painted.
+  EXPECT_TRANSPARENT(pixels, 5, 5);
+}
+
+// `repeat`, which is the whole point of the tile: one 25pt image covers a 100pt
+// box four times across and four down. A missing repeat node leaves three
+// quarters of each axis empty, which is what these corners check.
+TEST(gtk_paint_a_background_image_repeats_across_the_painting_area) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  const graphene_rect_t area{{0.0F, 0.0F}, {25.0F, 25.0F}};
+  tiledGradient(tree, root, area, area, TRUE);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The first tile, and then one from each of the other three quadrants.
+  EXPECT_PIXEL(pixels, 12, 12, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 87, 12, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 12, 87, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 87, 87, 255, 0, 0, 255);
+}
+
+// `space`, where the tile is wider than the image: the gaps are real pixels and
+// are what tells it from `repeat`. 30pt images stepping every 50pt leave 20pt of
+// nothing between them.
+TEST(gtk_paint_a_spaced_background_leaves_the_gaps_empty) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  const graphene_rect_t area{{0.0F, 0.0F}, {30.0F, 100.0F}};
+  const graphene_rect_t tile{{0.0F, 0.0F}, {50.0F, 100.0F}};
+  tiledGradient(tree, root, area, tile, TRUE);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The first image, the gap after it, the second image, the second gap.
+  EXPECT_PIXEL(pixels, 15, 50, 255, 0, 0, 255);
+  EXPECT_TRANSPARENT(pixels, 40, 50);
+  EXPECT_PIXEL(pixels, 65, 50, 255, 0, 0, 255);
+  EXPECT_TRANSPARENT(pixels, 90, 50);
+}
+
+// One axis repeating and the other not, which arrives as a tile that spans the
+// painting area downwards: a band rather than a grid.
+TEST(gtk_paint_a_background_can_repeat_in_one_axis_only) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  const graphene_rect_t area{{0.0F, 40.0F}, {20.0F, 20.0F}};
+  const graphene_rect_t tile{{0.0F, 0.0F}, {20.0F, 100.0F}};
+  tiledGradient(tree, root, area, tile, TRUE);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The band, repeated across.
+  EXPECT_PIXEL(pixels, 10, 50, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 90, 50, 255, 0, 0, 255);
+  // And nothing above or below it, which is what says the other axis did not
+  // repeat as well.
+  EXPECT_TRANSPARENT(pixels, 10, 10);
+  EXPECT_TRANSPARENT(pixels, 90, 90);
 }

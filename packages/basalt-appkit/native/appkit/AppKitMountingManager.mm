@@ -6,6 +6,7 @@
 #import <CoreImage/CoreImage.h>
 
 #include "ComponentRegistry.h"
+#include "BackgroundLayers.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
 #include "CursorNames.h"
@@ -897,15 +898,46 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
   // resized view gets a resized gradient without the view layer knowing anything
   // about angles or corners.
   {
-    const auto &frameSize = shadowView.layoutMetrics.frame.size;
-    const auto width = (float)frameSize.width;
-    const auto height = (float)frameSize.height;
+    const auto &metrics = shadowView.layoutMetrics;
+    // The two areas CSS gives a background: the painting area is the border box,
+    // which it is clipped to, and the positioning area is the padding box, which
+    // sizes and positions it. getPaddingFrame's origin is already relative to
+    // the view, being the border widths.
+    const basalt::BackgroundArea painting{
+        0.0F, 0.0F, (float)metrics.frame.size.width, (float)metrics.frame.size.height};
+    const auto paddingFrame = metrics.getPaddingFrame();
+    const basalt::BackgroundArea positioning{(float)paddingFrame.origin.x,
+                                             (float)paddingFrame.origin.y,
+                                             (float)paddingFrame.size.width,
+                                             (float)paddingFrame.size.height};
+
     std::vector<RnAppKitGradient> gradients;
     std::vector<std::vector<RnAppKitGradientStop>> stops;
     gradients.reserve(props->backgroundImage.size());
     stops.reserve(props->backgroundImage.size());
-    for (const auto &image : props->backgroundImage) {
+    for (size_t index = 0; index < props->backgroundImage.size(); index++) {
+      const auto &image = props->backgroundImage[index];
+      // Each list is indexed modulo its own length, which is CSS's rule for a
+      // list shorter than the image list and is what iOS does.
+      const basalt::BackgroundLayer layer = basalt::resolveBackgroundLayer(
+          positioning,
+          painting,
+          basalt::backgroundSizeAt(props->backgroundSize, index),
+          basalt::backgroundPositionAt(props->backgroundPosition, index),
+          basalt::backgroundRepeatAt(props->backgroundRepeat, index));
+      if (layer.empty()) {
+        continue;
+      }
+      // The gradient is resolved against the image's size and then offset to
+      // where the image goes: resolving against the view would ignore
+      // `backgroundSize` even with the rectangle right.
+      const auto width = layer.width;
+      const auto height = layer.height;
+
       RnAppKitGradient converted{};
+      converted.area = CGRectMake(layer.x, layer.y, layer.width, layer.height);
+      converted.tile = CGRectMake(layer.tileX, layer.tileY, layer.tileWidth, layer.tileHeight);
+      converted.repeats = layer.repeats();
       const std::vector<facebook::react::ColorStop> *colorStops = nullptr;
       float rayLength = 0.0F;
 
@@ -913,8 +945,8 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
         const auto &gradient = std::get<facebook::react::LinearGradient>(image);
         const basalt::GradientLine line = basalt::linearGradientLine(gradient, width, height);
         converted.kind = RnAppKitGradientKindLinear;
-        converted.start = CGPointMake(line.startX, line.startY);
-        converted.end = CGPointMake(line.endX, line.endY);
+        converted.start = CGPointMake(line.startX + layer.x, line.startY + layer.y);
+        converted.end = CGPointMake(line.endX + layer.x, line.endY + layer.y);
         colorStops = &gradient.colorStops;
         rayLength = line.length();
       } else {
@@ -922,7 +954,7 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
         const basalt::GradientEllipse shape =
             basalt::radialGradientEllipse(gradient, width, height);
         converted.kind = RnAppKitGradientKindRadial;
-        converted.center = CGPointMake(shape.centerX, shape.centerY);
+        converted.center = CGPointMake(shape.centerX + layer.x, shape.centerY + layer.y);
         converted.radiusX = shape.radiusX;
         converted.radiusY = shape.radiusY;
         colorStops = &gradient.colorStops;
