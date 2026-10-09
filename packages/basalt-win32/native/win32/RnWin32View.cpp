@@ -1214,6 +1214,18 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
       appendEscaped(out, text);
       out += "\"";
     }
+    // The paragraph's writing direction, spelled as the other two hosts spell
+    // it, and only when it is the one nothing else in this dump can show: a
+    // right-to-left paragraph of Latin text has the same box and the same
+    // string as a left-to-right one, and only the pixels differ.
+    //
+    // Left-to-right is not printed, where the other two print `ltr` and
+    // `natural` as well. They keep the name the app used; this host keeps a
+    // boolean, because DirectWrite takes a direction rather than a
+    // "decide for me". So what is comparable is the line that matters.
+    if (textLayout_->style().rightToLeft) {
+      out += " writing-dir=rtl";
+    }
   }
 
   // A text field's content lives in its EDIT peer, not in a layout, so it would

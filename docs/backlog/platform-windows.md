@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (19):**
+**Open (17):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -24,8 +24,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 17. No text shadow, so `textShadowColor` and friends do nothing
 18. The desktop's text scale is not read, so large text does not enlarge text
 19. ~~No text decoration~~, except the styles DirectWrite has no form of
-20. `fontVariant` and a fragment's `opacity` are not read
-21. `writingDirection` is not read, so a right-to-left paragraph starts on the left
+20. ~~`fontVariant` and a fragment's `opacity` are not read~~
+21. ~~`writingDirection` is not read~~, and `start` and `end` are relative here
 22. An animated GIF is painted as a still
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
@@ -302,11 +302,25 @@ and none of it is a missing half.
   single spaces, lowercase the word, uppercase its first character unless it is
   a digit, so "iOS" becomes "Ios".
 
-  The end-to-end scenario now runs on all three. Whether this mapping agrees
-  with GLib's and NSString's on the German sharp s is the one thing that could
-  not be settled from a Mac, so `win32_text_transform_and_the_sharp_s` asserts
-  what cannot differ and prints what the mapping produced; the answer and its
-  consequence belong in this entry once CI has said.
+  The end-to-end scenario now runs on all three.
+
+  **The three hosts disagree about the German sharp s**, measured on CI on
+  2026-10-09 because this is the only Windows the repository has.
+  `LCMapStringEx` maps it to itself, so uppercasing "Strasse" written with it
+  keeps the letter; GLib's `g_utf8_strup` and NSString's `uppercaseString` both
+  answer "STRASSE", and so does every browser on Windows. The locale API does
+  the simple case mapping and the other two do Unicode's full one, which is the
+  one that may change a string's length.
+
+  `win32_text_transform_keeps_the_sharp_s` asserts what Windows actually does
+  rather than tolerating either answer, so the day this changes the test says
+  so. What would close the gap is `u_strToUpper`, from the ICU that Windows 10
+  1703 and later ship: it does the full mapping, it is in `icu.h` in the
+  Windows SDK, and it can be reached with `GetProcAddress` on `icu.dll` rather
+  than linking, which keeps a host that has needed no new dependency free of
+  one. Whether a toolkit should correct its platform here is the decision, not
+  the call: a German label reading STRAßE is wrong everywhere else an app
+  runs.
 
 - **The `outline` family is not drawn.** `outlineWidth`, `outlineColor`,
   `outlineOffset` and `outlineStyle` reach this host's props and nothing reads
@@ -332,22 +346,57 @@ and none of it is a missing half.
   backdrop each of them blends with and why the two differ. The end-to-end
   scenario is skipped here by name.
 
-- **`writingDirection` is not read, so a right-to-left paragraph starts on the
-  left.** The other two hosts read it as of 2026-10-09, and DirectWrite has the
-  call: `IDWriteTextLayout::SetReadingDirection` with
-  `DWRITE_READING_DIRECTION_RIGHT_TO_LEFT`.
+- ~~**`writingDirection` is not read, so a right-to-left paragraph starts on
+  the left.**~~ Done, 2026-10-09, with
+  `IDWriteTextFormat::SetReadingDirection`: it is a format property rather than
+  a range one, which suits the prop, since `writingDirection` belongs to a
+  paragraph and not to a span.
 
-  The part worth knowing before starting is the second half, because both other
-  hosts got it wrong first. Setting the direction gets the glyphs into the right
-  order inside the line and leaves the line itself against the left edge: a
-  *natural* alignment has to follow the direction, and neither engine does that
-  for you unless it is also choosing the direction. DirectWrite is the same
-  shape -- `SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING)` is what a natural
-  alignment means in a right-to-left paragraph -- and `RnWin32TextLayout`
-  already sets alignment per run, so it is the same place.
+  **The second half cost both other hosts a first attempt, and cost this one
+  nothing**, which is worth recording as a property of the engine rather than
+  as cleverness here. Setting a direction gets the glyphs into the right order
+  inside a line; which edge the line starts from is a separate question, and
+  Pango only flips a natural alignment with `auto_dir` on while Core Text
+  resolves one only inside a frame. DirectWrite's alignments are *relative*:
+  LEADING is the right edge in a right-to-left paragraph, and LEADING is also
+  the default, so a natural alignment follows the direction with no arithmetic
+  at all.
 
-- **`fontVariant` and a fragment's `opacity` are not read.** Both are one call
-  away and the arithmetic is already shared.
+  What that leaves is the opposite problem, which this entry's title did not
+  see coming: the two *physical* alignments have to swap. `textAlign: 'left'`
+  means the left edge in React Native and on the other two hosts, so under a
+  right-to-left direction it maps to TRAILING here. `toDWriteAlignment` takes
+  the direction for that reason.
+
+  **And `start` and `end` stay relative on this host**, where the other two
+  fold `end` into physical right. In a left-to-right paragraph the three agree;
+  in a right-to-left one, `textAlign: 'end'` is the left edge here and the
+  right edge there. That is DirectWrite having TRAILING and the other two
+  engines not, so it is recorded in backlog/text.md against them rather than
+  made worse here.
+
+  Three pixel tests, the same instrument the alignment test next to them uses:
+  a natural alignment that follows the direction, physical alignments that do
+  not, and `end` that does.
+
+- ~~**`fontVariant` and a fragment's `opacity` are not read.**~~ Both done,
+  2026-10-09, and both were one call over arithmetic that was already shared.
+
+  `fontVariant` is an `IDWriteTypography` per range, built from the tags
+  `core/FontVariants.h` names and `DWRITE_MAKE_OPENTYPE_TAG`, released as soon
+  as the layout has taken its reference. `opacity` is `buildTextStyle` taking
+  its colour from `textForegroundColor()` instead of reading the prop, which
+  also picked up React Native's default of opaque black that this host used to
+  spell for itself.
+
+  Nothing asserts a pixel for the features, and that is deliberate: whether a
+  face has `smcp` is the face's business, DirectWrite asks and a font without
+  it renders unchanged. What is asserted is the translation, plus that asking
+  does not take the paragraph down, which is the failure mode of a wrong tag.
+  The AppKit host made the same choice for the same reason.
+
+  What the entry said when it was open, kept because the comparison is the
+  useful part:
 
   `fontVariant` is the easier of the two here than on either other host:
   `core/FontVariants.h` resolves the bitmask to OpenType tags -- `smcp`, `tnum`,

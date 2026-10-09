@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (5):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -15,6 +15,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
+9. `textAlign: 'end'` is physical right on GTK and AppKit, and relative on
+   Windows
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -433,3 +435,31 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   **Windows** needs a second `DrawTextLayout` under the first, offset and in the
   shadow colour, or `CLSID_D2D1Shadow` over the text layer's alpha, which is the
   same effect the box shadow entry names. Its scenario skips by name.
+
+- **`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
+  Windows.** React Native 0.87 added `start` and `end` beside `left` and
+  `right`, and the two are not the same thing: `end` is the edge a line of text
+  finishes at, which in a right-to-left paragraph is the left one.
+
+  Both of these hosts fold `end` into their physical right, which is correct in
+  a left-to-right paragraph and wrong in a right-to-left one. The Win32 host
+  keeps it relative, because DirectWrite has `DWRITE_TEXT_ALIGNMENT_TRAILING`
+  and asking for it costs nothing. So the three agree until an app sets
+  `writingDirection: 'rtl'` and `textAlign: 'end'` together, which is a real
+  combination in a right-to-left layout and the only alignment they disagree on.
+  Measured on 2026-10-09, when the Windows half was written.
+
+  What each would take. Pango has no relative alignment: `PANGO_ALIGN_LEFT` and
+  `_RIGHT` are physical, so `end` means asking the layout's own resolved
+  direction (`pango_layout_get_direction` after the text is set, or the base
+  direction the context was given) and choosing the physical one from it. Core
+  Text has `NSTextAlignmentNatural`, which is leading rather than trailing, so
+  `end` has the same shape there: resolve the direction and pick left or right.
+  Both are a few lines in the same place the alignment is already mapped, and
+  both want the direction that `writingDirection` resolved rather than the prop,
+  since `natural` is the common case.
+
+  Not done with the Windows half because it is a different kind of change on
+  each: here it is one enum value, and there it is each engine's direction
+  resolution. The e2e scenario that would show it needs a right-to-left
+  paragraph with an explicit `end`, which `e2e/text.tsx` does not have yet.

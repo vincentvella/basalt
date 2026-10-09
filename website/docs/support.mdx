@@ -28,8 +28,8 @@ is the one in the row and ReactCommon's is under it.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 64 of 96 | 66 of 96 | 35 of 96 |
-| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `███████░░░░░░░░░░░░░` |
+| Done | 64 of 96 | 66 of 96 | 40 of 96 |
+| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `████████░░░░░░░░░░░░` |
 
 Counting a row as done when the host implements it or ReactCommon does.
 
@@ -162,20 +162,20 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 | --- | --- | --- | --- | --- |
 | `color` <sub>`foregroundColor`</sub> | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `opacity` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `opacity` | ✅ | ✅ | ✅ |  |
 | `fontFamily` | ✅ | ✅ | ✅ |  |
 | `fontSize` | ✅ | ✅ | ✅ |  |
 | `fontWeight` | ✅ | ✅ | ✅ |  |
 | `fontStyle` | ✅ | ✅ | ✅ |  |
-| `fontVariant` | ✅ | ✅ | ✖ | [DWRITE_FONT_FEATURE_TAG takes the same tags core resolves](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `fontVariant` | ✅ | ✅ | ✅ |  |
 | `letterSpacing` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `textTransform` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `textTransform` | ✅ | ✅ | ✅ |  |
 | `lineHeight` | ✅ | ✅ | ✅ |  |
 | `textAlign` <sub>`alignment`</sub> | ✅ | ✅ | ✅ |  |
-| `writingDirection` <sub>`baseWritingDirection`</sub> | ✅ | ✅ | ✖ | [IDWriteTextLayout::SetReadingDirection, and a natural alignment that follows it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `textDecorationColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `textDecorationLine` <sub>`textDecorationLineType`</sub> | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `textDecorationStyle` | ◐ | ◐ | ✖ | [each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `writingDirection` <sub>`baseWritingDirection`</sub> | ✅ | ✅ | ✅ |  |
+| `textDecorationColor` | ✅ | ✅ | ◐ | [the line is drawn, its colour and pattern need an IDWriteTextRenderer](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `textDecorationLine` <sub>`textDecorationLineType`</sub> | ✅ | ✅ | ✅ |  |
+| `textDecorationStyle` | ◐ | ◐ | ◐ | [each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy, DirectWrite none of them without a custom renderer](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowOffset` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowRadius` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowColor` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |

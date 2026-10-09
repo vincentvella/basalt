@@ -134,7 +134,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
     "text-decoration-style": {
-      "text": "each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy",
+      "text": "each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy, DirectWrite none of them without a custom renderer",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     },
     "win-textvariant": {
@@ -156,6 +156,10 @@
     "win-reading-order": {
       "text": "UIA has no reading-order property: the tree order is the order",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+    },
+    "win-decoration-paint": {
+      "text": "the line is drawn, its colour and pattern need an IDWriteTextRenderer",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     }
   },
   "statuses": {
@@ -563,8 +567,7 @@
     "TextAttributes.opacity": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-text",
+      "windows": "yes",
       "reads": [
         "textForegroundColor(",
         "textBackgroundColor("
@@ -608,8 +611,7 @@
     "TextAttributes.fontVariant": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textvariant",
+      "windows": "yes",
       "reads": [
         "fontFeatureSettings(",
         "fontVariants("
@@ -648,8 +650,7 @@
     "TextAttributes.textTransform": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-text"
+      "windows": "yes"
     },
     "TextAttributes.lineHeight": {
       "linux": "yes",
@@ -664,8 +665,7 @@
     "TextAttributes.baseWritingDirection": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-reading-direction",
+      "windows": "yes",
       "reads": [
         "baseWritingDirection",
         "writingDirection("
@@ -690,8 +690,8 @@
     "TextAttributes.textDecorationColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-text",
+      "windows": "partial",
+      "why": "win-decoration-paint",
       "reads": [
         "textDecoration("
       ]
@@ -699,8 +699,7 @@
     "TextAttributes.textDecorationLineType": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-text",
+      "windows": "yes",
       "reads": [
         "textDecoration(",
         "textDecorationLineType"
@@ -709,7 +708,7 @@
     "TextAttributes.textDecorationStyle": {
       "linux": "partial",
       "macos": "partial",
-      "windows": "no",
+      "windows": "partial",
       "why": "text-decoration-style",
       "reads": [
         "textDecoration("

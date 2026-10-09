@@ -367,3 +367,111 @@ TEST(text_both_decorations_at_once_draw_two_lines) {
   // comes from the font's metrics.
   EXPECT(lineRows >= 2);
 }
+
+// ---------------------------------------------------------------------------
+// writingDirection, and what a natural alignment means underneath it.
+//
+// Setting the reading direction gets the glyphs into the right order inside a
+// line; which edge the line itself starts from is the second half, and the one
+// both other hosts got wrong first. DirectWrite's alignments are relative --
+// LEADING is the right edge in a right-to-left paragraph -- so a natural
+// alignment follows the direction with no arithmetic, and the two physical
+// alignments have to swap.
+//
+// Against ink columns, the same instrument `text_draws_where_the_alignment
+// _says` uses: a line against one edge puts ink there and none at the other.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::pair<int, int> inkAtTheEdges(RnTextAlign align, bool rightToLeft) {
+  RnTextStyle style;
+  style.fontSize = 24.0f;
+  style.align = align;
+  style.rightToLeft = rightToLeft;
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 300, 40);
+  root->setTextLayout(RnWin32TextLayout::create("Ill", style, 0));
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  int left = 0;
+  int right = 0;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    for (unsigned x = 0; x < 60; x++) {
+      if (pixels.at(x, y).alpha > 32) {
+        left++;
+      }
+      if (pixels.at(pixels.width() - 1 - x, y).alpha > 32) {
+        right++;
+      }
+    }
+  }
+  return {left, right};
+}
+
+} // namespace
+
+TEST(text_a_natural_alignment_follows_the_writing_direction) {
+  const auto [leftInLtr, rightInLtr] = inkAtTheEdges(RnTextAlign::Natural, false);
+  EXPECT(leftInLtr > 0);
+  EXPECT_EQ(rightInLtr, 0);
+
+  // The whole point of the entry this closes: the same paragraph, right to
+  // left, starts from the other edge.
+  const auto [leftInRtl, rightInRtl] = inkAtTheEdges(RnTextAlign::Natural, true);
+  EXPECT_EQ(leftInRtl, 0);
+  EXPECT(rightInRtl > 0);
+}
+
+TEST(text_a_physical_alignment_stays_physical_in_a_right_to_left_paragraph) {
+  // `textAlign: 'left'` is a physical edge in React Native and on the other two
+  // hosts, so it has to survive the direction change. DirectWrite's LEADING
+  // would have moved it, which is what the swap in `toDWriteAlignment` is for.
+  const auto [left, right] = inkAtTheEdges(RnTextAlign::Left, true);
+  EXPECT(left > 0);
+  EXPECT_EQ(right, 0);
+
+  const auto [farLeft, farRight] = inkAtTheEdges(RnTextAlign::Right, true);
+  EXPECT_EQ(farLeft, 0);
+  EXPECT(farRight > 0);
+}
+
+TEST(text_end_is_relative_and_follows_the_direction) {
+  // `start` and `end` are the relative pair, and this host keeps them relative:
+  // `end` is the right edge in a left-to-right paragraph and the left edge in a
+  // right-to-left one. The other two fold `end` into physical right.
+  const auto [leftInLtr, rightInLtr] = inkAtTheEdges(RnTextAlign::End, false);
+  EXPECT_EQ(leftInLtr, 0);
+  EXPECT(rightInLtr > 0);
+
+  const auto [leftInRtl, rightInRtl] = inkAtTheEdges(RnTextAlign::End, true);
+  EXPECT(leftInRtl > 0);
+  EXPECT_EQ(rightInRtl, 0);
+}
+
+// fontVariant, as far as a test without a known font can go.
+//
+// Whether a face has `smcp` is the face's business: DirectWrite asks for the
+// feature and a font without it renders unchanged, so there is no pixel to
+// assert. What this pins is that asking does not break the layout, which is the
+// failure mode of a wrong `DWRITE_FONT_FEATURE_TAG`: a rejected typography
+// object takes the whole paragraph with it.
+TEST(text_font_features_do_not_break_the_layout) {
+  RnTextStyle plain;
+  plain.fontSize = 20.0f;
+
+  RnTextStyle featured = plain;
+  featured.fontFeatures = {"smcp", "tnum", "ss07"};
+
+  const RnTextSize without = paragraph("Handgloves 0123", 20.0f)->measure(-1.0f);
+  auto layout = RnWin32TextLayout::create("Handgloves 0123", featured, 0);
+  EXPECT(layout != nullptr);
+  const RnTextSize with = layout->measure(-1.0f);
+
+  EXPECT(with.width > 0.0f);
+  EXPECT(with.height > 0.0f);
+  // Within a few points of the same string unfeatured: small caps may or may
+  // not exist in Segoe UI, and either way the paragraph is still that text at
+  // that size rather than nothing.
+  EXPECT(with.height > without.height * 0.5f);
+}

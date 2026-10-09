@@ -41,18 +41,67 @@ IDWriteFactory *dwriteFactory() {
   return factory;
 }
 
-DWRITE_TEXT_ALIGNMENT toDWriteAlignment(RnTextAlign align) {
+// DirectWrite's alignments are relative to the reading direction: LEADING is
+// the right edge in a right-to-left paragraph. So the two physical alignments
+// swap there, and the two relative ones do not have to be told the direction at
+// all.
+DWRITE_TEXT_ALIGNMENT toDWriteAlignment(RnTextAlign align, bool rightToLeft) {
   switch (align) {
     case RnTextAlign::Center:
       return DWRITE_TEXT_ALIGNMENT_CENTER;
-    case RnTextAlign::Right:
-      return DWRITE_TEXT_ALIGNMENT_TRAILING;
     case RnTextAlign::Justified:
       return DWRITE_TEXT_ALIGNMENT_JUSTIFIED;
+    case RnTextAlign::Right:
+      return rightToLeft ? DWRITE_TEXT_ALIGNMENT_LEADING : DWRITE_TEXT_ALIGNMENT_TRAILING;
+    case RnTextAlign::End:
+      return DWRITE_TEXT_ALIGNMENT_TRAILING;
+    case RnTextAlign::Natural:
+      return DWRITE_TEXT_ALIGNMENT_LEADING;
     case RnTextAlign::Left:
       break;
   }
-  return DWRITE_TEXT_ALIGNMENT_LEADING;
+  return rightToLeft ? DWRITE_TEXT_ALIGNMENT_TRAILING : DWRITE_TEXT_ALIGNMENT_LEADING;
+}
+
+// `fontVariant`, as DirectWrite takes it: an IDWriteTypography holding one
+// feature per tag, set on a range.
+//
+// A tag is four characters packed into a DWORD, which is what
+// `DWRITE_MAKE_OPENTYPE_TAG` does; core/FontVariants.h already produced the
+// characters, so there is no table here. A feature's parameter is 1, meaning
+// "on" -- the alternates that take a number are not among the ones React
+// Native's `fontVariant` can name.
+//
+// The typography object is per range and released straight after: a layout
+// takes its own reference, and the ranges of a paragraph rarely share a set of
+// features.
+void applyTypography(IDWriteTextLayout *layout,
+                     const RnTextStyle &style,
+                     DWRITE_TEXT_RANGE range) {
+  if (style.fontFeatures.empty()) {
+    return;
+  }
+  IDWriteFactory *factory = dwriteFactory();
+  if (factory == nullptr) {
+    return;
+  }
+
+  IDWriteTypography *typography = nullptr;
+  if (FAILED(factory->CreateTypography(&typography)) || typography == nullptr) {
+    return;
+  }
+  for (const std::string &tag : style.fontFeatures) {
+    if (tag.size() != 4) {
+      continue;
+    }
+    const DWRITE_FONT_FEATURE feature{
+        static_cast<DWRITE_FONT_FEATURE_TAG>(
+            DWRITE_MAKE_OPENTYPE_TAG(tag[0], tag[1], tag[2], tag[3])),
+        1u};
+    typography->AddFontFeature(feature);
+  }
+  layout->SetTypography(typography, range);
+  typography->Release();
 }
 
 // What "unconstrained" means to DirectWrite. It has no notion of an infinite
@@ -89,7 +138,14 @@ RnWin32TextLayout::create(std::string utf8Text, const RnTextStyle &style, int ma
     return nullptr;
   }
 
-  format->SetTextAlignment(toDWriteAlignment(style.align));
+  format->SetTextAlignment(toDWriteAlignment(style.align, style.rightToLeft));
+  // The paragraph's direction, which is a format property rather than a range
+  // one: DirectWrite has no per-run reading direction, and neither has React
+  // Native -- `writingDirection` is a paragraph's. The first run's style is
+  // what the format is built from, which is where the alignment and the line
+  // height already come from.
+  format->SetReadingDirection(style.rightToLeft ? DWRITE_READING_DIRECTION_RIGHT_TO_LEFT
+                                                : DWRITE_READING_DIRECTION_LEFT_TO_RIGHT);
   format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
   format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
   if (style.lineHeight > 0.0f) {
@@ -188,13 +244,14 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
     if (run.style.strikethrough) {
       layout->SetStrikethrough(TRUE, range);
     }
+    applyTypography(layout, run.style, range);
   }
 
   // The single-style paragraph has no runs at all: its font, size and weight
   // live on the text format. A format has no underline or strikethrough
   // property, though -- they exist only on a layout and only per range -- so
   // the whole string is the range here.
-  if (runs_.empty() && (style_.underline || style_.strikethrough)) {
+  if (runs_.empty()) {
     const DWRITE_TEXT_RANGE whole{0, static_cast<UINT32>(utf16_.size())};
     if (style_.underline) {
       layout->SetUnderline(TRUE, whole);
@@ -202,6 +259,7 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
     if (style_.strikethrough) {
       layout->SetStrikethrough(TRUE, whole);
     }
+    applyTypography(layout, style_, whole);
   }
 
   return layout;

@@ -467,26 +467,26 @@ TEST(win32_text_transform_maps_case) {
   EXPECT_EQ(transformed(TextTransform::Uppercase, ""), std::string(""));
 }
 
-// Whether Windows expands the German sharp s the way the other two hosts do is
-// a question this repository cannot answer without a Windows box. GLib's
-// `g_utf8_strup` and NSString's `uppercaseString` both turn it into "SS",
-// growing the string by a byte; `LCMapStringEx` is documented to leave it alone
-// unless asked for a full-width or a simple map.
+// **Windows keeps the German sharp s where the other two hosts expand it.**
+// Measured on CI on 2026-10-09, which is the only Windows this repository has:
+// `LCMapStringEx` with `LCMAP_UPPERCASE | LCMAP_LINGUISTIC_CASING` maps it to
+// itself, so "Strasse" written with it uppercases to "STRA" + the sharp s +
+// "E", seven bytes. GLib's `g_utf8_strup` and NSString's `uppercaseString`
+// both answer "STRASSE", and so does every browser on Windows, because they go
+// through ICU rather than through the locale API.
 //
-// So it is measured on CI rather than guessed at. This asserts the half that
-// cannot differ, prints what the mapping actually produced, and the commit
-// after the first green run asserts the answer and records it in
-// backlog/platform-windows.md.
-TEST(win32_text_transform_and_the_sharp_s) {
+// Asserted rather than tolerated, so that the day this host is changed the test
+// says so and the record gets updated with it.
+// backlog/platform-windows.md names the call that would close the gap:
+// `u_strToUpper`, from the ICU that Windows 10 1703 and later ship, which does
+// Unicode's full case mapping.
+TEST(win32_text_transform_keeps_the_sharp_s) {
   const std::string mapped =
       transformed(facebook::react::TextTransform::Uppercase, "Stra\xc3\x9f" "e");
-  fprintf(stderr, "MEASURED win32 uppercase of the sharp s = \"%s\" (%zu bytes)\n",
-          mapped.c_str(), mapped.size());
-
-  EXPECT(mapped.rfind("STRA", 0) == 0);
-  // One or the other, and the next commit says which: "STRASSE" if Windows
-  // expands it as the other two hosts do, the sharp s kept if it does not.
-  EXPECT(mapped == std::string("STRASSE") || mapped == std::string("STRA\xc3\x9f" "E"));
+  EXPECT_EQ(mapped, std::string("STRA\xc3\x9f" "E"));
+  // Which is one byte longer than "STRASSE" is, and a byte shorter than the
+  // input: the sharp s is two bytes in UTF-8 and did not change.
+  EXPECT_EQ((int)mapped.size(), 7);
 }
 
 TEST(win32_a_decoration_reaches_the_style) {
@@ -513,4 +513,102 @@ TEST(win32_a_decoration_reaches_the_style) {
   attributes.textDecorationLineType = TextDecorationLineType::None;
   EXPECT(!basalt::win32::buildTextStyle(attributes).underline);
   EXPECT(!basalt::win32::buildTextStyle(attributes).strikethrough);
+}
+
+// ---------------------------------------------------------------------------
+// writingDirection, fontVariant and a fragment's opacity, as they arrive.
+//
+// The pixels for the first are in tests/test_win32_text.cpp; these are the
+// translations, which need React Native's TextAttributes.
+// ---------------------------------------------------------------------------
+TEST(win32_a_writing_direction_reaches_the_style) {
+  using facebook::react::WritingDirection;
+
+  facebook::react::TextAttributes attributes;
+  EXPECT(!basalt::win32::buildTextStyle(attributes).rightToLeft);
+
+  attributes.baseWritingDirection = WritingDirection::RightToLeft;
+  EXPECT(basalt::win32::buildTextStyle(attributes).rightToLeft);
+
+  attributes.baseWritingDirection = WritingDirection::LeftToRight;
+  EXPECT(!basalt::win32::buildTextStyle(attributes).rightToLeft);
+
+  // `natural` is left-to-right here, as it is on the other two hosts for Latin
+  // text: DirectWrite takes a direction rather than deciding one from the
+  // string, so there is no third state to pass on.
+  attributes.baseWritingDirection = WritingDirection::Natural;
+  EXPECT(!basalt::win32::buildTextStyle(attributes).rightToLeft);
+}
+
+TEST(win32_an_alignment_keeps_start_and_end_relative) {
+  using basalt::win32::RnTextAlign;
+  using facebook::react::TextAlignment;
+
+  facebook::react::TextAttributes attributes;
+  // Nothing asked for is natural, not physical left: the difference only shows
+  // in a right-to-left paragraph, where it is the difference between the entry
+  // this closed and the bug it described.
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Natural);
+
+  attributes.alignment = TextAlignment::Left;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Left);
+  attributes.alignment = TextAlignment::Right;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Right);
+  attributes.alignment = TextAlignment::Center;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Center);
+  attributes.alignment = TextAlignment::Justified;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Justified);
+  attributes.alignment = TextAlignment::Natural;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Natural);
+#if BASALT_RN_MINOR >= 87
+  attributes.alignment = TextAlignment::Start;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Natural);
+  attributes.alignment = TextAlignment::End;
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::End);
+#endif
+}
+
+TEST(win32_font_variants_become_opentype_tags) {
+  using facebook::react::FontVariant;
+
+  facebook::react::TextAttributes attributes;
+  EXPECT(basalt::win32::buildTextStyle(attributes).fontFeatures.empty());
+
+  attributes.fontVariant = static_cast<FontVariant>(
+      static_cast<int>(FontVariant::SmallCaps) | static_cast<int>(FontVariant::TabularNums));
+  const auto features = basalt::win32::buildTextStyle(attributes).fontFeatures;
+  EXPECT_EQ((int)features.size(), 2);
+  // In core's order rather than the bitmask's, which is what makes this
+  // comparable with the GTK host's settings string.
+  EXPECT_EQ(features[0], std::string("smcp"));
+  EXPECT_EQ(features[1], std::string("tnum"));
+
+  // A stylistic alternate is `ssNN`, which is the case a table of tags gets
+  // wrong and core builds from the number instead.
+  attributes.fontVariant = FontVariant::StylisticSeven;
+  const auto alternate = basalt::win32::buildTextStyle(attributes).fontFeatures;
+  EXPECT_EQ((int)alternate.size(), 1);
+  EXPECT_EQ(alternate[0], std::string("ss07"));
+}
+
+TEST(win32_a_fragment_opacity_multiplies_the_alpha) {
+  facebook::react::TextAttributes attributes;
+  attributes.foregroundColor = facebook::react::colorFromComponents(
+      facebook::react::ColorComponents{1.0F, 0.0F, 0.0F, 1.0F});
+
+  // No opacity asked for: opaque, which is also what an unset colour is.
+  EXPECT_NEAR(basalt::win32::buildTextStyle(attributes).color[3], 1.0f, 0.01f);
+
+  attributes.opacity = 0.5;
+  const auto style = basalt::win32::buildTextStyle(attributes);
+  EXPECT_NEAR(style.color[3], 0.5f, 0.01f);
+  // And the channels are untouched: opacity is alpha, not a tint.
+  EXPECT_NEAR(style.color[0], 1.0f, 0.01f);
+  EXPECT_NEAR(style.color[1], 0.0f, 0.01f);
+
+  // Out of range is clamped, a stylesheet being able to ask for either.
+  attributes.opacity = 2.0;
+  EXPECT_NEAR(basalt::win32::buildTextStyle(attributes).color[3], 1.0f, 0.01f);
+  attributes.opacity = -1.0;
+  EXPECT_NEAR(basalt::win32::buildTextStyle(attributes).color[3], 0.0f, 0.01f);
 }

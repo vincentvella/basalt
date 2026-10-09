@@ -5311,21 +5311,21 @@ def test_writing_direction(bundle: Path) -> None:
     The prop decides which edge a paragraph starts from, and each engine takes
     it in its own terms: a Pango context's base direction, an
     `NSParagraphStyle`'s `baseWritingDirection`, DirectWrite's
-    `SetReadingDirection`. Neither of the two implemented hosts honoured it
-    until 2026-10-09.
+    `SetReadingDirection`. None of the three honoured it until 2026-10-09.
 
     What this asserts is the arrival, which is the half only an app can prove:
     `writingDirection` is a *style* prop, so it travels through
     `ReactNativeStyleAttributes` and the style flattener rather than through
     `validAttributes`, and a prop that is dropped there reaches no host at all.
-    Whether each engine then *honoured* it is a picture, and both hosts' suites
+    Whether each engine then *honoured* it is a picture, and all three suites
     take one: Latin text in a right-to-left paragraph has the same box and the
     same string, so the pixels are the only difference.
 
-    Windows reads no direction yet, so it is skipped by name.
+    Windows prints only the right-to-left case, where the other two also print
+    `ltr` and `natural`: those two keep the name the app used, and that host
+    keeps a boolean, DirectWrite taking a direction rather than a "decide for
+    me". The line this reads is the same on all three.
     """
-    if PLATFORM == "windows":
-        raise Skipped("DirectWrite is given no reading direction yet")
 
     app = bundle_app(bundle.parent, "text")
 

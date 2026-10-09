@@ -3,6 +3,8 @@
 #include "FontScaling.h"
 
 #include "FontRegistry.h"
+#include "FontVariants.h"
+#include "TextColors.h"
 #include "TextDecorations.h"
 
 #include <windows.h>
@@ -23,34 +25,38 @@ using facebook::react::TextAttributes;
 
 RnTextAlign toAlign(const TextAttributes &attributes) {
   if (!attributes.alignment.has_value()) {
-    return RnTextAlign::Left;
+    return RnTextAlign::Natural;
   }
   switch (*attributes.alignment) {
     case facebook::react::TextAlignment::Center:
       return RnTextAlign::Center;
     case facebook::react::TextAlignment::Right:
-#if BASALT_RN_MINOR >= 87
-    // React Native 0.87 added the writing-direction-relative spellings, and
-    // both other desktops already fold them in here. Left out of this switch,
-    // `textAlign: 'right'` written as `end` fell through to left-aligned --
-    // which clang said out loud, in a warning nobody had recompiled this file
-    // to see.
-    //
-    // Left-to-right only, like the other two: nothing on any of these
-    // platforms resolves a writing direction yet.
-    case facebook::react::TextAlignment::End:
-#endif
       return RnTextAlign::Right;
     case facebook::react::TextAlignment::Justified:
       return RnTextAlign::Justified;
-    case facebook::react::TextAlignment::Natural:
     case facebook::react::TextAlignment::Left:
+      return RnTextAlign::Left;
 #if BASALT_RN_MINOR >= 87
+    // React Native 0.87 added the writing-direction-relative spellings, and
+    // this host keeps them relative rather than folding them into the physical
+    // pair: DirectWrite has LEADING and TRAILING, so `start` and `end` cost
+    // nothing to honour and follow the paragraph's direction on their own.
+    // Left out of this switch entirely, `end` once fell through to
+    // left-aligned, which clang said out loud in a warning nobody had
+    // recompiled this file to see.
+    //
+    // The other two hosts fold `end` into physical right, which is the same
+    // thing in a left-to-right paragraph and not in a right-to-left one;
+    // backlog/text.md records that as the one alignment the three disagree on.
+    case facebook::react::TextAlignment::End:
+      return RnTextAlign::End;
     case facebook::react::TextAlignment::Start:
+      return RnTextAlign::Natural;
 #endif
+    case facebook::react::TextAlignment::Natural:
       break;
   }
-  return RnTextAlign::Left;
+  return RnTextAlign::Natural;
 }
 
 // React Native's weights run 100..900 and DirectWrite's do too, but this
@@ -222,6 +228,23 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
 
   style.align = toAlign(attributes);
 
+  // `writingDirection`. `natural` is left-to-right here, as it is on the other
+  // two hosts for Latin text: DirectWrite resolves a paragraph's direction from
+  // the reading direction it is given rather than from the text, so there is no
+  // third state to pass on.
+  style.rightToLeft = attributes.baseWritingDirection.has_value() &&
+      *attributes.baseWritingDirection == facebook::react::WritingDirection::RightToLeft;
+
+  // `fontVariant`, as OpenType tags. core/FontVariants.h resolves the bitmask
+  // and names the tags, which is what DirectWrite takes too -- the AppKit host
+  // is the one that needs a translation, Core Text wanting Apple's older AAT
+  // selectors.
+  for (const auto variant : basalt::fontVariants(attributes)) {
+    if (const char *const tag = basalt::openTypeTag(variant); tag != nullptr) {
+      style.fontFeatures.emplace_back(tag);
+    }
+  }
+
   // `textDecorationLine`, resolved by core/TextDecorations.h so that the three
   // hosts agree on which lines an app asked for. The style and the colour are
   // resolved there too and dropped here: a DirectWrite underline is a boolean
@@ -233,13 +256,15 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
     style.strikethrough = decoration->strikethrough;
   }
 
-  if (attributes.foregroundColor) {
-    const auto components = facebook::react::colorComponentsFromColor(attributes.foregroundColor);
-    style.color[0] = components.red;
-    style.color[1] = components.green;
-    style.color[2] = components.blue;
-    style.color[3] = components.alpha;
-  }
+  // Through core/TextColors.h rather than straight off the prop, which is what
+  // makes a fragment's `opacity` arrive: it multiplies the alpha, and this host
+  // was the one still reading the colour itself. The default is opaque black
+  // there too, so nothing has to spell one here.
+  const basalt::TextColor foreground = basalt::textForegroundColor(attributes);
+  style.color[0] = foreground.red;
+  style.color[1] = foreground.green;
+  style.color[2] = foreground.blue;
+  style.color[3] = foreground.alpha;
 
   return style;
 }

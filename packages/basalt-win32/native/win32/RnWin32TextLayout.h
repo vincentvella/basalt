@@ -38,10 +38,19 @@ struct IDWriteTextLayout;
 namespace basalt::win32 {
 
 enum class RnTextAlign {
+  // Physical edges, which is what React Native's `left` and `right` mean: they
+  // stay where they are in a right-to-left paragraph, as they do on the other
+  // two hosts.
   Left,
   Center,
   Right,
   Justified,
+  // The reading direction's own edges, which is what `natural`, `start` and
+  // `end` ask for. DirectWrite expresses these directly, as LEADING and
+  // TRAILING, so a natural alignment follows the direction without this file
+  // having to know which way that is.
+  Natural,
+  End,
 };
 
 // The attributes this platform honours. React Native has many more; each one
@@ -67,6 +76,18 @@ struct RnTextStyle {
   // back to a solid line, which is what this is.
   bool underline = false;
   bool strikethrough = false;
+  // `writingDirection`, which decides the order of the glyphs in a line and
+  // which edge the line starts from. False is left-to-right, and is also what
+  // `natural` resolves to for Latin text.
+  bool rightToLeft = false;
+  // `fontVariant`, as OpenType tags: "smcp", "tnum", "ss07". Resolved by
+  // `core/FontVariants.h`, which the GTK host uses in the same form; DirectWrite
+  // takes them as a `DWRITE_FONT_FEATURE_TAG` each, on an `IDWriteTypography`.
+  //
+  // Whether a font actually has a feature is the font's business: DirectWrite
+  // asks for it and a face without it renders unchanged, which is why nothing
+  // here asserts on the pixels.
+  std::vector<std::string> fontFeatures;
 };
 
 struct RnTextSize {
