@@ -173,6 +173,22 @@ def main() -> int:
     check("no instrument in scriptedInputVars is unknown to every host",
           sorted(stale), [])
 
+    # How long the host lives when the clicks come from outside it. "scroll away
+    # and back" is two clicks inside a six second timer, which left 0.2 seconds
+    # between the second click and the host exiting: it failed on CI's Linux
+    # shard three runs running as soon as a 0.3 second settle was added, and was
+    # a flake waiting for a slower runner before that.
+    budget = harness.real_input_budget
+    # The clicks themselves: four seconds for the window, then 0.4 + 1.0 each.
+    for clicks in (1, 2, 3):
+        spent = 4000 + clicks * 1400
+        check(f"{clicks} clicks fit, with room to spare",
+              budget(clicks, False, 6000) - spent >= 1500, True)
+    check("typing is paid for too",
+          budget(1, True, 6000) > budget(1, False, 6000), True)
+    # And a scenario that asked for longer keeps it.
+    check("a longer run is never shortened", budget(2, False, 30000), 30000)
+
     # Which window the Linux clicks are aimed at, which is a regression and is
     # here for the reason the other two are. The first version took the first
     # window whose `_NET_WM_PID` equalled the host's, and a window that reports

@@ -236,13 +236,10 @@ def click_with_xdotool(points: list[tuple[int, int]], pid: int) -> None:
     )
     x0, y0 = int(origin.get("X", 0)), int(origin.get("Y", 0))
 
-    # Raised for the same reason the macOS path raises: the pointer is moved to
-    # a screen point and the X server delivers the press to whatever is on top
-    # there. `windowraise` rather than `windowactivate` because it is plain X
-    # and needs no window manager, which CI's Xvfb does not run; it is allowed
-    # to fail for the same reason.
-    subprocess.run(["xdotool", "windowraise", window[0]], check=False)
-    time.sleep(0.3)
+    # No raise here, unlike the macOS path. That was added for symmetry and it
+    # cost three red CI runs: nothing has ever reported a window over the GTK
+    # host's under Xvfb, and the 0.3 seconds it slept to let the raise land came
+    # out of the budget below, which had 0.2 to spare.
 
     for x, y in points:
         subprocess.run(["xdotool", "mousemove", str(x0 + x), str(y0 + y)], check=True)
@@ -380,6 +377,28 @@ def click_field_for_real(surface_height: int, pid: int) -> None:
     raise Skipped(f"no real click on {PLATFORM}")
 
 
+def real_input_budget(points: int, typing: bool, run_ms: int) -> int:
+    """How long the host has to live for clicks driven from outside it.
+
+    A real click is `xdotool` moving the pointer and pressing, so the host knows
+    nothing about it and its quit timer is whatever the scenario asked for. The
+    clicks cost four seconds of waiting for the window and about 1.4 each, which
+    for "scroll away and back" left **0.2 seconds** between the second click and
+    the host exiting. It failed on CI's Linux shard three runs running the moment
+    something slept in there -- a 0.3 second settle after an `xdotool
+    windowraise` -- and would have failed on its own on a slower runner.
+
+    So the timer is computed from the work rather than assumed to cover it, with
+    two seconds over for the dump and the exit. Never shortened: a scenario that
+    asked for longer wants longer, for reasons of its own.
+
+    Injected mode is not this: there the host schedules the taps itself and
+    core/TestSettle.h extends its own schedule to cover them.
+    """
+    needed = 4000 + points * 1500 + (2500 if typing else 0) + 2000
+    return max(run_ms, needed)
+
+
 def run_host(bundle: Path, taps: str = "", run_ms: int = 4000, typing: str = "") -> str:
     """Runs the host once and returns the widget tree it dumped."""
     points = [
@@ -402,6 +421,11 @@ def run_host(bundle: Path, taps: str = "", run_ms: int = 4000, typing: str = "")
             env["BASALT_TEST_TYPE"] = typing
 
         command = [str(HOST), str(bundle), MODULE]
+
+        if (points or typing) and INPUT_MODE == "real":
+            run_ms = real_input_budget(len(points), bool(typing), run_ms)
+            env["BASALT_QUIT_AFTER_MS"] = str(run_ms)
+
         timeout = run_ms / 1000 + 60
 
         if (points or typing) and INPUT_MODE == "real":
