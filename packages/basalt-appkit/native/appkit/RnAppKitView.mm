@@ -2805,6 +2805,14 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (self.rnWritingDirection.length > 0) {
     [out appendFormat:@" writing-dir=%@", self.rnWritingDirection];
   }
+  // What a field asked for about spelling, in the same words GTK prints.
+  // Neither appears for a field that said nothing.
+  if (self.rnSpellCheck.length > 0) {
+    [out appendFormat:@" spellcheck=%@", self.rnSpellCheck];
+  }
+  if (self.rnAutoCorrect.length > 0) {
+    [out appendFormat:@" autocorrect=%@", self.rnAutoCorrect];
+  }
   // The paragraph's text shadow, spelled as GTK spells it: no other line can
   // show it, a shadowed paragraph having the same text, colour and box. The
   // standard deviation React Native parsed, which is also what this context was

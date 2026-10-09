@@ -189,6 +189,10 @@ struct _RnView {
   // `accessibilityViewIsModal`, kept so the dump can report it: the property
   // itself goes straight to GTK and cannot be read back without an AT.
   gboolean accessible_modal;
+  // `spellCheck` and `autoCorrect`, as React Native's own words: "on", "off" or
+  // absent. Absent is the third state and not a default: see core/TextChecking.h.
+  const char *spell_check;
+  const char *auto_correct;
   // `writingDirection`, as React Native's own word: "ltr", "rtl" or "natural".
   // The layout has the direction itself; this is for the dump, which is
   // compared with the AppKit one line by line.
@@ -1185,6 +1189,8 @@ static void rn_view_init(RnView *self) {
   self->test_id = nullptr;
   self->accessible_modal = FALSE;
   self->writing_direction = nullptr;
+  self->spell_check = nullptr;
+  self->auto_correct = nullptr;
   self->cursor_name = nullptr;
   self->box_shadows = nullptr;
   self->gradients = nullptr;
@@ -1381,6 +1387,13 @@ void rn_view_set_accessible_text(RnView *self, const char *label, const char *de
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, description, -1);
   }
+}
+
+void rn_view_set_text_checking(RnView *self, const char *spell_check, const char *auto_correct) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  // Static strings from core/TextChecking.h, not copies.
+  self->spell_check = spell_check;
+  self->auto_correct = auto_correct;
 }
 
 void rn_view_set_writing_direction(RnView *self, const char *direction) {
@@ -2722,6 +2735,16 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // <Text> inherits the enclosing direction otherwise.
   if (self->writing_direction != nullptr) {
     g_string_append_printf(out, " writing-dir=%s", self->writing_direction);
+  }
+  // What a field asked for about spelling. Neither word appears for a field
+  // that said nothing, which is the third state rather than a default; what
+  // each toolkit then did with it is asserted in its own suite, GTK having a
+  // hint for the first and nothing at all for the second.
+  if (self->spell_check != nullptr) {
+    g_string_append_printf(out, " spellcheck=%s", self->spell_check);
+  }
+  if (self->auto_correct != nullptr) {
+    g_string_append_printf(out, " autocorrect=%s", self->auto_correct);
   }
   // The paragraph's text shadow, which no other line of this dump can show: a
   // shadowed paragraph has the same text, the same colour and the same box. The

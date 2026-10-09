@@ -515,6 +515,14 @@ void rn_view_set_accessible_modal(RnView *self, gboolean modal);
 // which this view only paints. Takes a static string and does not copy it.
 void rn_view_set_writing_direction(RnView *self, const char *direction);
 
+// `spellCheck` and `autoCorrect`, for the tree dump: "on", "off" or nullptr for
+// a field that said nothing. Takes static strings and does not copy them. What
+// this host *does* with the first is an input hint on the peer; see
+// GtkTextPeer.h.
+void rn_view_set_text_checking(RnView *self,
+                               const char *spell_check,
+                               const char *auto_correct);
+
 // The view's `nativeID`, verbatim.
 //
 // Only the hidden title bar reads it, to find the regions an app marked with

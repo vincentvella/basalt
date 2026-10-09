@@ -830,3 +830,70 @@ TEST(textinput_multiline_takes_the_placeholder_colour_as_a_value) {
   g_object_unref(single);
   g_object_unref(view);
 }
+
+// `spellCheck`, which GTK has as an input *hint*: a suggestion to the input
+// method rather than an instruction to a checker, and the nearest thing this
+// toolkit has to the prop.
+//
+// `autoCorrect` has no hint at all -- `WORD_COMPLETION` offers completions
+// rather than correcting what was typed -- so it is recorded rather than
+// approximated, and the AppKit suite is where that half is asserted.
+TEST(textinput_spell_check_becomes_an_input_hint) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("spellCheck", true)));
+  GtkWidget *editable = rn_view_get_editable(view);
+  EXPECT(editable != nullptr);
+  EXPECT(editable != nullptr
+         && (gtk_text_get_input_hints(GTK_TEXT(editable)) & GTK_INPUT_HINT_SPELLCHECK) != 0);
+
+  // And the other way, which is the direction an app is likelier to ask for: a
+  // search field that does not want its query underlined in red.
+  manager.update(view, makeTextInput(10, folly::dynamic::object("spellCheck", false)));
+  EXPECT((gtk_text_get_input_hints(GTK_TEXT(editable)) & GTK_INPUT_HINT_NO_SPELLCHECK) != 0);
+  // The two are exclusive, and the hints are a bitmask: asking for one has to
+  // take the other away rather than leaving both set.
+  EXPECT((gtk_text_get_input_hints(GTK_TEXT(editable)) & GTK_INPUT_HINT_SPELLCHECK) == 0);
+
+  g_object_unref(view);
+}
+
+// Unset is not false: a field that says nothing keeps whatever the input method
+// was configured to do. See core/TextChecking.h.
+TEST(textinput_an_unset_spell_check_sets_no_hint) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "plain")));
+  GtkWidget *editable = rn_view_get_editable(view);
+  EXPECT(editable != nullptr);
+  const GtkInputHints hints =
+      editable != nullptr ? gtk_text_get_input_hints(GTK_TEXT(editable)) : GTK_INPUT_HINT_NONE;
+  EXPECT((hints & GTK_INPUT_HINT_SPELLCHECK) == 0);
+  EXPECT((hints & GTK_INPUT_HINT_NO_SPELLCHECK) == 0);
+
+  g_object_unref(view);
+}
+
+// The multiline peer is a GtkTextView, which has the same hints by a different
+// call. Both are asserted because the two peers agree on almost nothing.
+TEST(textinput_spell_check_reaches_a_multiline_peer) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(
+      view,
+      makeTextInput(10, folly::dynamic::object("multiline", true)("spellCheck", false)));
+  GtkWidget *editable = rn_view_get_editable(view);
+  EXPECT(editable != nullptr && GTK_IS_TEXT_VIEW(editable));
+  EXPECT(editable != nullptr
+         && (gtk_text_view_get_input_hints(GTK_TEXT_VIEW(editable))
+             & GTK_INPUT_HINT_NO_SPELLCHECK)
+             != 0);
+
+  g_object_unref(view);
+}

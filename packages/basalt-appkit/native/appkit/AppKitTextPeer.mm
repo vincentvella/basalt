@@ -4,15 +4,38 @@
 
 // Both peers report gaining focus the same way, and neither superclass does it
 // for us. See the protocol's header comment for why only the gaining half.
+// The two properties, on an NSTextView. Unset leaves the platform's own answer
+// alone, which is the whole reason the flag has three states.
+static void RnApplyTextChecking(NSTextView *_Nullable editor,
+                                RnTextChecking spellCheck,
+                                RnTextChecking autoCorrect) {
+  if (editor == nil) {
+    return;
+  }
+  if (spellCheck != RnTextCheckingUnset) {
+    editor.continuousSpellCheckingEnabled = spellCheck == RnTextCheckingOn;
+  }
+  if (autoCorrect != RnTextCheckingUnset) {
+    editor.automaticSpellingCorrectionEnabled = autoCorrect == RnTextCheckingOn;
+  }
+}
+
 @interface RnAppKitTextField : NSTextField
 @property(nonatomic, assign) NSInteger rnTag;
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
+@property(nonatomic, assign) RnTextChecking rnSpellCheck;
+@property(nonatomic, assign) RnTextChecking rnAutoCorrect;
 @end
 
 @implementation RnAppKitTextField
 - (BOOL)becomeFirstResponder {
   const BOOL became = [super becomeFirstResponder];
   if (became) {
+    // The field editor exists now and did not before, which is the only moment
+    // the spell-checking flags can be put on it. See RnPeerSetTextChecking.
+    if ([self.currentEditor isKindOfClass:NSTextView.class]) {
+      RnApplyTextChecking((NSTextView *)self.currentEditor, _rnSpellCheck, _rnAutoCorrect);
+    }
     [_rnOwner rnFieldDidBecomeFirstResponder:_rnTag];
   }
   return became;
@@ -22,12 +45,19 @@
 @interface RnAppKitSecureTextField : NSSecureTextField
 @property(nonatomic, assign) NSInteger rnTag;
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
+@property(nonatomic, assign) RnTextChecking rnSpellCheck;
+@property(nonatomic, assign) RnTextChecking rnAutoCorrect;
 @end
 
 @implementation RnAppKitSecureTextField
 - (BOOL)becomeFirstResponder {
   const BOOL became = [super becomeFirstResponder];
   if (became) {
+    // The field editor exists now and did not before, which is the only moment
+    // the spell-checking flags can be put on it. See RnPeerSetTextChecking.
+    if ([self.currentEditor isKindOfClass:NSTextView.class]) {
+      RnApplyTextChecking((NSTextView *)self.currentEditor, _rnSpellCheck, _rnAutoCorrect);
+    }
     [_rnOwner rnFieldDidBecomeFirstResponder:_rnTag];
   }
   return became;
@@ -38,6 +68,8 @@
 @property(nonatomic, assign) NSInteger rnTag;
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
 @property(nonatomic, strong, nullable) NSAttributedString *rnPlaceholder;
+@property(nonatomic, assign) RnTextChecking rnSpellCheck;
+@property(nonatomic, assign) RnTextChecking rnAutoCorrect;
 @end
 
 @implementation RnAppKitTextView
@@ -194,6 +226,70 @@ void RnPeerSetSelection(NSView *peer, NSRange range) {
   if (NSText *editor = ((NSTextField *)peer).currentEditor) {
     editor.selectedRange = range;
   }
+}
+
+void RnPeerSetTextChecking(NSView *peer,
+                           RnTextChecking spellCheck,
+                           RnTextChecking autoCorrect) {
+  if (peer == nil) {
+    return;
+  }
+  if (RnPeerIsMultiline(peer)) {
+    // An NSTextView is its own editor, so this is the simple case -- the
+    // request is still remembered, because AppKit may decline it and a test
+    // needs to know what was asked.
+    ((RnAppKitTextView *)peer).rnSpellCheck = spellCheck;
+    ((RnAppKitTextView *)peer).rnAutoCorrect = autoCorrect;
+    RnApplyTextChecking((NSTextView *)peer, spellCheck, autoCorrect);
+    return;
+  }
+  // Remembered first, because a field that is not focused has no editor to put
+  // them on and `becomeFirstResponder` is what applies them then.
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    ((RnAppKitTextField *)peer).rnSpellCheck = spellCheck;
+    ((RnAppKitTextField *)peer).rnAutoCorrect = autoCorrect;
+  } else if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    ((RnAppKitSecureTextField *)peer).rnSpellCheck = spellCheck;
+    ((RnAppKitSecureTextField *)peer).rnAutoCorrect = autoCorrect;
+  }
+  if ([((NSTextField *)peer).currentEditor isKindOfClass:NSTextView.class]) {
+    RnApplyTextChecking(
+        (NSTextView *)((NSTextField *)peer).currentEditor, spellCheck, autoCorrect);
+  }
+}
+
+// The remembered request, from whichever peer this is. A multiline view has no
+// need to remember -- it is its own editor -- so its own flags are read back.
+RnTextChecking RnPeerSpellCheck(NSView *peer) {
+  if (peer == nil) {
+    return RnTextCheckingUnset;
+  }
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    return ((RnAppKitTextField *)peer).rnSpellCheck;
+  }
+  if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    return ((RnAppKitSecureTextField *)peer).rnSpellCheck;
+  }
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    return ((RnAppKitTextView *)peer).rnSpellCheck;
+  }
+  return RnTextCheckingUnset;
+}
+
+RnTextChecking RnPeerAutoCorrect(NSView *peer) {
+  if (peer == nil) {
+    return RnTextCheckingUnset;
+  }
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    return ((RnAppKitTextField *)peer).rnAutoCorrect;
+  }
+  if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    return ((RnAppKitSecureTextField *)peer).rnAutoCorrect;
+  }
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    return ((RnAppKitTextView *)peer).rnAutoCorrect;
+  }
+  return RnTextCheckingUnset;
 }
 
 void RnPeerSetEditable(NSView *peer, BOOL editable) {

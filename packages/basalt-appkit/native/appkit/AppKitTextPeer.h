@@ -46,6 +46,35 @@ NSRange RnPeerSelection(NSView *_Nullable peer);
 void RnPeerSetSelection(NSView *_Nullable peer, NSRange range);
 
 void RnPeerSetEditable(NSView *_Nullable peer, BOOL editable);
+
+// `spellCheck` and `autoCorrect`, as three states: see core/TextChecking.h for
+// why unset is not false. Mirrored here rather than taken from that header
+// because this one is plain Objective-C and its callers should stay that way.
+typedef NS_ENUM(NSInteger, RnTextChecking) {
+  RnTextCheckingUnset,
+  RnTextCheckingOn,
+  RnTextCheckingOff,
+};
+
+// Applies both, and remembers them.
+//
+// Remembering is the point: the two properties live on an NSTextView, and a
+// single-line field is an NSTextField which *borrows* one -- its field editor,
+// which exists only while it is focused. So a field asked before it is focused
+// has nowhere to put them, and the peer applies them again when the editor
+// appears.
+void RnPeerSetTextChecking(NSView *_Nullable peer,
+                           RnTextChecking spellCheck,
+                           RnTextChecking autoCorrect);
+
+// What the peer was last asked for, which is not always what AppKit did with
+// it: macOS gates continuous spell checking on a user-wide setting
+// (`NSAllowContinuousSpellChecking`), and refuses a per-view request when the
+// person has turned the feature off for everything. So the request is what a
+// test can assert on any machine, and AppKit's answer is asserted only where
+// the machine allows it.
+RnTextChecking RnPeerSpellCheck(NSView *_Nullable peer);
+RnTextChecking RnPeerAutoCorrect(NSView *_Nullable peer);
 void RnPeerSetTextStyle(NSView *_Nullable peer, NSFont *_Nullable font,
                         NSColor *_Nullable colour, NSTextAlignment alignment);
 

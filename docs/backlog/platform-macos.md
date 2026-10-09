@@ -10,7 +10,8 @@ If an entry here is about to be picked up, run the thing it describes first.
 
 1. ~~Justified text~~, which worked all along
 2. Fonts loaded at runtime are untested
-3. No `keyboardType`, `autoCapitalize`, `autoCorrect` or `spellCheck`
+3. No `keyboardType` or `autoCapitalize` (~~`autoCorrect`~~ and ~~`spellCheck`~~
+   are done)
 4. Nothing tested against a real screen reader
 5. No accessibility subroles
 6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
@@ -76,8 +77,46 @@ If an entry here is about to be picked up, run the thing it describes first.
 - ~~**No multiline `<TextInput>`**~~ Done on both: the NSTextView and
   GtkTextView peers, with the text and the selection round-tripping through
   each, `textinput_multiline_builds_a_text_view` and its two siblings.
-- **No `keyboardType`, `autoCapitalize`, `autoCorrect` or `spellCheck`** on
-  macOS, all of which AppKit has some form of.
+- **`keyboardType` and `autoCapitalize`, and the premise of this entry was
+  wrong.** It said these four were missing "on macOS, all of which AppKit has
+  some form of". Checked on 2026-10-09: **neither host read any of the four**,
+  and AppKit does not have some form of all of them. What each toolkit has,
+  measured against the two SDKs rather than remembered:
+
+  | Prop | GTK | AppKit |
+  | --- | --- | --- |
+  | `spellCheck` | `GTK_INPUT_HINT_SPELLCHECK` and its negative | `NSTextView.continuousSpellCheckingEnabled` |
+  | `autoCorrect` | no hint exists | `automaticSpellingCorrectionEnabled` |
+  | `autoCapitalize` | `GTK_INPUT_HINT_UPPERCASE_CHARS`, `_WORDS`, `_SENTENCES`, `LOWERCASE` | nothing per field |
+  | `keyboardType` | `gtk_entry_set_input_purpose` | nothing; there is no software keyboard |
+
+  `NSSpellChecker.automaticCapitalizationEnabled` looks like the answer for the
+  third and is not: it is a **class, read-only** property, which is the person's
+  system-wide setting rather than something a field can ask for.
+
+  **`spellCheck` and `autoCorrect` are done, 2026-10-09**, through
+  `core/TextChecking.h` -- three states, because unset is not false: a field
+  that says nothing wants whatever the platform does, and resolving that to
+  `false` would opt every ordinary field out of spell checking without the app
+  asking.
+
+  Two things that only measuring found:
+
+  - **A single-line field has neither property.** They belong to NSTextView, and
+    an NSTextField *borrows* one as its field editor while it is focused. So the
+    peer remembers the request and applies it again in `becomeFirstResponder`,
+    which is the first moment there is an editor to apply it to.
+  - **macOS may refuse.** `NSAllowContinuousSpellChecking` is a user-wide
+    setting, and with it off `setContinuousSpellCheckingEnabled:YES` is ignored
+    -- on a bare NSTextView, with and without a window. It is 0 on the machine
+    this was written on, which is why the suite asserts the *request*
+    unconditionally and AppKit's own answer only where the machine allows it. A
+    test that asserted the latter everywhere would pass on CI and fail on a
+    developer's Mac, which is the shape of flake this project has already spent
+    a day on.
+
+  What is left here is `autoCapitalize` and `keyboardType`, both of which GTK
+  can express and macOS cannot. They are the next unit.
 - **Nothing tested against a real screen reader**, on either platform.
   VoiceOver and Orca are both a manual step nobody has taken; the unit tests
   assert the properties were set and cannot assert the result is usable.

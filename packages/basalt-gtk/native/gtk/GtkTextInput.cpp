@@ -1,6 +1,7 @@
 #include "GtkTextInput.h"
 
 #include "FontScaling.h"
+#include "TextChecking.h"
 
 #include "GtkTextPeer.h"
 
@@ -231,6 +232,22 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   // Zero means no limit, and so does the absurd default React Native uses when
   // the prop is absent -- passing that through would be a limit nobody asked
   // for on a field that had none.
+  // The peer takes an int rather than core's enum, its header being plain C
+  // against GTK, so the two have to agree about which number means what.
+  static_assert(static_cast<int>(basalt::TextCheckingFlag::Unset) == 0);
+  static_assert(static_cast<int>(basalt::TextCheckingFlag::On) == 1);
+  static_assert(static_cast<int>(basalt::TextCheckingFlag::Off) == 2);
+  // `spellCheck`, resolved in core/TextChecking.h so this host and AppKit agree
+  // that unset is not false. `autoCorrect` has no GTK hint and is recorded
+  // rather than approximated; see the peer's header.
+  const auto spellCheck = basalt::textCheckingFlag(props->traits.spellCheck);
+  const auto autoCorrect = basalt::textCheckingFlag(props->traits.autoCorrect);
+  rn_peer_set_spell_check(entry.editable, static_cast<int>(spellCheck));
+  // And both in the dump, as the app asked for them: this host honours only the
+  // first, and the line is what the two hosts compare on.
+  rn_view_set_text_checking(
+      view, basalt::textCheckingName(spellCheck), basalt::textCheckingName(autoCorrect));
+
   rn_peer_set_max_length(
       entry.editable,
       (props->maxLength > 0 && props->maxLength < 1000000) ? props->maxLength : 0);

@@ -1,5 +1,7 @@
 #import "AppKitTextInput.h"
 
+#include "TextChecking.h"
+
 #include "FontScaling.h"
 
 #import "AppKitTextPeer.h"
@@ -318,6 +320,31 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
   // `editable` is the prop; `readOnly` is the newer spelling of its inverse,
   // and React Native honours both.
   RnPeerSetEditable(entry.field, props->traits.editable && !props->readOnly);
+
+  // `spellCheck` and `autoCorrect`, resolved in core/TextChecking.h so that the
+  // two hosts agree that unset is not false. AppKit has both, on the NSTextView
+  // a field is or borrows; GTK has only the first, as an input hint.
+  const auto checking = [](std::optional<bool> asked) {
+    switch (basalt::textCheckingFlag(asked)) {
+      case basalt::TextCheckingFlag::On:
+        return RnTextCheckingOn;
+      case basalt::TextCheckingFlag::Off:
+        return RnTextCheckingOff;
+      case basalt::TextCheckingFlag::Unset:
+        break;
+    }
+    return RnTextCheckingUnset;
+  };
+  RnPeerSetTextChecking(entry.field,
+                        checking(props->traits.spellCheck),
+                        checking(props->traits.autoCorrect));
+  // And both in the dump, as the app asked for them, in the words GTK prints.
+  const auto name = [](std::optional<bool> asked) -> NSString * {
+    const char *word = basalt::textCheckingName(basalt::textCheckingFlag(asked));
+    return word != nullptr ? @(word) : nil;
+  };
+  entry.view.rnSpellCheck = name(props->traits.spellCheck);
+  entry.view.rnAutoCorrect = name(props->traits.autoCorrect);
 
   // Zero means no limit, and so does the absurd default React Native uses when
   // the prop is absent.

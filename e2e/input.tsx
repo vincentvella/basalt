@@ -59,6 +59,16 @@ function App() {
       <Text style={styles.label}>Uncontrolled, with a secure twin below</Text>
       <TextInput style={styles.field} placeholder="anything" onChangeText={setFree} />
       <TextInput style={styles.field} placeholder="secret" secureTextEntry={true} />
+      {/* spellCheck and autoCorrect, which a search field usually turns off.
+          GTK has a hint for the first and nothing for the second; AppKit has
+          both, on the NSTextView a field is or borrows. The dump carries what
+          was asked, in both hosts' words. */}
+      <TextInput
+        style={styles.field}
+        placeholder="query"
+        spellCheck={false}
+        autoCorrect={false}
+      />
 
       <Text style={styles.echo}>{shouted === '' ? '(nothing yet)' : shouted}</Text>
     </View>

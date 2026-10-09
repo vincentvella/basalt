@@ -746,3 +746,128 @@ TEST(textinput_says_nothing_about_a_key_that_types_nothing) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// `spellCheck` and `autoCorrect`, which on this platform are two properties of
+// an NSTextView: a multiline field *is* one, and a single-line field borrows
+// one as its field editor while it is focused.
+//
+// What is asserted unconditionally is the *request*, because AppKit may decline
+// it: macOS gates continuous spell checking on a user-wide setting, and when
+// the person has turned spelling off for everything it refuses a per-view
+// request. Measured rather than guessed -- `NSAllowContinuousSpellChecking` is
+// 0 on the machine this was written on, and `setContinuousSpellCheckingEnabled:
+// YES` was ignored on a bare NSTextView with and without a window. AppKit's own
+// answer is asserted where the machine allows it, and the autocorrection flag
+// has no such gate and is asserted always.
+namespace {
+
+bool continuousSpellCheckingAllowed() {
+  NSNumber *allowed =
+      [NSUserDefaults.standardUserDefaults objectForKey:@"NSAllowContinuousSpellChecking"];
+  return allowed == nil || allowed.boolValue;
+}
+
+} // namespace
+
+TEST(textinput_spell_check_and_autocorrect_are_asked_for_on_a_multiline_field) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager,
+                                    10,
+                                    folly::dynamic::object("multiline", true)(
+                                        "spellCheck", true)("autoCorrect", true));
+
+    NSView *field = fieldOf(view);
+    EXPECT(RnPeerIsMultiline(field));
+    EXPECT(RnPeerSpellCheck(field) == RnTextCheckingOn);
+    EXPECT(RnPeerAutoCorrect(field) == RnTextCheckingOn);
+
+    NSTextView *editor = (NSTextView *)field;
+    // No gate on this one.
+    EXPECT(editor.isAutomaticSpellingCorrectionEnabled);
+    if (continuousSpellCheckingAllowed()) {
+      EXPECT(editor.isContinuousSpellCheckingEnabled);
+    }
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_spell_check_and_autocorrect_can_be_refused) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager,
+                                    10,
+                                    folly::dynamic::object("multiline", true)(
+                                        "spellCheck", false)("autoCorrect", false));
+
+    NSTextView *editor = (NSTextView *)fieldOf(view);
+    EXPECT(RnPeerSpellCheck(editor) == RnTextCheckingOff);
+    EXPECT(RnPeerAutoCorrect(editor) == RnTextCheckingOff);
+    // Refusing always sticks: the user setting above can only take the feature
+    // away, never force it on.
+    EXPECT(!editor.isContinuousSpellCheckingEnabled);
+    EXPECT(!editor.isAutomaticSpellingCorrectionEnabled);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// Unset is not false, which is the rule core/TextChecking.h exists for: a field
+// that says nothing keeps whatever AppKit does by default, and this asserts the
+// host did not decide for it.
+TEST(textinput_an_unset_checking_flag_leaves_appkits_own_answer) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+
+    // AppKit's defaults, read off a peer of its own rather than assumed: they
+    // are AppKit's business and have changed before.
+    NSTextView *bare = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 100, 40)];
+    const BOOL spellByDefault = bare.isContinuousSpellCheckingEnabled;
+    const BOOL correctByDefault = bare.isAutomaticSpellingCorrectionEnabled;
+
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("multiline", true));
+    NSTextView *editor = (NSTextView *)fieldOf(view);
+    EXPECT(RnPeerSpellCheck(editor) == RnTextCheckingUnset);
+    EXPECT(RnPeerAutoCorrect(editor) == RnTextCheckingUnset);
+    EXPECT_EQ(editor.isContinuousSpellCheckingEnabled, spellByDefault);
+    EXPECT_EQ(editor.isAutomaticSpellingCorrectionEnabled, correctByDefault);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// And the single-line half, which is the awkward one: an NSTextField has
+// neither property, so the peer remembers the request and applies it to the
+// field editor when one appears.
+TEST(textinput_a_single_line_field_checks_its_editor_when_it_focuses) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 10, folly::dynamic::object("spellCheck", false)("autoCorrect", false));
+    NSView *field = fieldOf(view);
+    EXPECT(!RnPeerIsMultiline(field));
+    EXPECT(RnPeerSpellCheck(field) == RnTextCheckingOff);
+
+    // A window, because a field editor belongs to the *window* and an
+    // unparented field never gets one.
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    // Not released when closed: see test_appkit_services.mm for the double
+    // release that taught this suite to say so.
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:manager.getSurfaceRoot(kSurfaceId)];
+    EXPECT([window makeFirstResponder:field]);
+
+    NSTextView *editor = (NSTextView *)((NSTextField *)field).currentEditor;
+    EXPECT(editor != nil);
+    EXPECT(editor != nil && !editor.isContinuousSpellCheckingEnabled);
+    EXPECT(editor != nil && !editor.isAutomaticSpellingCorrectionEnabled);
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}

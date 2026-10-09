@@ -5062,6 +5062,65 @@ def test_font_scaling(bundle: Path) -> None:
         )
 
 
+def test_text_checking(bundle: Path) -> None:
+    """`spellCheck` and `autoCorrect` reach the field.
+
+    The pair a search box turns off, and neither host read either until
+    2026-10-09. Each toolkit has a different half of it: GTK has an input hint
+    for spell checking and nothing at all for autocorrection, AppKit has both as
+    properties of the NSTextView a field is or borrows. So the dump carries what
+    the app asked for, in both hosts' words, and each host's own suite asserts
+    what its toolkit did with it.
+
+    Asserting arrival is this scenario's job and it is not a formality: a
+    TextInput prop reaches C++ only if `RCTTextInputViewConfig.js` declares it,
+    and this platform learned that the hard way with `accessibilityViewIsModal`,
+    which ReactCommon parses for everyone and only iOS declares.
+
+    `e2e/input.tsx` carries the field. Windows mounts it too and reads neither
+    prop, so it is skipped by name there.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("the Win32 field reads neither prop; an edit control has no spell check")
+
+    app = bundle_app(bundle.parent, "input")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltInput"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    asked = [line for line in tree.splitlines() if "spellcheck=" in line]
+    if len(asked) != 1:
+        raise Failure(
+            f"{len(asked)} fields report a spell-check setting; e2e/input.tsx sets one.\n{tree}"
+        )
+    if "spellcheck=off" not in asked[0] or "autocorrect=off" not in asked[0]:
+        raise Failure(f"the field did not ask for what the app wrote.\n{asked[0]}")
+    # The other fields said nothing, and nothing is the third state rather than
+    # a default: a host that resolved unset to false would mark all of them.
+    if len([line for line in tree.splitlines() if "autocorrect=" in line]) != 1:
+        raise Failure(
+            "more than one field reports an autocorrect setting; unset is not "
+            f"false.\n{tree}"
+        )
+
+
 def test_writing_direction(bundle: Path) -> None:
     """`writingDirection` reaches the paragraph.
 
@@ -6629,6 +6688,7 @@ SCENARIOS = [
     ("a radial gradient reaches the view, resolved", test_radial_gradient),
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),
+    ("spellCheck and autoCorrect reach the field", test_text_checking),
     ("writingDirection reaches the paragraph", test_writing_direction),
     ("a text shadow reaches the paragraph", test_text_shadow),
     ("a desktop text scale, and the props that refuse it", test_font_scaling),

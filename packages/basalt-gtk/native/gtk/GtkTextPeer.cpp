@@ -266,6 +266,32 @@ void rn_peer_select_region(GtkWidget *peer, int start, int end) {
   gtk_text_buffer_select_range(buffer, &from, &to);
 }
 
+void rn_peer_set_spell_check(GtkWidget *peer, int flag) {
+  if (peer == nullptr || flag == 0) {
+    // Unset leaves whatever the input method was configured to do, which is a
+    // real answer and not a missing one.
+    return;
+  }
+
+  // Read, changed, written back: the hints are a bitmask and this owns only one
+  // pair of bits. A plain set would drop whatever else put a hint there --
+  // nothing does today, and the next prop in this cluster will.
+  const GtkInputHints wanted =
+      flag == 1 ? GTK_INPUT_HINT_SPELLCHECK : GTK_INPUT_HINT_NO_SPELLCHECK;
+  const GtkInputHints unwanted =
+      flag == 1 ? GTK_INPUT_HINT_NO_SPELLCHECK : GTK_INPUT_HINT_SPELLCHECK;
+
+  if (!rn_peer_is_multiline(peer)) {
+    const GtkInputHints hints = gtk_text_get_input_hints(GTK_TEXT(peer));
+    gtk_text_set_input_hints(
+        GTK_TEXT(peer), static_cast<GtkInputHints>((hints & ~unwanted) | wanted));
+    return;
+  }
+  const GtkInputHints hints = gtk_text_view_get_input_hints(GTK_TEXT_VIEW(peer));
+  gtk_text_view_set_input_hints(
+      GTK_TEXT_VIEW(peer), static_cast<GtkInputHints>((hints & ~unwanted) | wanted));
+}
+
 void rn_peer_set_editable(GtkWidget *peer, gboolean editable) {
   if (peer == nullptr) {
     return;

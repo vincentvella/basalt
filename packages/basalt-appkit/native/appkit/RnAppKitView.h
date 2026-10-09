@@ -635,6 +635,13 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // layout carries; this is so the two hosts' dumps compare line by line.
 @property(nonatomic, copy, nullable) NSString *rnWritingDirection;
 
+// `spellCheck` and `autoCorrect`, for the tree dump: @"on", @"off" or nil for a
+// field that said nothing, which is the third state rather than a default. What
+// this host does with them is two properties on the NSTextView a field is or
+// borrows; see AppKitTextPeer.h.
+@property(nonatomic, copy, nullable) NSString *rnSpellCheck;
+@property(nonatomic, copy, nullable) NSString *rnAutoCorrect;
+
 // The `cursor` style property, as the CSS keyword React Native uses: "pointer",
 // "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
 // whatever encloses this view, which is what `cursor: 'auto'` means.

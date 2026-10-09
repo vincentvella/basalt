@@ -44,6 +44,19 @@ void rn_peer_select_region(GtkWidget *peer, int start, int end);
 
 void rn_peer_set_editable(GtkWidget *peer, gboolean editable);
 
+// `spellCheck`, as GTK has it: an input *hint*, which is a suggestion to the
+// input method rather than an instruction to a checker. Three states, because
+// unset is not false; see core/TextChecking.h.
+//
+// There is no hint for `autoCorrect`. GTK's nearest is `WORD_COMPLETION`, which
+// offers completions rather than correcting what was typed, so the prop is
+// recorded instead of approximated. backlog/text.md has it.
+//
+// 0 unset, 1 on, 2 off, matching core's enum. An int rather than the enum
+// because this header is plain C against GTK and its callers include it as
+// such.
+void rn_peer_set_spell_check(GtkWidget *peer, int flag);
+
 // Where the "changed" and cursor signals live: the widget for a GtkText, the
 // buffer for a GtkTextView. Callers connect to this rather than to the peer.
 GObject *rn_peer_signal_source(GtkWidget *peer);
