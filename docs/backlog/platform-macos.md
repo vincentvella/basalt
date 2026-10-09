@@ -241,10 +241,37 @@ If an entry here is about to be picked up, run the thing it describes first.
   GSK's shadow node taking an array. This host draws the first and logs once,
   because the mechanism is the layer's own shadow and a `CALayer` has one.
 
-  What it would take: a wrapper layer per extra shadow, each with the same
-  content and its own shadow properties, composited beneath the view -- which is
-  the shape the box shadows already use, except that those have a path and these
-  need the content's alpha, so the content would have to be rendered into each
-  wrapper rather than described to it. The first shadow is the one nearest the
-  content and so the one that matters most, which is why the first is the one
-  kept. backlog/correctness.md has the rest of the function.
+  **Three platforms, three behaviours, measured 2026-10-09 rather than
+  assumed:**
+
+  | | With `drop-shadow(a) drop-shadow(b)` |
+  | --- | --- |
+  | GTK | draws both, GSK's shadow node taking an array |
+  | basalt on macOS | draws `a`, the first |
+  | React Native on iOS | draws `b`, the **last** |
+
+  iOS's is not a decision either: `RCTViewComponentView.mm` loops over the
+  filter list and calls `[_swiftUIWrapper updateDropShadow:...]` for each one,
+  and that is a setter, so the last call wins. So the reference platform an app
+  author would compare against keeps a different one from this host.
+
+  **Why the wrapper-layer idea in this entry is a worse trade than it sounds.**
+  A `CALayer` casts its shadow from its *rendered subtree*, which is what makes
+  a shadow follow the content's alpha, so an extra shadow needs a layer whose
+  subtree is this view's content. A superlayer would do it and is not available:
+  an NSView's layer has the parent *view*'s layer as its superlayer and AppKit
+  owns that relationship. A sibling layer needs the content rendered into it,
+  which means snapshotting a live view hierarchy on every mutation and keeping
+  the snapshot in step with children, text, images and size.
+
+  There is a cheap case, a view whose alpha *is* its border box, where an
+  extra shadow could reuse the box-shadow layers that already take a path. It is
+  wrong for exactly the views the filter exists for: text, a transparent image,
+  children with gaps between them. Conditioning on "has no children and
+  no text and no image" is a lot of behaviour that changes with the content, for
+  a prop that is rare.
+
+  So this stays recorded. What *is* worth doing if it is ever picked up is
+  deciding between CSS's answer (draw them all, which GTK already does) and
+  iOS's (keep the last), rather than keeping a third answer that matches
+  neither. backlog/correctness.md has the rest of the function.
