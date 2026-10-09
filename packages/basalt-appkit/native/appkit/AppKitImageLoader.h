@@ -23,6 +23,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "ImageCache.h"
 
@@ -51,6 +52,32 @@ class AppKitImageLoader : public facebook::react::IImageLoader {
 
   void load(const std::string &uri, Callback &&callback);
 
+  // The frames of an animated image, or null.
+  //
+  // Separate from `load` because being animated is a property of the file
+  // rather than of the request: `load` answers with the first frame, which is
+  // what a still <Image> draws and what an animated one starts on, and this
+  // says whether there is more. Both come out of the same decode, so asking
+  // costs nothing.
+  //
+  // The arrays are the loader's own and stay at the same addresses for as long
+  // as the URI is cached, which is what lets a view tell "the same animation
+  // again" from "a different one" when a layout-only mutation re-applies the
+  // props. The pointer is good until the next load, since an eviction can take
+  // the entry away.
+  struct Animation {
+    // CGImageRefs, one per frame, bridged into an NSArray so that
+    // RnAppKitView.h stays free of C++ -- the same reason the paragraph is
+    // handed over as an object.
+    NSArray *frames;
+    // The file's own delays in milliseconds, unclamped: the clamp is
+    // core/ImageAnimation.h's and belongs where the arithmetic is.
+    NSArray<NSNumber *> *delaysMs;
+    // Zero for forever, which is what a looping GIF carries.
+    unsigned loopCount;
+  };
+  const Animation *animation(const std::string &uri);
+
   // --- IImageLoader ----------------------------------------------------------
   //
   // The same decode as `load`, reporting the size rather than the pixels. It
@@ -70,8 +97,17 @@ class AppKitImageLoader : public facebook::react::IImageLoader {
   // Nothing evicts from this yet; see docs/BACKLOG.md.
   // Caches an image and releases whatever the policy dropped.
   void remember(const std::string &uri, CGImageRef image);
+  void rememberAnimation(const std::string &uri,
+                         const std::vector<CGImageRef> &frames,
+                         const std::vector<unsigned> &delaysMs,
+                         unsigned loopCount);
+  void releaseAnimation(Animation &animation);
+  void forgetAnimations();
 
   std::unordered_map<std::string, CGImageRef> cache_;
+  // Only for the files that have more than one frame, so a still image costs
+  // nothing. Keyed by the same URI and dropped by the same eviction.
+  std::unordered_map<std::string, Animation> animations_;
   // Which URI goes next, and when. The images are this class's; the decision
   // is shared with the other two hosts. See core/ImageCache.h.
   basalt::ImageCachePolicy policy_;

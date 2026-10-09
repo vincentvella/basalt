@@ -200,6 +200,43 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 // fit.
 - (void)setRnImage:(nullable CGImageRef)image fit:(RnAppKitImageFit)fit;
 
+// The frames of an animated image, their delays, and how many times round.
+//
+// `frames` holds CGImageRefs and `delaysMs` the file's own delays, one per
+// frame, unclamped: core/ImageAnimation.h applies the clamp, because that rule
+// is the same on every host. `loopCount` is zero for forever. Fewer than two
+// frames, or nil, is a still image and clears any animation.
+//
+// The view shows frame zero immediately and schedules the rest. Passing the
+// same `frames` array again is a no-op, which is how a layout-only mutation
+// avoids restarting the animation; AppKitImageLoader keeps one array per URI
+// for exactly that.
+- (void)setRnImageFrames:(nullable NSArray *)frames
+                delaysMs:(nullable NSArray<NSNumber *> *)delaysMs
+               loopCount:(NSUInteger)loopCount;
+
+// Starts the timer that shows the rest of the frames, if one is not running.
+//
+// Separate from `setRnImageFrames:` so that nothing animates by itself: the
+// mounting manager starts it because the view is in an app, and the suite never
+// does, which keeps a test about frames deterministic. The GTK view is split
+// the same way, where it matters more -- rendering a widget there spins the
+// main loop, and a self-driven animation would be several frames further on
+// than the test left it.
+- (void)rnStartImageAnimation;
+
+// Moves the animation on by `milliseconds` and shows the frame that lands on,
+// answering with how long until the next one, or zero when nothing more is due.
+//
+// The elapsed time is an argument rather than a clock read inside: the host's
+// timer passes the delay it waited, and the suite passes whatever it likes,
+// which is what makes "a hundred and fifty milliseconds later" something a test
+// can say without sleeping.
+- (double)rnAdvanceImageAnimationBy:(double)milliseconds;
+
+// Which frame is showing, zero for a still image.
+@property(nonatomic, readonly) NSUInteger rnImageFrameIndex;
+
 // `tintColor`: recolours the image, keeping its alpha, so one silhouette asset
 // can be drawn in any colour. Pass nil to clear.
 //

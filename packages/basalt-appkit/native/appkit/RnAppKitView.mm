@@ -2,6 +2,7 @@
 
 #include "ControlMetrics.h"
 #include "Backface.h"
+#include "ImageAnimation.h"
 #include "FocusRing.h"
 #include "ScrollIndicator.h"
 
@@ -430,6 +431,15 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   NSString *_roleName;
   RnTextLayout *_textLayout;
   CGImageRef _image;
+  // An animated image's frames, their delays as the file carried them, and how
+  // many times round. See setRnImageFrames:delaysMs:loopCount:. `_image` is
+  // whichever frame is showing, so everything that draws stays unchanged.
+  NSArray *_imageFrames;
+  std::vector<unsigned> _imageDelays;
+  NSUInteger _imageLoopCount;
+  NSUInteger _imageFrame;
+  double _imageElapsedMs;
+  NSTimer *_imageTimer;
   NSColor *_imageTint;
   RnAppKitImageFit _imageFit;
   CGFloat _imageBlur;
@@ -504,6 +514,10 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 - (void)dealloc {
   CGImageRelease(_image);
   CGImageRelease(_imageBlurred);
+  // A scheduled timer holds its target; this one holds `self` weakly so a view
+  // released mid-animation is not kept alive by it, and the timer still has to
+  // go or it fires into nothing once a tenth of a second.
+  [_imageTimer invalidate];
   // An outset shadow's layer lives in the superlayer, so it outlives this view
   // unless it is taken out. Ordinarily -viewDidMoveToSuperview has already done
   // it; this is for a view released without being unmounted first.
@@ -997,6 +1011,17 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
 }
 
 - (void)setRnImage:(CGImageRef)image fit:(RnAppKitImageFit)fit {
+  // An animation owns `_image`, and the mounting manager re-applies the first
+  // frame on every mutation that touched this view -- a layout-only one
+  // included. Taking it would restart the GIF on every resize, so what is
+  // taken here is the fit alone.
+  if (_imageFrames.count > 1 && image == (__bridge CGImageRef)_imageFrames.firstObject) {
+    if (_imageFit != fit) {
+      _imageFit = fit;
+      self.needsDisplay = YES;
+    }
+    return;
+  }
   if (_image == image && _imageFit == fit) {
     return;
   }
@@ -1009,6 +1034,117 @@ static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
   _imageBlurred = nullptr;
   _imageFit = fit;
   self.needsDisplay = YES;
+}
+
+// The frames of an animated image. See the header.
+- (void)setRnImageFrames:(NSArray *)frames
+                delaysMs:(NSArray<NSNumber *> *)delaysMs
+               loopCount:(NSUInteger)loopCount {
+  // The same animation again, which is what a layout-only mutation produces:
+  // the loader hands back the arrays it cached, so this is a pointer compare,
+  // and the animation keeps its place rather than starting over on every
+  // resize.
+  if (_imageFrames == frames && _imageLoopCount == loopCount) {
+    return;
+  }
+
+  [_imageTimer invalidate];
+  _imageTimer = nil;
+  _imageFrames = frames.count > 1 ? frames : nil;
+  _imageLoopCount = _imageFrames != nil ? loopCount : 0;
+  _imageFrame = 0;
+  _imageElapsedMs = 0.0;
+  _imageDelays.clear();
+  if (_imageFrames == nil) {
+    return;
+  }
+  for (NSNumber *delay in delaysMs) {
+    _imageDelays.push_back(delay.unsignedIntValue);
+  }
+
+  [self rnShowImageFrame:0];
+}
+
+- (void)rnStartImageAnimation {
+  if (_imageFrames.count < 2 || _imageTimer != nil) {
+    return;
+  }
+  [self rnScheduleImageFrameIn:[self rnAdvanceImageAnimationBy:0.0]];
+}
+
+- (NSUInteger)rnImageFrameIndex {
+  return _imageFrame;
+}
+
+- (double)rnAdvanceImageAnimationBy:(double)milliseconds {
+  if (_imageFrames.count < 2 || _imageDelays.size() != _imageFrames.count) {
+    return 0.0;
+  }
+  if (milliseconds > 0.0) {
+    _imageElapsedMs += milliseconds;
+  }
+
+  const basalt::ImageAnimationStep step =
+      basalt::imageAnimationStep(_imageDelays, static_cast<unsigned>(_imageLoopCount),
+                                 static_cast<std::uint64_t>(_imageElapsedMs));
+  if (step.frame != _imageFrame) {
+    [self rnShowImageFrame:step.frame];
+  }
+  return step.nextInMs;
+}
+
+// Puts one frame in `_image`, so that everything which draws an image draws
+// this one and nothing else in the view has to know about animation.
+- (void)rnShowImageFrame:(NSUInteger)index {
+  if (index >= _imageFrames.count) {
+    return;
+  }
+  _imageFrame = index;
+
+  CGImageRef previous = _image;
+  _image = CGImageRetain((__bridge CGImageRef)_imageFrames[index]);
+  CGImageRelease(previous);
+  // The blur is of a frame, so it goes with the frame.
+  CGImageRelease(_imageBlurred);
+  _imageBlurred = nullptr;
+  self.needsDisplay = YES;
+}
+
+- (void)rnScheduleImageFrameIn:(double)milliseconds {
+  [_imageTimer invalidate];
+  _imageTimer = nil;
+  if (milliseconds <= 0.0) {
+    return;
+  }
+
+  // An NSTimer rather than a CADisplayLink, which is what the scrolling uses.
+  // A frame is due at a time the file names, so there is nothing to interpolate
+  // and nothing to do on the frames in between; a display link would wake this
+  // view sixty times a second to show the same picture.
+  //
+  // Weakly, so a view released mid-animation is not kept alive by its own
+  // timer.
+  __weak RnAppKitView *weakSelf = self;
+  _imageTimer = [NSTimer scheduledTimerWithTimeInterval:milliseconds / 1000.0
+                                                repeats:NO
+                                                  block:^(NSTimer *timer) {
+                                                    RnAppKitView *view = weakSelf;
+                                                    if (view == nil) {
+                                                      [timer invalidate];
+                                                      return;
+                                                    }
+                                                    // By the delay asked for
+                                                    // rather than by the wall
+                                                    // clock: a late timer makes
+                                                    // the animation run slow
+                                                    // instead of skipping
+                                                    // frames, which is the
+                                                    // kinder failure for a
+                                                    // four-frame spinner.
+                                                    const double next =
+                                                        [view rnAdvanceImageAnimationBy:milliseconds];
+                                                    [view rnScheduleImageFrameIn:next];
+                                                  }];
 }
 
 // `image`, blurred, at `width` by `height` device pixels.
@@ -2796,6 +2932,14 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     // identical in every other line of this dump and different on screen.
     [out appendFormat:@" texture=%zux%zu", CGImageGetWidth(_image), CGImageGetHeight(_image)];
     [out appendFormat:@" fit=%s", RnAppKitImageFitName(_imageFit)];
+    // That this image moves, which no other line can show: an animated GIF and
+    // its first frame are the same size and the same picture in a snapshot.
+    // Not which frame, deliberately -- the two hosts tick on their own clocks
+    // and a cross-host diff would then be a race. Each suite asserts the frames
+    // itself.
+    if (_imageFrames.count > 1) {
+      [out appendString:@" animated=1"];
+    }
     // Printed for the same reason the fit is: a tinted image and an untinted
     // one are identical in every other line of this dump and different on
     // screen. Formatted exactly as GTK formats a colour, so the cross-host diff

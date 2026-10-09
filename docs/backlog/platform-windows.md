@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (20):**
+**Open (21):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -26,6 +26,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 19. No text decoration, so an underline or a strikethrough is not drawn
 20. `fontVariant` and a fragment's `opacity` are not read
 21. `writingDirection` is not read, so a right-to-left paragraph starts on the left
+22. An animated GIF is painted as a still
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -402,3 +403,29 @@ and none of it is a missing half.
   alpha mask of what is drawn, which is exactly a text shadow with a radius. The
   standard deviation is what Direct2D's shadow takes too, so nothing converts.
   The end-to-end scenario is skipped here by name.
+
+- **An animated GIF is painted as a still.** The other two hosts play one as of
+  2026-10-09: the frames and their delays come from each platform's decoder and
+  the pacing is shared, in `core/ImageAnimation.h`, which clamps a delay of 10ms
+  or less to 100 the way every browser does and answers which frame an elapsed
+  time lands on. So the arithmetic and the policy are already here; what is
+  missing is the decode and a timer.
+
+  `RnWin32Image` decodes through WIC, and the frames are a few calls away:
+  `IWICBitmapDecoder::GetFrameCount` says how many,
+  `IWICBitmapDecoder::GetFrame(i)` hands over each one, and
+  `IWICBitmapFrameDecode::GetMetadataQueryReader` plus
+  `GetMetadataByName(L"/grctlext/Delay")` is the per-frame delay in hundredths
+  of a second. The loop count is on the decoder's own reader, under
+  `/appext/application` and `/appext/data` for the NETSCAPE2.0 extension. A GIF
+  whose frames are smaller than the canvas needs the disposal method
+  (`/grctlext/Disposal`) and a composite onto a persistent surface, which is
+  the part ImageIO and gdk-pixbuf both do invisibly and WIC does not.
+
+  The timer is the other half, and this host already has the shape of it: the
+  choreographer is a 16ms timer (entry 5), so a frame due in 80ms is a counter
+  rather than a new mechanism. The view would hold the frames and ask
+  `imageAnimationStep` on each tick, which is what `RnAppKitView` does.
+
+  The end-to-end scenario is skipped here by name, and each of the other two
+  hosts asserts its own frames against real pixels.

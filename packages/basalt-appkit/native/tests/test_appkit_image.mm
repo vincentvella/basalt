@@ -413,3 +413,200 @@ TEST(image_blur_is_reported_in_the_tree) {
     EXPECT(![[view describeTree] containsString:@"blur="]);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Animated images.
+//
+// The frames come out of a real GIF rather than from bitmaps built here: the
+// delays and the loop count are in the file's own bytes, and reading them is
+// half of what this platform had to learn. The file is four pixels square,
+// ninety-five bytes, and inline for the same reason the still fixtures above
+// are -- it needs no asset pipeline and no fixture to keep in step.
+//
+// Written with ImageMagick:
+//
+//   magick -loop 0 -delay 8 -size 4x4 xc:'#ff0000' \
+//                 -delay 4 -size 4x4 xc:'#0000ff' anim.gif
+//
+// so frame one is red for 80ms and frame two is blue for 40ms, forever. The
+// delays differ on purpose: equal ones hide an engine that uses the first
+// frame's delay for all of them.
+// ---------------------------------------------------------------------------
+namespace {
+
+const char *const kAnimatedGifBase64 =
+    "R0lGODlhBAAEAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACAAAACwAAAAABAAEAAAC"
+    "BISPCQUAIfkEAAQAAAAsAAAAAAQABACAAAD/AAAAAgSEjwkFADs=";
+
+CGImageSourceRef animatedGifSource() {
+  NSData *bytes = [[NSData alloc] initWithBase64EncodedString:@(kAnimatedGifBase64) options:0];
+  return CGImageSourceCreateWithData((__bridge CFDataRef)bytes, nullptr);
+}
+
+// The frames of that GIF, as the view takes them.
+NSArray *animatedGifFrames() {
+  CGImageSourceRef source = animatedGifSource();
+  NSMutableArray *frames = [NSMutableArray array];
+  for (size_t index = 0; index < CGImageSourceGetCount(source); index++) {
+    CGImageRef frame = CGImageSourceCreateImageAtIndex(source, index, nullptr);
+    if (frame != nullptr) {
+      [frames addObject:(__bridge_transfer id)frame];
+    }
+  }
+  CFRelease(source);
+  return frames;
+}
+
+// The colour at the centre of the view, drawn onto white. All three channels,
+// unlike `drawnPixels` above: red and blue differ in two of them and agree in
+// the green, so one channel cannot tell these frames apart.
+struct Rgb {
+  unsigned char red{0};
+  unsigned char green{0};
+  unsigned char blue{0};
+};
+
+Rgb centreColour(RnAppKitView *view, CGSize size) {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                               8, 0, space, kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+  CGContextTranslateCTM(context, 0, size.height);
+  CGContextScaleCTM(context, 1, -1);
+
+  NSGraphicsContext *previous = NSGraphicsContext.currentContext;
+  NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithCGContext:context
+                                                                             flipped:YES];
+  [view drawRect:NSMakeRect(0, 0, size.width, size.height)];
+  NSGraphicsContext.currentContext = previous;
+
+  auto *bytes = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  const size_t row = (size_t)size.height / 2;
+  const size_t column = (size_t)size.width / 2;
+  const Rgb colour{bytes[row * stride + column * 4], bytes[row * stride + column * 4 + 1],
+                   bytes[row * stride + column * 4 + 2]};
+  CGContextRelease(context);
+  return colour;
+}
+
+RnAppKitView *animatedView(NSArray *frames, NSArray<NSNumber *> *delays, NSUInteger loops) {
+  RnAppKitView *view = [RnAppKitView viewWithTag:1];
+  [view setRnFrameX:0 y:0 width:20 height:20];
+  [view setRnImage:(__bridge CGImageRef)frames.firstObject fit:RnAppKitImageFitStretch];
+  [view setRnImageFrames:frames delaysMs:delays loopCount:loops];
+  return view;
+}
+
+} // namespace
+
+TEST(animated_image_the_frame_follows_the_time_it_is_advanced_by) {
+  @autoreleasepool {
+    NSArray *frames = animatedGifFrames();
+    EXPECT_EQ((int)frames.count, 2);
+
+    RnAppKitView *view = animatedView(frames, @[@80, @40], 0);
+    const CGSize size = CGSizeMake(20, 20);
+
+    // Frame one, red, which is also what a still <Image> of this file draws.
+    EXPECT(centreColour(view, size).red > 200);
+    EXPECT(centreColour(view, size).blue < 60);
+    EXPECT_EQ((int)view.rnImageFrameIndex, 0);
+
+    // Still frame one at 79ms: the delay is the file's and not a guess.
+    [view rnAdvanceImageAnimationBy:79];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 0);
+
+    // Frame two, blue, one millisecond later.
+    [view rnAdvanceImageAnimationBy:1];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+    EXPECT(centreColour(view, size).blue > 200);
+    EXPECT(centreColour(view, size).red < 60);
+
+    // And round again after the second frame's own, shorter delay: 40ms, not
+    // another 80.
+    [view rnAdvanceImageAnimationBy:40];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 0);
+    EXPECT(centreColour(view, size).red > 200);
+  }
+}
+
+TEST(animated_image_says_how_long_until_the_next_frame) {
+  @autoreleasepool {
+    RnAppKitView *view = animatedView(animatedGifFrames(), @[@80, @40], 0);
+
+    // What the host's timer is set to, which is why this is answered rather
+    // than kept private: at the start of frame one, the whole 80ms.
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:0], 80.0, 0.01);
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:30], 50.0, 0.01);
+    // Into frame two, which is 40ms long.
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:50], 40.0 - 0.0, 0.01);
+  }
+}
+
+TEST(animated_image_a_loop_count_stops_on_the_last_frame) {
+  @autoreleasepool {
+    RnAppKitView *view = animatedView(animatedGifFrames(), @[@80, @40], 1);
+    const CGSize size = CGSizeMake(20, 20);
+
+    // One pass is 120ms. After it the animation stops, on frame two, and says
+    // nothing more is due -- which is what stops the timer.
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:120], 0.0, 0.01);
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+    EXPECT(centreColour(view, size).blue > 200);
+
+    [view rnAdvanceImageAnimationBy:1000];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+  }
+}
+
+TEST(animated_image_a_single_frame_is_a_still_image) {
+  @autoreleasepool {
+    NSArray *frames = animatedGifFrames();
+    RnAppKitView *view = animatedView(@[frames.firstObject], @[@80], 0);
+
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:500], 0.0, 0.01);
+    EXPECT_EQ((int)view.rnImageFrameIndex, 0);
+    EXPECT(![[view describeTree] containsString:@"animated=1"]);
+  }
+}
+
+// A re-mount must not restart the animation, which is the bug this shape of
+// mounting manager invites: every mutation that touches an <Image> re-applies
+// the first frame, a layout-only one included, so a spinner would stutter back
+// to the top on every resize.
+TEST(animated_image_survives_the_props_being_reapplied) {
+  @autoreleasepool {
+    NSArray *frames = animatedGifFrames();
+    RnAppKitView *view = animatedView(frames, @[@80, @40], 0);
+
+    [view rnAdvanceImageAnimationBy:100];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+
+    // What the mounting manager does on a mutation: the first frame again, and
+    // the same arrays the loader cached.
+    [view setRnImage:(__bridge CGImageRef)frames.firstObject fit:RnAppKitImageFitStretch];
+    [view setRnImageFrames:frames delaysMs:@[@80, @40] loopCount:0];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+    EXPECT(centreColour(view, CGSizeMake(20, 20)).blue > 200);
+
+    // A different animation does start over, which is the same check from the
+    // other side: the frames array is what tells them apart.
+    [view setRnImageFrames:animatedGifFrames() delaysMs:@[@80, @40] loopCount:0];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 0);
+  }
+}
+
+TEST(animated_image_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *view = animatedView(animatedGifFrames(), @[@80, @40], 0);
+    EXPECT([[view describeTree] containsString:@"animated=1"]);
+
+    // Cleared with the frames, so an <Image> whose source becomes a still one
+    // does not keep claiming to move.
+    [view setRnImageFrames:nil delaysMs:nil loopCount:0];
+    EXPECT(![[view describeTree] containsString:@"animated=1"]);
+  }
+}

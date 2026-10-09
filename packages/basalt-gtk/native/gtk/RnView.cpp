@@ -2,6 +2,7 @@
 
 #include "Backface.h"
 #include "ScrollIndicator.h"
+#include "ImageAnimation.h"
 
 #include "ControlMetrics.h"
 #include "FocusRing.h"
@@ -174,6 +175,23 @@ struct _RnView {
 
   GdkTexture *texture;
   RnImageFit texture_fit;
+  // An animated image, which gdk-pixbuf owns the frames of: there is no
+  // indexed access to them, only an iterator with a clock. The pacing is ours
+  // anyway, through core/ImageAnimation.h's clamp and an elapsed time the
+  // caller supplies, which is what lets a test move a GIF on without waiting
+  // for it. See rn_view_set_animation.
+  GdkPixbufAnimation *animation;
+  GdkPixbufAnimationIter *animation_iter;
+  // Where the iterator's own clock has got to, in microseconds since a zero
+  // start. Its delays decide the frame boundaries; ours decide when.
+  gint64 animation_at_us;
+  // What is left over of the time advanced so far, against the current frame's
+  // clamped delay.
+  double animation_budget_ms;
+  // The frame clock's timestamp at the last tick, so the advance is by the time
+  // that actually passed rather than by an assumed refresh rate.
+  gint64 animation_tick_at_us;
+  guint animation_tick;
   double indicator_v_offset;
   double indicator_v_length;
   double indicator_h_offset;
@@ -1133,6 +1151,14 @@ static void rn_view_dispose(GObject *object) {
 
   g_clear_object(&self->text_layout);
   g_clear_object(&self->texture);
+  // The tick callback holds no reference, so it has to come off before the
+  // widget goes: GTK warns about a callback on a finalised widget.
+  if (self->animation_tick != 0) {
+    gtk_widget_remove_tick_callback(GTK_WIDGET(self), self->animation_tick);
+    self->animation_tick = 0;
+  }
+  g_clear_object(&self->animation_iter);
+  g_clear_object(&self->animation);
   g_clear_pointer(&self->role_name, g_free);
   g_clear_pointer(&self->test_id, g_free);
   g_clear_pointer(&self->accessibility_order, g_array_unref);
@@ -1979,6 +2005,166 @@ void rn_view_set_texture(RnView *self, GdkTexture *texture, RnImageFit fit) {
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
+// Shows whatever frame the iterator is on, as a texture.
+//
+// A new GdkTexture per frame, which sounds wasteful and is what GDK offers: a
+// texture is immutable, and gdk-pixbuf hands back a GdkPixbuf. The frames are
+// small (an animated image is an icon or a spinner, in practice) and the
+// alternative is a GL upload path this host does not have.
+// gdk-pixbuf 2.44 deprecated its whole animation API, with nothing in
+// gdk-pixbuf to replace it: GNOME's direction is glycin, a separate library
+// and a new dependency, and GTK4 itself has no frame source for a GIF at all
+// -- `gtk_image_set_from_file` on one shows a still. So this uses the
+// deprecated API deliberately rather than by accident, and
+// docs/backlog/image.md records what replacing it would take.
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
+static void rn_view_show_animation_frame(RnView *self) {
+  GdkPixbuf *pixbuf = gdk_pixbuf_animation_iter_get_pixbuf(self->animation_iter);
+  if (pixbuf == nullptr) {
+    return;
+  }
+  GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
+  if (texture == nullptr) {
+    return;
+  }
+  rn_view_set_texture(self, texture, self->texture_fit);
+  g_object_unref(texture);
+}
+
+// The current frame's delay, clamped the way both hosts clamp it.
+static double rn_view_animation_delay_ms(RnView *self) {
+  const int delay = gdk_pixbuf_animation_iter_get_delay_time(self->animation_iter);
+  if (delay < 0) {
+    // gdk-pixbuf's answer for "this frame is the last one", which a GIF that
+    // does not loop reaches.
+    return 0.0;
+  }
+  return basalt::clampedImageFrameDelay(static_cast<unsigned>(delay));
+}
+
+double rn_view_advance_animation(RnView *self, double milliseconds) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0.0);
+  if (self->animation_iter == nullptr) {
+    return 0.0;
+  }
+
+  self->animation_budget_ms += milliseconds;
+
+  // One frame at a time, and the iterator is advanced by *its* delay while the
+  // budget is spent at *ours*. So gdk-pixbuf decides where the frame boundaries
+  // are and this decides when they are reached, which is how a GIF asking for a
+  // delay of zero is paced the same here as on the other host: the clamp is
+  // shared and the frames are not.
+  //
+  // Frame by frame rather than by jumping, because the iterator only moves
+  // forward and has no seek. The work is proportional to the time advanced,
+  // which is a frame clock's delta in an app and a number a test chose in the
+  // suite.
+  for (;;) {
+    const double delay = rn_view_animation_delay_ms(self);
+    if (delay <= 0.0) {
+      // The last frame of an animation that does not loop. Nothing more is due,
+      // which is what the caller stops ticking on.
+      self->animation_budget_ms = 0.0;
+      return 0.0;
+    }
+    if (self->animation_budget_ms < delay) {
+      return delay - self->animation_budget_ms;
+    }
+    self->animation_budget_ms -= delay;
+
+    const int own = gdk_pixbuf_animation_iter_get_delay_time(self->animation_iter);
+    self->animation_at_us += static_cast<gint64>(own > 0 ? own : 0) * 1000;
+    GTimeVal at;
+    at.tv_sec = static_cast<glong>(self->animation_at_us / G_USEC_PER_SEC);
+    at.tv_usec = static_cast<glong>(self->animation_at_us % G_USEC_PER_SEC);
+    if (gdk_pixbuf_animation_iter_advance(self->animation_iter, &at)) {
+      rn_view_show_animation_frame(self);
+    }
+  }
+}
+
+static gboolean rn_view_animation_tick(GtkWidget *widget,
+                                       GdkFrameClock *clock,
+                                       gpointer data) {
+  RnView *self = RN_VIEW(widget);
+  (void)data;
+
+  if (self->animation_iter == nullptr) {
+    self->animation_tick = 0;
+    return G_SOURCE_REMOVE;
+  }
+
+  // The frame clock's own timestamps, so the advance is by the time that
+  // actually passed: a 120Hz display and a 60Hz one then run the animation at
+  // the same speed, and a window the compositor stopped drawing does not
+  // accumulate time it never showed.
+  const gint64 now = gdk_frame_clock_get_frame_time(clock);
+  const gint64 since = self->animation_tick_at_us == 0 ? 0 : now - self->animation_tick_at_us;
+  self->animation_tick_at_us = now;
+
+  if (rn_view_advance_animation(self, static_cast<double>(since) / 1000.0) <= 0.0) {
+    self->animation_tick = 0;
+    return G_SOURCE_REMOVE;
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+void rn_view_set_animation(RnView *self, GdkPixbufAnimation *animation) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  if (self->animation == animation) {
+    // The same animation again, which is what a layout-only mutation produces:
+    // the loader hands back the object it cached, so this is a pointer compare
+    // and the animation keeps its place rather than starting over on a resize.
+    return;
+  }
+
+  if (self->animation_tick != 0) {
+    gtk_widget_remove_tick_callback(GTK_WIDGET(self), self->animation_tick);
+    self->animation_tick = 0;
+  }
+  g_clear_object(&self->animation_iter);
+  g_clear_object(&self->animation);
+  self->animation_at_us = 0;
+  self->animation_budget_ms = 0.0;
+  self->animation_tick_at_us = 0;
+
+  if (animation == nullptr || gdk_pixbuf_animation_is_static_image(animation)) {
+    return;
+  }
+
+  self->animation = static_cast<GdkPixbufAnimation *>(g_object_ref(animation));
+  GTimeVal start;
+  start.tv_sec = 0;
+  start.tv_usec = 0;
+  self->animation_iter = gdk_pixbuf_animation_get_iter(self->animation, &start);
+  rn_view_show_animation_frame(self);
+}
+
+void rn_view_start_animation(RnView *self) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  if (self->animation_iter == nullptr || self->animation_tick != 0) {
+    return;
+  }
+
+  // A tick callback rather than a timeout, so the frames arrive with the
+  // compositor's and a window that is not being drawn is not woken. It asks
+  // for every frame and advances by the time that passed, which is cheap next
+  // to redrawing: the advance only produces a texture when a delay has
+  // actually elapsed.
+  self->animation_tick =
+      gtk_widget_add_tick_callback(GTK_WIDGET(self), rn_view_animation_tick, nullptr, nullptr);
+}
+
+gboolean rn_view_is_animated(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), FALSE);
+  return self->animation != nullptr;
+}
+
+G_GNUC_END_IGNORE_DEPRECATIONS
+
 static void rn_view_scroll_offset(RnView *self, double *offset_x, double *offset_y) {
   *offset_x = self->scroll_x;
   *offset_y = self->scroll_y;
@@ -2713,6 +2899,14 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
                            gdk_texture_get_width(self->texture),
                            gdk_texture_get_height(self->texture),
                            rn_image_fit_name(self->texture_fit));
+    // That this image moves, which no other line can show: an animated GIF and
+    // its first frame are the same size and the same picture in a snapshot.
+    // Not which frame, deliberately -- the two hosts tick on their own clocks,
+    // so a cross-host diff of that would be a race. Each suite asserts the
+    // frames itself.
+    if (self->animation != nullptr) {
+      g_string_append(out, " animated=1");
+    }
     // Printed for the same reason the fit is: a tinted image and an untinted
     // one are identical in every other line of this dump and different on
     // screen, and this is the only thing a test without pixels can read.

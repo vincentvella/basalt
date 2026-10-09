@@ -24,6 +24,10 @@ GtkImageLoader::~GtkImageLoader() {
     g_clear_object(&texture);
   }
   cache_.clear();
+  for (auto &[uri, animation] : animations_) {
+    g_clear_object(&animation);
+  }
+  animations_.clear();
 }
 
 // Caches the texture and drops whatever that pushed out. See core/ImageCache.h
@@ -44,6 +48,11 @@ void GtkImageLoader::remember(const std::string &uri, GdkTexture *texture) {
       g_clear_object(&it->second);
       cache_.erase(it);
     }
+    const auto animated = animations_.find(evicted);
+    if (animated != animations_.end()) {
+      g_clear_object(&animated->second);
+      animations_.erase(animated);
+    }
   }
 }
 
@@ -60,13 +69,23 @@ gboolean GtkImageLoader::deliver(gpointer data) {
     GBytes *bytes = g_bytes_new(pending->bytes.data(), pending->bytes.size());
     GError *decodeError = nullptr;
     texture = gdk_texture_new_from_bytes(bytes, &decodeError);
-    g_bytes_unref(bytes);
     if (texture == nullptr) {
       error = decodeError != nullptr ? decodeError->message : "could not decode image";
       g_clear_error(&decodeError);
     } else {
+      // The same bytes again, as an animation. A second decode rather than one
+      // path for both, because `gdk_texture_new_from_bytes` is what every
+      // still image goes through and this must not change what it produces:
+      // gdk-pixbuf's loaders and GDK's are not the same set, and a PNG that
+      // decodes one way may not decode the other.
+      //
+      // Only one frame's worth of extra work for a still image, which is what
+      // nearly every <Image> is: `is_static_image` is the first thing asked,
+      // and gdk-pixbuf has already stopped at the first frame to answer it.
+      pending->loader->rememberAnimation(pending->uri, bytes);
       pending->loader->remember(pending->uri, texture);
     }
+    g_bytes_unref(bytes);
   }
 
   pending->callback(texture, error);
@@ -114,6 +133,53 @@ void GtkImageLoader::loadImage(const std::string &uri,
              static_cast<double>(gdk_texture_get_height(texture)),
              nullptr);
   });
+}
+
+// Decodes `bytes` as an animation and keeps it when it turns out to be one.
+//
+// Through a memory input stream, which is the only entry point gdk-pixbuf
+// offers for animation-from-bytes. It reads synchronously, and on the main
+// thread, for the same reason the texture above is decoded there: what comes
+// out is a GObject whose frames become GdkTextures, and both are only safe on
+// the thread that will use them. The fetch, which is the slow part, already
+// happened on the worker.
+void GtkImageLoader::rememberAnimation(const std::string &uri, GBytes *bytes) {
+  if (animations_.find(uri) != animations_.end()) {
+    return;
+  }
+
+// gdk-pixbuf 2.44 deprecated its whole animation API, with nothing in
+// gdk-pixbuf to replace it: GNOME's direction is glycin, a separate library
+// and a new dependency, and GTK4 itself has no frame source for a GIF at all
+// -- `gtk_image_set_from_file` on one shows a still. So this uses the
+// deprecated API deliberately rather than by accident, and
+// docs/backlog/image.md records what replacing it would take.
+  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
+  GInputStream *stream = g_memory_input_stream_new_from_bytes(bytes);
+  GError *error = nullptr;
+  GdkPixbufAnimation *animation =
+      gdk_pixbuf_animation_new_from_stream(stream, nullptr, &error);
+  g_object_unref(stream);
+  if (animation == nullptr) {
+    // Not an error worth reporting: the still decode above already succeeded,
+    // and a format gdk-pixbuf has no loader for is simply not animated.
+    g_clear_error(&error);
+    return;
+  }
+
+  if (gdk_pixbuf_animation_is_static_image(animation) == TRUE) {
+    g_object_unref(animation);
+    return;
+  }
+
+  animations_[uri] = animation;
+  G_GNUC_END_IGNORE_DEPRECATIONS
+}
+
+GdkPixbufAnimation *GtkImageLoader::animation(const std::string &uri) {
+  const auto found = animations_.find(uri);
+  return found == animations_.end() ? nullptr : found->second;
 }
 
 facebook::react::IImageLoader::CacheStatus GtkImageLoader::getCacheStatus(

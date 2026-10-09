@@ -553,6 +553,21 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
   const std::string uri = source.uri;
   const Tag tag = shadowView.tag;
 
+  // Hands a view the animation behind an image, or clears the one it had.
+  //
+  // Asked of the loader rather than carried in the load callback, because being
+  // animated is a property of the file and the callback's job is the pixels.
+  const auto applyAnimation = [this](RnView *target, const std::string &forUri) {
+    if (target == nullptr) {
+      return;
+    }
+    rn_view_set_animation(target, forUri.empty() ? nullptr : imageLoader_->animation(forUri));
+    // And drive it, which the view deliberately does not do for itself; see
+    // rn_view_start_animation. Idempotent, so the re-apply on every mutation
+    // costs nothing.
+    rn_view_start_animation(target);
+  };
+
   // A mutation that changed only layout must not restart the load, or an
   // <Image> would flicker every time its parent resized. Re-requesting the same
   // URI is cheap -- the loader answers from its cache on this thread -- and it
@@ -560,11 +575,13 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
   const auto known = imageUris_.find(tag);
   if (known != imageUris_.end() && known->second == uri) {
     if (!uri.empty()) {
-      imageLoader_->load(uri, [this, tag, fit](GdkTexture *texture, const std::string &) {
-        if (RnView *target = viewForTag(tag); target != nullptr) {
-          rn_view_set_texture(target, texture, fit);
-        }
-      });
+      imageLoader_->load(
+          uri, [this, tag, fit, uri, applyAnimation](GdkTexture *texture, const std::string &) {
+            if (RnView *target = viewForTag(tag); target != nullptr) {
+              rn_view_set_texture(target, texture, fit);
+              applyAnimation(target, uri);
+            }
+          });
     }
     return;
   }
@@ -573,6 +590,7 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
 
   if (uri.empty()) {
     rn_view_set_texture(view, nullptr, fit);
+    applyAnimation(view, uri);
     return;
   }
 
@@ -601,13 +619,14 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
     emitter->onLoadStart();
   }
 
-  imageLoader_->load(uri, [this, tag, fit, source, isExpoImage](GdkTexture *texture,
-                                                              const std::string &error) {
+  imageLoader_->load(uri, [this, tag, fit, source, isExpoImage, applyAnimation](
+                              GdkTexture *texture, const std::string &error) {
     // The view may have been deleted while the image was in flight, which is
     // why this looks the tag up again rather than capturing the widget.
     RnView *target = viewForTag(tag);
     if (target != nullptr) {
       rn_view_set_texture(target, texture, fit);
+      applyAnimation(target, source.uri);
     }
 
     if (texture == nullptr) {

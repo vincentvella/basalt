@@ -72,6 +72,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_key_events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_js_runtime_access.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_animation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_bounds.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_indicator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_snap.cpp

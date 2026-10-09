@@ -363,6 +363,42 @@ typedef enum {
 // the texture and GtkMountingManager chooses the fit.
 void rn_view_set_texture(RnView *self, GdkTexture *texture, RnImageFit fit);
 
+// An animated image, which replaces the texture frame by frame. Pass null, or
+// a static image, to stop animating.
+//
+// The frames are gdk-pixbuf's and so is their order: it offers an iterator with
+// a clock rather than indexed access to frames, which is why this takes the
+// animation itself where the AppKit view takes an array. The *pacing* is
+// shared, through core/ImageAnimation.h's clamp, so a GIF asking for a delay of
+// zero runs at the same speed on both hosts.
+//
+// Passing the same animation again is a no-op, which is how a layout-only
+// mutation avoids restarting it; GtkImageLoader keeps one animation per URI for
+// exactly that.
+void rn_view_set_animation(RnView *self, GdkPixbufAnimation *animation);
+
+// Starts driving the animation from the widget's frame clock, if it has one and
+// is not being driven already.
+//
+// Separate from `rn_view_set_animation` so that nothing animates by itself: the
+// mounting manager starts it because the view is in an app, and the suite never
+// does, which is what makes a test about frames deterministic. A test that
+// spins the main loop for a different reason -- rendering a widget does -- would
+// otherwise find the animation several frames further on than it left it.
+void rn_view_start_animation(RnView *self);
+
+// Moves the animation on by `milliseconds` and shows the frame that lands on,
+// answering with how long until the next one, or zero when nothing more is due.
+//
+// The elapsed time is an argument rather than a clock read inside: the widget's
+// own tick callback passes what the frame clock says actually passed, and the
+// suite passes whatever it likes, which is what makes "a hundred and fifty
+// milliseconds later" something a test can say without sleeping.
+double rn_view_advance_animation(RnView *self, double milliseconds);
+
+// Whether this view is showing an animation rather than a still image.
+gboolean rn_view_is_animated(RnView *self);
+
 // `tintColor`: recolours the image, keeping its alpha. An icon drawn as a
 // silhouette is the usual reason -- one asset, any colour.
 //

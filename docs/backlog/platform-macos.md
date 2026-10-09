@@ -6,7 +6,7 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (3):**
+**Open (2):**
 
 1. ~~Justified text~~, which worked all along
 2. ~~Fonts loaded at runtime are untested~~
@@ -15,7 +15,7 @@ If an entry here is about to be picked up, run the thing it describes first.
 4. Nothing tested against a real screen reader
 5. ~~No accessibility subroles~~
 6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
-7. No animated images
+7. ~~No animated images~~
 8. ~~No gesture cancellation from the platform~~, and the half of it that
    was already handled
 9. Only the first `dropShadow()` in a filter list is drawn
@@ -228,8 +228,55 @@ If an entry here is about to be picked up, run the thing it describes first.
   mount: a role taken away takes its subrole, and a role replaced replaces it.
   AppKit allows that where GTK does not, a `GtkAccessible`'s role being
   construct-only, which `docs/DECISIONS.md` records.
-- **No animated images.** The first frame of a GIF is drawn as a still, on both
-  desktops.
+- ~~**No animated images.**~~ Done on both desktops, 2026-10-09. A GIF now
+  plays: frames, delays, loop counts, and a tick that stops when there is
+  nothing more to show.
+
+  **The frames come from the platform and the pacing is shared**, because the
+  two decoders are not the same shape. ImageIO answers
+  `CGImageSourceGetCount` and a per-frame dictionary, so the AppKit loader
+  decodes every frame up front and hands the view an array.
+  gdk-pixbuf has no indexed access at all: a `GdkPixbufAnimation` gives an
+  iterator with a clock, so the GTK view holds the animation and advances the
+  iterator. What both hosts share is `core/ImageAnimation.h`: the clamp, and
+  the arithmetic from an elapsed time to a frame.
+
+  **Nothing animates itself, which is what makes it testable.** The view
+  advances by a time its caller supplies, and the mounting manager is what
+  starts the clock (`rnStartImageAnimation`, `rn_view_start_animation`). The
+  first version drove itself from the frame clock and the GTK tests were
+  nondeterministic for an hour: rendering a widget there spins the main loop,
+  so every pixel assertion found the animation several frames further on than
+  it left it. The split is in both hosts even though only one needed it.
+
+  | Measured on 2026-10-09 | GTK | macOS |
+  | --- | --- | --- |
+  | a delay of 0 | gdk-pixbuf answers 100ms itself | ImageIO reports 0, and the shared clamp makes it 100 |
+  | no NETSCAPE2.0 extension | iterator reports -1 at the end, so it stops | `kCGImagePropertyGIFLoopCount` is 1, so it stops |
+  | frames in memory | gdk-pixbuf's, unmeasurable, so the cache counts the first | decoded here, so the cache counts every frame |
+
+  The first row is why the clamp is in core rather than in whichever decoder
+  needed it, and the GTK test for it says plainly that it does not
+  discriminate on that host: it passes with the clamp removed, because
+  gdk-pixbuf already applies one. The AppKit loader test is where the clamp
+  bites. The second row is the pleasant surprise: a GIF that does not loop
+  plays once on both hosts and neither had to be taught it.
+
+  **gdk-pixbuf 2.44 deprecated its whole animation API**, and gdk-pixbuf has
+  nothing to replace it with: GNOME's direction is glycin, a new dependency,
+  and GTK4 itself has no frame source for a GIF (`gtk_image_set_from_file` on
+  one shows a still). So the deprecated calls are used deliberately, inside
+  `G_GNUC_BEGIN_IGNORE_DEPRECATIONS`, and this is the note that says so.
+
+  Thirteen tests across the two suites plus six in core, against real pixels
+  rather than a frame index. The sabotages, each caught by the tests named for
+  it: not showing a later frame; reading the first frame's delay for all of
+  them; throwing the animation away in the loader; restarting the animation
+  when the props are re-applied, which is what every mutation on an `<Image>`
+  does and is how a spinner comes to stutter on every resize.
+
+  Windows decodes one frame and is recorded in backlog/platform-windows.md with
+  the WIC calls named; the scenario is skipped there by name.
 - ~~**No scrollbars.**~~ Done, and on all three, the claim that the GTK side
   got them from its widget theme was never true: neither host drew one. See the
   ScrollView section for the shape. AppKit's own are `NSScroller`, which comes

@@ -332,6 +332,10 @@ if(TARGET basalt_core)
     tests/test_hittest.cpp
     tests/test_scrollview.cpp
     tests/test_image.cpp
+    # Animated images: gdk-pixbuf's frames, paced by core's clamp. Real pixels,
+    # because a view that advanced its iterator and kept painting the first
+    # texture would pass on the frame index alone.
+    tests/test_animated_image.cpp
     tests/test_accessibility.cpp
     tests/test_viewprops.cpp
     # What reached the pixels, asking what tests/test_win32_paint.cpp asks of

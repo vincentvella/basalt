@@ -3864,6 +3864,70 @@ def test_hit_slop(bundle: Path) -> None:
         )
 
 
+def test_animated_image(bundle: Path) -> None:
+    """An animated GIF is animated rather than painted as a still.
+
+    Both hosts decoded frame zero and stopped, which is a reasonable thing to do
+    until there is an animator and was still what every spinner and every
+    reaction GIF looked like. Each host's own suite asserts the frames against
+    real pixels, red then blue then red; what only an app can show is that the
+    props path recognises the file at all, since being animated is something the
+    *loader* notices and the mounting manager has to pass on.
+
+    `animated=1` rather than which frame: the two hosts tick on their own
+    clocks, so a cross-host diff of a frame index would be a race. Exactly one
+    image in e2e/image.tsx is animated, so a host that claimed it for every
+    <Image> would fail here rather than pass twice over.
+
+    Windows has no animator: WIC decodes one frame through
+    `IWICBitmapDecoder::GetFrame`, and docs/backlog/platform-windows.md names
+    the calls the rest would take. Skipped by name there.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("the Win32 host decodes one frame; see backlog/platform-windows.md")
+
+    app = bundle_app(bundle.parent, "image")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltImage"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    images = [line for line in tree.splitlines() if "texture=" in line]
+    if not images:
+        raise Failure(f"no image loaded at all, so nothing can be animated\n{tree[:1500]}")
+
+    animated = [line for line in images if "animated=1" in line]
+    if len(animated) != 1:
+        raise Failure(
+            f"{len(animated)} images report an animation; the app has exactly "
+            "one, a two-frame GIF. None at all means the loader did not notice "
+            "the frames or the mounting manager dropped them.\n"
+            + "\n".join(images)
+        )
+    # The GIF is four pixels square, which is what says the animated line is the
+    # GIF's and not some other image that acquired the flag.
+    if "texture=4x4" not in animated[0]:
+        raise Failure(
+            f"the animated image is not the 4x4 GIF.\n{animated[0]}"
+        )
+
+
 def test_image_get_size(bundle: Path) -> None:
     """`Image.getSize` answers, and a missing file rejects.
 
@@ -6794,6 +6858,7 @@ SCENARIOS = [
      test_press_location),
     ("hitSlop grows what a press can land on", test_hit_slop),
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
+    ("an animated GIF is animated", test_animated_image),
     ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
     ("borderStyle reaches the view, dashed and dotted", test_border_style),
     ("the cursor style property reaches the view", test_cursor_style),

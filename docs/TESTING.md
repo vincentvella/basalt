@@ -1094,6 +1094,20 @@ drawn anything. `e2e/hover.tsx` is left out of `scripts/compare_all.sh` for that
 reason, and the end-to-end suite asserts the order events arrive in rather than
 that nothing else happens.
 
+## Animations the suite drives itself
+
+An animated `<Image>` does not animate on its own. The view advances by a number
+of milliseconds its caller passes, and the mounting manager is what starts a
+clock, so a test says "a hundred and twenty milliseconds later" and renders.
+
+That split exists because of a real failure rather than a preference. The first
+version drove itself from the GTK frame clock, and `renderView` spins the main
+loop to get a frame out of a widget, so every pixel assertion found the
+animation several frames past where it left it: four samples of the same GIF
+reported red, red, red, red with the frame changing underneath. Both hosts are
+split the same way, even though an AppKit timer is inert in a suite that never
+runs its run loop.
+
 ## Fonts loaded at runtime, and the font map on a Mac
 
 Three of the four font tests in each host's suite register a font the machine

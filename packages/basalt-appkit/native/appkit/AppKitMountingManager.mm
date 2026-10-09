@@ -393,6 +393,31 @@ void AppKitMountingManager::forgetTag(Tag tag) {
 
 namespace {
 
+// Hands a view the frames of an animated image, or clears any it had.
+//
+// Asked of the loader rather than carried in the load callback, because being
+// animated is a property of the file and the callback's job is the pixels. The
+// arrays are the loader's and are the same arrays each time, which is what lets
+// the view tell a re-mount from a new animation.
+void applyImageAnimation(AppKitImageLoader *loader, RnAppKitView *view, const std::string &uri) {
+  if (view == nil) {
+    return;
+  }
+  const AppKitImageLoader::Animation *animation =
+      uri.empty() ? nullptr : loader->animation(uri);
+  if (animation == nullptr) {
+    [view setRnImageFrames:nil delaysMs:nil loopCount:0];
+    return;
+  }
+  [view setRnImageFrames:animation->frames
+               delaysMs:animation->delaysMs
+              loopCount:animation->loopCount];
+  // And drive it, which the view deliberately does not do for itself; see
+  // rnStartImageAnimation. Idempotent, so the re-apply on every mutation costs
+  // nothing.
+  [view rnStartImageAnimation];
+}
+
 RnAppKitImageFit toImageFit(ImageResizeMode mode) {
   switch (mode) {
     case ImageResizeMode::Contain:
@@ -493,9 +518,10 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
   const auto known = imageUris_.find(tag);
   if (known != imageUris_.end() && known->second == uri) {
     if (!uri.empty()) {
-      imageLoader_->load(uri, [this, tag, fit](CGImageRef image, const std::string &) {
+      imageLoader_->load(uri, [this, tag, fit, uri](CGImageRef image, const std::string &) {
         if (RnAppKitView *target = viewForTag(tag); target != nil) {
           [target setRnImage:image fit:fit];
+          applyImageAnimation(imageLoader_.get(), target, uri);
         }
       });
     }
@@ -506,6 +532,7 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
 
   if (uri.empty()) {
     [view setRnImage:nullptr fit:fit];
+    applyImageAnimation(imageLoader_.get(), view, uri);
     return;
   }
 
@@ -540,6 +567,7 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
     // why this looks the tag up again rather than capturing the view.
     if (RnAppKitView *target = viewForTag(tag); target != nil) {
       [target setRnImage:image fit:fit];
+      applyImageAnimation(imageLoader_.get(), target, source.uri);
     }
 
     if (image == nullptr) {

@@ -10,6 +10,7 @@
 #include "TreeDump.h"
 
 #import "AppKitMountingManager.h"
+#import "RnAppKitView.h"
 
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/graphics/Color.h>
@@ -614,5 +615,176 @@ TEST(appkit_collected_text_is_every_paragraph_in_the_subtree) {
     // No text layouts, so still nothing: a tree of plain views collects nothing
     // rather than crashing on the way down.
     EXPECT_EQ(region.rnCollectedText.length, 0UL);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// What the loader reads out of an animated file.
+//
+// Here rather than in tests/test_appkit_image.mm because it needs the loader,
+// which needs React Native's IImageLoader, and that file is compiled into the
+// toolkit-only build as well. The view's half of animation is there; this is
+// the half that reads the GIF's own bytes.
+// ---------------------------------------------------------------------------
+namespace {
+
+// The same four-pixel GIF the view tests use: red for 80ms, blue for 40ms,
+// looping forever. See tests/test_appkit_image.mm for how it was written.
+const char *const kAnimatedGifDataUri =
+    "data:image/gif;base64,"
+    "R0lGODlhBAAEAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACAAAACwAAAAABAAEAAAC"
+    "BISPCQUAIfkEAAQAAAAsAAAAAAQABACAAAD/AAAAAgSEjwkFADs=";
+
+// A 4x2 still PNG, which must come back with no animation at all.
+const char *const kStillPngDataUri =
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAFUlEQVR4nGN44OAA"
+    "RA4JD4CIAZkDAJQaC4Enje7+AAAAAElFTkSuQmCC";
+
+// Loads a URI and runs the main run loop until the answer arrives.
+//
+// The decode is on a worker thread and the delivery is a `dispatch_async` to
+// the main queue, which nothing in this suite otherwise drains, so the pump is
+// what makes a loader testable at all.
+bool loadAndWait(basalt::AppKitImageLoader &loader, const std::string &uri) {
+  bool done = false;
+  bool decoded = false;
+  loader.load(uri, [&](CGImageRef image, const std::string &) {
+    decoded = image != nullptr;
+    done = true;
+  });
+
+  NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5.0];
+  while (!done && deadline.timeIntervalSinceNow > 0) {
+    [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode
+                           beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+  }
+  return done && decoded;
+}
+
+} // namespace
+
+TEST(appkit_the_loader_reads_an_animations_frames_and_delays) {
+  @autoreleasepool {
+    basalt::AppKitImageLoader loader;
+    const std::string uri = kAnimatedGifDataUri;
+    EXPECT(loadAndWait(loader, uri));
+
+    const basalt::AppKitImageLoader::Animation *animation = loader.animation(uri);
+    EXPECT(animation != nullptr);
+    if (animation == nullptr) {
+      return;
+    }
+    EXPECT_EQ((int)animation->frames.count, 2);
+    EXPECT_EQ((int)animation->delaysMs.count, 2);
+    // The file's own delays, per frame and unclamped. Equal numbers here would
+    // pass with a loader that read the first frame's delay and reused it.
+    EXPECT_EQ(animation->delaysMs[0].intValue, 80);
+    EXPECT_EQ(animation->delaysMs[1].intValue, 40);
+    // Zero is forever, which is what this GIF's NETSCAPE2.0 extension says.
+    EXPECT_EQ((int)animation->loopCount, 0);
+
+    // The same arrays on a second load, which is what lets a view tell a
+    // re-mount from a new animation.
+    EXPECT(loadAndWait(loader, uri));
+    EXPECT(loader.animation(uri)->frames == animation->frames);
+  }
+}
+
+// The same picture with no delays at all, which a great many GIFs carry:
+//
+//   magick -loop 0 -size 4x4 xc:'#ff0000' -size 4x4 xc:'#0000ff' anim.gif
+TEST(appkit_the_loader_leaves_a_zero_delay_alone) {
+  @autoreleasepool {
+    basalt::AppKitImageLoader loader;
+    const std::string uri =
+        "data:image/gif;base64,"
+        "R0lGODlhBAAEAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQAAAAAACwAAAAABAAEAAAC"
+        "BISPCQUAIfkEAAAAAAAsAAAAAAQABACAAAD/AAAAAgSEjwkFADs=";
+    EXPECT(loadAndWait(loader, uri));
+
+    const basalt::AppKitImageLoader::Animation *animation = loader.animation(uri);
+    EXPECT(animation != nullptr);
+    if (animation == nullptr) {
+      return;
+    }
+    // Unclamped, deliberately: ImageIO reports what the file says and
+    // core/ImageAnimation.h owns the rule, so both hosts and the next one apply
+    // the same one in the same place. The GTK host's gdk-pixbuf answers 100 for
+    // this file itself, which is why the clamp has to live where both can see
+    // it rather than in whichever decoder happens to need it.
+    EXPECT_EQ((int)animation->frames.count, 2);
+    EXPECT_EQ(animation->delaysMs[0].intValue, 0);
+    EXPECT_EQ(animation->delaysMs[1].intValue, 0);
+
+    // And the view paces it at a tenth of a second a frame, which is the clamp
+    // doing the work: without it the cycle is zero long and the first frame is
+    // the only one ever shown.
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnFrameX:0 y:0 width:20 height:20];
+    [view setRnImageFrames:animation->frames
+                 delaysMs:animation->delaysMs
+                loopCount:animation->loopCount];
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:0], 100.0, 0.01);
+    [view rnAdvanceImageAnimationBy:99];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 0);
+    [view rnAdvanceImageAnimationBy:1];
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+  }
+}
+
+TEST(appkit_the_loader_reports_no_animation_for_a_still_image) {
+  @autoreleasepool {
+    basalt::AppKitImageLoader loader;
+    const std::string uri = kStillPngDataUri;
+    EXPECT(loadAndWait(loader, uri));
+    EXPECT(loader.animation(uri) == nullptr);
+    EXPECT(loader.animation("data:image/png;base64,never-loaded") == nullptr);
+  }
+}
+
+
+// A GIF with no NETSCAPE2.0 extension at all, which is what "play once" looks
+// like in the format:
+//
+//   magick -loop 1 -delay 8 -size 4x4 xc:'#ff0000' \
+//                 -delay 4 -size 4x4 xc:'#0000ff' once.gif
+//
+// writes no application extension rather than a count of one.
+//
+// **Both hosts stop after one pass, which was measured rather than assumed.**
+// ImageIO answers `kCGImagePropertyGIFLoopCount` with 1 for this file, not with
+// nothing, so the loop count needs no special case for an absent extension;
+// gdk-pixbuf's iterator reports a delay of -1 at the end of the same file,
+// which this host's `rn_view_animation_delay_ms` turns into "nothing more is
+// due". So a non-looping GIF plays once on both, and neither of them had to be
+// taught it.
+TEST(appkit_a_gif_that_does_not_loop_plays_once) {
+  @autoreleasepool {
+    basalt::AppKitImageLoader loader;
+    const std::string uri = std::string("data:image/gif;base64,")
+        + "R0lGODlhBAAEAPAAAP8AAAAAACH5BAAIAAAALAAAAAAEAAQAAAIEhI8JBQAh+QQABAAAACwAAAAABAAE"
+        "AIAAAP8AAAACBISPCQUAOw==";
+    EXPECT(loadAndWait(loader, uri));
+
+    const basalt::AppKitImageLoader::Animation *animation = loader.animation(uri);
+    EXPECT(animation != nullptr);
+    if (animation == nullptr) {
+      return;
+    }
+    EXPECT_EQ((int)animation->loopCount, 1);
+
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnFrameX:0 y:0 width:20 height:20];
+    [view setRnImageFrames:animation->frames
+                 delaysMs:animation->delaysMs
+                loopCount:animation->loopCount];
+
+    // Halfway through, still running.
+    EXPECT([view rnAdvanceImageAnimationBy:60] > 0.0);
+    // One pass is 120ms, after which nothing more is due and the last frame
+    // stays.
+    EXPECT_NEAR([view rnAdvanceImageAnimationBy:60], 0.0, 0.01);
+    EXPECT_EQ((int)view.rnImageFrameIndex, 1);
   }
 }

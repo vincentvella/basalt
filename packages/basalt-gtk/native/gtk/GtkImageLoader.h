@@ -57,6 +57,21 @@ class GtkImageLoader : public facebook::react::IImageLoader {
 
   void load(const std::string &uri, Callback &&callback);
 
+  // The animation behind an animated image, or null.
+  //
+  // Separate from `load` because being animated is a property of the file
+  // rather than of the request: `load` answers with the first frame, which is
+  // what a still <Image> paints and what an animated one starts on, and this
+  // says whether there is more. Both come out of the same decode.
+  //
+  // gdk-pixbuf owns the frames, and offers an iterator with a clock rather than
+  // indexed access, which is why this hands over the animation itself where the
+  // AppKit loader hands over an array of frames. The object is the loader's and
+  // is the same object each time, which is what lets a view tell a re-mount
+  // from a new animation. Good until the next load, since an eviction can take
+  // it away.
+  GdkPixbufAnimation *animation(const std::string &uri);
+
   // --- IImageLoader ----------------------------------------------------------
   //
   // The same decode as `load`, reporting the size rather than the pixels. It
@@ -77,8 +92,19 @@ class GtkImageLoader : public facebook::react::IImageLoader {
   //
   // Caches a texture and releases whatever the policy dropped.
   void remember(const std::string &uri, GdkTexture *texture);
+  void rememberAnimation(const std::string &uri, GBytes *bytes);
 
   std::unordered_map<std::string, GdkTexture *> cache_;
+  // Only the files that turned out to have more than one frame, so a still
+  // image costs nothing. Keyed by the same URI and dropped by the same
+  // eviction.
+  //
+  // The frames inside are gdk-pixbuf's and are not measured by the cache
+  // policy: there is no way to ask a GdkPixbufAnimation how much it is holding,
+  // and the AppKit side can because it decoded the frames itself. So an
+  // animated image is accounted as its first frame on this host. Recorded in
+  // docs/backlog/image.md rather than guessed at.
+  std::unordered_map<std::string, GdkPixbufAnimation *> animations_;
   // Which URI goes next, and when. The textures are this class's; the decision
   // is shared with the other two hosts. See core/ImageCache.h.
   basalt::ImageCachePolicy policy_;

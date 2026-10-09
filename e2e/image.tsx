@@ -27,6 +27,19 @@ const INLINE =
   'iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAFUlEQVR4nGN44OAA' +
   'RA4JD4CIAZkDAJQaC4Enje7+AAAAAElFTkSuQmCC';
 
+// A 4x4 two-frame GIF: red for 80ms, blue for 40ms, looping forever. Inline
+// for the reason the PNG above is, and written with ImageMagick:
+//
+//   magick -loop 0 -delay 8 -size 4x4 xc:'#ff0000' \
+//                 -delay 4 -size 4x4 xc:'#0000ff' anim.gif
+//
+// The delays differ on purpose: equal ones hide an engine that uses the first
+// frame's delay for all of them.
+const ANIMATED =
+  'data:image/gif;base64,' +
+  'R0lGODlhBAAEAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACAAAACwAAAAABAAEAAAC' +
+  'BISPCQUAIfkEAAQAAAAsAAAAAAQABACAAAD/AAAAAgSEjwkFADs=';
+
 const FILE = {uri: 'assets/checker.png'};
 const MISSING = {uri: 'assets/there-is-no-such-file.png'};
 
@@ -106,6 +119,14 @@ function App() {
           blurRadius={12}
         />
       </View>
+      {/*
+        An animated GIF. Both hosts painted its first frame and called it a
+        still until 2026-10-09; the tree says `animated=1` because nothing in a
+        snapshot can show motion, and each host's own suite asserts the pixels
+        frame by frame.
+      */}
+      <Image source={{uri: ANIMATED}} resizeMode="stretch" style={styles.cell} />
+
       <Image
         source={MISSING}
         style={styles.cell}
