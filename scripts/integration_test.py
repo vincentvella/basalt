@@ -4590,8 +4590,8 @@ def test_outline(bundle: Path) -> None:
     frame says nothing about whether it arrived, and neither does a snapshot on
     macOS -- the ring is a CAShapeLayer stroke, which Core Animation draws during
     compositing and `renderInContext:` does not draw at all. The dump is the
-    observable, and the two hosts spell it the same way, so this one assertion
-    covers both.
+    observable, and the three hosts spell it the same way, so this one assertion
+    covers all of them.
 
     All four numbers, because each is a thing a host can lose while still drawing
     a plausible ring: an offset ignored leaves the ring against the box, a style
@@ -4599,10 +4599,10 @@ def test_outline(bundle: Path) -> None:
     cascade comes out transparent. e2e/views.tsx asks for a 3pt dashed #e0484d
     ring 2pt out.
 
-    Windows draws no outline yet, so it is skipped by name.
+    Where the ring actually lands is each host's own suite's business, in pixels:
+    five tests on GTK, seven layer tests on AppKit, and six here for Win32,
+    which strokes it with Direct2D.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws no outline yet")
 
     app = bundle_app(bundle.parent, "views")
 

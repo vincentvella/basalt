@@ -394,6 +394,36 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
       break;
   }
 
+  // The outline: CSS's, drawn outside the box and taking no layout space, so
+  // nothing about it touches the frame. React Native carries one width, one
+  // colour, one offset and one style for the whole ring, unlike the border's
+  // four of each.
+  {
+    float colour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (props->outlineColor) {
+      const auto components = facebook::react::colorComponentsFromColor(props->outlineColor);
+      colour[0] = components.red;
+      colour[1] = components.green;
+      colour[2] = components.blue;
+      colour[3] = components.alpha;
+    }
+    win32::RnWin32View::OutlineStyle style = win32::RnWin32View::OutlineStyle::Solid;
+    switch (props->outlineStyle) {
+      case facebook::react::OutlineStyle::Dotted:
+        style = win32::RnWin32View::OutlineStyle::Dotted;
+        break;
+      case facebook::react::OutlineStyle::Dashed:
+        style = win32::RnWin32View::OutlineStyle::Dashed;
+        break;
+      case facebook::react::OutlineStyle::Solid:
+        break;
+    }
+    view->setOutline(static_cast<float>(props->outlineWidth),
+                     static_cast<float>(props->outlineOffset),
+                     colour,
+                     style);
+  }
+
   // `hitSlop`, which grows what a press can land on without moving a pixel.
   // Top, right, bottom, left, the order the other two hosts store it in and
   // the order CSS names the edges.

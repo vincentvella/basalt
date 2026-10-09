@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (16):**
+**Open (15):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -19,7 +19,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
 13. `filter` is not applied
 14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
-15. The `outline` family is not drawn
+15. ~~The `outline` family is not drawn~~
 16. `mixBlendMode` blends nothing
 17. No text shadow, so `textShadowColor` and friends do nothing
 18. The desktop's text scale is not read, so large text does not enlarge text
@@ -324,18 +324,28 @@ and none of it is a missing half.
   the call: a German label reading STRAßE is wrong everywhere else an app
   runs.
 
-- **The `outline` family is not drawn.** `outlineWidth`, `outlineColor`,
-  `outlineOffset` and `outlineStyle` reach this host's props and nothing reads
-  them. The other two draw one ring outside the box, offset plus half the stroke
-  width out, with each non-zero radius grown by the same amount so the ring stays
-  concentric; `ID2D1RenderTarget::DrawRoundedRectangle` takes exactly that, and
-  an `ID2D1StrokeStyle` built from `D2D1::StrokeStyleProperties` with
-  `D2D1_DASH_STYLE_CUSTOM` takes the same dash arrays, so dotted and dashed are
-  the stroke style rather than a second mechanism. The one thing to get right is
-  where it is drawn: CSS does not clip an element's own outline for
-  `overflow: 'hidden'`, so it goes after the children and outside their clip.
-  backlog/correctness.md has what the other two decided. The end-to-end scenario
-  is skipped here by name.
+- ~~**The `outline` family is not drawn.**~~ Done, 2026-10-09, with
+  `DrawGeometry` rather than `DrawRoundedRectangle`: the geometry is the one
+  `Win32Clip.h` already builds for the background and the border, so a ring
+  around elliptical radii needs no special case, which is the same argument the
+  other two hosts' stroked rings make.
+
+  The clipping half this entry warned about came free. CSS does not clip an
+  element's own outline for `overflow: hidden`, and `paintChildren` scopes its
+  clip, so by the time the ring is drawn the clip is already popped. GTK gets it
+  the same way; AppKit is the host that has to move the ring into the parent's
+  layer.
+
+  **The one thing that did need converting is the dash pattern.** Direct2D's
+  dash lengths are multiples of the stroke width where the other two hosts'
+  arrays are absolute, so {3w, 2w} becomes {3, 2}, and dots are a zero-length
+  dash with round caps. Four times too long is a ring with no gaps at all, which
+  is what `win32_paint_a_dashed_outline_is_not_solid` is for.
+
+  Six tests: the five tests/test_gtk_paint.cpp asks, in the same order and with
+  the same geometry so the two hosts' rings land in the same place, plus the
+  dump. The end-to-end scenario now reads `outline=(3,2,#e0484dff,dashed)` on
+  all three hosts.
 
 - **`mixBlendMode` blends nothing.** The keyword reaches this host's props and
   nothing reads it. Direct2D has the arithmetic: `CLSID_D2D1Blend`'s

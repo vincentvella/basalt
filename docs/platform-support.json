@@ -45,10 +45,6 @@
       "text": "Direct2D draws it, nothing reads the prop",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
-    "win-outline": {
-      "text": "DrawRoundedRectangle and a stroke style",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "win-shadow": {
       "text": "CLSID_D2D1Shadow",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -200,26 +196,22 @@
     "BaseViewProps.outlineColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-outline"
+      "windows": "yes"
     },
     "BaseViewProps.outlineOffset": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-outline"
+      "windows": "yes"
     },
     "BaseViewProps.outlineStyle": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-outline"
+      "windows": "yes"
     },
     "BaseViewProps.outlineWidth": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-outline"
+      "windows": "yes"
     },
     "BaseViewProps.shadowColor": {
       "linux": "yes",

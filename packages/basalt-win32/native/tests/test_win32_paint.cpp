@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using basalt::win32::RnPixel;
@@ -502,4 +503,156 @@ TEST(win32_paint_skips_a_painter_on_a_hidden_view) {
   // canvas is the difference between idle and rendering a frame nobody sees.
   EXPECT_EQ(painter->calls, 0);
   EXPECT_TRANSPARENT(pixels, 50, 50);
+}
+
+// ---------------------------------------------------------------------------
+// CSS's outline: `outlineWidth`, `outlineColor`, `outlineOffset` and
+// `outlineStyle`.
+//
+// The same five questions tests/test_gtk_paint.cpp asks, in the same order and
+// with the same geometry, because the ring has to land in the same place on
+// both: it is drawn *outside* the box and takes no layout space, so what proves
+// it is ink beyond the view's own frame with the frame unchanged. Web-ported
+// code sets it for a focus ring and expects exactly that.
+// ---------------------------------------------------------------------------
+
+TEST(win32_paint_draws_an_outline_outside_the_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
+  root->insertChild(view, 0);
+  const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+  // Two points outside the box's left edge: inside a four point outline.
+  EXPECT_PIXEL(pixels, 28, 50, 255, 0, 0, 255);
+  // And on every other side, so a ring rather than one edge.
+  EXPECT_PIXEL(pixels, 72, 50, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 28, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 72, 255, 0, 0, 255);
+
+  // The box itself is untouched: an outline that ate into the view would be a
+  // border, and the two are different props.
+  EXPECT_PIXEL(pixels, 50, 50, 255, 255, 255, 255);
+  EXPECT_PIXEL(pixels, 32, 50, 255, 255, 255, 255);
+  // Past the outline, nothing.
+  EXPECT_TRANSPARENT(pixels, 20, 50);
+}
+
+// `outlineOffset` is the gap between the box and the ring, which is what makes a
+// focus ring look deliberate rather than like a second border.
+TEST(win32_paint_an_outline_offset_leaves_a_gap) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
+  root->insertChild(view, 0);
+  const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+  view->setOutline(4.0f, 6.0f, red, RnWin32View::OutlineStyle::Solid);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The gap: three points out from the edge, between the box and the ring.
+  EXPECT_TRANSPARENT(pixels, 27, 50);
+  // The ring itself, eight points out.
+  EXPECT_PIXEL(pixels, 22, 50, 255, 0, 0, 255);
+  // And past it again.
+  EXPECT_TRANSPARENT(pixels, 16, 50);
+}
+
+// A dashed outline leaves gaps along the ring, the way a dashed border does.
+// Direct2D's dash lengths are multiples of the stroke width, where the other two
+// hosts' arrays are absolute, so this is the test that would catch a pattern
+// converted into the wrong units: four times too long is a ring with no gaps.
+TEST(win32_paint_a_dashed_outline_is_not_solid) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.colouredBox(2, 20, 20, 60, 60, 1.0f, 1.0f, 1.0f);
+  root->insertChild(view, 0);
+  const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  const RnPixels solid = basalt::win32::renderToPixels(*root);
+  int solidInk = 0;
+  for (unsigned x = 0; x < solid.width(); x++) {
+    if (solid.at(x, 18).alpha > 40) {
+      solidInk++;
+    }
+  }
+
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Dashed);
+  const RnPixels dashed = basalt::win32::renderToPixels(*root);
+  int dashedInk = 0;
+  for (unsigned x = 0; x < dashed.width(); x++) {
+    if (dashed.at(x, 18).alpha > 40) {
+      dashedInk++;
+    }
+  }
+
+  // Ink either way, and less of it when it is dashed.
+  EXPECT(solidInk > 50);
+  EXPECT(dashedInk > 0);
+  EXPECT(dashedInk < solidInk);
+}
+
+TEST(win32_paint_no_outline_width_is_no_outline) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
+  root->insertChild(view, 0);
+  const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 28, 50, 255, 0, 0, 255);
+
+  // Taken away again, which is what losing focus does.
+  view->setOutline(0.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  EXPECT_TRANSPARENT(basalt::win32::renderToPixels(*root), 28, 50);
+
+  // And a width with no colour paints nothing: React Native's default outline
+  // colour is undefined, which arrives as a transparent one.
+  const float invisible[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  view->setOutline(4.0f, 0.0f, invisible, RnWin32View::OutlineStyle::Solid);
+  EXPECT_TRANSPARENT(basalt::win32::renderToPixels(*root), 28, 50);
+}
+
+// The ring follows the view's corners, grown by the width and the offset so it
+// stays concentric: a square ring around a rounded card is the giveaway that the
+// radii were not carried over.
+TEST(win32_paint_an_outline_follows_the_corner_radius) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.colouredBox(2, 20, 20, 60, 60, 1.0f, 1.0f, 1.0f);
+  root->insertChild(view, 0);
+  const float radii[8] = {20, 20, 20, 20, 20, 20, 20, 20};
+  view->setCornerRadii(radii);
+  const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The middle of an edge is on the ring.
+  EXPECT_PIXEL(pixels, 18, 50, 255, 0, 0, 255);
+  // The corner of the bounding box is outside a 22 point radius, so it is
+  // empty -- where a square ring would paint it.
+  EXPECT_TRANSPARENT(pixels, 17, 17);
+}
+
+// And all four numbers are in the dump, spelled as the other two hosts spell
+// them, because that line is what the end-to-end scenario reads on all three.
+TEST(win32_describe_prints_the_outline_as_gtk_does) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 10, 10, 40, 40);
+  root->insertChild(view, 0);
+
+  EXPECT(root->describeTree().find("outline=") == std::string::npos);
+
+  const float colour[4] = {224.0f / 255.0f, 72.0f / 255.0f, 77.0f / 255.0f, 1.0f};
+  view->setOutline(3.0f, 2.0f, colour, RnWin32View::OutlineStyle::Dashed);
+  EXPECT(root->describeTree().find("outline=(3,2,#e0484dff,dashed)") != std::string::npos);
+
+  // Solid prints no style, which is what keeps the common case short and is
+  // what the other two hosts do.
+  view->setOutline(3.0f, 2.0f, colour, RnWin32View::OutlineStyle::Solid);
+  EXPECT(root->describeTree().find("outline=(3,2,#e0484dff)") != std::string::npos);
 }

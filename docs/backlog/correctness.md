@@ -396,11 +396,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   scenario fails on both hosts when the mounting manager stops passing the
   offset.
 
-  **Windows** needs `ID2D1RenderTarget::DrawRoundedRectangle` on a rect grown by
-  the offset plus half the width, with an `ID2D1StrokeStyle` built from
-  `D2D1::StrokeStyleProperties` carrying `D2D1_DASH_STYLE_CUSTOM` and the same
-  dash arrays the other two hosts use, drawn after the children for the clipping
-  reason above. Its scenario skips by name.
+  **Windows has it too as of 2026-10-09**, and on the same geometry: the ring's
+  centre line is offset plus half the width out, stroked with `DrawGeometry` over
+  the rounded box `Win32Clip.h` already builds, after the children so the clip
+  is already popped. Its dash arrays are the only difference, Direct2D counting
+  dash lengths in multiples of the stroke width where GSK and Core Animation
+  take absolute ones. Six pixel tests, the five GTK asks plus the dump, and the
+  scenario now runs on all three.
 
   **`mixBlendMode`, done on GTK and AppKit 2026-10-08.** Seventeen CSS blend
   modes, of which `normal` is "do nothing". The keyword crosses the seam, as

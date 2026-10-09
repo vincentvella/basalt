@@ -546,6 +546,12 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
       paintBorders(target);
     }
 
+    // The outline, outside the box and over the border: it is not a border, and
+    // it sits `offset` away from the box's edge. After the children for the
+    // clipping reason in paintOutline, and below the DevTools overlay and the
+    // focus ring, which are not the app's.
+    paintOutline(target);
+
     // React DevTools' overlay, over everything including the children. Above
     // the app on purpose: it is not part of it, and an inspected element half
     // hidden behind a card would be pointing at the wrong thing.
@@ -608,6 +614,99 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
 // adjacent anti-aliased fills leave a faint seam down each diagonal where their
 // coverages meet, and the mask already gives the ring's own edges their
 // smoothing.
+void RnWin32View::setOutline(float width,
+                             float offset,
+                             const float colour[4],
+                             OutlineStyle style) {
+  outlineWidth_ = width > 0.0f ? width : 0.0f;
+  outlineOffset_ = offset;
+  for (int component = 0; component < 4; component++) {
+    outlineColour_[component] = colour != nullptr ? colour[component] : 0.0f;
+  }
+  outlineStyle_ = style;
+}
+
+// CSS's outline, outside the box and over everything.
+//
+// **Nothing clips it, and that is the decision rather than an oversight.** CSS
+// does not clip an element's own outline for `overflow: hidden`, so a ring
+// drawn inside the clip would vanish on exactly the views that most often carry
+// one. Here that is free: `paintChildren` scopes its own clip, so by the time
+// this runs the clip is already popped. GTK gets it the same way, by appending
+// after the children; AppKit has to move the ring into the parent's layer.
+//
+// Stroked rather than filled like the border, for the two reasons
+// backlog/correctness.md records: a stroke takes a dash pattern, so dotted and
+// dashed need no second mechanism, and it takes an arbitrary path, so
+// elliptical radii need no special case. A stroke straddles its path, so the
+// path is the ring's centre line: offset plus half the width out from the
+// border edge, which is where the other two hosts put theirs.
+void RnWin32View::paintOutline(ID2D1RenderTarget *target) const {
+  if (outlineWidth_ <= 0.0f || outlineColour_[3] <= 0.0f) {
+    return;
+  }
+
+  ComPtr<ID2D1Factory> factory;
+  target->GetFactory(factory.GetAddressOf());
+  if (!factory) {
+    return;
+  }
+
+  // The ring's outer edge is the box grown by the offset plus the width; its
+  // centre line is half a width back from that.
+  const float centre = outlineOffset_ + outlineWidth_ / 2.0f;
+  const D2D1_RECT_F rect = D2D1::RectF(
+      -centre, -centre, frame_.width + centre, frame_.height + centre);
+
+  // Each non-zero radius grows by what the ring moved out, so the ring stays
+  // concentric with a rounded card; a corner that was square stays square,
+  // which is what React Native's iOS half does and what both other hosts do.
+  float radii[8];
+  for (int index = 0; index < 8; index++) {
+    radii[index] = cornerRadii_[index] > 0.0f ? cornerRadii_[index] + centre : 0.0f;
+  }
+
+  const ComPtr<ID2D1Geometry> ring = roundedBoxGeometry(factory.Get(), rect, radii);
+  if (!ring) {
+    return;
+  }
+
+  ComPtr<ID2D1SolidColorBrush> brush;
+  const D2D1_COLOR_F colour = D2D1::ColorF(
+      outlineColour_[0], outlineColour_[1], outlineColour_[2], outlineColour_[3]);
+  if (FAILED(target->CreateSolidColorBrush(colour, brush.GetAddressOf()))) {
+    return;
+  }
+
+  ComPtr<ID2D1StrokeStyle> dashed;
+  if (outlineStyle_ != OutlineStyle::Dotted && outlineStyle_ != OutlineStyle::Dashed) {
+    target->DrawGeometry(ring.Get(), brush.Get(), outlineWidth_, nullptr);
+    return;
+  }
+
+  // Direct2D's dash lengths are multiples of the stroke width, which is what
+  // the other two hosts' arrays are in once their widths are divided out: dots
+  // are a zero-length dash with round caps two widths apart, dashes are three
+  // on and two off.
+  const bool dots = outlineStyle_ == OutlineStyle::Dotted;
+  const float pattern[2] = {dots ? 0.0f : 3.0f, 2.0f};
+  const D2D1_STROKE_STYLE_PROPERTIES properties = D2D1::StrokeStyleProperties(
+      dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT,
+      dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT,
+      dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT,
+      D2D1_LINE_JOIN_MITER,
+      10.0f,
+      D2D1_DASH_STYLE_CUSTOM,
+      0.0f);
+  if (FAILED(factory->CreateStrokeStyle(properties, pattern, 2, dashed.GetAddressOf()))) {
+    // A ring drawn solid is wrong in a way a reader can see; no ring at all
+    // looks like the prop being ignored, which is what this host did until now.
+    target->DrawGeometry(ring.Get(), brush.Get(), outlineWidth_, nullptr);
+    return;
+  }
+  target->DrawGeometry(ring.Get(), brush.Get(), outlineWidth_, dashed.Get());
+}
+
 void RnWin32View::paintBorders(ID2D1RenderTarget *target) const {
   ComPtr<ID2D1Factory> factory;
   target->GetFactory(factory.GetAddressOf());
@@ -1287,6 +1386,25 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
   // describing the same switch in three ways is a diff on every line.
   if (!controlDescription_.empty()) {
     appendFormat(out, " control=%s", controlDescription_.c_str());
+  }
+
+  // The outline, which is invisible in every other line: it is not a border,
+  // and a view with one has the same frame and the same colours without it.
+  // Spelled exactly as the other two hosts spell it, style included only when
+  // it is not solid, because this line is diffed across the three.
+  if (outlineWidth_ > 0.0f) {
+    appendFormat(out,
+                 " outline=(%g,%g,#%02x%02x%02x%02x",
+                 static_cast<double>(outlineWidth_),
+                 static_cast<double>(outlineOffset_),
+                 static_cast<unsigned>(outlineColour_[0] * 255.0f + 0.5f),
+                 static_cast<unsigned>(outlineColour_[1] * 255.0f + 0.5f),
+                 static_cast<unsigned>(outlineColour_[2] * 255.0f + 0.5f),
+                 static_cast<unsigned>(outlineColour_[3] * 255.0f + 0.5f));
+    if (outlineStyle_ != OutlineStyle::Solid) {
+      appendFormat(out, ",%s", outlineStyle_ == OutlineStyle::Dotted ? "dotted" : "dashed");
+    }
+    out += ")";
   }
 
   // `hitSlop`, which is invisible in every other line of this dump: a view with
