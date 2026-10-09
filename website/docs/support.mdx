@@ -28,8 +28,8 @@ is the one in the row and ReactCommon's is under it.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 64 of 96 | 66 of 96 | 45 of 96 |
-| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `█████████░░░░░░░░░░░` |
+| Done | 64 of 96 | 66 of 96 | 46 of 96 |
+| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `██████████░░░░░░░░░░` |
 
 Counting a row as done when the host implements it or ReactCommon does.
 
@@ -62,7 +62,7 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 | `borderRadius` <sub>`borderRadii`</sub> | ✅ | ✅ | ✅ |  |
 | `borderColor` <sub>`borderColors`</sub> | ✅ | ✅ | ✅ |  |
 | `borderCurve` <sub>`borderCurves`</sub> | – | – | – | [only the iOS view config declares it, and the two desktops would draw different corners](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
-| `borderStyle` <sub>`borderStyles`</sub> | ✅ | ✅ | ✖ | [Direct2D draws it, nothing reads the prop](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `borderStyle` <sub>`borderStyles`</sub> | ✅ | ✅ | ✅ |  |
 | `outlineColor` | ✅ | ✅ | ✅ |  |
 | `outlineOffset` | ✅ | ✅ | ✅ |  |
 | `outlineStyle` | ✅ | ✅ | ✅ |  |

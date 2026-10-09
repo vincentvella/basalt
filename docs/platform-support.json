@@ -41,10 +41,6 @@
     }
   ],
   "whys": {
-    "win-style": {
-      "text": "Direct2D draws it, nothing reads the prop",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "win-shadow": {
       "text": "CLSID_D2D1Shadow",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -190,8 +186,7 @@
     "BaseViewProps.borderStyles": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-style"
+      "windows": "yes"
     },
     "BaseViewProps.outlineColor": {
       "linux": "yes",

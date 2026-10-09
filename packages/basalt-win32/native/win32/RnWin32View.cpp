@@ -614,10 +614,44 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
 // adjacent anti-aliased fills leave a faint seam down each diagonal where their
 // coverages meet, and the mask already gives the ring's own edges their
 // smoothing.
+// The dash pattern for a style, in Direct2D's units.
+//
+// Direct2D counts dash lengths in multiples of the stroke width, where GSK and
+// Core Animation take absolute ones -- so the other two hosts' {3w, 2w} is
+// {3, 2} here, and theirs is scaled to the width for the reason a browser
+// scales it: a fixed pattern reads as a hairline on a thick border and as a
+// solid line on a thin one. Dotted is a zero-length dash with round caps,
+// which is what makes a dot a dot rather than a short dash.
+//
+// Answers with the stroke style, or null for a solid line and for a failure,
+// which draws solid: a ring drawn solid is wrong in a way a reader can see, and
+// no ring at all looks like the prop being ignored.
+static ComPtr<ID2D1StrokeStyle> dashStyleFor(ID2D1Factory *factory,
+                                             RnWin32View::LineStyle style) {
+  if (factory == nullptr || style == RnWin32View::LineStyle::Solid) {
+    return nullptr;
+  }
+  const bool dots = style == RnWin32View::LineStyle::Dotted;
+  const D2D1_CAP_STYLE cap = dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT;
+  const float pattern[2] = {dots ? 0.0f : 3.0f, 2.0f};
+  const D2D1_STROKE_STYLE_PROPERTIES properties = D2D1::StrokeStyleProperties(
+      cap, cap, cap, D2D1_LINE_JOIN_MITER, 10.0f, D2D1_DASH_STYLE_CUSTOM, 0.0f);
+
+  ComPtr<ID2D1StrokeStyle> stroke;
+  if (FAILED(factory->CreateStrokeStyle(properties, pattern, 2, stroke.GetAddressOf()))) {
+    return nullptr;
+  }
+  return stroke;
+}
+
+void RnWin32View::setBorderStyle(LineStyle style) {
+  borderStyle_ = style;
+}
+
 void RnWin32View::setOutline(float width,
                              float offset,
                              const float colour[4],
-                             OutlineStyle style) {
+                             LineStyle style) {
   outlineWidth_ = width > 0.0f ? width : 0.0f;
   outlineOffset_ = offset;
   for (int component = 0; component < 4; component++) {
@@ -678,36 +712,62 @@ void RnWin32View::paintOutline(ID2D1RenderTarget *target) const {
     return;
   }
 
-  ComPtr<ID2D1StrokeStyle> dashed;
-  if (outlineStyle_ != OutlineStyle::Dotted && outlineStyle_ != OutlineStyle::Dashed) {
-    target->DrawGeometry(ring.Get(), brush.Get(), outlineWidth_, nullptr);
-    return;
-  }
-
-  // Direct2D's dash lengths are multiples of the stroke width, which is what
-  // the other two hosts' arrays are in once their widths are divided out: dots
-  // are a zero-length dash with round caps two widths apart, dashes are three
-  // on and two off.
-  const bool dots = outlineStyle_ == OutlineStyle::Dotted;
-  const float pattern[2] = {dots ? 0.0f : 3.0f, 2.0f};
-  const D2D1_STROKE_STYLE_PROPERTIES properties = D2D1::StrokeStyleProperties(
-      dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT,
-      dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT,
-      dots ? D2D1_CAP_STYLE_ROUND : D2D1_CAP_STYLE_FLAT,
-      D2D1_LINE_JOIN_MITER,
-      10.0f,
-      D2D1_DASH_STYLE_CUSTOM,
-      0.0f);
-  if (FAILED(factory->CreateStrokeStyle(properties, pattern, 2, dashed.GetAddressOf()))) {
-    // A ring drawn solid is wrong in a way a reader can see; no ring at all
-    // looks like the prop being ignored, which is what this host did until now.
-    target->DrawGeometry(ring.Get(), brush.Get(), outlineWidth_, nullptr);
-    return;
-  }
+  const ComPtr<ID2D1StrokeStyle> dashed = dashStyleFor(factory.Get(), outlineStyle_);
   target->DrawGeometry(ring.Get(), brush.Get(), outlineWidth_, dashed.Get());
 }
 
+// A dotted or dashed border: one stroked path around the rounded box rather
+// than four filled edges.
+//
+// Which is why the style belongs to the whole border and not to a side, the
+// same decision both other hosts made: a stroked path carries one dash pattern.
+// The width and the colour are the first side's, for the same reason.
+//
+// Inset by half the width, because a stroke straddles its path where the filled
+// ring sits inside the box. Without that a 4pt dashed border would paint two
+// points outside the view and overlap its neighbour.
+void RnWin32View::paintStrokedBorder(ID2D1RenderTarget *target) const {
+  ComPtr<ID2D1Factory> factory;
+  target->GetFactory(factory.GetAddressOf());
+  if (!factory) {
+    return;
+  }
+
+  const float width = borderWidths_[0] > 0.0f ? borderWidths_[0] : 1.0f;
+  const D2D1_RECT_F rect = D2D1::RectF(width / 2.0f,
+                                       width / 2.0f,
+                                       (std::max)(width / 2.0f, frame_.width - width / 2.0f),
+                                       (std::max)(width / 2.0f, frame_.height - width / 2.0f));
+  // The radii shrink with the path, so a dashed border on a rounded card keeps
+  // the card's corner rather than cutting across it.
+  float radii[8];
+  for (int index = 0; index < 8; index++) {
+    radii[index] = cornerRadii_[index] > width / 2.0f ? cornerRadii_[index] - width / 2.0f : 0.0f;
+  }
+
+  const ComPtr<ID2D1Geometry> path = roundedBoxGeometry(factory.Get(), rect, radii);
+  if (!path) {
+    return;
+  }
+
+  ComPtr<ID2D1SolidColorBrush> brush;
+  const D2D1_COLOR_F colour = D2D1::ColorF(
+      borderColours_[0], borderColours_[1], borderColours_[2], borderColours_[3]);
+  if (FAILED(target->CreateSolidColorBrush(colour, brush.GetAddressOf()))) {
+    return;
+  }
+
+  const ComPtr<ID2D1StrokeStyle> dashed = dashStyleFor(factory.Get(), borderStyle_);
+  target->DrawGeometry(path.Get(), brush.Get(), width, dashed.Get());
+}
+
 void RnWin32View::paintBorders(ID2D1RenderTarget *target) const {
+  // Dotted and dashed are a different drawing entirely; see paintStrokedBorder.
+  if (borderStyle_ != LineStyle::Solid) {
+    paintStrokedBorder(target);
+    return;
+  }
+
   ComPtr<ID2D1Factory> factory;
   target->GetFactory(factory.GetAddressOf());
   if (!factory) {
@@ -1388,6 +1448,16 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     appendFormat(out, " control=%s", controlDescription_.c_str());
   }
 
+  // The border's style, when it is not solid. Printed for the same reason the
+  // widths are: a dashed border and a solid one are the same four widths and
+  // the same four colours, and this is the only thing that can say the prop
+  // arrived. Spelled as the other two hosts spell it.
+  if (hasBorders_ && borderStyle_ != LineStyle::Solid) {
+    appendFormat(out,
+                 " border-style=%s",
+                 borderStyle_ == LineStyle::Dotted ? "dotted" : "dashed");
+  }
+
   // The outline, which is invisible in every other line: it is not a border,
   // and a view with one has the same frame and the same colours without it.
   // Spelled exactly as the other two hosts spell it, style included only when
@@ -1401,8 +1471,8 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
                  static_cast<unsigned>(outlineColour_[1] * 255.0f + 0.5f),
                  static_cast<unsigned>(outlineColour_[2] * 255.0f + 0.5f),
                  static_cast<unsigned>(outlineColour_[3] * 255.0f + 0.5f));
-    if (outlineStyle_ != OutlineStyle::Solid) {
-      appendFormat(out, ",%s", outlineStyle_ == OutlineStyle::Dotted ? "dotted" : "dashed");
+    if (outlineStyle_ != LineStyle::Solid) {
+      appendFormat(out, ",%s", outlineStyle_ == LineStyle::Dotted ? "dotted" : "dashed");
     }
     out += ")";
   }

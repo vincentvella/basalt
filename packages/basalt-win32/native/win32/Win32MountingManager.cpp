@@ -353,6 +353,35 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
   }
   view->setBorders(widths, colours);
 
+  // `borderStyle`, from the *resolved* metrics like the widths and the colours
+  // above. The raw `props->borderStyles` is a cascade of optionals with a slot
+  // per spelling, and `borderStyle: 'dashed'` sets the `all` slot: reading the
+  // four sides directly finds nothing, which is how every dashed border in a
+  // React app came to draw solid on the other two hosts while the tests that
+  // set the style on the view by hand passed.
+  //
+  // The first side that asks for something other than solid decides the whole
+  // border, because a dashed border is one stroked path and a path carries one
+  // dash pattern. Both other hosts made the same choice; see
+  // backlog/correctness.md.
+  {
+    const auto &styles = borders.borderStyles;
+    win32::RnWin32View::LineStyle style = win32::RnWin32View::LineStyle::Solid;
+    const facebook::react::BorderStyle sides[4] = {
+        styles.top, styles.right, styles.bottom, styles.left};
+    for (const auto &side : sides) {
+      if (side == facebook::react::BorderStyle::Dotted) {
+        style = win32::RnWin32View::LineStyle::Dotted;
+        break;
+      }
+      if (side == facebook::react::BorderStyle::Dashed) {
+        style = win32::RnWin32View::LineStyle::Dashed;
+        break;
+      }
+    }
+    view->setBorderStyle(style);
+  }
+
   view->setZIndex(static_cast<int>(props->zIndex.value_or(0)));
 
   // resolveTransform folds in transformOrigin, but only when one was set: the
@@ -407,13 +436,13 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
       colour[2] = components.blue;
       colour[3] = components.alpha;
     }
-    win32::RnWin32View::OutlineStyle style = win32::RnWin32View::OutlineStyle::Solid;
+    win32::RnWin32View::LineStyle style = win32::RnWin32View::LineStyle::Solid;
     switch (props->outlineStyle) {
       case facebook::react::OutlineStyle::Dotted:
-        style = win32::RnWin32View::OutlineStyle::Dotted;
+        style = win32::RnWin32View::LineStyle::Dotted;
         break;
       case facebook::react::OutlineStyle::Dashed:
-        style = win32::RnWin32View::OutlineStyle::Dashed;
+        style = win32::RnWin32View::LineStyle::Dashed;
         break;
       case facebook::react::OutlineStyle::Solid:
         break;

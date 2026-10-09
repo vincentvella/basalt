@@ -173,12 +173,24 @@ class RnWin32View {
   // decided the way GTK decides it.
   void setBorders(const float widths[4], const float colours[16]);
 
+  // How a border or an outline is drawn: filled, or stroked with a dash
+  // pattern. One enum for both because it is one concept and the three values
+  // are React Native's own for each of them.
+  enum class LineStyle { Solid, Dotted, Dashed };
+
+  // `borderStyle`, which is a property of the whole border rather than of a
+  // side: a dashed border is one stroked path around the rounded box, and a
+  // stroked path carries one dash pattern. React Native has a slot per side and
+  // the first that asks for something other than solid decides the border,
+  // which is what both other hosts do.
+  void setBorderStyle(LineStyle style);
+  LineStyle borderStyle() const { return borderStyle_; }
+
   // CSS's `outline`: one ring outside the box, one width, one colour, one
   // offset and one style for the whole thing, where a border has four of each.
   // It takes no layout space, so nothing about it touches the frame, and
   // nothing clips it -- see paintOutline.
-  enum class OutlineStyle { Solid, Dotted, Dashed };
-  void setOutline(float width, float offset, const float colour[4], OutlineStyle style);
+  void setOutline(float width, float offset, const float colour[4], LineStyle style);
   bool hasBorders() const { return hasBorders_; }
 
   // zIndex reorders painting and never the child list: Fabric's Insert and
@@ -451,6 +463,7 @@ class RnWin32View {
   void updateBackFace();
   void applyVisibility();
   void paintBorders(ID2D1RenderTarget *target) const;
+  void paintStrokedBorder(ID2D1RenderTarget *target) const;
   void paintOutline(ID2D1RenderTarget *target) const;
   void describeInto(std::string &out, int depth) const;
 
@@ -478,7 +491,8 @@ class RnWin32View {
   float outlineWidth_ = 0.0f;
   float outlineOffset_ = 0.0f;
   float outlineColour_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-  OutlineStyle outlineStyle_ = OutlineStyle::Solid;
+  LineStyle outlineStyle_ = LineStyle::Solid;
+  LineStyle borderStyle_ = LineStyle::Solid;
   bool focusable_ = false;
   bool showsFocusRing_ = false;
   float scrollX_ = 0.0f;

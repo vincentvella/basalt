@@ -522,7 +522,7 @@ TEST(win32_paint_draws_an_outline_outside_the_box) {
   RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
   root->insertChild(view, 0);
   const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
-  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::LineStyle::Solid);
 
   const RnPixels pixels = basalt::win32::renderToPixels(*root);
   EXPECT(!pixels.empty());
@@ -549,7 +549,7 @@ TEST(win32_paint_an_outline_offset_leaves_a_gap) {
   RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
   root->insertChild(view, 0);
   const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
-  view->setOutline(4.0f, 6.0f, red, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(4.0f, 6.0f, red, RnWin32View::LineStyle::Solid);
 
   const RnPixels pixels = basalt::win32::renderToPixels(*root);
   // The gap: three points out from the edge, between the box and the ring.
@@ -571,7 +571,7 @@ TEST(win32_paint_a_dashed_outline_is_not_solid) {
   root->insertChild(view, 0);
   const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
 
-  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::LineStyle::Solid);
   const RnPixels solid = basalt::win32::renderToPixels(*root);
   int solidInk = 0;
   for (unsigned x = 0; x < solid.width(); x++) {
@@ -580,7 +580,7 @@ TEST(win32_paint_a_dashed_outline_is_not_solid) {
     }
   }
 
-  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Dashed);
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::LineStyle::Dashed);
   const RnPixels dashed = basalt::win32::renderToPixels(*root);
   int dashedInk = 0;
   for (unsigned x = 0; x < dashed.width(); x++) {
@@ -602,17 +602,17 @@ TEST(win32_paint_no_outline_width_is_no_outline) {
   root->insertChild(view, 0);
   const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
 
-  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::LineStyle::Solid);
   EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 28, 50, 255, 0, 0, 255);
 
   // Taken away again, which is what losing focus does.
-  view->setOutline(0.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(0.0f, 0.0f, red, RnWin32View::LineStyle::Solid);
   EXPECT_TRANSPARENT(basalt::win32::renderToPixels(*root), 28, 50);
 
   // And a width with no colour paints nothing: React Native's default outline
   // colour is undefined, which arrives as a transparent one.
   const float invisible[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-  view->setOutline(4.0f, 0.0f, invisible, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(4.0f, 0.0f, invisible, RnWin32View::LineStyle::Solid);
   EXPECT_TRANSPARENT(basalt::win32::renderToPixels(*root), 28, 50);
 }
 
@@ -627,7 +627,7 @@ TEST(win32_paint_an_outline_follows_the_corner_radius) {
   const float radii[8] = {20, 20, 20, 20, 20, 20, 20, 20};
   view->setCornerRadii(radii);
   const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
-  view->setOutline(4.0f, 0.0f, red, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(4.0f, 0.0f, red, RnWin32View::LineStyle::Solid);
 
   const RnPixels pixels = basalt::win32::renderToPixels(*root);
   // The middle of an edge is on the ring.
@@ -648,11 +648,104 @@ TEST(win32_describe_prints_the_outline_as_gtk_does) {
   EXPECT(root->describeTree().find("outline=") == std::string::npos);
 
   const float colour[4] = {224.0f / 255.0f, 72.0f / 255.0f, 77.0f / 255.0f, 1.0f};
-  view->setOutline(3.0f, 2.0f, colour, RnWin32View::OutlineStyle::Dashed);
+  view->setOutline(3.0f, 2.0f, colour, RnWin32View::LineStyle::Dashed);
   EXPECT(root->describeTree().find("outline=(3,2,#e0484dff,dashed)") != std::string::npos);
 
   // Solid prints no style, which is what keeps the common case short and is
   // what the other two hosts do.
-  view->setOutline(3.0f, 2.0f, colour, RnWin32View::OutlineStyle::Solid);
+  view->setOutline(3.0f, 2.0f, colour, RnWin32View::LineStyle::Solid);
   EXPECT(root->describeTree().find("outline=(3,2,#e0484dff)") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// `borderStyle`, dotted and dashed.
+//
+// One stroked path around the rounded box rather than four filled edges, which
+// is what both other hosts do and why the style belongs to the whole border:
+// a stroked path carries one dash pattern.
+// ---------------------------------------------------------------------------
+
+TEST(win32_paint_a_dashed_border_is_not_solid) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *box = tree.box(2, 0, 0, 100, 100);
+  const float widths[4] = {4, 4, 4, 4};
+  const float colours[16] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1};
+  box->setBorders(widths, colours);
+  root->insertChild(box, 0);
+
+  const auto inkAlongTheTop = [&]() {
+    const RnPixels pixels = basalt::win32::renderToPixels(*root);
+    int ink = 0;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      if (pixels.at(x, 2).alpha > 40) {
+        ink++;
+      }
+    }
+    return ink;
+  };
+
+  const int solid = inkAlongTheTop();
+  box->setBorderStyle(RnWin32View::LineStyle::Dashed);
+  const int dashed = inkAlongTheTop();
+  box->setBorderStyle(RnWin32View::LineStyle::Dotted);
+  const int dotted = inkAlongTheTop();
+
+  // Ink in all three, and less of it once there are gaps.
+  EXPECT(solid > 80);
+  EXPECT(dashed > 0);
+  EXPECT(dashed < solid);
+  EXPECT(dotted > 0);
+  EXPECT(dotted < solid);
+  // Dots leave more gap than dashes: three widths on and two off against zero
+  // on and two off. A pattern converted into the wrong units would make these
+  // two the same, or make both solid.
+  EXPECT(dotted < dashed);
+}
+
+// The stroke stays inside the box, which is the half that a straddling stroke
+// gets wrong: a 4pt dashed border drawn on the box's own edge would paint two
+// points outside the view and overlap its neighbour.
+TEST(win32_paint_a_dashed_border_stays_inside_the_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *box = tree.box(2, 20, 20, 60, 60);
+  const float widths[4] = {4, 4, 4, 4};
+  const float colours[16] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1};
+  box->setBorders(widths, colours);
+  box->setBorderStyle(RnWin32View::LineStyle::Dashed);
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Nothing outside the frame on any side. A dash can fall anywhere along the
+  // path, so this counts a band rather than asking about one pixel.
+  int outside = 0;
+  for (unsigned x = 0; x < pixels.width(); x++) {
+    for (unsigned y = 0; y < pixels.height(); y++) {
+      const bool insideFrame = x >= 20 && x < 80 && y >= 20 && y < 80;
+      if (!insideFrame && pixels.at(x, y).alpha > 40) {
+        outside++;
+      }
+    }
+  }
+  EXPECT_EQ(outside, 0);
+}
+
+TEST(win32_describe_prints_the_border_style_as_gtk_does) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *box = tree.box(2, 10, 10, 40, 40);
+  const float widths[4] = {2, 2, 2, 2};
+  const float colours[16] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1};
+  box->setBorders(widths, colours);
+  root->insertChild(box, 0);
+
+  // Solid prints nothing, which keeps the common case short and is what the
+  // other two hosts do.
+  EXPECT(root->describeTree().find("border-style=") == std::string::npos);
+
+  box->setBorderStyle(RnWin32View::LineStyle::Dashed);
+  EXPECT(root->describeTree().find("border-style=dashed") != std::string::npos);
+  box->setBorderStyle(RnWin32View::LineStyle::Dotted);
+  EXPECT(root->describeTree().find("border-style=dotted") != std::string::npos);
 }

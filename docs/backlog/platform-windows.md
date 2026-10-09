@@ -214,11 +214,17 @@ and none of it is a missing half.
     shape of work as the AppKit half. Half the radius is the sigma on both other
     hosts, measured rather than chosen; see backlog/image.md so this one does not
     have to measure it again.
-  - `borderStyle`, dotted and dashed. Both others stroke one path around the
-    rounded rectangle with a dash pattern scaled to the width and let that replace
-    the four filled edges. `ID2D1StrokeStyle` takes a dash array, so the same
-    decision carries over, including that the first side which asks for something
-    other than solid decides the whole outline.
+  - ~~`borderStyle`, dotted and dashed.~~ Done 2026-10-09, the same way and with
+    the same decisions: one stroked path around the rounded box replacing the
+    four filled edges, the first side that asks for something other than solid
+    deciding the whole border, the path inset by half the width because a stroke
+    straddles it, and the style read from the *resolved* metrics rather than from
+    `props->borderStyles`, which is the mistake that made every dashed border in
+    a React app draw solid on the other two hosts. It shares the dash pattern
+    with the outline, which landed the same day, so Direct2D's dash lengths are
+    converted into multiples of the stroke width in one place. Three tests: ink
+    along the top with gaps, dots gapping more than dashes, nothing painted
+    outside the frame, and the dump.
   - `boxShadow`, outset and inset, any number of them. GSK has a shadow node per
     kind and macOS has CALayer's shadow properties; Direct2D has
     `CLSID_D2D1Shadow`, which takes a blurred alpha mask of what is drawn, so the

@@ -4056,9 +4056,10 @@ def test_image_tint_and_blur(bundle: Path) -> None:
 def test_border_style(bundle: Path) -> None:
     """`borderStyle: 'dashed'` and `'dotted'` reach the view.
 
-    Both hosts draw those as one stroked outline rather than four filled edges,
-    and the switch is invisible in every other line of a tree dump: same widths,
-    same colours, same frame. So each prints the style, and this reads it.
+    All three hosts draw those as one stroked outline rather than four filled
+    edges, and the switch is invisible in every other line of a tree dump: same
+    widths, same colours, same frame. So each prints the style, and this reads
+    it.
 
     It exists because the prop never arrived. React Native's `borderStyles` is a
     cascade of optionals with a slot per spelling -- `left`, `top`, `start`,
@@ -4071,11 +4072,9 @@ def test_border_style(bundle: Path) -> None:
     Runs e2e/views.js, the app scripts/compare_hosts.sh diffs between desktops,
     which is where a prop that arrives on one and not the other belongs.
 
-    Windows draws solid whatever the style says, so it is skipped by name; the gap
-    is an entry in backlog/platform-windows.md rather than a red tick here.
+    All three hosts now, and all three stroke it: GSK, Core Animation and
+    Direct2D each take a dash array, so none of them needed a second mechanism.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws every border solid for now")
 
     app = bundle_app(bundle.parent, "views")
 
