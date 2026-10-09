@@ -21,6 +21,7 @@
 #include <react/renderer/attributedstring/TextAttributes.h>
 
 #include <memory>
+#include <string>
 
 namespace basalt::win32 {
 
@@ -28,6 +29,15 @@ namespace basalt::win32 {
 // mounting manager can ask the same question about a lone run without building
 // a whole paragraph.
 RnTextStyle buildTextStyle(const facebook::react::TextAttributes &textAttributes);
+
+// One fragment's text with its `textTransform` applied, which has to happen
+// before anything measures the string. Exposed for the suite, and for the same
+// reason the AppKit host exposes its own: the case mapping is this platform's
+// (`LCMapStringEx`), and whether it agrees with GLib's and NSString's on the
+// awkward cases (the German sharp s, an accented letter, a word starting with a
+// digit) is a thing to assert rather than hope for.
+std::string transformedFragmentText(const facebook::react::TextAttributes &textAttributes,
+                                    const std::string &text);
 
 std::shared_ptr<RnWin32TextLayout>
 buildTextLayout(const facebook::react::AttributedString &attributedString,

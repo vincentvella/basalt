@@ -5433,10 +5433,12 @@ def test_text_transform(bundle: Path) -> None:
     `capitalize` is asserted too, surprising parts included: React Native's rule
     lowercases the rest of each word, so "iOS" becomes "Ios" on every platform.
 
-    Windows does not transform text yet, so it is skipped by name.
+    All three hosts now, each through its own platform's case mapping: GLib's,
+    NSString's and `LCMapStringEx` with `LCMAP_LINGUISTIC_CASING`. The strings
+    here are ASCII, so what this asserts is that the prop arrives and that the
+    three agree; whether they agree on the awkward letters is asserted in each
+    host's own suite, against the cases that platform's mapping can get wrong.
     """
-    if PLATFORM == "windows":
-        raise Skipped("DirectWrite is handed the untransformed string")
 
     app = bundle_app(bundle.parent, "text")
 

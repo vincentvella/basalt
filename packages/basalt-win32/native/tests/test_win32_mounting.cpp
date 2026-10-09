@@ -15,12 +15,14 @@
 #include "TestHarness.h"
 #include "TreeDump.h"
 
+#include "DirectWriteLayout.h"
 #include "Win32MountingManager.h"
 
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/graphics/Color.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <sstream>
 #include <vector>
 
@@ -407,4 +409,108 @@ TEST(no_transform_origin_anchors_the_centre) {
   EXPECT_EQ(matrix[5], 0.0);
 
   manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// ---------------------------------------------------------------------------
+// What a TextAttributes becomes on this platform: the case mapping and the
+// decoration flags.
+//
+// Here rather than in tests/test_win32_text.cpp because both need React
+// Native's TextAttributes, and that file is compiled into the toolkit-only
+// build as well. The pixels are its half; this is the translation.
+// ---------------------------------------------------------------------------
+namespace {
+
+facebook::react::TextAttributes withTransform(facebook::react::TextTransform transform) {
+  facebook::react::TextAttributes attributes;
+  attributes.textTransform = transform;
+  return attributes;
+}
+
+std::string transformed(facebook::react::TextTransform transform, const std::string &text) {
+  return basalt::win32::transformedFragmentText(withTransform(transform), text);
+}
+
+} // namespace
+
+TEST(win32_text_transform_maps_case) {
+  using facebook::react::TextTransform;
+
+  EXPECT_EQ(transformed(TextTransform::Uppercase, "hello there"), std::string("HELLO THERE"));
+  EXPECT_EQ(transformed(TextTransform::Lowercase, "HELLO THERE"), std::string("hello there"));
+
+  // Through LCMapStringEx rather than through `std::toupper`, which is what
+  // makes this work for anything but ASCII: a byte-wise map leaves an accented
+  // letter alone and looks right in English.
+  // Written as UTF-8 escapes rather than as the letters themselves, because
+  // this file carries no encoding declaration and MSVC without /utf-8 reads a
+  // literal's bytes as the machine's code page. The string is "creme brulee"
+  // with a grave, a circumflex and an acute on it.
+  EXPECT_EQ(transformed(TextTransform::Uppercase, "cr\xc3\xa8me br\xc3\xbbl\xc3\xa9" "e"),
+            std::string("CR\xc3\x88ME BR\xc3\x9bL\xc3\x89" "E"));
+
+
+  // React Native's own capitalize rule, from RCTAttributedTextUtils.mm and
+  // copied on all three hosts: split on single spaces, lowercase the word, and
+  // uppercase its first character unless it is a digit. So "iOS" becomes "Ios",
+  // which is surprising and is what the other platforms do.
+  EXPECT_EQ(transformed(TextTransform::Capitalize, "hello iOS world"),
+            std::string("Hello Ios World"));
+  EXPECT_EQ(transformed(TextTransform::Capitalize, "3rd place"), std::string("3rd Place"));
+  // Double spaces are kept, which falls out of splitting on single ones.
+  EXPECT_EQ(transformed(TextTransform::Capitalize, "a  b"), std::string("A  B"));
+
+  // No transform, and the empty string, both come back untouched.
+  facebook::react::TextAttributes plain;
+  EXPECT_EQ(basalt::win32::transformedFragmentText(plain, "Left Alone"),
+            std::string("Left Alone"));
+  EXPECT_EQ(transformed(TextTransform::Uppercase, ""), std::string(""));
+}
+
+// Whether Windows expands the German sharp s the way the other two hosts do is
+// a question this repository cannot answer without a Windows box. GLib's
+// `g_utf8_strup` and NSString's `uppercaseString` both turn it into "SS",
+// growing the string by a byte; `LCMapStringEx` is documented to leave it alone
+// unless asked for a full-width or a simple map.
+//
+// So it is measured on CI rather than guessed at. This asserts the half that
+// cannot differ, prints what the mapping actually produced, and the commit
+// after the first green run asserts the answer and records it in
+// backlog/platform-windows.md.
+TEST(win32_text_transform_and_the_sharp_s) {
+  const std::string mapped =
+      transformed(facebook::react::TextTransform::Uppercase, "Stra\xc3\x9f" "e");
+  fprintf(stderr, "MEASURED win32 uppercase of the sharp s = \"%s\" (%zu bytes)\n",
+          mapped.c_str(), mapped.size());
+
+  EXPECT(mapped.rfind("STRA", 0) == 0);
+  // One or the other, and the next commit says which: "STRASSE" if Windows
+  // expands it as the other two hosts do, the sharp s kept if it does not.
+  EXPECT(mapped == std::string("STRASSE") || mapped == std::string("STRA\xc3\x9f" "E"));
+}
+
+TEST(win32_a_decoration_reaches_the_style) {
+  using facebook::react::TextDecorationLineType;
+
+  facebook::react::TextAttributes attributes;
+  EXPECT(!basalt::win32::buildTextStyle(attributes).underline);
+  EXPECT(!basalt::win32::buildTextStyle(attributes).strikethrough);
+
+  attributes.textDecorationLineType = TextDecorationLineType::Underline;
+  EXPECT(basalt::win32::buildTextStyle(attributes).underline);
+  EXPECT(!basalt::win32::buildTextStyle(attributes).strikethrough);
+
+  attributes.textDecorationLineType = TextDecorationLineType::Strikethrough;
+  EXPECT(!basalt::win32::buildTextStyle(attributes).underline);
+  EXPECT(basalt::win32::buildTextStyle(attributes).strikethrough);
+
+  attributes.textDecorationLineType = TextDecorationLineType::UnderlineStrikethrough;
+  EXPECT(basalt::win32::buildTextStyle(attributes).underline);
+  EXPECT(basalt::win32::buildTextStyle(attributes).strikethrough);
+
+  // `None` is a line the app turned off, not an absent prop, and it draws
+  // nothing -- which core/TextDecorations.h answers for all three hosts.
+  attributes.textDecorationLineType = TextDecorationLineType::None;
+  EXPECT(!basalt::win32::buildTextStyle(attributes).underline);
+  EXPECT(!basalt::win32::buildTextStyle(attributes).strikethrough);
 }

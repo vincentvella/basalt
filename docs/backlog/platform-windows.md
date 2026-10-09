@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (21):**
+**Open (19):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -18,12 +18,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 11. `hitSlop` is not part of the hit test
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
 13. `filter` is not applied
-14. `textTransform` is ignored, so an uppercase label is not uppercase
+14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
 15. The `outline` family is not drawn
 16. `mixBlendMode` blends nothing
 17. No text shadow, so `textShadowColor` and friends do nothing
 18. The desktop's text scale is not read, so large text does not enlarge text
-19. No text decoration, so an underline or a strikethrough is not drawn
+19. ~~No text decoration~~, except the styles DirectWrite has no form of
 20. `fontVariant` and a fragment's `opacity` are not read
 21. `writingDirection` is not read, so a right-to-left paragraph starts on the left
 22. An animated GIF is painted as a still
@@ -289,14 +289,24 @@ and none of it is a missing half.
   did with the standard deviation, which is the one number that differs by
   platform. The end-to-end scenario is skipped here by name.
 
-- **`textTransform` is ignored, so an uppercase label is not uppercase.** The
-  other two hosts apply it where they build their text layout, before anything
-  measures the string, because the transformed text is a different width. The
-  Win32 host has the same seam -- `DirectWriteLayout.cpp` builds its runs from
-  the fragments -- and the case mapping is the platform's own: `LCMapStringEx`
-  with `LCMAP_UPPERCASE` is the Unicode-aware one, where `_wcsupr` is not.
-  backlog/text.md has the rule for `capitalize` and the two non-ASCII cases both
-  other suites assert. The end-to-end scenario is skipped here by name.
+- ~~**`textTransform` is ignored, so an uppercase label is not uppercase.**~~
+  Done, 2026-10-09, in `DirectWriteLayout.cpp` where the runs are built, which
+  is before anything measures the string: the transformed text is a different
+  width, so a transform applied later would wrap in the wrong place.
+
+  `LCMapStringEx` with `LCMAP_UPPERCASE | LCMAP_LINGUISTIC_CASING`, through
+  UTF-16 both ways, which is what that function takes and what DirectWrite
+  counts its ranges in anyway. Its two-call form is there because a case mapping
+  can change the length. `capitalize` follows React Native's own rule, the one
+  the other two hosts already copied from `RCTAttributedTextUtils.mm`: split on
+  single spaces, lowercase the word, uppercase its first character unless it is
+  a digit, so "iOS" becomes "Ios".
+
+  The end-to-end scenario now runs on all three. Whether this mapping agrees
+  with GLib's and NSString's on the German sharp s is the one thing that could
+  not be settled from a Mac, so `win32_text_transform_and_the_sharp_s` asserts
+  what cannot differ and prints what the mapping produced; the answer and its
+  consequence belong in this entry once CI has said.
 
 - **The `outline` family is not drawn.** `outlineWidth`, `outlineColor`,
   `outlineOffset` and `outlineStyle` reach this host's props and nothing reads
@@ -355,15 +365,25 @@ and none of it is a missing half.
   would also pick up React Native's default of opaque black, which this host
   currently spells for itself.
 
-- **No text decoration, so `textDecorationLine` and the two props beside it
-  draw nothing.** The other two hosts read all three as of 2026-10-09, through
-  `core/TextDecorations.h`, and this host reads none.
+- ~~**No text decoration, so `textDecorationLine` and the two props beside it
+  draw nothing.**~~ The line is drawn as of 2026-10-09, through
+  `core/TextDecorations.h` like the other two hosts, so all three now agree on
+  which lines an app asked for. `IDWriteTextLayout::SetUnderline(TRUE, range)`
+  and `SetStrikethrough(TRUE, range)`, per run, beside where the font size and
+  weight are already set.
 
-  Two of the three are a call each: `IDWriteTextLayout::SetUnderline(TRUE,
-  range)` and `SetStrikethrough(TRUE, range)`, over the whole text range, which
-  is where `RnWin32TextLayout` already sets the font size and weight per run.
+  One wrinkle worth knowing: a single-style paragraph has no runs at all here,
+  its style living on the `IDWriteTextFormat`, and a format has no underline
+  property. So that case sets the decoration over the whole string instead,
+  which is the only range there is.
 
-  The third is not. DirectWrite draws an underline in the text's own colour and
+  Three tests, against pixels rather than against the style: the longest
+  horizontal run of ink is a line and a few pixels is a glyph, an underline's
+  row is below a strikethrough's, and both at once draw two lines. A test on the
+  struct would pass through exactly the bug this entry described.
+
+  **What is left is the style and the colour**, which is why this entry keeps a
+  paragraph. DirectWrite draws an underline in the text's own colour and
   with no pattern, so `textDecorationColor` and `textDecorationStyle` need a
   custom renderer: `IDWriteTextRenderer::DrawUnderline` and `DrawStrikethrough`
   are the callbacks, and they hand over a `DWRITE_UNDERLINE` with the geometry

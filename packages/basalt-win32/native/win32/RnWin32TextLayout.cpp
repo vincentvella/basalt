@@ -182,7 +182,28 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
         run.style.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL, range);
     layout->SetFontStyle(
         run.style.italic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL, range);
+    if (run.style.underline) {
+      layout->SetUnderline(TRUE, range);
+    }
+    if (run.style.strikethrough) {
+      layout->SetStrikethrough(TRUE, range);
+    }
   }
+
+  // The single-style paragraph has no runs at all: its font, size and weight
+  // live on the text format. A format has no underline or strikethrough
+  // property, though -- they exist only on a layout and only per range -- so
+  // the whole string is the range here.
+  if (runs_.empty() && (style_.underline || style_.strikethrough)) {
+    const DWRITE_TEXT_RANGE whole{0, static_cast<UINT32>(utf16_.size())};
+    if (style_.underline) {
+      layout->SetUnderline(TRUE, whole);
+    }
+    if (style_.strikethrough) {
+      layout->SetStrikethrough(TRUE, whole);
+    }
+  }
+
   return layout;
 }
 

@@ -58,6 +58,15 @@ struct RnTextStyle {
   float lineHeight = 0.0f;
   RnTextAlign align = RnTextAlign::Left;
   float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  // `textDecorationLine`, as much of it as DirectWrite has: a line is on or it
+  // is off. `SetUnderline` and `SetStrikethrough` take a range and a boolean
+  // and nothing else, so the dotted, dashed and wavy styles and a separate
+  // `textDecorationColor` are not expressible without a custom
+  // `IDWriteTextRenderer` -- which backlog/platform-windows.md records with the
+  // call named. The other two desktops draw what their engines have and fall
+  // back to a solid line, which is what this is.
+  bool underline = false;
+  bool strikethrough = false;
 };
 
 struct RnTextSize {

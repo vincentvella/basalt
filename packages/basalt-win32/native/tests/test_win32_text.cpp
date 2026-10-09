@@ -256,3 +256,114 @@ TEST(each_run_draws_in_its_own_colour) {
   EXPECT(reddish > 0);
   EXPECT(bluish > 0);
 }
+
+// ---------------------------------------------------------------------------
+// textDecorationLine, which DirectWrite draws itself.
+//
+// Against pixels rather than against the style the layout was given: an
+// underline that was asked for and not drawn is exactly the bug the other two
+// hosts had, and a test on the struct would pass through it. What is measured
+// is the longest horizontal run of ink, which for a line is about the width of
+// the text and for glyphs is a few pixels.
+// ---------------------------------------------------------------------------
+namespace {
+
+// The widest horizontal run of ink in the view, and which row it was on.
+struct LongestRun {
+  int length{0};
+  int row{-1};
+};
+
+LongestRun longestInkRun(const RnTextStyle &style, const char *text) {
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 300, 60);
+  root->setTextLayout(RnWin32TextLayout::create(text, style, 0));
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  LongestRun longest;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    int run = 0;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      if (pixels.at(x, y).alpha > 32) {
+        run++;
+        if (run > longest.length) {
+          longest.length = run;
+          longest.row = static_cast<int>(y);
+        }
+      } else {
+        run = 0;
+      }
+    }
+  }
+  return longest;
+}
+
+} // namespace
+
+TEST(text_an_underline_draws_a_line) {
+  RnTextStyle plain;
+  plain.fontSize = 24.0f;
+
+  RnTextStyle underlined = plain;
+  underlined.underline = true;
+
+  // "iiiii" has no wide glyph in it, so any long horizontal run is the line.
+  const LongestRun without = longestInkRun(plain, "iiiii");
+  const LongestRun with = longestInkRun(underlined, "iiiii");
+
+  EXPECT(without.length > 0);
+  EXPECT(with.length > without.length * 2);
+}
+
+TEST(text_a_strikethrough_draws_a_line_above_an_underline) {
+  RnTextStyle struck;
+  struck.fontSize = 24.0f;
+  struck.strikethrough = true;
+
+  RnTextStyle underlined;
+  underlined.fontSize = 24.0f;
+  underlined.underline = true;
+
+  const LongestRun strikeRun = longestInkRun(struck, "iiiii");
+  const LongestRun underRun = longestInkRun(underlined, "iiiii");
+
+  // Both draw a line, and they are not the same line: a strikethrough crosses
+  // the glyphs and an underline sits below them, which is the one thing that
+  // says the two properties were not confused for each other.
+  EXPECT(strikeRun.length > 0);
+  EXPECT(underRun.length > 0);
+  EXPECT(strikeRun.row >= 0);
+  EXPECT(underRun.row > strikeRun.row);
+}
+
+TEST(text_both_decorations_at_once_draw_two_lines) {
+  RnTextStyle both;
+  both.fontSize = 24.0f;
+  both.underline = true;
+  both.strikethrough = true;
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 300, 60);
+  root->setTextLayout(RnWin32TextLayout::create("iiiii", both, 0));
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Rows whose ink run is long enough to be a line rather than a glyph.
+  int lineRows = 0;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    int run = 0;
+    int longest = 0;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      if (pixels.at(x, y).alpha > 32) {
+        longest = ++run > longest ? run : longest;
+      } else {
+        run = 0;
+      }
+    }
+    if (longest > 20) {
+      lineRows++;
+    }
+  }
+  // At least one row for each line. Not an exact count: how thick a line is
+  // comes from the font's metrics.
+  EXPECT(lineRows >= 2);
+}
