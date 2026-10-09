@@ -142,6 +142,13 @@ STRUCTS = [
         "Per-fragment text styling, so a nested <Text> can differ from its parent.",
     ),
     (
+        "ImageProps",
+        "packages/react-native/ReactCommon/react/renderer/components/image/ImageProps.h",
+        "Props",
+        "What an <Image> carries beyond a view's own props: the source, how it "
+        "fills its box, and the Android and iOS extras.",
+    ),
+    (
         "ParagraphAttributes",
         "packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h",
         "Fields",
@@ -161,6 +168,11 @@ STYLE_TYPES = [
             "____ShadowStyle_InternalCore",
             "____ViewStyle_InternalBase",
             "____TextStyle_InternalBase",
+            # An <Image>'s own four, which a <View>'s style does not take:
+            # `resizeMode`, `objectFit`, `tintColor` and `overlayColor`. Read
+            # once `ImageProps` was scraped, because three of them are its
+            # fields and the fourth is another spelling of one.
+            "____ImageStyle_InternalCore",
         ],
     ),
     (
@@ -189,6 +201,11 @@ PROP_TYPE_FILES = [
     # only public there: `lineBreakModeIOS` is a TextInput prop and not a Text
     # one, which is why it was reading as internal.
     "packages/react-native/Libraries/Components/TextInput/TextInput.flow.js",
+    # And an <Image>'s, so `blurRadius` and `capInsets` read as the public props
+    # they are rather than as internals. Without it every ImageProps field but
+    # two landed in "Neither", which is a page saying nothing an app writes
+    # reaches them.
+    "packages/react-native/Libraries/Image/ImageProps.js",
 ]
 
 # ReactCommon's spelling -> JavaScript's, where they differ. Checked against what
@@ -209,6 +226,9 @@ ALIASES = {
     "shouldRasterize": "shouldRasterizeIOS",
     "lineBreakStrategy": "lineBreakStrategyIOS",
     "lineBreakMode": "lineBreakModeIOS",
+    # An <Image>'s source, which ReactCommon keeps as a list: React Native
+    # resolves one `source` into the candidates a density picker chooses from.
+    "sources": "source",
     # A paragraph, where ReactCommon's name is longer than JavaScript's.
     "maximumNumberOfLines": "numberOfLines",
     # Text, where ReactCommon's names are its own.
@@ -244,6 +264,7 @@ SPELLINGS = {
         "borderEndStartRadius",
         "borderEndEndRadius",
     ],
+    "resizeMode": ["objectFit"],
     "borderColors": [
         "borderTopColor",
         "borderBottomColor",
@@ -531,6 +552,11 @@ def main() -> int:
     # What a `style` takes, and what a component takes. Both scraped, because
     # which of the two a prop belongs to is upstream's answer and not ours.
     style_props: set[str] = set()
+    # Kept per type as well as pooled, so each struct's section can name the
+    # types its own style props came from rather than all of them: an <Image>'s
+    # three are declared in one type, and a page that listed five would be
+    # saying something it had not read.
+    members_by_type: list[tuple[str, set[str]]] = []
     for relative, type_names in STYLE_TYPES:
         text = read(relative)
         if text is None:
@@ -543,6 +569,7 @@ def main() -> int:
             if not members:
                 problems.append(f"{relative}: `type {type_name}` parsed to no members")
             style_props.update(members)
+            members_by_type.append((type_name, set(members)))
 
     public_props: set[str] = set()
     for relative in PROP_TYPE_FILES:
@@ -616,8 +643,22 @@ def main() -> int:
             if field in SPELLINGS:
                 prop["spellings"] = list(SPELLINGS[field])
             props.append(prop)
+        # The types that declared this struct's own style names, in the order
+        # STYLE_TYPES reads them.
+        style_names = {prop.get("javascript", prop["name"]) for prop in props if prop["kind"] == "style"}
+        style_from = [
+            type_name
+            for type_name, members in members_by_type
+            if style_names & members
+        ]
         inventory["structs"].append(
-            {"name": name, "header": relative, "note": note, "props": props}
+            {
+                "name": name,
+                "header": relative,
+                "note": note,
+                "styleFrom": style_from,
+                "props": props,
+            }
         )
 
     layout_names, unread_names, accounting = account(

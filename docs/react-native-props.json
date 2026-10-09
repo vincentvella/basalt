@@ -13,6 +13,12 @@
       "name": "BaseViewProps",
       "header": "packages/react-native/ReactCommon/react/renderer/components/view/BaseViewProps.h",
       "note": "Every style and behaviour prop a <View> carries.",
+      "styleFrom": [
+        "____LayoutStyle_Internal",
+        "____ShadowStyle_InternalCore",
+        "____ViewStyle_InternalBase",
+        "____TransformStyle_Internal"
+      ],
       "props": [
         {
           "name": "opacity",
@@ -194,6 +200,7 @@
       "name": "AccessibilityProps",
       "header": "packages/react-native/ReactCommon/react/renderer/components/view/AccessibilityProps.h",
       "note": "What a view tells the platform's accessible layer. BaseViewProps inherits these.",
+      "styleFrom": [],
       "props": [
         {
           "name": "accessible",
@@ -303,6 +310,10 @@
       "name": "TextAttributes",
       "header": "packages/react-native/ReactCommon/react/renderer/attributedstring/TextAttributes.h",
       "note": "Per-fragment text styling, so a nested <Text> can differ from its parent.",
+      "styleFrom": [
+        "____ViewStyle_InternalBase",
+        "____TextStyle_InternalBase"
+      ],
       "props": [
         {
           "name": "foregroundColor",
@@ -437,9 +448,82 @@
       ]
     },
     {
+      "name": "ImageProps",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/image/ImageProps.h",
+      "note": "What an <Image> carries beyond a view's own props: the source, how it fills its box, and the Android and iOS extras.",
+      "styleFrom": [
+        "____ImageStyle_InternalCore"
+      ],
+      "props": [
+        {
+          "name": "sources",
+          "kind": "component",
+          "javascript": "source"
+        },
+        {
+          "name": "defaultSource",
+          "kind": "component"
+        },
+        {
+          "name": "loadingIndicatorSource",
+          "kind": "component"
+        },
+        {
+          "name": "resizeMode",
+          "kind": "style",
+          "spellings": [
+            "objectFit"
+          ]
+        },
+        {
+          "name": "blurRadius",
+          "kind": "component"
+        },
+        {
+          "name": "capInsets",
+          "kind": "component"
+        },
+        {
+          "name": "tintColor",
+          "kind": "style"
+        },
+        {
+          "name": "internal_analyticTag",
+          "kind": "component"
+        },
+        {
+          "name": "resizeMethod",
+          "kind": "component"
+        },
+        {
+          "name": "resizeMultiplier",
+          "kind": "component"
+        },
+        {
+          "name": "shouldNotifyLoadEvents",
+          "kind": "internal"
+        },
+        {
+          "name": "overlayColor",
+          "kind": "style"
+        },
+        {
+          "name": "fadeDuration",
+          "kind": "component"
+        },
+        {
+          "name": "progressiveRenderingEnabled",
+          "kind": "component"
+        }
+      ]
+    },
+    {
       "name": "ParagraphAttributes",
       "header": "packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h",
       "note": "What belongs to a whole paragraph rather than to a fragment: how many lines it may take, how it is truncated, and whether it shrinks to fit.",
+      "styleFrom": [
+        "____TextStyle_InternalBase"
+      ],
       "props": [
         {
           "name": "maximumNumberOfLines",
@@ -916,12 +1000,14 @@
     "minHeight",
     "minWidth",
     "mixBlendMode",
+    "objectFit",
     "opacity",
     "outlineColor",
     "outlineOffset",
     "outlineStyle",
     "outlineWidth",
     "overflow",
+    "overlayColor",
     "padding",
     "paddingBlock",
     "paddingBlockEnd",
@@ -939,6 +1025,7 @@
     "paddingVertical",
     "pointerEvents",
     "position",
+    "resizeMode",
     "right",
     "rowGap",
     "shadowColor",
@@ -955,6 +1042,7 @@
     "textShadowOffset",
     "textShadowRadius",
     "textTransform",
+    "tintColor",
     "top",
     "transform",
     "transformOrigin",
@@ -971,7 +1059,8 @@
         "____LayoutStyle_Internal",
         "____ShadowStyle_InternalCore",
         "____ViewStyle_InternalBase",
-        "____TextStyle_InternalBase"
+        "____TextStyle_InternalBase",
+        "____ImageStyle_InternalCore"
       ]
     },
     {
@@ -985,7 +1074,8 @@
     "packages/react-native/Libraries/Components/View/ViewPropTypes.js",
     "packages/react-native/Libraries/Components/View/ViewAccessibility.js",
     "packages/react-native/Libraries/Text/TextProps.js",
-    "packages/react-native/Libraries/Components/TextInput/TextInput.flow.js"
+    "packages/react-native/Libraries/Components/TextInput/TextInput.flow.js",
+    "packages/react-native/Libraries/Image/ImageProps.js"
   ],
   "layoutProps": [
     "alignContent",

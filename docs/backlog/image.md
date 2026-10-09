@@ -8,7 +8,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. Assets are never fetched over the network, so a dev server's assets do not wor
 3. Nothing caches a downloaded asset, which is right for a local file and will no
 4. onProgress and onPartialLoad are never emitted
-5. `ImageProps` and `<Image>`'s own style names have no rows on the support page
+5. ~~`ImageProps` and `<Image>`'s own style names have no rows on the support page~~
+6. `defaultSource` and `loadingIndicatorSource` draw no placeholder
 
 - ~~Nothing evicts the texture cache.~~ Done on all three, in
   `core/ImageCache.h`. Each host kept decoded images in an `unordered_map`
@@ -142,8 +143,28 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   host's own providers are consulted before the built-in ones. See
   `docs/backlog/upstream.md`.
 
-- **`ImageProps` and `<Image>`'s own style names have no rows on the support
-  page.** The page scrapes React Native's prop structs, and as of 2026-10-09 it
+- ~~**`ImageProps` and `<Image>`'s own style names have no rows on the support
+  page.**~~ Done 2026-10-09, with the same machinery the layout props got the
+  day before: `ImageProps` is scraped like the other structs, and
+  `____ImageStyle_InternalCore` joined the style types, so `resizeMode`,
+  `objectFit`, `tintColor` and `overlayColor` are accounted for rather than
+  silently outside the page's claim. `objectFit` is listed as another spelling
+  of `resizeMode`, which is what `Image.js` converts it into before ReactCommon
+  sees anything.
+
+  `Libraries/Image/ImageProps.js` had to join the prop-type files too, or every
+  field but two read as an internal: the page would have said that nothing an
+  app writes reaches `blurRadius`.
+
+  **Two things the rows found.** The hand-written Image section they replace
+  still said no host decodes a second frame, which stopped being true earlier
+  the same day; and six fields had never been looked at, of which four are
+  Android's (`resizeMethod`, `resizeMultiplier`, with `overlayColor` and
+  `fadeDuration` already in entry 1), one is iOS's (`capInsets`), and two are
+  entry 6 below.
+
+  What the entry said when it was open, which is still the shape of the
+  `<TextInput>` half: The page scrapes React Native's prop structs, and as of 2026-10-09 it
   scrapes four of them plus Yoga's: `BaseViewProps`, `AccessibilityProps`,
   `TextAttributes`, `ParagraphAttributes`. `ImageProps` is not among them, so
   thirteen props an app writes on an `<Image>` are answered for by a
@@ -170,3 +191,22 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   Then the hand-written section can go, and the page's claim can stop having an
   exception in it.
+
+- **`defaultSource` and `loadingIndicatorSource` draw no placeholder.** Both are
+  read by nobody on any host, which the support page says as of 2026-10-09 and
+  nothing said before: an `<Image>` whose source is still loading draws its
+  background and nothing else.
+
+  The work is small and the decision is not. `defaultSource` is an image to
+  draw until the real one arrives, which means the loader has to answer twice
+  for one view: once with the placeholder, synchronously if it is a bundled
+  asset, and again when the fetch lands. Each host's `applyImage` already has
+  the shape of that, since it re-requests a cached URI on every mutation, so
+  what is missing is a second URI per view and the rule for when to stop using
+  it. `loadingIndicatorSource` is the Android spelling of the same idea with a
+  spinner rather than an image, and a desktop has no spinner to draw unless one
+  is drawn by hand; `core/ScrollIndicator.h` is the precedent for that if it is
+  ever wanted.
+
+  Worth doing after the network cache in entry 3: a placeholder is most visible
+  on a remote image, and a cache changes how often one is seen at all.

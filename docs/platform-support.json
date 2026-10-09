@@ -168,6 +168,30 @@
     "android-view": {
       "text": "Android's shadow prop, declared in that platform's host props",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
+    },
+    "image-android": {
+      "text": "Android's own, and recorded as ignored with the rest of that group",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+    },
+    "image-ios": {
+      "text": "iOS's resizable slicing, with no desktop equivalent",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+    },
+    "image-placeholder": {
+      "text": "no host draws a placeholder while an image loads",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+    },
+    "image-events": {
+      "text": "every host emits load events unconditionally, as iOS does",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+    },
+    "image-analytics": {
+      "text": "Meta's own analytics tag, which nothing outside their infrastructure reads",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+    },
+    "win-image-blur": {
+      "text": "CLSID_D2D1GaussianBlur, the same shape of work as the AppKit half",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     }
   },
   "statuses": {
@@ -1317,11 +1341,104 @@
       "macos": "no",
       "windows": "no",
       "why": "vertical-align"
+    },
+    "ImageProps.sources": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->sources",
+        "source.uri"
+      ]
+    },
+    "ImageProps.defaultSource": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "image-placeholder"
+    },
+    "ImageProps.loadingIndicatorSource": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "image-placeholder"
+    },
+    "ImageProps.resizeMode": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "resizeMode",
+        "contentFit"
+      ]
+    },
+    "ImageProps.blurRadius": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "no",
+      "why": "win-image-blur"
+    },
+    "ImageProps.capInsets": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-ios"
+    },
+    "ImageProps.tintColor": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "tintColor"
+      ]
+    },
+    "ImageProps.internal_analyticTag": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-analytics"
+    },
+    "ImageProps.resizeMethod": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-android"
+    },
+    "ImageProps.resizeMultiplier": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-android"
+    },
+    "ImageProps.shouldNotifyLoadEvents": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-events"
+    },
+    "ImageProps.overlayColor": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-android"
+    },
+    "ImageProps.fadeDuration": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-android"
+    },
+    "ImageProps.progressiveRenderingEnabled": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "image-android"
     }
   },
   "areas": [
     {
       "title": "Image",
+      "note": "What an <Image> does that is not one prop. Its props are scraped, in the ImageProps section above.",
       "rows": [
         {
           "feature": "Files, `http(s)`, `data:` URIs, decoded off the main thread",
@@ -1330,35 +1447,13 @@
           "windows": "yes"
         },
         {
-          "feature": "`resizeMode`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`tintColor`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "yes"
-        },
-        {
-          "feature": "`blurRadius`",
-          "linux": "yes",
-          "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "CLSID_D2D1GaussianBlur",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
-        },
-        {
           "feature": "Animated images",
-          "linux": "no",
-          "macos": "no",
+          "linux": "yes",
+          "macos": "yes",
           "windows": "no",
           "why": {
-            "text": "no host decodes a second frame",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
+            "text": "WIC decodes one frame; the calls for the rest are named",
+            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
           }
         }
       ]

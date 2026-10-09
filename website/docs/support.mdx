@@ -32,11 +32,11 @@ makes this list complete rather than long: the layout props were missing from
 this page until somebody went looking for `padding`, and nothing could have
 said so.
 
-**What is not here yet**: an `<Image>`'s own four style names, which come
-from a sixth Flow type this does not read, and the props of `<Image>` and
-`<TextInput>`, which have ReactCommon structs of their own that nothing
-scrapes. The Image section near the bottom is hand-written and covers some
-of it; `backlog/image.md` and `backlog/textinput.md` record the rest.
+**What is not here yet**: the props of a `<TextInput>`, which has
+ReactCommon structs of its own that nothing scrapes, so some thirty names an
+app writes on one have no row. `backlog/textinput.md` records it with the
+shape of the fix, which is the one `<Image>` and the layout props already
+had.
 
 Each struct is split the way reactnative.dev splits a component page: the
 style props a `style={{...}}` takes, then the props written on the element
@@ -50,8 +50,8 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 141 of 184 | 143 of 184 | 123 of 184 |
-| | `███████████████░░░░░` | `████████████████░░░░` | `█████████████░░░░░░░` |
+| Done | 143 of 195 | 145 of 195 | 124 of 195 |
+| | `███████████████░░░░░` | `███████████████░░░░░` | `█████████████░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
 Yoga does it for every host: a layout prop never reaches one of these
@@ -77,7 +77,7 @@ Every style and behaviour prop a `<View>` carries. From `packages/react-native/R
 
 ### Style props
 
-Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
+Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TransformStyle_Internal`.
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
@@ -180,7 +180,7 @@ Per-fragment text styling, so a nested `<Text>` can differ from its parent. From
 
 ### Style props
 
-Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
+Written inside `style={{...}}`. Read from `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`.
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
@@ -230,13 +230,52 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | `layoutDirection` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textEffects` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
+## ImageProps
+
+What an `<Image>` carries beyond a view's own props: the source, how it fills its box, and the Android and iOS extras. From `packages/react-native/ReactCommon/react/renderer/components/image/ImageProps.h`.
+
+### Style props
+
+Written inside `style={{...}}`. Read from `____ImageStyle_InternalCore`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `resizeMode`<br/><sub>`objectFit`</sub> | ✅ | ✅ | ✅ |  |
+| `tintColor` | ✅ | ✅ | ✅ |  |
+| `overlayColor` | – | – | – | [Android's own, and recorded as ignored with the rest of that group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `source` <sub>`sources`</sub> | ✅ | ✅ | ✅ |  |
+| `defaultSource` | ✖ | ✖ | ✖ | [no host draws a placeholder while an image loads](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `loadingIndicatorSource` | ✖ | ✖ | ✖ | [no host draws a placeholder while an image loads](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `blurRadius` | ✅ | ✅ | ✖ | [CLSID_D2D1GaussianBlur, the same shape of work as the AppKit half](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `capInsets` | – | – | – | [iOS's resizable slicing, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `internal_analyticTag` | – | – | – | [Meta's own analytics tag, which nothing outside their infrastructure reads](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `resizeMethod` | – | – | – | [Android's own, and recorded as ignored with the rest of that group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `resizeMultiplier` | – | – | – | [Android's own, and recorded as ignored with the rest of that group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `fadeDuration` | – | – | – | [Android's own, and recorded as ignored with the rest of that group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `progressiveRenderingEnabled` | – | – | – | [Android's own, and recorded as ignored with the rest of that group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `shouldNotifyLoadEvents` | – | – | – | [every host emits load events unconditionally, as iOS does](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+
 ## ParagraphAttributes
 
 What belongs to a whole paragraph rather than to a fragment: how many lines it may take, how it is truncated, and whether it shrinks to fit. From `packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h`.
 
 ### Style props
 
-Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
+Written inside `style={{...}}`. Read from `____TextStyle_InternalBase`.
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
@@ -367,11 +406,10 @@ Written inside `style={{...}}`.
 
 ## Image
 
+What an `<Image>` does that is not one prop. Its props are scraped, in the ImageProps section above.
+
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | Files, `http(s)`, `data:` URIs, decoded off the main thread | ✅ | ✅ | ✅ |  |
-| `resizeMode` | ✅ | ✅ | ✅ |  |
-| `tintColor` | ✅ | ✅ | ✅ |  |
-| `blurRadius` | ✅ | ✅ | ✖ |  |
-| Animated images | ✖ | ✖ | ✖ |  |
+| Animated images | ✅ | ✅ | ✖ |  |
 
