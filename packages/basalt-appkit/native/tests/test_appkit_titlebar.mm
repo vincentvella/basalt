@@ -125,6 +125,15 @@ TEST(appkit_window_bounds_do_not_need_the_app_to_be_active) {
                       defer:NO];
     // Ordered front rather than made key: the point is a window that exists and
     // is visible without the app being frontmost.
+    // Not released when closed, which is the same line main_appkit.mm needs for
+    // the windows the host makes and for the same reason: `close` on a window
+    // whose `releasedWhenClosed` is YES -- the default for one built in code --
+    // releases it while ARC still holds a reference, and the second release
+    // comes when the pool drains.
+    //
+    // Undefined behaviour, which behaved: it passed here and segfaulted on
+    // CI's Mac. See test_appkit_services.mm for the rest of that story.
+    window.releasedWhenClosed = NO;
     [window orderFront:nil];
 
     const basalt::WindowBounds bounds = basalt::windowBounds();

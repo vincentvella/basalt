@@ -79,6 +79,16 @@ TEST(a_menu_role_reaches_the_focused_field_without_the_app_being_active) {
                       defer:NO];
     NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 10, 300, 24)];
     [window.contentView addSubview:field];
+    // Not released when closed, which is the same line main_appkit.mm needs for
+    // the windows the host makes and for the same reason: `close` on a window
+    // whose `releasedWhenClosed` is YES -- the default for one built in code --
+    // releases it while ARC still holds a reference, and the second release
+    // comes when the pool drains.
+    //
+    // That is undefined behaviour, so it did what undefined behaviour does: it
+    // passed here and segfaulted on CI's Mac, inside `objc_autoreleasePoolPop`
+    // with no test name, until the harness started flushing.
+    window.releasedWhenClosed = NO;
     [window orderFront:nil];
     // First responder without the app being active, which AppKit allows: what
     // it does not do is make the window *key*.
