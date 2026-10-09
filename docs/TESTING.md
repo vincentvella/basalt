@@ -42,13 +42,19 @@ only as good as the checkout it runs against, and the two differ on purpose:
 development happens against `main`. So a type that exists only on main passes
 here and fails the CI job that gates every other job.
 
-Which happened on 2026-10-09, with a prop that is a good example of the shape:
-`main` declares `backgroundSize` in `ViewStyle` and its C++ reads that raw prop
-*and* falls back to `experimental_backgroundSize`; v0.87.1 declares only the
-prefixed name. A demo app written against main's spelling type-checked locally,
-failed the pinned job in nineteen seconds, and would not have arrived at the C++
-at all on the pin even if it had compiled. The prefixed spelling works on both,
-which is what `e2e/views.tsx` uses and says.
+Which happened on 2026-10-09, and took three tries to pin down because the
+*Flow* types and the *TypeScript* ones disagree. `main` declares
+`backgroundSize` in both and its C++ reads that raw prop, falling back to
+`experimental_backgroundSize`. On v0.87.1 the Flow types declare only the
+prefixed spelling -- and `ReactNativeApi.d.ts`, which is the file a release
+checkout is actually type-checked against, declares *neither*. So both
+spellings failed the pinned job, twenty seconds in, while both passed here.
+
+The lesson in it is which file to read: not `Libraries/StyleSheet/StyleSheetTypes.js`,
+which is Flow and is what a search finds first, but the `.d.ts` that
+`build_ts.sh` resolves to -- and at the pinned tag rather than in the checkout.
+`e2e/views.tsx` now writes those three through one cast, with the reason beside
+it, and backlog/upstream.md carries the omission.
 
 `build_ts.sh` now prints which React Native it is checking against whenever that
 is not the pin. It is a warning rather than an error, because working against

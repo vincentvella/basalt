@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (18):**
+**Open (19):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -45,6 +45,8 @@ workaround and the comment explaining it, which is already written.
     `onTextLayout` cannot work for any ReactCxxPlatform app
 18. `background-position` with `right` or `bottom` cannot be expressed: the
     defaults shadow it
+19. The TypeScript API omits `backgroundSize`, `backgroundPosition` and
+    `backgroundRepeat`, which the Flow types and the C++ both have
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,
@@ -267,3 +269,23 @@ workaround and the comment explaining it, which is already written.
   means the `left` beside it is React Native's default rather than the author's.
   The two platforms therefore differ on exactly the declarations iOS draws in the
   wrong corner.
+
+- **The TypeScript API omits three props the Flow types and the C++ both have.**
+  On v0.87.1, `packages/react-native/ReactNativeApi.d.ts` -- the API snapshot a
+  release checkout is type-checked against -- declares `backgroundImage` and
+  none of `backgroundSize`, `backgroundPosition` or `backgroundRepeat`, in
+  either the plain or the `experimental_` spelling. The Flow types declare
+  `experimental_` versions of all three, and `BaseViewProps.cpp` reads those raw
+  props, so the props work: a TypeScript app simply cannot write them down.
+
+  Found 2026-10-09 the expensive way. A demo app here used the plain names,
+  which `main` declares, and the pinned CI job failed in twenty seconds; the
+  prefixed names failed the same job for the same reason, because the snapshot
+  has neither. What the file does declare is every neighbour -- `boxShadow`,
+  `filter`, `mixBlendMode`, `outlineWidth`, `cursor` -- which is what makes the
+  omission look like an oversight in the generator rather than a decision.
+
+  Worked around with one cast in `e2e/views.tsx`, the same way `cursor`'s
+  narrow union is, and recorded here because a cast in an app is a cost paid by
+  every app that wants a tiled gradient. The fix upstream is whatever regenerates
+  that snapshot; the props are already in the Flow types it is meant to mirror.
