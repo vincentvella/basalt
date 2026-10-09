@@ -26,10 +26,23 @@ const PLATFORMS = [
   {key: 'macos', label: 'macOS', toolkit: 'AppKit'},
 ];
 
+// Props are objects now: scrape_props.py gives each one the kind React Native's
+// own types put it in. A bare string here would be a test writing data the
+// scraper cannot produce, so the helper takes names and fills in a kind, and
+// takes objects when a test is about the kind itself.
 function inventoryOf(props) {
   return {
     reactNative: '0.87.1',
-    structs: [{name: 'BaseViewProps', header: 'a/header.h', note: 'A note.', props}],
+    structs: [
+      {
+        name: 'BaseViewProps',
+        header: 'a/header.h',
+        note: 'A note.',
+        props: props.map((prop) =>
+          typeof prop === 'string' ? {name: prop, kind: 'style'} : prop,
+        ),
+      },
+    ],
   };
 }
 
@@ -153,4 +166,47 @@ test('an unknown status renders rather than throwing', () => {
     dataOf({'BaseViewProps.opacity': {linux: 'yes', macos: 'maybe', why: 'because'}}),
   );
   assert.ok(page.includes('?'));
+});
+
+// The style/component split, which is the page's shape and comes from React
+// Native's type declarations rather than from a judgement here.
+test('a kind the scraper does not produce is a problem', () => {
+  const problems = validate(
+    inventoryOf([{name: 'opacity', kind: 'stylish'}]),
+    dataOf({'BaseViewProps.opacity': {linux: 'yes', macos: 'yes'}}),
+  );
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /its kind is "stylish"/);
+});
+
+test('each kind is its own table, and an empty kind has none', () => {
+  const page = render(
+    inventoryOf([
+      {name: 'opacity', kind: 'style'},
+      {name: 'onLayout', kind: 'component'},
+    ]),
+    dataOf({
+      'BaseViewProps.opacity': {linux: 'yes', macos: 'yes'},
+      'BaseViewProps.onLayout': {linux: 'yes', macos: 'yes'},
+    }),
+  );
+  assert.match(page, /### Style props/);
+  assert.match(page, /### Component props/);
+  // Nothing was neither, so that heading is absent rather than empty.
+  assert.doesNotMatch(page, /### Neither/);
+  // And the props are under their own headings, in order.
+  assert.ok(page.indexOf('`opacity`') < page.indexOf('### Component props'));
+  assert.ok(page.indexOf('`onLayout`') > page.indexOf('### Component props'));
+});
+
+test("the name an app writes leads, and ReactCommon's spelling follows it", () => {
+  const page = render(
+    inventoryOf([{name: 'borderRadii', kind: 'style', javascript: 'borderRadius'}]),
+    dataOf({'BaseViewProps.borderRadii': {linux: 'yes', macos: 'yes'}}),
+  );
+  assert.match(page, /`borderRadius` <sub>`borderRadii`<\/sub>/);
+  // The status is still keyed by what React Native's header calls it.
+  assert.equal(counts(inventoryOf([{name: 'borderRadii', kind: 'style'}]), dataOf({
+    'BaseViewProps.borderRadii': {linux: 'yes', macos: 'yes'},
+  }), 'linux').done, 1);
 });

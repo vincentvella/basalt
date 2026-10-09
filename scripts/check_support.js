@@ -58,6 +58,31 @@ const STATUSES = {
   ignored: {mark: '–', label: 'deliberately not done'},
 };
 
+// The three kinds a field can be, which `scripts/scrape_props.py` reads off
+// React Native's own type declarations rather than deciding.
+//
+// reactnative.dev splits a component's props from the style props its `style`
+// takes, and that split is worth keeping: `opacity` and `onLayout` are fields
+// side by side in `BaseViewProps`, and only one of them is written inside
+// `style={{...}}`. The third kind is the honest remainder.
+const KINDS = {
+  style: {
+    title: 'Style props',
+    note: 'Written inside `style={{...}}`.',
+  },
+  component: {
+    title: 'Component props',
+    note: 'Written on the element itself, as `<View onLayout={...} />`.',
+  },
+  internal: {
+    title: 'Neither',
+    note:
+      'Declared in ReactCommon and in no public prop type, so nothing an app'
+      + ' writes reaches them: they are filled in by the renderer or are the'
+      + " innards of a component's own behaviour.",
+  },
+};
+
 // How a host reads a prop, spelled tightly enough to mean it.
 //
 // A first attempt allowed a bare `.prop` as a fallback and reported ten hosts as
@@ -123,8 +148,13 @@ function validate(inventory, data) {
 
   for (const struct of inventory.structs) {
     for (const prop of struct.props) {
-      const id = `${struct.name}.${prop}`;
+      const id = `${struct.name}.${prop.name}`;
       declared.add(id);
+      if (KINDS[prop.kind] === undefined) {
+        problems.push(
+          `${id}: its kind is ${JSON.stringify(prop.kind)}; run scripts/scrape_props.py`,
+        );
+      }
       const row = data.statuses[id];
       if (row === undefined) {
         problems.push(
@@ -177,11 +207,11 @@ function audit(inventory, data) {
 
   for (const struct of inventory.structs) {
     for (const prop of struct.props) {
-      const row = data.statuses[`${struct.name}.${prop}`];
+      const row = data.statuses[`${struct.name}.${prop.name}`];
       if (row === undefined) {
         continue;
       }
-      const what = needles(struct.name, prop, row);
+      const what = needles(struct.name, prop.name, row);
       for (const [key, text] of Object.entries(sources)) {
         if (text.length === 0) {
           continue;
@@ -189,12 +219,12 @@ function audit(inventory, data) {
         const mentioned = text.some((file) => what.some((needle) => file.includes(needle)));
         if (row[key] === 'yes' && !mentioned) {
           problems.push(
-            `${struct.name}.${prop}: ${key} says done and no source there reads it`,
+            `${struct.name}.${prop.name}: ${key} says done and no source there reads it`,
           );
         }
         if (row[key] === 'no' && mentioned) {
           problems.push(
-            `${struct.name}.${prop}: ${key} says not yet and a source there reads it`,
+            `${struct.name}.${prop.name}: ${key} says not yet and a source there reads it`,
           );
         }
       }
@@ -208,7 +238,7 @@ function counts(inventory, data, key) {
   let total = 0;
   for (const struct of inventory.structs) {
     for (const prop of struct.props) {
-      const row = data.statuses[`${struct.name}.${prop}`];
+      const row = data.statuses[`${struct.name}.${prop.name}`];
       if (row === undefined) {
         continue;
       }
@@ -264,6 +294,13 @@ function render(inventory, data) {
   );
   lines.push('status and fails the check until somebody fills it in.');
   lines.push('');
+  lines.push('Each struct is split the way reactnative.dev splits a component page: the');
+  lines.push('style props a `style={{...}}` takes, then the props written on the element');
+  lines.push('itself. That split is read from React Native too, out of the Flow types that');
+  lines.push('declare both, so a prop that moves between them moves here. Where');
+  lines.push('ReactCommon spells a prop differently from JavaScript, the name an app writes');
+  lines.push('is the one in the row and ReactCommon\'s is under it.');
+  lines.push('');
 
   lines.push('| | ' + keys.map((key) => label(data, key)).join(' | ') + ' |');
   lines.push('| --- | ' + keys.map(() => '---').join(' | ') + ' |');
@@ -312,14 +349,37 @@ function render(inventory, data) {
     lines.push('');
     lines.push(`${mdxSafe(struct.note)} From \`${struct.header}\`.`);
     lines.push('');
-    table(
-      struct.props
-        .filter((prop) => data.statuses[`${struct.name}.${prop}`] !== undefined)
+    for (const [kind, {title, note}] of Object.entries(KINDS)) {
+      const rows = struct.props
+        .filter((prop) => prop.kind === kind)
+        .filter((prop) => data.statuses[`${struct.name}.${prop.name}`] !== undefined)
         .map((prop) => ({
-          feature: `\`${prop}\``,
-          row: data.statuses[`${struct.name}.${prop}`],
-        })),
-    );
+          // The name an app writes, which is not always ReactCommon's: it says
+          // `borderRadii` for `borderRadius` and `foregroundColor` for `color`.
+          feature: prop.javascript === undefined
+            ? `\`${prop.name}\``
+            : `\`${prop.javascript}\` <sub>\`${prop.name}\`</sub>`,
+          row: data.statuses[`${struct.name}.${prop.name}`],
+        }));
+      if (rows.length === 0) {
+        continue;
+      }
+      lines.push(`### ${title}`);
+      lines.push('');
+      // The style note names the types it was read from rather than a
+      // paraphrase of them: `ViewStyle` is the published name and
+      // `____ViewStyle_InternalBase` is the one that declares the members.
+      const where = kind === 'style' && inventory.styleTypes !== undefined
+        ? ' Read from '
+          + inventory.styleTypes
+            .flatMap(({types}) => types.map((type) => `\`${type}\``))
+            .join(', ')
+          + '.'
+        : '';
+      lines.push(mdxSafe(note + where));
+      lines.push('');
+      table(rows);
+    }
   }
 
   for (const area of data.areas) {
@@ -370,7 +430,7 @@ function main() {
   return problems.length === 0 && !(check && stale) ? 0 : 1;
 }
 
-module.exports = {validate, audit, render, counts, STATUSES};
+module.exports = {validate, audit, render, counts, STATUSES, KINDS};
 
 if (require.main === module) {
   process.exitCode = main();

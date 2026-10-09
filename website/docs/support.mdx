@@ -18,6 +18,13 @@ here: this page is generated from `3` prop structs of React
 Native 0.87.1, so a prop added upstream turns up as a row with no
 status and fails the check until somebody fills it in.
 
+Each struct is split the way reactnative.dev splits a component page: the
+style props a `style={{...}}` takes, then the props written on the element
+itself. That split is read from React Native too, out of the Flow types that
+declare both, so a prop that moves between them moves here. Where
+ReactCommon spells a prop differently from JavaScript, the name an app writes
+is the one in the row and ReactCommon's is under it.
+
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
@@ -44,14 +51,18 @@ disclaiming one has to not.
 
 Every style and behaviour prop a `<View>` carries. From `packages/react-native/ReactCommon/react/renderer/components/view/BaseViewProps.h`.
 
+### Style props
+
+Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
+
 | | Linux | macOS | Windows | |
 | --- | --- | --- | --- | --- |
 | `opacity` | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✅ |  |
-| `borderRadii` | ✅ | ✅ | ✅ |  |
-| `borderColors` | ✅ | ✅ | ✅ |  |
-| `borderCurves` | – | – | – | [the prop cannot arrive: only the iOS view config declares it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
-| `borderStyles` | ✅ | ✅ | ✖ | [Direct2D draws it, nothing reads the prop](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `borderRadius` <sub>`borderRadii`</sub> | ✅ | ✅ | ✅ |  |
+| `borderColor` <sub>`borderColors`</sub> | ✅ | ✅ | ✅ |  |
+| `borderCurve` <sub>`borderCurves`</sub> | – | – | – | [the prop cannot arrive: only the iOS view config declares it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
+| `borderStyle` <sub>`borderStyles`</sub> | ✅ | ✅ | ✖ | [Direct2D draws it, nothing reads the prop](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `outlineColor` | ✅ | ✅ | ✖ | [DrawRoundedRectangle and a stroke style](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `outlineOffset` | ✅ | ✅ | ✖ | [DrawRoundedRectangle and a stroke style](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `outlineStyle` | ✅ | ✅ | ✖ | [DrawRoundedRectangle and a stroke style](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
@@ -64,37 +75,54 @@ Every style and behaviour prop a `<View>` carries. From `packages/react-native/R
 | `boxShadow` | ✅ | ✅ | ✖ | [CLSID_D2D1Shadow](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `filter` | ✅ | ◐ | ✖ | [macOS draws the first of a list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md) |
 | `backgroundImage` | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `backgroundSize` | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `backgroundPosition` | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `backgroundRepeat` | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `experimental_backgroundSize` <sub>`backgroundSize`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `experimental_backgroundPosition` <sub>`backgroundPosition`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `experimental_backgroundRepeat` <sub>`backgroundRepeat`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `mixBlendMode` | ◐ | ✅ | ✖ | [GSK has no plus-lighter](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `isolation` | – | – | – | [no public way to composite a subtree as a group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `transform` | ✅ | ✅ | ✅ |  |
 | `transformOrigin` | ✅ | ✅ | ✅ |  |
 | `backfaceVisibility` | ✅ | ✅ | ✅ |  |
-| `shouldRasterize` | – | – | – | [performance hints, and one cannot arrive](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `zIndex` | ✅ | ✅ | ✅ |  |
 | `pointerEvents` | ✅ | ✅ | ✅ |  |
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | |
+| --- | --- | --- | --- | --- |
+| `shouldRasterizeIOS` <sub>`shouldRasterize`</sub> | – | – | – | [performance hints, and one cannot arrive](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `hitSlop` | ✅ | ✅ | ✖ | [one line against the insets it already has](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `onLayout` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
-| `events` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `collapsable` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `collapsableChildren` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `removeClippedSubviews` | – | – | – | [performance hints, and one cannot arrive](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | |
+| --- | --- | --- | --- | --- |
+| `events` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
+
 ## AccessibilityProps
 
 What a view tells the platform's accessible layer. BaseViewProps inherits these. From `packages/react-native/ReactCommon/react/renderer/components/view/AccessibilityProps.h`.
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
 
 | | Linux | macOS | Windows | |
 | --- | --- | --- | --- | --- |
 | `accessible` | ✅ | ✅ | ✅ |  |
 | `accessibilityState` | ✅ | ✅ | ✅ |  |
 | `accessibilityLabel` | ✅ | ✅ | ✅ |  |
-| `accessibilityOrder` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `experimental_accessibilityOrder` <sub>`accessibilityOrder`</sub> | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityLabelledBy` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `accessibilityLiveRegion` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `accessibilityTraits` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityRole` | ✅ | ✅ | ✅ |  |
 | `accessibilityHint` | ✅ | ✅ | ✅ |  |
 | `accessibilityLanguage` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
@@ -107,49 +135,75 @@ What a view tells the platform's accessible layer. BaseViewProps inherits these.
 | `accessibilityIgnoresInvertColors` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityRespondsToUserInteraction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityTap` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `onAccessibilityMagicTap` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityEscape` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityAction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `importantForAccessibility` | ✅ | ✅ | ✅ |  |
 | `role` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `testId` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `testID` <sub>`testId`</sub> | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | |
+| --- | --- | --- | --- | --- |
+| `accessibilityTraits` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `onAccessibilityMagicTap` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 
 ## TextAttributes
 
 Per-fragment text styling, so a nested `<Text>` can differ from its parent. From `packages/react-native/ReactCommon/react/renderer/attributedstring/TextAttributes.h`.
 
+### Style props
+
+Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
+
 | | Linux | macOS | Windows | |
 | --- | --- | --- | --- | --- |
-| `foregroundColor` | ✅ | ✅ | ✅ |  |
+| `color` <sub>`foregroundColor`</sub> | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `opacity` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `fontFamily` | ✅ | ✅ | ✅ |  |
 | `fontSize` | ✅ | ✅ | ✅ |  |
-| `fontSizeMultiplier` | ✅ | ✅ | ✅ |  |
 | `fontWeight` | ✅ | ✅ | ✅ |  |
 | `fontStyle` | ✅ | ✅ | ✅ |  |
 | `fontVariant` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `allowFontScaling` | ✅ | ✅ | ✅ |  |
-| `maxFontSizeMultiplier` | ✅ | ✅ | ✅ |  |
-| `dynamicTypeRamp` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `letterSpacing` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `textTransform` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `lineHeight` | ✅ | ✅ | ✅ |  |
-| `alignment` | ✅ | ✅ | ✅ |  |
-| `baseWritingDirection` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `lineBreakStrategy` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `lineBreakMode` | ✖ | ✅ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textAlign` <sub>`alignment`</sub> | ✅ | ✅ | ✅ |  |
+| `writingDirection` <sub>`baseWritingDirection`</sub> | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textDecorationColor` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `textDecorationLineType` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `textDecorationLine` <sub>`textDecorationLineType`</sub> | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `textDecorationStyle` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowOffset` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowRadius` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowColor` | ◐ | ◐ | ✖ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | |
+| --- | --- | --- | --- | --- |
+| `allowFontScaling` | ✅ | ✅ | ✅ |  |
+| `maxFontSizeMultiplier` | ✅ | ✅ | ✅ |  |
+| `dynamicTypeRamp` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✖ | ✅ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `accessibilityRole` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `role` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | |
+| --- | --- | --- | --- | --- |
+| `fontSizeMultiplier` | ✅ | ✅ | ✅ |  |
 | `isHighlighted` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `isPressable` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `layoutDirection` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `accessibilityRole` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `role` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textEffects` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ## Image

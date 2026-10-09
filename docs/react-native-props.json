@@ -14,41 +14,154 @@
       "header": "packages/react-native/ReactCommon/react/renderer/components/view/BaseViewProps.h",
       "note": "Every style and behaviour prop a <View> carries.",
       "props": [
-        "opacity",
-        "backgroundColor",
-        "borderRadii",
-        "borderColors",
-        "borderCurves",
-        "borderStyles",
-        "outlineColor",
-        "outlineOffset",
-        "outlineStyle",
-        "outlineWidth",
-        "shadowColor",
-        "shadowOffset",
-        "shadowOpacity",
-        "shadowRadius",
-        "cursor",
-        "boxShadow",
-        "filter",
-        "backgroundImage",
-        "backgroundSize",
-        "backgroundPosition",
-        "backgroundRepeat",
-        "mixBlendMode",
-        "isolation",
-        "transform",
-        "transformOrigin",
-        "backfaceVisibility",
-        "shouldRasterize",
-        "zIndex",
-        "pointerEvents",
-        "hitSlop",
-        "onLayout",
-        "events",
-        "collapsable",
-        "collapsableChildren",
-        "removeClippedSubviews"
+        {
+          "name": "opacity",
+          "kind": "style"
+        },
+        {
+          "name": "backgroundColor",
+          "kind": "style"
+        },
+        {
+          "name": "borderRadii",
+          "kind": "style",
+          "javascript": "borderRadius"
+        },
+        {
+          "name": "borderColors",
+          "kind": "style",
+          "javascript": "borderColor"
+        },
+        {
+          "name": "borderCurves",
+          "kind": "style",
+          "javascript": "borderCurve"
+        },
+        {
+          "name": "borderStyles",
+          "kind": "style",
+          "javascript": "borderStyle"
+        },
+        {
+          "name": "outlineColor",
+          "kind": "style"
+        },
+        {
+          "name": "outlineOffset",
+          "kind": "style"
+        },
+        {
+          "name": "outlineStyle",
+          "kind": "style"
+        },
+        {
+          "name": "outlineWidth",
+          "kind": "style"
+        },
+        {
+          "name": "shadowColor",
+          "kind": "style"
+        },
+        {
+          "name": "shadowOffset",
+          "kind": "style"
+        },
+        {
+          "name": "shadowOpacity",
+          "kind": "style"
+        },
+        {
+          "name": "shadowRadius",
+          "kind": "style"
+        },
+        {
+          "name": "cursor",
+          "kind": "style"
+        },
+        {
+          "name": "boxShadow",
+          "kind": "style"
+        },
+        {
+          "name": "filter",
+          "kind": "style"
+        },
+        {
+          "name": "backgroundImage",
+          "kind": "style"
+        },
+        {
+          "name": "backgroundSize",
+          "kind": "style",
+          "javascript": "experimental_backgroundSize"
+        },
+        {
+          "name": "backgroundPosition",
+          "kind": "style",
+          "javascript": "experimental_backgroundPosition"
+        },
+        {
+          "name": "backgroundRepeat",
+          "kind": "style",
+          "javascript": "experimental_backgroundRepeat"
+        },
+        {
+          "name": "mixBlendMode",
+          "kind": "style"
+        },
+        {
+          "name": "isolation",
+          "kind": "style"
+        },
+        {
+          "name": "transform",
+          "kind": "style"
+        },
+        {
+          "name": "transformOrigin",
+          "kind": "style"
+        },
+        {
+          "name": "backfaceVisibility",
+          "kind": "style"
+        },
+        {
+          "name": "shouldRasterize",
+          "kind": "component",
+          "javascript": "shouldRasterizeIOS"
+        },
+        {
+          "name": "zIndex",
+          "kind": "style"
+        },
+        {
+          "name": "pointerEvents",
+          "kind": "style"
+        },
+        {
+          "name": "hitSlop",
+          "kind": "component"
+        },
+        {
+          "name": "onLayout",
+          "kind": "component"
+        },
+        {
+          "name": "events",
+          "kind": "internal"
+        },
+        {
+          "name": "collapsable",
+          "kind": "component"
+        },
+        {
+          "name": "collapsableChildren",
+          "kind": "component"
+        },
+        {
+          "name": "removeClippedSubviews",
+          "kind": "component"
+        }
       ]
     },
     {
@@ -56,31 +169,108 @@
       "header": "packages/react-native/ReactCommon/react/renderer/components/view/AccessibilityProps.h",
       "note": "What a view tells the platform's accessible layer. BaseViewProps inherits these.",
       "props": [
-        "accessible",
-        "accessibilityState",
-        "accessibilityLabel",
-        "accessibilityOrder",
-        "accessibilityLabelledBy",
-        "accessibilityLiveRegion",
-        "accessibilityTraits",
-        "accessibilityRole",
-        "accessibilityHint",
-        "accessibilityLanguage",
-        "accessibilityLargeContentTitle",
-        "accessibilityValue",
-        "accessibilityActions",
-        "accessibilityShowsLargeContentViewer",
-        "accessibilityViewIsModal",
-        "accessibilityElementsHidden",
-        "accessibilityIgnoresInvertColors",
-        "accessibilityRespondsToUserInteraction",
-        "onAccessibilityTap",
-        "onAccessibilityMagicTap",
-        "onAccessibilityEscape",
-        "onAccessibilityAction",
-        "importantForAccessibility",
-        "role",
-        "testId"
+        {
+          "name": "accessible",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityState",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityLabel",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityOrder",
+          "kind": "component",
+          "javascript": "experimental_accessibilityOrder"
+        },
+        {
+          "name": "accessibilityLabelledBy",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityLiveRegion",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityTraits",
+          "kind": "internal"
+        },
+        {
+          "name": "accessibilityRole",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityHint",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityLanguage",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityLargeContentTitle",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityValue",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityActions",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityShowsLargeContentViewer",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityViewIsModal",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityElementsHidden",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityIgnoresInvertColors",
+          "kind": "component"
+        },
+        {
+          "name": "accessibilityRespondsToUserInteraction",
+          "kind": "component"
+        },
+        {
+          "name": "onAccessibilityTap",
+          "kind": "component"
+        },
+        {
+          "name": "onAccessibilityMagicTap",
+          "kind": "internal"
+        },
+        {
+          "name": "onAccessibilityEscape",
+          "kind": "component"
+        },
+        {
+          "name": "onAccessibilityAction",
+          "kind": "component"
+        },
+        {
+          "name": "importantForAccessibility",
+          "kind": "component"
+        },
+        {
+          "name": "role",
+          "kind": "component"
+        },
+        {
+          "name": "testId",
+          "kind": "component",
+          "javascript": "testID"
+        }
       ]
     },
     {
@@ -88,38 +278,309 @@
       "header": "packages/react-native/ReactCommon/react/renderer/attributedstring/TextAttributes.h",
       "note": "Per-fragment text styling, so a nested <Text> can differ from its parent.",
       "props": [
-        "foregroundColor",
-        "backgroundColor",
-        "opacity",
-        "fontFamily",
-        "fontSize",
-        "fontSizeMultiplier",
-        "fontWeight",
-        "fontStyle",
-        "fontVariant",
-        "allowFontScaling",
-        "maxFontSizeMultiplier",
-        "dynamicTypeRamp",
-        "letterSpacing",
-        "textTransform",
-        "lineHeight",
-        "alignment",
-        "baseWritingDirection",
-        "lineBreakStrategy",
-        "lineBreakMode",
-        "textDecorationColor",
-        "textDecorationLineType",
-        "textDecorationStyle",
-        "textShadowOffset",
-        "textShadowRadius",
-        "textShadowColor",
-        "isHighlighted",
-        "isPressable",
-        "layoutDirection",
-        "accessibilityRole",
-        "role",
-        "textEffects"
+        {
+          "name": "foregroundColor",
+          "kind": "style",
+          "javascript": "color"
+        },
+        {
+          "name": "backgroundColor",
+          "kind": "style"
+        },
+        {
+          "name": "opacity",
+          "kind": "style"
+        },
+        {
+          "name": "fontFamily",
+          "kind": "style"
+        },
+        {
+          "name": "fontSize",
+          "kind": "style"
+        },
+        {
+          "name": "fontSizeMultiplier",
+          "kind": "internal"
+        },
+        {
+          "name": "fontWeight",
+          "kind": "style"
+        },
+        {
+          "name": "fontStyle",
+          "kind": "style"
+        },
+        {
+          "name": "fontVariant",
+          "kind": "style"
+        },
+        {
+          "name": "allowFontScaling",
+          "kind": "component"
+        },
+        {
+          "name": "maxFontSizeMultiplier",
+          "kind": "component"
+        },
+        {
+          "name": "dynamicTypeRamp",
+          "kind": "component"
+        },
+        {
+          "name": "letterSpacing",
+          "kind": "style"
+        },
+        {
+          "name": "textTransform",
+          "kind": "style"
+        },
+        {
+          "name": "lineHeight",
+          "kind": "style"
+        },
+        {
+          "name": "alignment",
+          "kind": "style",
+          "javascript": "textAlign"
+        },
+        {
+          "name": "baseWritingDirection",
+          "kind": "style",
+          "javascript": "writingDirection"
+        },
+        {
+          "name": "lineBreakStrategy",
+          "kind": "component",
+          "javascript": "lineBreakStrategyIOS"
+        },
+        {
+          "name": "lineBreakMode",
+          "kind": "component",
+          "javascript": "lineBreakModeIOS"
+        },
+        {
+          "name": "textDecorationColor",
+          "kind": "style"
+        },
+        {
+          "name": "textDecorationLineType",
+          "kind": "style",
+          "javascript": "textDecorationLine"
+        },
+        {
+          "name": "textDecorationStyle",
+          "kind": "style"
+        },
+        {
+          "name": "textShadowOffset",
+          "kind": "style"
+        },
+        {
+          "name": "textShadowRadius",
+          "kind": "style"
+        },
+        {
+          "name": "textShadowColor",
+          "kind": "style"
+        },
+        {
+          "name": "isHighlighted",
+          "kind": "internal"
+        },
+        {
+          "name": "isPressable",
+          "kind": "internal"
+        },
+        {
+          "name": "layoutDirection",
+          "kind": "internal"
+        },
+        {
+          "name": "accessibilityRole",
+          "kind": "component"
+        },
+        {
+          "name": "role",
+          "kind": "component"
+        },
+        {
+          "name": "textEffects",
+          "kind": "internal"
+        }
       ]
     }
+  ],
+  "styleProps": [
+    "alignContent",
+    "alignItems",
+    "alignSelf",
+    "aspectRatio",
+    "backfaceVisibility",
+    "backgroundColor",
+    "backgroundImage",
+    "borderBlockColor",
+    "borderBlockEndColor",
+    "borderBlockStartColor",
+    "borderBottomColor",
+    "borderBottomEndRadius",
+    "borderBottomLeftRadius",
+    "borderBottomRightRadius",
+    "borderBottomStartRadius",
+    "borderBottomWidth",
+    "borderColor",
+    "borderCurve",
+    "borderEndColor",
+    "borderEndEndRadius",
+    "borderEndStartRadius",
+    "borderEndWidth",
+    "borderLeftColor",
+    "borderLeftWidth",
+    "borderRadius",
+    "borderRightColor",
+    "borderRightWidth",
+    "borderStartColor",
+    "borderStartEndRadius",
+    "borderStartStartRadius",
+    "borderStartWidth",
+    "borderStyle",
+    "borderTopColor",
+    "borderTopEndRadius",
+    "borderTopLeftRadius",
+    "borderTopRightRadius",
+    "borderTopStartRadius",
+    "borderTopWidth",
+    "borderWidth",
+    "bottom",
+    "boxShadow",
+    "boxSizing",
+    "color",
+    "columnGap",
+    "cursor",
+    "direction",
+    "display",
+    "elevation",
+    "end",
+    "experimental_backgroundImage",
+    "experimental_backgroundPosition",
+    "experimental_backgroundRepeat",
+    "experimental_backgroundSize",
+    "filter",
+    "flex",
+    "flexBasis",
+    "flexDirection",
+    "flexGrow",
+    "flexShrink",
+    "flexWrap",
+    "fontFamily",
+    "fontSize",
+    "fontStyle",
+    "fontVariant",
+    "fontWeight",
+    "gap",
+    "height",
+    "includeFontPadding",
+    "inset",
+    "insetBlock",
+    "insetBlockEnd",
+    "insetBlockStart",
+    "insetInline",
+    "insetInlineEnd",
+    "insetInlineStart",
+    "isolation",
+    "justifyContent",
+    "left",
+    "letterSpacing",
+    "lineHeight",
+    "margin",
+    "marginBlock",
+    "marginBlockEnd",
+    "marginBlockStart",
+    "marginBottom",
+    "marginEnd",
+    "marginHorizontal",
+    "marginInline",
+    "marginInlineEnd",
+    "marginInlineStart",
+    "marginLeft",
+    "marginRight",
+    "marginStart",
+    "marginTop",
+    "marginVertical",
+    "maxHeight",
+    "maxWidth",
+    "minHeight",
+    "minWidth",
+    "mixBlendMode",
+    "opacity",
+    "outlineColor",
+    "outlineOffset",
+    "outlineStyle",
+    "outlineWidth",
+    "overflow",
+    "padding",
+    "paddingBlock",
+    "paddingBlockEnd",
+    "paddingBlockStart",
+    "paddingBottom",
+    "paddingEnd",
+    "paddingHorizontal",
+    "paddingInline",
+    "paddingInlineEnd",
+    "paddingInlineStart",
+    "paddingLeft",
+    "paddingRight",
+    "paddingStart",
+    "paddingTop",
+    "paddingVertical",
+    "pointerEvents",
+    "position",
+    "right",
+    "rowGap",
+    "shadowColor",
+    "shadowOffset",
+    "shadowOpacity",
+    "shadowRadius",
+    "start",
+    "textAlign",
+    "textAlignVertical",
+    "textDecorationColor",
+    "textDecorationLine",
+    "textDecorationStyle",
+    "textShadowColor",
+    "textShadowOffset",
+    "textShadowRadius",
+    "textTransform",
+    "top",
+    "transform",
+    "transformOrigin",
+    "userSelect",
+    "verticalAlign",
+    "width",
+    "writingDirection",
+    "zIndex"
+  ],
+  "styleTypes": [
+    {
+      "file": "packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js",
+      "types": [
+        "____LayoutStyle_Internal",
+        "____ShadowStyle_InternalCore",
+        "____ViewStyle_InternalBase",
+        "____TextStyle_InternalBase"
+      ]
+    },
+    {
+      "file": "packages/react-native/Libraries/StyleSheet/private/_TransformStyle.js",
+      "types": [
+        "____TransformStyle_Internal"
+      ]
+    }
+  ],
+  "propTypeFiles": [
+    "packages/react-native/Libraries/Components/View/ViewPropTypes.js",
+    "packages/react-native/Libraries/Components/View/ViewAccessibility.js",
+    "packages/react-native/Libraries/Text/TextProps.js",
+    "packages/react-native/Libraries/Components/TextInput/TextInput.flow.js"
   ]
 }

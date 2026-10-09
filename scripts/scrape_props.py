@@ -31,6 +31,36 @@ Run with:  python3 scripts/scrape_props.py --from-pin   # rewrite the inventory
            python3 scripts/scrape_props.py --check      # fail if it is stale
            python3 scripts/scrape_props.py              # read RN_DIR instead
 
+## Style props and component props, which is upstream's line and not ours
+
+reactnative.dev splits a component's props from the style props its `style`
+takes, and the split is worth having here because `BaseViewProps` does not make
+it: `opacity` and `onLayout` are fields side by side, and one is written inside
+`style={{...}}` and the other is not.
+
+That line is declared, so it is scraped rather than judged. React Native's Flow
+types say exactly which names a style takes -- `____ViewStyle_InternalBase`,
+`____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`,
+`____TextStyle_InternalBase` and `____TransformStyle_Internal` -- and
+`ViewPropTypes.js`, `ViewAccessibility.js` and `TextProps.js` say which names a
+component takes. So each field lands in one of three kinds:
+
+  style       the name is in a style type
+  component   the name is in a public prop type
+  internal    neither: declared in ReactCommon and in no public prop type
+
+`internal` is a real answer and not a gap. `TextAttributes::isHighlighted` and
+`isPressable` are the innards of iOS's pressable text, `layoutDirection` is
+filled in from the layout rather than from a prop, and `events` is the view's
+event-registration bitmap. Nothing an app writes reaches them, so a support
+column for them would be answering a question nobody asked.
+
+ALIASES is the only hand-written part, and every entry is checked: ReactCommon
+spells several of these differently from JavaScript (`borderRadii` for
+`borderRadius`, `foregroundColor` for `color`, `alignment` for `textAlign`), and
+an alias naming something upstream does not declare is reported rather than
+believed.
+
 ## Which React Native it reads, and why the committed answer is the pinned one
 
 `--from-pin` fetches the three headers from GitHub at `scripts/react-native.pin`,
@@ -88,6 +118,65 @@ STRUCTS = [
     ),
 ]
 
+# Where React Native declares what a `style` takes. Each entry is a file and the
+# types in it whose members are style props; a type that is not there any more is
+# a failure rather than a smaller list.
+STYLE_TYPES = [
+    (
+        "packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js",
+        [
+            "____LayoutStyle_Internal",
+            "____ShadowStyle_InternalCore",
+            "____ViewStyle_InternalBase",
+            "____TextStyle_InternalBase",
+        ],
+    ),
+    (
+        "packages/react-native/Libraries/StyleSheet/private/_TransformStyle.js",
+        ["____TransformStyle_Internal"],
+    ),
+]
+
+# And where it declares what a component takes. Every name these files declare
+# counts, which is deliberately looser than reading one type: `ViewProps` spreads
+# a dozen others, and the question being asked is only "is this a public prop".
+PROP_TYPE_FILES = [
+    "packages/react-native/Libraries/Components/View/ViewPropTypes.js",
+    "packages/react-native/Libraries/Components/View/ViewAccessibility.js",
+    "packages/react-native/Libraries/Text/TextProps.js",
+    # A <TextInput> too, because `TextAttributes` serves both and some of it is
+    # only public there: `lineBreakModeIOS` is a TextInput prop and not a Text
+    # one, which is why it was reading as internal.
+    "packages/react-native/Libraries/Components/TextInput/TextInput.flow.js",
+]
+
+# ReactCommon's spelling -> JavaScript's, where they differ. Checked against what
+# was scraped: an alias that names nothing upstream declares is reported.
+ALIASES = {
+    # A struct of eight corners against the names of each.
+    "borderRadii": "borderRadius",
+    "borderColors": "borderColor",
+    "borderCurves": "borderCurve",
+    "borderStyles": "borderStyle",
+    # Still behind the experimental prefix in the pinned release.
+    "backgroundSize": "experimental_backgroundSize",
+    "backgroundPosition": "experimental_backgroundPosition",
+    "backgroundRepeat": "experimental_backgroundRepeat",
+    "accessibilityOrder": "experimental_accessibilityOrder",
+    # The platform suffix JavaScript carries and ReactCommon does not.
+    "shouldRasterize": "shouldRasterizeIOS",
+    "lineBreakStrategy": "lineBreakStrategyIOS",
+    "lineBreakMode": "lineBreakModeIOS",
+    # Text, where ReactCommon's names are its own.
+    "foregroundColor": "color",
+    "alignment": "textAlign",
+    "baseWritingDirection": "writingDirection",
+    "textDecorationLineType": "textDecorationLine",
+    # Capitalisation, which is the whole difference.
+    "testId": "testID",
+    "nativeId": "nativeID",
+}
+
 # `  <type> <name>{...};` or `  <type> <name>;`, with the type allowed to carry
 # templates, namespaces and references, and the initialiser allowed to be
 # anything at all -- which it has to be, because several of these fields default
@@ -116,6 +205,38 @@ def looks_like_a_method(line: str) -> bool:
     if paren < 0:
         return False
     return brace < 0 or paren < brace
+
+
+def flow_members(text: str, type_name: str) -> list[str] | None:
+    """The members of one Flow object type, or None if it is not declared.
+
+    Depth-aware rather than a grep over the region: `shadowOffset` is a nested
+    `{width, height}`, and a flat scan reports those two as style props of their
+    own. Counts brackets as well as braces, an array of objects nesting the same
+    way.
+    """
+    declaration = re.search(
+        r"^(?:export )?type " + re.escape(type_name) + r"\s*=\s*", text, re.M
+    )
+    if declaration is None:
+        return None
+    opening = text.index("{", declaration.end())
+    depth = 0
+    members: list[str] = []
+    for line in text[opening:].splitlines():
+        if depth == 1:
+            member = re.match(r"\+?([A-Za-z_][A-Za-z0-9_]*)\??\s*:", line.strip())
+            if member is not None:
+                members.append(member.group(1))
+        depth += line.count("{") + line.count("[") - line.count("}") - line.count("]")
+        if depth <= 0:
+            break
+    return members
+
+
+def flow_declared_names(text: str) -> set[str]:
+    """Every name declared as a member anywhere in a Flow file."""
+    return set(re.findall(r"^\s*\+?([A-Za-z_][A-Za-z0-9_]*)\??\s*:", text, re.M))
 
 
 def fetch_from_pin(relative: str, tag: str) -> str:
@@ -193,6 +314,16 @@ def scrape(text: str, section: str) -> tuple[list[str], list[str]]:
     return names, unread
 
 
+def kind_of(name: str, style: set[str], public: set[str]) -> tuple[str, str]:
+    """Which bucket a field is in, and the JavaScript name it was matched by."""
+    spelling = ALIASES.get(name, name)
+    if spelling in style:
+        return "style", spelling
+    if spelling in public:
+        return "component", spelling
+    return "internal", spelling
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if the inventory is stale")
@@ -226,19 +357,64 @@ def main() -> int:
     }
 
     problems = []
-    for name, relative, section, note in STRUCTS:
+
+    def read(relative: str) -> str | None:
+        """One file out of React Native, from the pin or from the checkout."""
         if from_pin:
             try:
-                text = fetch_from_pin(relative, pin)
+                return fetch_from_pin(relative, pin)
             except OSError as error:
                 problems.append(f"{relative} could not be read at {pin}: {error}")
+                return None
+        path = rn_dir / relative
+        if not path.is_file():
+            problems.append(f"{relative} is not in {rn_dir}")
+            return None
+        return path.read_text()
+
+    # What a `style` takes, and what a component takes. Both scraped, because
+    # which of the two a prop belongs to is upstream's answer and not ours.
+    style_props: set[str] = set()
+    for relative, type_names in STYLE_TYPES:
+        text = read(relative)
+        if text is None:
+            continue
+        for type_name in type_names:
+            members = flow_members(text, type_name)
+            if members is None:
+                problems.append(f"{relative}: no `type {type_name}`; has it been renamed?")
                 continue
-        else:
-            path = rn_dir / relative
-            if not path.is_file():
-                problems.append(f"{relative} is not in {rn_dir}")
-                continue
-            text = path.read_text()
+            if not members:
+                problems.append(f"{relative}: `type {type_name}` parsed to no members")
+            style_props.update(members)
+
+    public_props: set[str] = set()
+    for relative in PROP_TYPE_FILES:
+        text = read(relative)
+        if text is None:
+            continue
+        names = flow_declared_names(text)
+        if not names:
+            problems.append(f"{relative}: no prop names found")
+        public_props.update(names)
+
+    for spelled, alias in sorted(ALIASES.items()):
+        if alias not in style_props and alias not in public_props:
+            problems.append(
+                f"ALIASES says {spelled} is JavaScript's {alias}, which React Native "
+                f"{version} declares in neither a style type nor a prop type"
+            )
+
+    inventory["styleProps"] = sorted(style_props)
+    inventory["styleTypes"] = [
+        {"file": relative, "types": type_names} for relative, type_names in STYLE_TYPES
+    ]
+    inventory["propTypeFiles"] = list(PROP_TYPE_FILES)
+
+    for name, relative, section, note in STRUCTS:
+        text = read(relative)
+        if text is None:
+            continue
         names, unread = scrape(text, section)
         if not names:
             problems.append(
@@ -247,8 +423,15 @@ def main() -> int:
             )
         for line in unread:
             problems.append(f"{relative}: cannot read {line!r}")
+        props = []
+        for field in names:
+            kind, spelling = kind_of(field, style_props, public_props)
+            prop = {"name": field, "kind": kind}
+            if spelling != field:
+                prop["javascript"] = spelling
+            props.append(prop)
         inventory["structs"].append(
-            {"name": name, "header": relative, "note": note, "props": names}
+            {"name": name, "header": relative, "note": note, "props": props}
         )
 
     for problem in problems:
@@ -269,8 +452,17 @@ def main() -> int:
         print(f"wrote {INVENTORY.relative_to(REPO)}")
 
     total = sum(len(struct["props"]) for struct in inventory["structs"])
+    by_kind: dict[str, int] = {}
+    for struct in inventory["structs"]:
+        for prop in struct["props"]:
+            by_kind[prop["kind"]] = by_kind.get(prop["kind"], 0) + 1
     source = f"the pin, {pin}" if from_pin else f"RN_DIR, React Native {version}"
     print(f"{total} props across {len(inventory['structs'])} structs, from {source}")
+    print(
+        "    "
+        + ", ".join(f"{count} {kind}" for kind, count in sorted(by_kind.items()))
+        + f"; {len(style_props)} style props declared upstream"
+    )
     if not from_pin and f"v{version}" != pin:
         print(
             f"    CI pins {pin}, and the committed inventory is built from it:"
