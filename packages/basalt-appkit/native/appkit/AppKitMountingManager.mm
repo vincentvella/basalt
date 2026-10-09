@@ -1035,11 +1035,32 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       }
       filters.blurRadius = resolved.blurRadius;
       filters.opacity = resolved.opacity;
+
+      // `dropShadow()`, which this host draws as the layer's own shadow. The
+      // standard deviation crosses unchanged, `CALayer.shadowRadius` being one,
+      // where the GTK side doubles it for GSK.
+      std::vector<RnAppKitFilterShadow> shadows;
+      shadows.reserve(resolved.dropShadows.size());
+      for (const auto &shadow : resolved.dropShadows) {
+        RnAppKitFilterShadow converted{};
+        converted.dx = (CGFloat)shadow.dx;
+        converted.dy = (CGFloat)shadow.dy;
+        converted.standardDeviation = (CGFloat)shadow.standardDeviation;
+        converted.color[0] = shadow.red;
+        converted.color[1] = shadow.green;
+        converted.color[2] = shadow.blue;
+        converted.color[3] = shadow.alpha;
+        shadows.push_back(converted);
+      }
+      filters.shadows = shadows.data();
+      filters.shadowCount = (NSInteger)shadows.size();
+      // The view copies what it keeps, so the vector may go out of scope.
       [view setRnFilters:&filters];
-    }
-    if (resolved.hasDropShadow) {
-      LOG(WARNING) << "filter: dropShadow() is not applied on this platform; "
-                   << "the rest of the filter list is";
+
+      if (resolved.dropShadows.size() > 1) {
+        LOG(WARNING) << "filter: only the first dropShadow() is drawn on this "
+                     << "platform; a CALayer has one shadow";
+      }
     }
   }
 

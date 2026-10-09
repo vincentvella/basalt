@@ -8,6 +8,7 @@
 #include "GtkTextPeer.h"
 
 #include <cstring>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // RnLayout
@@ -199,6 +200,10 @@ struct _RnView {
   // to. The two are separate because GSK has no plus-lighter: the keyword is
   // still reported, so the dump says what the app asked for rather than what
   // this compositor could do with it.
+  // The `dropShadow()` functions from `filter`, owned: RnFilters borrows them
+  // from the caller and this widget outlives the call. NULL for none.
+  GArray *filter_shadows;
+
   char *blend_name;
   GskBlendMode blend_mode;
   gboolean blends;
@@ -335,6 +340,29 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   // core/Filters.h is allowed to collapse the list into one of each.
   const gboolean filter_blurs = self->has_filters && self->filters.blur_radius > 0.0f;
   const gboolean filter_recolours = self->has_filters && self->filters.has_matrix;
+
+  // `dropShadow()`, which is a shadow of this subtree's *alpha* rather than of
+  // its box: that is the whole difference from `boxShadow`, and GSK has the node
+  // for it. Outermost of the filter effects, so the shadow is cast by the
+  // blurred and recoloured picture and is not itself recoloured -- which is the
+  // `grayscale(1) drop-shadow(...)` order rather than the other one, and the
+  // limit core/Filters.h records.
+  //
+  // One node for the whole list, GSK taking an array: a view with two drop
+  // shadows casts both from one silhouette.
+  const guint filter_shadow_count =
+      self->has_filters && self->filter_shadows != nullptr ? self->filter_shadows->len : 0;
+  if (filter_shadow_count > 0) {
+    std::vector<GskShadow> shadows;
+    shadows.reserve(filter_shadow_count);
+    for (guint i = 0; i < filter_shadow_count; i++) {
+      const RnFilterShadow &shadow =
+          g_array_index(self->filter_shadows, RnFilterShadow, i);
+      shadows.push_back(GskShadow{shadow.color, shadow.dx, shadow.dy, shadow.radius});
+    }
+    gtk_snapshot_push_shadow(snapshot, shadows.data(), shadows.size());
+  }
+
   if (filter_blurs) {
     gtk_snapshot_push_blur(snapshot, self->filters.blur_radius);
   }
@@ -956,6 +984,9 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   if (filter_blurs) {
     gtk_snapshot_pop(snapshot);
   }
+  if (filter_shadow_count > 0) {
+    gtk_snapshot_pop(snapshot);
+  }
   if (needs_opacity_layer) {
     gtk_snapshot_pop(snapshot);
   }
@@ -989,6 +1020,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->native_id, g_free);
   g_clear_pointer(&self->cursor_name, g_free);
   g_clear_pointer(&self->blend_name, g_free);
+  g_clear_pointer(&self->filter_shadows, g_array_unref);
   g_clear_pointer(&self->box_shadows, g_array_unref);
   g_clear_pointer(&self->gradients, g_array_unref);
   g_clear_pointer(&self->labelled_by, g_array_unref);
@@ -1055,6 +1087,7 @@ static void rn_view_init(RnView *self) {
   }
   self->has_border_radii = FALSE;
   self->has_borders = FALSE;
+  self->filter_shadows = nullptr;
   self->blend_name = nullptr;
   self->blend_mode = GSK_BLEND_MODE_DEFAULT;
   self->blends = FALSE;
@@ -1889,14 +1922,46 @@ void rn_view_set_filters(RnView *self, const RnFilters *filters) {
       return;
     }
     self->has_filters = FALSE;
+    g_clear_pointer(&self->filter_shadows, g_array_unref);
     gtk_widget_queue_draw(GTK_WIDGET(self));
     return;
   }
-  if (self->has_filters && memcmp(&self->filters, filters, sizeof(RnFilters)) == 0) {
+
+  // The scalar half is compared with the borrowed pointer taken out of it: a
+  // pointer into the caller's vector is not a value this widget can keep, and
+  // the shadows themselves are compared beside it. A view re-sends identical
+  // props on every mutation, so this is what stops a redraw per mutation.
+  RnFilters wanted = *filters;
+  wanted.shadows = nullptr;
+  wanted.shadow_count = 0;
+  const guint wantedShadows =
+      filters->shadows != nullptr && filters->shadow_count > 0
+      ? static_cast<guint>(filters->shadow_count)
+      : 0;
+  const guint haveShadows =
+      self->filter_shadows != nullptr ? self->filter_shadows->len : 0;
+  if (self->has_filters && memcmp(&self->filters, &wanted, sizeof(RnFilters)) == 0 &&
+      wantedShadows == haveShadows &&
+      (wantedShadows == 0 ||
+       memcmp(self->filter_shadows->data,
+              filters->shadows,
+              wantedShadows * sizeof(RnFilterShadow)) == 0)) {
     return;
   }
-  self->filters = *filters;
+
+  self->filters = wanted;
   self->has_filters = TRUE;
+  if (wantedShadows == 0) {
+    g_clear_pointer(&self->filter_shadows, g_array_unref);
+  } else {
+    if (self->filter_shadows == nullptr) {
+      self->filter_shadows =
+          g_array_sized_new(FALSE, FALSE, sizeof(RnFilterShadow), wantedShadows);
+    } else {
+      g_array_set_size(self->filter_shadows, 0);
+    }
+    g_array_append_vals(self->filter_shadows, filters->shadows, wantedShadows);
+  }
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
@@ -2353,6 +2418,28 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
     if (self->filters.opacity < 1.0f) {
       g_string_append_printf(
           out, "%sopacity=%g", first ? "" : ",", static_cast<double>(self->filters.opacity));
+      first = FALSE;
+    }
+    // Each drop shadow, with the standard deviation React Native parsed rather
+    // than the radius GSK was given: that is the number both hosts were handed,
+    // so it is the one a cross-host diff should compare. The AppKit side prints
+    // the same.
+    if (self->filter_shadows != nullptr) {
+      for (guint i = 0; i < self->filter_shadows->len; i++) {
+        const RnFilterShadow &shadow =
+            g_array_index(self->filter_shadows, RnFilterShadow, i);
+        g_string_append_printf(out,
+                               "%sshadow=(%g,%g,%g,#%02x%02x%02x%02x)",
+                               first ? "" : ",",
+                               static_cast<double>(shadow.dx),
+                               static_cast<double>(shadow.dy),
+                               static_cast<double>(shadow.radius / 2.0f),
+                               static_cast<unsigned>(shadow.color.red * 255.0 + 0.5),
+                               static_cast<unsigned>(shadow.color.green * 255.0 + 0.5),
+                               static_cast<unsigned>(shadow.color.blue * 255.0 + 0.5),
+                               static_cast<unsigned>(shadow.color.alpha * 255.0 + 0.5));
+        first = FALSE;
+      }
     }
     g_string_append(out, ")");
   }

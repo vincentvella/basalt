@@ -32,7 +32,7 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | Area | Open | What is left there |
 | --- | --- | --- |
 | [Windows, the platform](backlog/platform-windows.md) | 15 | A peer since phase 47. What is left is named, and two entries are missing halves: an inline <View> inside a <Text>, and six style props. |
-| [macOS](backlog/platform-macos.md) | 6 | Justified text, fonts, the rest of accessibility. |
+| [macOS](backlog/platform-macos.md) | 7 | Justified text, fonts, the rest of accessibility. |
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |
 | [Testing](backlog/testing.md) | 9 | What the suites cannot see. Was two sections with the same name, 800 lines apart; merged. |

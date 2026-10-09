@@ -19,8 +19,13 @@
 // linearly.
 //
 // `dropShadow` is the exception and does not commute with anything: it depends on
-// the alpha silhouette at its point in the chain. It is reported as present and
-// not applied; see backlog/correctness.md.
+// the alpha silhouette at its point in the chain. So it is kept as a list in the
+// order it was written, and each host draws it with its own shadow mechanism.
+//
+// What that loses is the interleaving: `drop-shadow(...) grayscale(1)` greys the
+// shadow too and `grayscale(1) drop-shadow(...)` does not, and with the matrix
+// collapsed into one node there is one order rather than two. The shadows go on
+// last, which is the second of those, and backlog/correctness.md records it.
 //
 // Two blurs in one list compose in quadrature -- the sigmas, not the radii --
 // because convolving two gaussians gives a gaussian of the combined variance.
@@ -179,6 +184,30 @@ inline ColorMatrix hueRotate(float degrees) {
 
 } // namespace detail
 
+// One `dropShadow()`, resolved: the offset, the gaussian's standard deviation and
+// the colour, in straight sRGB.
+//
+// A standard deviation rather than a CSS blur radius, because that is what React
+// Native parses the third length into and hands over -- the field is named
+// `standardDeviation` -- and what its own iOS half passes straight to SwiftUI's
+// `.shadow(radius:)`. Each host converts to whatever its own shadow takes:
+// `CALayer.shadowRadius` is a standard deviation and takes it unchanged, GSK's
+// shadow radius is CSS's and takes twice it.
+//
+// The colour is opaque black when the stylesheet left it out, which CSS resolves
+// to `currentColor` and nothing here has: black is what an unstyled view's text
+// would be, and dropping the shadow instead would silently ignore a declaration
+// that is perfectly legal.
+struct FilterShadow {
+  float dx;
+  float dy;
+  float standardDeviation;
+  float red;
+  float green;
+  float blue;
+  float alpha;
+};
+
 // What a list of filters comes to, once the arithmetic is done.
 struct ResolvedFilters {
   // The seven colour functions, multiplied together. Identity when the list has
@@ -190,11 +219,16 @@ struct ResolvedFilters {
   float blurRadius{0.0F};
   // Every `opacity()` multiplied together; 1 when the list has none.
   float opacity{1.0F};
-  // A `dropShadow()` was asked for and is not applied. Reported so a host can
-  // say so once rather than silently dropping it.
+  // Every `dropShadow()` in the list, in the order it was written: the first is
+  // the one nearest the content.
+  std::vector<FilterShadow> dropShadows;
+  // Whether there was one at all, which is what the hosts asked before they
+  // could draw one.
   bool hasDropShadow{false};
 
-  bool empty() const { return !hasMatrix && blurRadius <= 0 && opacity >= 1.0F; }
+  bool empty() const {
+    return !hasMatrix && blurRadius <= 0 && opacity >= 1.0F && dropShadows.empty();
+  }
 };
 
 inline ResolvedFilters resolveFilters(const std::vector<facebook::react::FilterFunction> &filters) {
@@ -205,6 +239,25 @@ inline ResolvedFilters resolveFilters(const std::vector<facebook::react::FilterF
   for (const auto &filter : filters) {
     if (filter.type == FilterType::DropShadow) {
       resolved.hasDropShadow = true;
+      if (!std::holds_alternative<facebook::react::DropShadowParams>(filter.parameters)) {
+        continue;
+      }
+      const auto &params = std::get<facebook::react::DropShadowParams>(filter.parameters);
+      FilterShadow shadow{};
+      shadow.dx = static_cast<float>(params.offsetX);
+      shadow.dy = static_cast<float>(params.offsetY);
+      shadow.standardDeviation =
+          params.standardDeviation > 0 ? static_cast<float>(params.standardDeviation) : 0.0F;
+      if (params.color) {
+        const auto components = facebook::react::colorComponentsFromColor(params.color);
+        shadow.red = components.red;
+        shadow.green = components.green;
+        shadow.blue = components.blue;
+        shadow.alpha = components.alpha;
+      } else {
+        shadow.alpha = 1.0F;
+      }
+      resolved.dropShadows.push_back(shadow);
       continue;
     }
     if (!std::holds_alternative<facebook::react::Float>(filter.parameters)) {

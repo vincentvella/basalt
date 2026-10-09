@@ -6,7 +6,7 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (6):**
+**Open (7):**
 
 1. ~~Justified text~~, which worked all along
 2. Fonts loaded at runtime are untested
@@ -16,6 +16,7 @@ If an entry here is about to be picked up, run the thing it describes first.
 6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
 7. No animated images
 8. No gesture cancellation from the platform
+9. Only the first `dropShadow()` in a filter list is drawn
 
 - ~~**Hit testing ignores `transform`.**~~ Fixed, the way Windows already did
   it: `RnAppKitView` gains `rnLocalToParent`, the frame's translation with the
@@ -117,3 +118,16 @@ If an entry here is about to be picked up, run the thing it describes first.
   Checked by comparing rather than by reading: `scripts/compare_hosts.sh focus
   BasaltFocus` has GTK and AppKit agreeing on `radii=`, `borderw=` and
   `borderc=`, and `index BasaltDemo` on `transform=`.
+
+- **Only the first `dropShadow()` in a filter list is drawn.** `filter:
+  'drop-shadow(...) drop-shadow(...)'` is legal CSS and the GTK host draws both,
+  GSK's shadow node taking an array. This host draws the first and logs once,
+  because the mechanism is the layer's own shadow and a `CALayer` has one.
+
+  What it would take: a wrapper layer per extra shadow, each with the same
+  content and its own shadow properties, composited beneath the view -- which is
+  the shape the box shadows already use, except that those have a path and these
+  need the content's alpha, so the content would have to be rendered into each
+  wrapper rather than described to it. The first shadow is the one nearest the
+  content and so the one that matters most, which is why the first is the one
+  kept. backlog/correctness.md has the rest of the function.

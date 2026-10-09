@@ -657,6 +657,49 @@ those numbers are recorded in
 which is in the repository but not on the site. None of it is needed to run a
 shard.
 
+## The crash reports a passing run leaves on macOS
+
+**A full run leaves a crash report named after the host, and it is a test.**
+`test_crash_handler` sets `BASALT_TEST_CRASH`, which makes `installCrashHandler`
+raise the signal on purpose, because a handler that has never run is a guess.
+macOS reports any process that dies on a signal, so every run of the end-to-end
+suite writes one `.ips` into `~/Library/Logs/DiagnosticReports`. There is no way
+to opt a process out of that reporting, so this is the note instead.
+
+Telling it from a real one takes one line of the report's faulting thread:
+
+    raise <- basalt::(anonymous namespace)::crashIfAsked <- basalt::installCrashHandler
+
+That is the deliberate one, and it happens before a window exists. A real crash
+is anywhere else. One report per run, named after whichever host ran: measured
+by running the scenario on each, which leaves a `basalt_appkit` report and a
+`basalt_gtk` one. Reading the stack out of a report, rather than opening the
+Console:
+
+    python3 - <<'EOF'
+    import glob, json, os
+    reports = os.path.expanduser("~/Library/Logs/DiagnosticReports/basalt*.ips")
+    for path in sorted(glob.glob(reports)):
+        header, body = open(path).read().split("\n", 1)
+        head, report = json.loads(header), json.loads(body)
+        images = report.get("usedImages", [])
+        thread = report["threads"][report.get("faultingThread", 0)]
+        print(head["timestamp"], head["app_name"],
+              report.get("exception", {}).get("signal"))
+        for frame in thread["frames"][:10]:
+            image = images[frame["imageIndex"]] if "imageIndex" in frame else {}
+            print("   ", image.get("name", "?"), frame.get("symbol", ""))
+    EOF
+
+Worth doing after a session of work rather than never: every one of the
+twenty-four reports on this machine on 2026-10-08 was either that deliberate
+crash or a bug that the same day's commits fixed -- nineteen of them the
+use-after-free in `~GtkFocusManager`, which the GTK suite's own crash handler had
+already named, and two from GSK assertions that the box shadow and
+`accessibilityLabelledBy` work turned into clamps and a different call. The
+check is cheap and it is the only place a crash that happens *after* a test's
+assertions pass would show up.
+
 ## Test instruments, and what they cannot reach
 
 **Dragging *out* has no automated coverage at all**, and cannot have: once a

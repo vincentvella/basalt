@@ -702,3 +702,116 @@ TEST(gtk_paint_a_radial_gradient_is_centred_where_it_was_told) {
   // and defaulted to the box's middle would make it.
   EXPECT(pixels.at(50, 50).red < 20);
 }
+
+// `filter: drop-shadow(...)`, which is a shadow of the subtree's *alpha* rather
+// than of its box. That is the whole difference from `boxShadow`, and it is
+// visible here: a view with a transparent hole in it casts a shadow with a hole.
+namespace {
+
+// A white box with one drop shadow, offset clear of itself so the shadow can be
+// measured on its own.
+RnView *dropShadowed(Tree &tree, RnView *root, float dx, float dy, float radius) {
+  RnView *view = tree.colouredBox(root, 2, 20, 20, 30, 30, 1.0F, 1.0F, 1.0F);
+  RnFilters filters{};
+  filters.opacity = 1.0F;
+  const RnFilterShadow shadow{dx, dy, radius, GdkRGBA{0.0F, 0.0F, 0.0F, 1.0F}};
+  filters.shadows = &shadow;
+  filters.shadow_count = 1;
+  rn_view_set_filters(view, &filters);
+  return view;
+}
+
+} // namespace
+
+TEST(gtk_paint_a_drop_shadow_is_cast_where_it_was_offset) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  dropShadowed(tree, root, 40.0F, 40.0F, 0.0F);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The box itself, still white and not darkened by its own shadow.
+  EXPECT_PIXEL(pixels, 35, 35, 255, 255, 255, 255);
+  // The shadow, 40 across and 40 down from the box, opaque black with no blur.
+  EXPECT_PIXEL(pixels, 75, 75, 0, 0, 0, 255);
+  // And nothing between them: the box ends at 50 and the shadow starts at 60,
+  // the offset being larger than the box.
+  EXPECT_TRANSPARENT(pixels, 55, 55);
+}
+
+// It follows the alpha, which is what makes it a filter rather than a box
+// shadow: the hole in this view is a hole in its shadow. A box shadow cannot do
+// this, and that is the one assertion that tells the two apart in a picture.
+TEST(gtk_paint_a_drop_shadow_follows_the_alpha_not_the_box) {
+  Tree tree;
+  RnView *root = tree.root(1, 140, 140);
+  // A frame: a white box with a transparent square cut out of the middle, made
+  // of four bars so the middle is genuinely unpainted.
+  RnView *frame = tree.box(root, 2, 10, 10, 40, 40);
+  RnFilters filters{};
+  filters.opacity = 1.0F;
+  const RnFilterShadow shadow{60.0F, 60.0F, 0.0F, GdkRGBA{0.0F, 0.0F, 0.0F, 1.0F}};
+  filters.shadows = &shadow;
+  filters.shadow_count = 1;
+  rn_view_set_filters(frame, &filters);
+  tree.colouredBox(frame, 3, 0, 0, 40, 10, 1.0F, 1.0F, 1.0F);
+  tree.colouredBox(frame, 4, 0, 30, 40, 10, 1.0F, 1.0F, 1.0F);
+  tree.colouredBox(frame, 5, 0, 10, 10, 20, 1.0F, 1.0F, 1.0F);
+  tree.colouredBox(frame, 6, 30, 10, 10, 20, 1.0F, 1.0F, 1.0F);
+
+  const RnPixels pixels = renderView(root, 140, 140);
+  // A bar of the frame casts a shadow.
+  EXPECT_PIXEL(pixels, 85, 75, 0, 0, 0, 255);
+  // The hole in the middle of the frame is a hole in the shadow: 60 across and
+  // 60 down from the middle of the frame, which a box-shaped shadow would have
+  // filled in.
+  EXPECT_TRANSPARENT(pixels, 90, 90);
+}
+
+// The radius convention, measured rather than read off a document.
+//
+// React Native hands over a standard deviation and GSK's shadow takes a radius,
+// so something has to say what GSK's radius means. This compares a shadow of
+// radius R against `gtk_snapshot_push_blur` of radius R -- whose sigma this
+// project has already measured at about R/2 -- by looking at where each one's
+// edge falls off. If the two profiles agree, GSK's shadow radius is CSS's blur
+// radius, and twice the standard deviation is the right number to hand it.
+TEST(gtk_paint_a_drop_shadow_radius_is_a_css_radius) {
+  constexpr float kRadius = 16.0F;
+
+  // A black shadow of a box, offset far clear of the box that casts it.
+  Tree shadowTree;
+  RnView *shadowRoot = shadowTree.root(1, 200, 200);
+  dropShadowed(shadowTree, shadowRoot, 100.0F, 0.0F, kRadius);
+  const RnPixels shadowPixels = renderView(shadowRoot, 200, 200);
+
+  // The same box, blurred by the same number through the blur node, which is the
+  // reference: both are gaussians of whatever sigma the renderer picks for a
+  // given radius, so equal profiles mean equal conventions.
+  Tree blurTree;
+  RnView *blurRoot = blurTree.root(1, 200, 200);
+  RnView *blurred = blurTree.box(blurRoot, 2, 120, 20, 30, 30);
+  RnFilters blurFilters{};
+  blurFilters.opacity = 1.0F;
+  blurFilters.blur_radius = kRadius;
+  rn_view_set_filters(blurred, &blurFilters);
+  blurTree.colouredBox(blurred, 3, 0, 0, 30, 30, 0.0F, 0.0F, 0.0F);
+  const RnPixels blurPixels = renderView(blurRoot, 200, 200);
+
+  // The right edge of both silhouettes is at x = 150. Walk outwards and compare
+  // the alpha at the same distances: a half-radius in, the edge itself, and a
+  // half-radius out.
+  for (const int offset : {-8, 0, 8}) {
+    const int x = 150 + offset;
+    const int shadowAlpha = shadowPixels.at(x, 35).alpha;
+    const int blurAlpha = blurPixels.at(x, 35).alpha;
+    // Generous, because the two nodes are separate code paths in GSK and this is
+    // a claim about the convention rather than about the kernel: a factor-of-two
+    // mistake moves these by 60 or more.
+    EXPECT_NEAR(shadowAlpha, blurAlpha, 24);
+  }
+
+  // And the profile is a profile: softer than opaque at the edge, and fading.
+  EXPECT(shadowPixels.at(142, 35).alpha > shadowPixels.at(158, 35).alpha);
+  EXPECT(shadowPixels.at(150, 35).alpha > 40);
+  EXPECT(shadowPixels.at(150, 35).alpha < 215);
+}

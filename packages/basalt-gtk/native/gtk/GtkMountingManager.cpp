@@ -1325,11 +1325,25 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
       }
       filters.blur_radius = resolved.blurRadius;
       filters.opacity = resolved.opacity;
+
+      // `dropShadow()`, one `GskShadow` each. React Native hands over a standard
+      // deviation and GSK's shadow radius is CSS's, which is twice one -- the
+      // same factor core/LegacyShadow.h applies in the other direction when it
+      // turns a CALayer radius into a CSS blur.
+      std::vector<RnFilterShadow> shadows;
+      shadows.reserve(resolved.dropShadows.size());
+      for (const auto &shadow : resolved.dropShadows) {
+        shadows.push_back(RnFilterShadow{
+            shadow.dx,
+            shadow.dy,
+            shadow.standardDeviation * 2.0F,
+            GdkRGBA{shadow.red, shadow.green, shadow.blue, shadow.alpha},
+        });
+      }
+      filters.shadows = shadows.data();
+      filters.shadow_count = static_cast<int>(shadows.size());
+      // The widget copies them, so the vector above may go out of scope.
       rn_view_set_filters(view, &filters);
-    }
-    if (resolved.hasDropShadow) {
-      LOG(WARNING) << "filter: dropShadow() is not applied on this platform; "
-                   << "the rest of the filter list is";
     }
   }
 

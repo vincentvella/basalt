@@ -151,12 +151,29 @@ int rn_view_get_box_shadow_count(RnView *self);
 // in straight (unpremultiplied) colour, which is the space GSK's colour-matrix
 // node works in. `blur_radius` is CSS's radius, twice the gaussian's sigma.
 // `opacity` is 1 when the list has no `opacity()`.
+// One `dropShadow()` from a filter list: a shadow of the subtree's alpha rather
+// than of its box, which is what makes it a filter and not a box shadow.
+//
+// `radius` is CSS's blur radius, twice the gaussian's sigma, which is what
+// `GskShadow` takes. React Native hands over a standard deviation, so the
+// mounting manager doubles it; see core/Filters.h.
+typedef struct {
+  float dx;
+  float dy;
+  float radius;
+  GdkRGBA color;
+} RnFilterShadow;
+
 typedef struct {
   gboolean has_matrix;
   float matrix[16];
   float offset[4];
   float blur_radius;
   float opacity;
+  // Borrowed for the duration of the call, in the order they were written: the
+  // first is the one nearest the content.
+  const RnFilterShadow *shadows;
+  int shadow_count;
 } RnFilters;
 
 // `filter`. Pass NULL for none.

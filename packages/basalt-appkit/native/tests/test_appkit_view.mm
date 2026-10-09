@@ -610,3 +610,118 @@ TEST(blend_mode_is_reported_in_the_tree) {
     EXPECT(described.find("blend=color-dodge") != std::string::npos);
   }
 }
+
+// `filter: drop-shadow(...)`, which on this host is the layer's own shadow: with
+// no `shadowPath`, Core Animation casts it from the layer's alpha, which is what
+// the filter function means and what the box shadows beside it -- each with a
+// path -- cannot do.
+//
+// No pixels, for the reason the rest of this file has none: `renderInContext:`
+// draws no shadow at all, measured on a bare layer. The GTK side asserts the
+// picture, including that the shadow has a hole where the view does.
+namespace {
+
+RnAppKitView *dropShadowed(CGFloat dx, CGFloat dy, CGFloat sigma, CGFloat alpha) {
+  RnAppKitView *view = [RnAppKitView viewWithTag:1];
+  [view setRnFrameX:0 y:0 width:60 height:40];
+  RnAppKitFilters filters{};
+  filters.opacity = 1;
+  RnAppKitFilterShadow shadow{};
+  shadow.dx = dx;
+  shadow.dy = dy;
+  shadow.standardDeviation = sigma;
+  shadow.color[3] = alpha;
+  filters.shadows = &shadow;
+  filters.shadowCount = 1;
+  [view setRnFilters:&filters];
+  return view;
+}
+
+} // namespace
+
+TEST(filter_a_drop_shadow_becomes_the_layers_own_shadow) {
+  @autoreleasepool {
+    RnAppKitView *view = dropShadowed(4, 6, 3, 0.5);
+
+    // The standard deviation unchanged: CALayer's shadowRadius is one, where
+    // GSK's radius is twice one. A doubling here would be a shadow twice as soft
+    // as the GTK host's.
+    EXPECT_EQ((int)(view.layer.shadowRadius * 10), 30);
+    // The alpha is the layer's opacity rather than the colour's, so the two
+    // cannot multiply together.
+    EXPECT_EQ((int)(view.layer.shadowOpacity * 100), 50);
+    EXPECT(view.layer.shadowColor != nil);
+    EXPECT_EQ((int)(CGColorGetAlpha(view.layer.shadowColor) * 100), 100);
+
+    // Down the screen is a positive dy, as CSS means it, and the layer is not
+    // flipped where this view is -- so the sign turns over.
+    EXPECT_EQ((int)view.layer.shadowOffset.width, 4);
+    EXPECT_EQ((int)view.layer.shadowOffset.height, -6);
+
+    // And no path, which is what makes it follow the alpha rather than the box.
+    EXPECT(view.layer.shadowPath == nil);
+  }
+}
+
+// It comes off again. This is the failure the `opacity()` filter actually had
+// before it was caught: a layer property set by a filter and never cleared
+// leaves the view wrong for the rest of its life.
+TEST(filter_a_drop_shadow_comes_off_again) {
+  @autoreleasepool {
+    RnAppKitView *view = dropShadowed(4, 6, 3, 0.5);
+    EXPECT(view.layer.shadowOpacity > 0);
+
+    [view setRnFilters:nullptr];
+    EXPECT_EQ((int)(view.layer.shadowOpacity * 100), 0);
+    EXPECT(view.layer.shadowColor == nil);
+    EXPECT_EQ((int)view.layer.shadowRadius, 0);
+    EXPECT_EQ((int)view.rnFilterShadow.standardDeviation, 0);
+
+    // And a filter list without a drop shadow clears it too, which is the case
+    // that goes through the other branch.
+    RnAppKitView *second = dropShadowed(4, 6, 3, 0.5);
+    using facebook::react::FilterType;
+    const RnAppKitFilters greyscale = resolvedFilters({filterFunction(FilterType::Grayscale, 1.0)});
+    [second setRnFilters:&greyscale];
+    EXPECT_EQ((int)(second.layer.shadowOpacity * 100), 0);
+    EXPECT(second.rnFilters.count == 1);
+  }
+}
+
+// Two of them is one here, a CALayer having one shadow, and the first in the
+// list is the one drawn: CSS applies the list left to right, so that is the one
+// nearest the content. The limit is recorded in backlog/platform-macos.md rather
+// than approximated.
+TEST(filter_only_the_first_drop_shadow_is_drawn) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnFrameX:0 y:0 width:60 height:40];
+
+    RnAppKitFilterShadow shadows[2]{};
+    shadows[0].dx = 2;
+    shadows[0].standardDeviation = 1;
+    shadows[0].color[3] = 1;
+    shadows[1].dx = 20;
+    shadows[1].standardDeviation = 10;
+    shadows[1].color[3] = 1;
+
+    RnAppKitFilters filters{};
+    filters.opacity = 1;
+    filters.shadows = shadows;
+    filters.shadowCount = 2;
+    [view setRnFilters:&filters];
+
+    EXPECT_EQ((int)view.layer.shadowOffset.width, 2);
+    EXPECT_EQ((int)view.layer.shadowRadius, 1);
+  }
+}
+
+TEST(filter_a_drop_shadow_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *view = dropShadowed(4, 6, 3, 0.5);
+    // Spelled as GTK spells it, and with the standard deviation React Native
+    // parsed rather than either platform's own radius.
+    const std::string described = [view describeTree].UTF8String;
+    EXPECT(described.find("filter=(shadow=(4,6,3,#00000080))") != std::string::npos);
+  }
+}

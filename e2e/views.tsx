@@ -121,6 +121,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#4d8cf2',
     filter: 'grayscale(1) brightness(1.2)',
   },
+  // filter: drop-shadow(), the one filter function that is a shadow rather than
+  // a colour map. A sibling of the box-shadowed view below on purpose: the two
+  // look alike and are different mechanisms, one following the alpha and one the
+  // box, and the dump is what says which arrived.
+  dropShadowed: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#4d8cf2',
+    filter: 'drop-shadow(4px 6px 3px rgba(0, 0, 0, 0.5))',
+  },
   // boxShadow, the other prop that only a dump can confirm. Two shadows and an
   // inset one, because the list and the inset flag are each a thing a host can
   // drop while still drawing something plausible.
@@ -209,6 +219,7 @@ function App() {
         <View style={styles.dotted} />
         <View style={styles.filtered} />
         <View style={styles.gradient} />
+        <View style={styles.dropShadowed} />
         <View style={styles.shadowed} />
         <View style={styles.outlined} />
         <View style={styles.radial} />

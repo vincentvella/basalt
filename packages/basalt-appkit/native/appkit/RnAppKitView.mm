@@ -467,6 +467,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   NSMutableArray<CALayer *> *_boxShadowLayers;
   NSString *_cursorName;
   // `mixBlendMode`: the keyword asked for, and the Core Image filter it became.
+  // The `dropShadow()` from `filter`, as the layer's own shadow.
+  RnAppKitFilterShadow _filterShadow;
   NSString *_blendModeName;
   NSString *_blendFilterName;
   // The last text this view announced as a live region. See -rnAnnounce:.
@@ -2184,17 +2186,21 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
 
 - (void)setRnFilters:(const RnAppKitFilters *)filters {
   if (filters == nullptr) {
-    // Both halves have to come off. A filter list of nothing but `opacity()`
-    // leaves no Core Image filter behind, so an early return on `_filters`
-    // alone would keep the view at a quarter of its opacity for good -- which
-    // is what the test for taking a filter away caught.
-    if (_filters == nil && _filterOpacity == 1) {
+    // Every half has to come off, and there are three. A list of nothing but
+    // `opacity()` leaves no Core Image filter behind, and so does a list of
+    // nothing but `dropShadow()` -- so an early return on `_filters` alone keeps
+    // the view faded, or shadowed, for good. The first of those two was caught
+    // by the test for taking a filter away; the second was caught by the same
+    // test written again for the shadow, which is the argument for writing it.
+    if (_filters == nil && _filterOpacity == 1 && _filterShadow.color[3] == 0 &&
+        _filterShadow.standardDeviation == 0) {
       return;
     }
     _filters = nil;
     self.layer.filters = nil;
     _filterOpacity = 1;
     [self rnApplyOpacity];
+    [self rnApplyFilterShadow:nullptr];
     return;
   }
 
@@ -2235,6 +2241,61 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   // side folds it into its opacity node for the same reason.
   _filterOpacity = filters->opacity;
   [self rnApplyOpacity];
+
+  [self rnApplyFilterShadow:filters->shadowCount > 0 ? filters->shadows : nullptr];
+}
+
+// `dropShadow()`, which is the layer's own shadow rather than a Core Image
+// filter: with no `shadowPath`, Core Animation casts the shadow from the
+// layer's *alpha*, which is what the filter function means and what a box shadow
+// cannot do. The box shadows beside it are separate layers with a path each, so
+// the two mechanisms do not collide.
+//
+// `CALayer.shadowRadius` is the gaussian's standard deviation, so what React
+// Native parsed crosses unchanged -- where the GTK side doubles it, GSK's radius
+// being CSS's. React Native's own iOS half passes the same number to SwiftUI's
+// `.shadow(radius:)`.
+//
+// One shadow, because a layer has one. A list of several needs a wrapper layer
+// each and is recorded in backlog/platform-macos.md rather than half done.
+- (void)rnApplyFilterShadow:(const RnAppKitFilterShadow *)shadow {
+  if (shadow == nullptr) {
+    if (_filterShadow.color[3] == 0 && _filterShadow.standardDeviation == 0) {
+      return;
+    }
+    _filterShadow = RnAppKitFilterShadow{};
+    self.layer.shadowOpacity = 0;
+    self.layer.shadowColor = nil;
+    self.layer.shadowRadius = 0;
+    self.layer.shadowOffset = CGSizeZero;
+    return;
+  }
+  if (memcmp(&_filterShadow, shadow, sizeof(RnAppKitFilterShadow)) == 0) {
+    return;
+  }
+  _filterShadow = *shadow;
+
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  const CGFloat opaque[4] = {shadow->color[0], shadow->color[1], shadow->color[2], 1};
+  CGColorRef colour = CGColorCreate(space, opaque);
+  self.layer.shadowColor = colour;
+  CGColorRelease(colour);
+  CGColorSpaceRelease(space);
+  // The colour's alpha is the layer's shadowOpacity, which is where Core
+  // Animation keeps it: a shadowColor with an alpha and an opacity of 1 would
+  // multiply the two.
+  self.layer.shadowOpacity = (float)shadow->color[3];
+  self.layer.shadowRadius = shadow->standardDeviation;
+  // This view is flipped, so a positive dy is down, as CSS means it. The layer
+  // is not, which is why the sign is flipped here and not in the shadow path the
+  // box shadows build.
+  self.layer.shadowOffset = CGSizeMake(shadow->dx, -shadow->dy);
+  // No path: the shadow is cast from the alpha, which is the whole point.
+  self.layer.shadowPath = nil;
+}
+
+- (RnAppKitFilterShadow)rnFilterShadow {
+  return _filterShadow;
 }
 
 - (NSArray<CIFilter *> *)rnFilters {
@@ -2483,7 +2544,7 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   // colour, spelled exactly as GTK spells it: sixteen numbers would drown the
   // line, and one colour still fails when a matrix is wrong. The probe is
   // (1, 0.5, 0.25) so no two channels can be swapped unnoticed.
-  if (_filters != nil || _filterOpacity < 1) {
+  if (_filters != nil || _filterOpacity < 1 || _filterShadow.color[3] > 0) {
     [out appendString:@" filter=("];
     BOOL first = YES;
     for (CIFilter *filter in _filters) {
@@ -2516,6 +2577,21 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     }
     if (_filterOpacity < 1) {
       [out appendFormat:@"%sopacity=%g", first ? "" : ",", (double)_filterOpacity];
+      first = NO;
+    }
+    // The drop shadow, with the standard deviation React Native parsed, which is
+    // also what this layer was given. GTK prints the same number from a radius
+    // it doubled.
+    if (_filterShadow.color[3] > 0) {
+      [out appendFormat:@"%sshadow=(%g,%g,%g,#%02x%02x%02x%02x)",
+                        first ? "" : ",",
+                        (double)_filterShadow.dx,
+                        (double)_filterShadow.dy,
+                        (double)_filterShadow.standardDeviation,
+                        (unsigned)(_filterShadow.color[0] * 255.0 + 0.5),
+                        (unsigned)(_filterShadow.color[1] * 255.0 + 0.5),
+                        (unsigned)(_filterShadow.color[2] * 255.0 + 0.5),
+                        (unsigned)(_filterShadow.color[3] * 255.0 + 0.5)];
     }
     [out appendString:@")"];
   }

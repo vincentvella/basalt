@@ -4131,10 +4131,13 @@ def test_filter(bundle: Path) -> None:
             raise Failure("host wrote no widget tree")
         tree = dump.read_text()
 
-    carrying = [line for line in tree.splitlines() if "filter=" in line]
+    # The colour-matrix one, by its probe: the app also has a view whose filter
+    # is a drop shadow, which the same line reports differently -- see
+    # test_drop_shadow_filter.
+    carrying = [line for line in tree.splitlines() if "filter=(probe=" in line]
     if len(carrying) != 1:
         raise Failure(
-            f"{len(carrying)} views report a filter; the app sets one.\n{tree}"
+            f"{len(carrying)} views report a colour filter; the app sets one.\n{tree}"
         )
     if "filter=(probe=#b4b4b4ff)" not in carrying[0]:
         raise Failure(
@@ -4199,6 +4202,66 @@ def test_outline(bundle: Path) -> None:
             "the outline is not the one the app asked for. A missing offset "
             "reads (3,0,...), a dropped style has no trailing word, and a "
             f"colour that did not resolve is #00000000.\n{carrying[0]}"
+        )
+
+
+def test_drop_shadow_filter(bundle: Path) -> None:
+    """`filter: drop-shadow(...)` reaches the view as a shadow of its alpha.
+
+    The last of the nine filter functions, and the one that is not a colour map:
+    it shadows the subtree's alpha rather than its box, which is the difference
+    from `boxShadow` and is why it could not be folded into the colour matrix
+    the other seven collapse to.
+
+    The number worth comparing is the blur. React Native parses the third length
+    into a field it calls `standardDeviation` and hands that over, and the two
+    hosts want different things with it: `CALayer.shadowRadius` is a standard
+    deviation and takes it unchanged, while GSK's shadow radius is CSS's and
+    takes twice it -- which a GTK pixel test measured rather than assumed, by
+    comparing a shadow against a blur of the same number. So both dumps print
+    the standard deviation, and a host that doubled or halved on the way reports
+    6 or 1.5 where this asks for 3.
+
+    e2e/views.tsx asks for `drop-shadow(4px 6px 3px rgba(0, 0, 0, 0.5))`.
+
+    Windows draws no filters yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D is given no filter list yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "filter=(shadow=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a drop shadow; the app sets one.\n{tree}"
+        )
+    if "filter=(shadow=(4,6,3,#00000080))" not in carrying[0]:
+        raise Failure(
+            "the drop shadow is not the one the app asked for. A 6 or a 1.5 is a "
+            "standard deviation converted on the way here rather than in the "
+            "host, and an offset of (4,-6) is a sign that did not survive this "
+            f"platform's coordinates.\n{carrying[0]}"
         )
 
 
@@ -5816,6 +5879,7 @@ SCENARIOS = [
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("a filter list reaches the view, composed", test_filter),
     ("the outline family reaches the view", test_outline),
+    ("a drop-shadow filter reaches the view", test_drop_shadow_filter),
     ("a radial gradient reaches the view, resolved", test_radial_gradient),
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),

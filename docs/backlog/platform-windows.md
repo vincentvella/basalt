@@ -269,12 +269,15 @@ and none of it is a missing half.
 
 - **`filter` is not applied.** The arithmetic is done and shared:
   `core/Filters.h` turns a CSS filter list into one colour matrix, one blur
-  radius and one opacity, with the Filter Effects spec's own numbers and eleven
-  tests against them. Direct2D has the pieces to spend them on --
-  `CLSID_D2D1ColorMatrix` takes a 5x4 matrix in exactly this shape, and
-  `CLSID_D2D1GaussianBlur` the blur -- so this host needs an effect graph over
-  the view's layer rather than any new maths. The end-to-end scenario is skipped
-  here by name.
+  radius, one opacity and the drop shadows, with the Filter Effects spec's own
+  numbers and fifteen tests against them. Direct2D has the pieces to spend them on --
+  `CLSID_D2D1ColorMatrix` takes a 5x4 matrix in exactly this shape,
+  `CLSID_D2D1GaussianBlur` the blur, and `CLSID_D2D1Shadow` the `dropShadow()`,
+  which takes a blurred alpha mask of what is drawn and is therefore exactly
+  this function -- so this host needs an effect graph over the view's layer
+  rather than any new maths. backlog/correctness.md records what the other two
+  did with the standard deviation, which is the one number that differs by
+  platform. The end-to-end scenario is skipped here by name.
 
 - **`textTransform` is ignored, so an uppercase label is not uppercase.** The
   other two hosts apply it where they build their text layout, before anything

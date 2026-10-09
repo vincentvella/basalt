@@ -384,12 +384,30 @@ typedef struct {
 // in straight colour, which is what CIColorMatrix takes. `blurRadius` is CSS's
 // radius, twice the gaussian's sigma. `opacity` is 1 when the list has no
 // `opacity()`.
+// One `dropShadow()` from a filter list: a shadow of the subtree's alpha rather
+// than of its box, which is what makes it a filter and not a box shadow.
+//
+// `standardDeviation` is the gaussian's, which is what React Native parses and
+// what `CALayer.shadowRadius` takes, so it crosses unchanged. The colour is RGBA
+// components, as the border and shadow colours are.
+typedef struct {
+  CGFloat dx;
+  CGFloat dy;
+  CGFloat standardDeviation;
+  CGFloat color[4];
+} RnAppKitFilterShadow;
+
 typedef struct {
   bool hasMatrix;
   CGFloat matrix[16];
   CGFloat offset[4];
   CGFloat blurRadius;
   CGFloat opacity;
+  // Borrowed for the duration of the call, in the order they were written: the
+  // first is the one nearest the content. Only the first is drawn -- a CALayer
+  // has one shadow -- and backlog/platform-macos.md records that.
+  const RnAppKitFilterShadow *shadows;
+  NSInteger shadowCount;
 } RnAppKitFilters;
 
 // `filter`. Pass NULL for none.
@@ -406,6 +424,12 @@ typedef struct {
 // so what each filter was given is the observable half here. The GTK side has
 // the render tree and checks a pixel.
 @property(nonatomic, readonly) NSArray<CIFilter *> *rnFilters;
+
+// The drop shadow the filter list asked for, as the layer properties it became,
+// or all zeroes when there is none. Public for the tests, for the reason
+// `rnFilters` is: Core Animation composites a shadow and `renderInContext:` does
+// not draw one.
+@property(nonatomic, readonly) RnAppKitFilterShadow rnFilterShadow;
 
 // `hitSlop`: how far outside its own box this view answers a press, in the order
 // top, right, bottom, left -- the order CSS names edges and the order the border

@@ -173,9 +173,9 @@ TEST(filters_two_blurs_compose_in_quadrature) {
 }
 
 // A drop shadow is the one function that does not commute with the others, so it
-// is reported rather than folded in -- and the rest of the list still applies,
-// which is what stops one unsupported function taking a whole style with it.
-TEST(filters_a_drop_shadow_is_reported_and_the_rest_still_applies) {
+// is kept as a shadow rather than folded in -- and the rest of the list still
+// applies, which is what stops one function taking a whole style with it.
+TEST(filters_a_drop_shadow_is_kept_and_the_rest_still_applies) {
   FilterFunction shadow;
   shadow.type = FilterType::DropShadow;
   shadow.parameters = facebook::react::DropShadowParams{};
@@ -183,8 +183,80 @@ TEST(filters_a_drop_shadow_is_reported_and_the_rest_still_applies) {
   const ResolvedFilters resolved =
       resolveFilters({shadow, filter(FilterType::Grayscale, 1.0)});
   EXPECT(resolved.hasDropShadow);
+  EXPECT_EQ((int)resolved.dropShadows.size(), 1);
   EXPECT(resolved.hasMatrix);
   EXPECT(!resolved.empty());
+}
+
+// The numbers come through as React Native parsed them: an offset, a standard
+// deviation -- not a CSS blur radius, which is what the field is named after --
+// and a colour. Each host converts from the sigma to whatever its own shadow
+// takes, so getting this wrong is a shadow twice as soft on one desktop.
+TEST(filters_a_drop_shadow_carries_its_offset_sigma_and_colour) {
+  FilterFunction function;
+  function.type = FilterType::DropShadow;
+  facebook::react::DropShadowParams params;
+  params.offsetX = 4;
+  params.offsetY = -6;
+  params.standardDeviation = 3;
+  params.color = facebook::react::colorFromComponents(
+      facebook::react::ColorComponents{1.0F, 0.0F, 0.0F, 0.5F});
+  function.parameters = params;
+
+  const ResolvedFilters resolved = resolveFilters({function});
+  EXPECT_EQ((int)resolved.dropShadows.size(), 1);
+  if (resolved.dropShadows.empty()) {
+    return;
+  }
+  const basalt::FilterShadow &shadow = resolved.dropShadows[0];
+  EXPECT(near(shadow.dx, 4.0F, 0.001F));
+  EXPECT(near(shadow.dy, -6.0F, 0.001F));
+  EXPECT(near(shadow.standardDeviation, 3.0F, 0.001F));
+  EXPECT(near(shadow.red, 1.0F, 0.01F));
+  EXPECT(near(shadow.green, 0.0F, 0.01F));
+  EXPECT(near(shadow.alpha, 0.5F, 0.01F));
+}
+
+// No colour is legal CSS -- it means `currentColor` -- and nothing here has one,
+// so it is opaque black. The alternative is dropping a declaration that parsed,
+// which is worse than a shadow in the wrong colour.
+TEST(filters_a_drop_shadow_with_no_colour_is_black) {
+  FilterFunction function;
+  function.type = FilterType::DropShadow;
+  function.parameters = facebook::react::DropShadowParams{};
+
+  const ResolvedFilters resolved = resolveFilters({function});
+  EXPECT_EQ((int)resolved.dropShadows.size(), 1);
+  if (resolved.dropShadows.empty()) {
+    return;
+  }
+  EXPECT(near(resolved.dropShadows[0].alpha, 1.0F, 0.01F));
+  EXPECT(near(resolved.dropShadows[0].red, 0.0F, 0.01F));
+}
+
+// Several of them, in the order they were written: CSS applies a filter list
+// left to right, so the first drop shadow is the one nearest the content, and a
+// host that reversed them would put the wrong one on top.
+TEST(filters_drop_shadows_keep_their_order) {
+  FilterFunction first;
+  first.type = FilterType::DropShadow;
+  facebook::react::DropShadowParams nearParams;
+  nearParams.offsetX = 1;
+  first.parameters = nearParams;
+
+  FilterFunction second;
+  second.type = FilterType::DropShadow;
+  facebook::react::DropShadowParams farParams;
+  farParams.offsetX = 9;
+  second.parameters = farParams;
+
+  const ResolvedFilters resolved = resolveFilters({first, second});
+  EXPECT_EQ((int)resolved.dropShadows.size(), 2);
+  if (resolved.dropShadows.size() != 2) {
+    return;
+  }
+  EXPECT(near(resolved.dropShadows[0].dx, 1.0F, 0.001F));
+  EXPECT(near(resolved.dropShadows[1].dx, 9.0F, 0.001F));
 }
 
 TEST(filters_an_empty_list_is_nothing_to_do) {

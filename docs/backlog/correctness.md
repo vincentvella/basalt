@@ -123,7 +123,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     linear and radial both; `backgroundSize`, `backgroundPosition` and
     `backgroundRepeat` are still ignored. What the work turned out to be is at
     the end of this entry.
-  - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, bar `dropShadow()`.
+  - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, all nine functions.
     What the work turned out to be is at the end of this entry.
   - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
     **done on GTK and AppKit 2026-10-08**. What the work turned out to be is at
@@ -316,11 +316,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   `dropShadow()` is the exception: it depends on the alpha silhouette at its
   point in the chain, so folding it in with the rest would be wrong rather than
-  approximate. It is reported, logged once per view that asks, and the rest of
-  the list still applies -- which is what stops one unsupported function taking a
-  whole style with it. Doing it properly means a shadow node or layer *inside*
-  the filter stack, in list order, which is the one case where the collapsing
-  above does not hold.
+  approximate. **It was reported and not applied until later the same day; it is
+  drawn now, and what it needed is at the end of this entry.**
 
   **GTK is checked against a rendered pixel, which is new here.** GSK's
   colour-matrix node applies `transpose(matrix) * pixel + offset` to
@@ -505,6 +502,52 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   **Windows** needs nothing new for these beyond `CLSID_D2D1Shadow`, which its
   `boxShadow` entry already names: the conversion is shared, so the legacy props
   arrive as ordinary shadows in the same list.
+
+  **`dropShadow()`, done on GTK and AppKit 2026-10-08**, which completes
+  `filter`. It is the one function of the nine that is a shadow rather than a
+  colour map: it shadows the subtree's *alpha*, not its box, which is both why it
+  could not join the collapsed matrix and the one thing that tells it from
+  `boxShadow` in a picture. The GTK test asserts exactly that, with a frame made
+  of four bars: the hole in the middle of the view is a hole in its shadow, which
+  no box shadow can do.
+
+  **The blur is the number that needed care, and it was measured.** React Native
+  parses the third length into a field it calls `standardDeviation` and hands it
+  over -- its own iOS half passes it straight to SwiftUI's `.shadow(radius:)` --
+  and the two hosts want different things with it. `CALayer.shadowRadius` is a
+  standard deviation, so AppKit takes it unchanged. GSK's shadow radius is CSS's,
+  which is twice one, so GTK doubles it. That claim is not read off a document: a
+  pixel test renders a shadow of radius R beside `gtk_snapshot_push_blur` of
+  radius R and compares the alpha falloff at three points, because the sigma of
+  the blur node was measured here earlier. Equal profiles mean equal
+  conventions, and a factor of two moves them by 60 units of alpha or more.
+
+  Both dumps print the standard deviation rather than either platform's radius,
+  so the cross-host diff compares what React Native said rather than what each
+  toolkit was told, and the scenario fails with a 6 or a 1.5 when a conversion
+  lands in the wrong place.
+
+  **Two limits, recorded rather than approximated.** A `CALayer` has one shadow,
+  so AppKit draws the first of a list and logs once; GTK's node takes the whole
+  array. And the interleaving with the colour matrix is gone: CSS applies the
+  list left to right, so `drop-shadow(...) grayscale(1)` greys the shadow and
+  `grayscale(1) drop-shadow(...)` does not, while a collapsed matrix gives one
+  order. The shadows go on outermost, which is the second of those -- the usual
+  authoring order -- and keeping both would mean emitting the list as a sequence
+  of stages rather than a resolved triple.
+
+  **A bug of the same shape as one already fixed here.** Taking the filters off
+  left the shadow behind, because the early return in `setRnFilters:` tested only
+  the Core Image list and the opacity -- and a list of nothing but
+  `dropShadow()` leaves no Core Image filter. That is exactly what the
+  `opacity()` early return did before it was caught, found again by writing the
+  same test for the new half, which is the argument for writing it rather than
+  assuming the pattern held.
+
+  **Windows** has `CLSID_D2D1Shadow`, which takes a blurred alpha mask of what is
+  drawn -- which is what this function is -- so it needs the effect graph its
+  `filter` entry already names, with the shadow applied to the layer's output and
+  composited beneath it. Its scenario skips by name.
 
 - ~~**A type check used as a liveness check.**~~ Found and fixed 2026-10-08, by
   accident, which is the part worth writing down.
