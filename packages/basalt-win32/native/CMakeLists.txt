@@ -175,8 +175,12 @@ target_include_directories(basalt_win32_view PUBLIC win32)
 # so anything it takes from there has to be `inline`.
 target_include_directories(basalt_win32_view PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../basalt-core/native/core)
+# dxguid is for the effect CLSIDs, and it is the kind of thing that only a
+# linker tells you: `CLSID_D2D1Shadow` and its siblings are `DEFINE_GUID`
+# declarations in d2d1effects.h, so the symbols live in that library rather
+# than in d2d1. Without it a text shadow compiles and fails to link.
 target_link_libraries(basalt_win32_view PUBLIC
-  d2d1 dwrite windowscodecs uiautomationcore ole32 oleaut32 user32 shcore)
+  d2d1 dwrite windowscodecs uiautomationcore ole32 oleaut32 user32 shcore dxguid)
 
 add_executable(demo_layout_win32 win32/demo_layout_win32.cpp)
 target_compile_options(demo_layout_win32 PRIVATE ${BASALT_WIN32_WARNINGS})
