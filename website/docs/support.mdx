@@ -55,7 +55,7 @@ Every style and behaviour prop a `<View>` carries. From `packages/react-native/R
 
 Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `opacity` | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✅ |  |
@@ -90,7 +90,7 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 
 Written on the element itself, as `<View onLayout={...} />`.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `shouldRasterizeIOS` <sub>`shouldRasterize`</sub> | – | – | – | [performance hints, and one cannot arrive](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `hitSlop` | ✅ | ✅ | ✖ | [one line against the insets it already has](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
@@ -103,7 +103,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 
 Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `events` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 
@@ -115,7 +115,7 @@ What a view tells the platform's accessible layer. BaseViewProps inherits these.
 
 Written on the element itself, as `<View onLayout={...} />`.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `accessible` | ✅ | ✅ | ✅ |  |
 | `accessibilityState` | ✅ | ✅ | ✅ |  |
@@ -145,7 +145,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 
 Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `accessibilityTraits` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityMagicTap` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
@@ -158,7 +158,7 @@ Per-fragment text styling, so a nested `<Text>` can differ from its parent. From
 
 Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `color` <sub>`foregroundColor`</sub> | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
@@ -184,7 +184,7 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 
 Written on the element itself, as `<View onLayout={...} />`.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `allowFontScaling` | ✅ | ✅ | ✅ |  |
 | `maxFontSizeMultiplier` | ✅ | ✅ | ✅ |  |
@@ -198,7 +198,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 
 Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `fontSizeMultiplier` | ✅ | ✅ | ✅ |  |
 | `isHighlighted` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
@@ -208,7 +208,7 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 
 ## Image
 
-| | Linux | macOS | Windows | |
+| | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | Files, `http(s)`, `data:` URIs, decoded off the main thread | ✅ | ✅ | ✅ |  |
 | `resizeMode` | ✅ | ✅ | ✅ |  |

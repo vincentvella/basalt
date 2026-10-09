@@ -330,7 +330,11 @@ function render(inventory, data) {
   lines.push('');
 
   const table = (rows) => {
-    lines.push('| | ' + keys.map((key) => label(data, key)).join(' | ') + ' | |');
+    // The last column is headed, the first is not: the first holds the prop
+    // name, which needs no saying, and the last holds a reason that is empty on
+    // every row done everywhere -- which is what made it look like a column
+    // nobody meant to add.
+    lines.push('| | ' + keys.map((key) => label(data, key)).join(' | ') + ' | Why |');
     lines.push('| --- | ' + keys.map(() => '---').join(' | ') + ' | --- |');
     for (const {feature, row} of rows) {
       const cells = keys.map((key) =>
