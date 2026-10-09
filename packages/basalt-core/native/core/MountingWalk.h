@@ -316,6 +316,14 @@ class MountingWalk {
 
   // Platforms call this from their own destructor. See the note at the top.
   void releaseAllViews() {
+    // Same ordering as a Delete, and for the same reason: a side table holding a
+    // view has to be told before the view goes, not after. This path is a host's
+    // own destructor, so getting it wrong is a crash on the way out -- the kind
+    // that looks like a flaky test rather than a bug.
+    for (auto &[tag, view] : registry_) {
+      (void)view;
+      platform().forgetTag(tag);
+    }
     for (auto &[tag, view] : registry_) {
       (void)tag;
       platform().destroyView(view);
@@ -418,6 +426,14 @@ class MountingWalk {
       LOG(WARNING) << "Delete for unknown tag " << tag;
       return;
     }
+    // The platform lets go of the tag *before* the view is released, which is
+    // the ordering every per-tag side table needs: a scroll controller to
+    // detach, a text peer to drop, a canvas to unregister. Each of those takes
+    // the view it remembers, and after `destroyView` that pointer can be freed
+    // memory -- GTK's managers were checking `RN_IS_VIEW` to find out, which
+    // cannot work and crashed once it was asked on a poisoned object. See
+    // GtkFocus.cpp's destructor for the one that bit.
+    platform().forgetTag(tag);
     platform().destroyView(it->second);
     registry_.erase(it);
     eventEmitters_.erase(tag);
@@ -428,7 +444,6 @@ class MountingWalk {
     pullToRefresh_.forget(tag);
     modalViews_.erase(tag);
     modalStack_.erase(std::remove(modalStack_.begin(), modalStack_.end(), tag), modalStack_.end());
-    platform().forgetTag(tag);
   }
 
   void insert(const facebook::react::ShadowViewMutation &mutation) {

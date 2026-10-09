@@ -42,6 +42,13 @@ GtkFocusManager::GtkFocusManager(GtkMountingManager *mountingManager, RnView *su
   g_object_add_weak_pointer(G_OBJECT(keyController_),
                             reinterpret_cast<gpointer *>(&keyController_));
 
+  // Weak for the reason the controller above is: the root can be destroyed
+  // before this manager is, and then every line of the destructor is reading
+  // freed memory. GObject nulls the pointer on finalise, which is the only way
+  // to know -- see the destructor.
+  g_object_add_weak_pointer(G_OBJECT(surfaceRoot_),
+                            reinterpret_cast<gpointer *>(&surfaceRoot_));
+
   // The root may or may not be in a window yet, depending on the order the host
   // built things in, so both are handled rather than one being assumed.
   attachToWindow();
@@ -53,8 +60,19 @@ GtkFocusManager::~GtkFocusManager() {
     g_signal_handlers_disconnect_by_data(window_, this);
     window_ = nullptr;
   }
-  if (surfaceRoot_ != nullptr && RN_IS_VIEW(surfaceRoot_)) {
+  // Only if the root is still there, which the weak pointer is what says.
+  //
+  // This used to ask `RN_IS_VIEW(surfaceRoot_)`, which cannot work and is worth
+  // recording as a trap: a type check reads the instance's type pointer out of
+  // the object, so on a freed GObject it reads GLib's 0xaa poison and
+  // dereferences it. The crash was `SIGSEGV at 0xaaaaaaaaaaaaaaaa` inside
+  // RN_IS_VIEW, from this destructor, and it was latent for as long as the
+  // freed bytes at that offset happened not to fault.
+  if (surfaceRoot_ != nullptr) {
     g_signal_handlers_disconnect_by_data(surfaceRoot_, this);
+    g_object_remove_weak_pointer(G_OBJECT(surfaceRoot_),
+                                 reinterpret_cast<gpointer *>(&surfaceRoot_));
+    surfaceRoot_ = nullptr;
   }
   // The key controller belongs to the widget, and that is exactly why it has to
   // be disconnected: it outlives *this*, because both teardown paths reset the
@@ -77,6 +95,9 @@ void GtkFocusManager::onRootChanged(GObject * /*widget*/, GParamSpec * /*spec*/,
 }
 
 void GtkFocusManager::attachToWindow() {
+  if (surfaceRoot_ == nullptr) {
+    return;
+  }
   GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(surfaceRoot_));
   GtkWindow *window = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : nullptr;
   if (window == window_) {

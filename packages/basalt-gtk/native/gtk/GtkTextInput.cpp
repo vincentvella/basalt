@@ -303,7 +303,10 @@ void GtkTextInputManager::remove(Tag tag) {
   }
   // The signal handlers hold a pointer to the Entry. Dropping the editable
   // first takes them with it.
-  if (it->second.view != nullptr && RN_IS_VIEW(it->second.view)) {
+  // Null rather than RN_IS_VIEW, for the reason core/MountingWalk.h gives: the
+  // view is alive by the time this runs, and a type check could not tell if it
+  // were not.
+  if (it->second.view != nullptr) {
     rn_view_set_editable(it->second.view, FALSE, FALSE);
   }
   entries_.erase(it);

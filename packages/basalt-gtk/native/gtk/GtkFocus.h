@@ -102,6 +102,9 @@ class GtkFocusManager {
   void emitFocus(facebook::react::Tag tag, bool focused);
 
   GtkMountingManager *mountingManager_;
+  // The surface root, held weakly: GObject nulls this when the view is
+  // finalised, which is what makes the destructor safe to run after the root
+  // has gone. A type check cannot do that job -- see the destructor.
   RnView *surfaceRoot_;
   GtkEventController *keyController_{nullptr};
   // The window this is listening to, held weakly: it outlives the manager in

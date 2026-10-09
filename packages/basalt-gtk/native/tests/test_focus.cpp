@@ -251,3 +251,45 @@ TEST(focus_blur_drops_focus_instead_of_handing_it_to_the_window) {
   EXPECT(gtk_window_get_focus(window) == nullptr);
   EXPECT_EQ((long)scene.focus.focusedTag(), 0L);
 }
+
+// Destroying the surface root before the focus manager, which is the order every
+// teardown actually takes: `Scene`'s own destructor does it, and so does the
+// host's reload path.
+//
+// This was a use-after-free. The destructor asked `RN_IS_VIEW(surfaceRoot_)` as
+// a liveness check, and a type check cannot be one: it reads the instance's type
+// pointer out of the object, so on a freed GObject it reads GLib's 0xaa poison
+// and dereferences it. It survived for as long as the freed bytes at that offset
+// happened not to fault -- adding four unrelated fields to RnView's struct was
+// enough to turn it into `SIGSEGV at 0xaaaaaaaaaaaaaaaa`, after the test it
+// belonged to had already printed "ok".
+//
+// The fix is the weak pointer the key controller next door already used.
+//
+// **What this test is and is not.** It asserts the contract -- a manager
+// outliving its root answers "nothing is focused" rather than reading it -- and
+// it does *not* reproduce the crash: whether those freed bytes fault depends on
+// what the heap had done beforehand, so this passes with the old check in place
+// when it runs alone. The evidence for the fix is the whole suite, which crashed
+// in three runs out of three with the struct change and none after it.
+TEST(focus_a_manager_survives_its_root_being_destroyed) {
+  basalt::GtkMountingManager manager;
+  RnView *root = manager.createSurfaceRoot(kSurfaceId);
+  auto *focus = new basalt::GtkFocusManager(&manager, root);
+
+  // In a window, and the window destroyed first, which is the order a real
+  // teardown takes and the one `Scene` above uses.
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(root));
+  gtk_widget_set_visible(window, TRUE);
+  Scene::pump();
+  gtk_window_destroy(GTK_WINDOW(window));
+  manager.destroySurfaceRoot(kSurfaceId);
+
+  // Every path that reads the root has to tolerate its absence, not only the
+  // destructor: a key press or a Tab can arrive in this window.
+  EXPECT(!focus->moveFocus(true));
+  EXPECT_EQ((long)focus->focusedTag(), 0L);
+
+  delete focus;
+}

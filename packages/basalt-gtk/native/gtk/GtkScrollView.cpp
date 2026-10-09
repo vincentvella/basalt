@@ -150,7 +150,10 @@ void GtkScrollViewManager::remove(Tag tag) {
   // neither. Stopped without an event: the emitter is going away with the view.
   stopMomentum(entry, false);
   stopAnimation(entry);
-  if (entry.controller != nullptr && entry.view != nullptr && RN_IS_VIEW(entry.view)) {
+  // Null rather than RN_IS_VIEW: the view is still alive here, MountingWalk
+  // calling forgetTag before it releases anything, and a type check on a freed
+  // object reads poison rather than answering. See core/MountingWalk.h.
+  if (entry.controller != nullptr && entry.view != nullptr) {
     gtk_widget_remove_controller(GTK_WIDGET(entry.view), entry.controller);
   }
   entries_.erase(it);
@@ -429,7 +432,7 @@ gboolean GtkScrollViewManager::onMomentumTick(GtkWidget * /*widget*/,
 
 void GtkScrollViewManager::stopMomentum(Entry &entry, bool emitEnd) {
   if (entry.momentumTickId != 0) {
-    if (entry.view != nullptr && RN_IS_VIEW(entry.view)) {
+    if (entry.view != nullptr) {
       gtk_widget_remove_tick_callback(GTK_WIDGET(entry.view), entry.momentumTickId);
     }
     entry.momentumTickId = 0;

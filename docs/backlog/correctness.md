@@ -2,13 +2,15 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (3):**
+**Open (4):**
 
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
 4. Five view style props that no host reads, and nothing said so (box shadows,
    linear gradients, hitSlop and filters are done on GTK and AppKit)
+5. ~~A type check used as a liveness check~~, fixed in four places; the ordering
+   it depended on is now core's
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -305,3 +307,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   mean. The AppKit test for taking a filter away found a real bug on the way: a
   list of nothing but `opacity()` leaves no Core Image filter behind, so the
   early return left the view at a quarter of its opacity for good.
+
+- ~~**A type check used as a liveness check.**~~ Found and fixed 2026-10-08, by
+  accident, which is the part worth writing down.
+
+  Four places asked `RN_IS_VIEW(view)` to decide whether a borrowed view pointer
+  was still usable during teardown: `~GtkFocusManager`,
+  `GtkScrollViewManager::remove`, `stopMomentum` and
+  `GtkTextInputManager::remove`. A type check cannot answer that question. It
+  reads the instance's type pointer out of the object, so on a freed GObject it
+  reads GLib's 0xaa poison and dereferences it -- the check is the crash.
+
+  **How it surfaced.** Adding four unrelated fields to RnView's struct, for the
+  `outline` prop, moved what the freed bytes at that offset happened to be, and
+  the GTK suite started exiting 139 *after* printing "ok" for a passing test.
+  The suite's own output said only "exit 139"; installing the host's crash
+  handler in `TestMainGtk.cpp` said `SIGSEGV at 0xaaaaaaaaaaaaaaaa`, three frames
+  under `RN_IS_VIEW`, from the focus manager's destructor. That handler stays.
+
+  **Two fixes, and the second is the one that matters.** The focus manager holds
+  its root with `g_object_add_weak_pointer` now, which is what the key controller
+  beside it already did, so the pointer nulls itself on finalise and every path
+  that reads the root tolerates its absence. And `core/MountingWalk.h` now calls
+  `forgetTag` *before* `destroyView`, in the Delete path and in `releaseAllViews`:
+  every per-tag side table is told to let go while the view is still alive, which
+  is the ordering a scroll controller, a text peer and a canvas all need. That one
+  line removes the hazard class for all three hosts rather than patching the
+  symptom in each.
+
+  The three remaining checks are plain null checks now, with the contract named
+  at each, because leaving an idiom in place that looks like it works is how the
+  next person comes to rely on it.
+
+  `focus_a_manager_survives_its_root_being_destroyed` asserts the contract. It
+  deliberately does not claim to reproduce the crash: whether those freed bytes
+  fault depends on what the heap did beforehand, so it passes with the old check
+  when run alone. The evidence is the full suite, which crashed in three runs out
+  of three with the struct change and none after.

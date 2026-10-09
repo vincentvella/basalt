@@ -6,6 +6,8 @@
 
 #include "TestHarness.h"
 
+#include "CrashHandler.h"
+
 #include <gtk/gtk.h>
 
 #include <iostream>
@@ -21,5 +23,16 @@ int main(int argc, char **argv) {
     return 77; // The convention automake uses for "skipped", not "failed".
   }
 
+  // The same handler the hosts install, for the same reason: a suite that dies
+  // on a segfault prints a truncated line and an exit code, and a suite that
+  // installs this prints the frames.
+  //
+  // It earned its place the day it went in. A use-after-free in
+  // `~GtkFocusManager` had been latent for months, surfacing only when an
+  // unrelated field was added to RnView's struct and moved what the freed bytes
+  // happened to be; what the suite said was "exit 139" after a passing test, and
+  // what this said was `SIGSEGV at 0xaaaaaaaaaaaaaaaa` -- GLib's poison -- three
+  // frames under `RN_IS_VIEW`.
+  basalt::installCrashHandler();
   return basalt::testing::runAllTests(argc, argv);
 }
