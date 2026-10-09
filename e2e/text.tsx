@@ -40,6 +40,17 @@ const styles = StyleSheet.create({
   // asked whether they transformed it and whether they agree.
   shouted: {fontSize: 16, textTransform: 'uppercase', color: '#2b3445'},
   titled: {fontSize: 16, textTransform: 'capitalize', color: '#2b3445'},
+  // textShadow*, three props that no host read: every pre-CSS React Native
+  // title sets them. The radius is a standard deviation, which is what iOS puts
+  // into NSShadow and what the dump prints, and the offset's sign is what says
+  // the shadow went down the screen rather than up.
+  shadowed: {
+    fontSize: 16,
+    color: '#2b3445',
+    textShadowColor: '#4d8cf2',
+    textShadowOffset: {width: 2, height: 3},
+    textShadowRadius: 4,
+  },
   emphasis: {fontWeight: '700', color: '#b45309'},
   italic: {fontStyle: 'italic', color: '#047857'},
 });
@@ -68,6 +79,7 @@ function App() {
       <View style={styles.card}>
         <Text style={styles.shouted}>shout quietly</Text>
         <Text style={styles.titled}>iOS and android</Text>
+        <Text style={styles.shadowed}>Shadowed</Text>
       </View>
 
       <View style={styles.card}>

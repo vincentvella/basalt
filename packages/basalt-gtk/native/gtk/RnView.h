@@ -531,6 +531,22 @@ void rn_view_set_cursor(RnView *self, const char *name);
 // NULL when unset, never the empty string.
 const char *rn_view_get_cursor(RnView *self);
 
+// `textShadowColor`, `textShadowOffset` and `textShadowRadius`, resolved into one
+// shadow for the paragraph by core/TextShadows.h.
+//
+// `radius` is CSS's blur radius, twice the gaussian's sigma, which is what
+// `GskShadow` takes -- React Native hands over a standard deviation, so the
+// mounting manager doubles it, as it does for a `dropShadow()` filter. A colour
+// with no alpha, or a shadow with no offset and no blur, is none.
+//
+// Set with the layout rather than beside it, because a paragraph and its shadow
+// change together: see rn_view_set_text_layout.
+void rn_view_set_text_shadow(RnView *self,
+                             float dx,
+                             float dy,
+                             float radius,
+                             const GdkRGBA *color);
+
 // `mixBlendMode`, as the CSS keyword: "multiply", "screen", "color-dodge" and
 // the rest, which is what core/BlendModes.h hands over. NULL or "" is `normal`,
 // meaning ordinary source-over compositing.

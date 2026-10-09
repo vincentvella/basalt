@@ -17,6 +17,7 @@
 #include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
 
+#include <algorithm>
 #include <sstream>
 #include <thread>
 
@@ -559,4 +560,103 @@ TEST(text_transform_changes_what_the_paragraph_measures) {
   };
 
   EXPECT(widthOf(TextTransform::Uppercase) > widthOf(TextTransform::None));
+}
+
+// `textShadowColor`, `textShadowOffset` and `textShadowRadius`, in pixels.
+//
+// The resolution -- which fragment's shadow wins, and what an unset radius means
+// -- is core's and is tested there. What only a picture can say is that the
+// shadow is drawn, where it was offset to, and that it is a shadow of the
+// *glyphs* rather than of the view: something dark appearing behind a paragraph
+// would pass a test that only asked whether the picture changed.
+//
+// Nothing here assumes where the ink is. The font is whatever this machine has,
+// so the plain rendering is measured first and every probe is relative to that
+// box -- which is also what makes the test readable when it fails.
+TEST(text_a_shadow_is_drawn_behind_the_glyphs_where_it_was_offset) {
+  AttributedString::Fragment fragment;
+  fragment.string = "H";
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 48.0F;
+  attributes.foregroundColor = facebook::react::colorFromComponents(
+      facebook::react::ColorComponents{1.0F, 1.0F, 1.0F, 1.0F});
+  fragment.textAttributes = attributes;
+  AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  PangoLayout *layout = basalt::buildTextLayout(string, ParagraphAttributes{}, 200.0F);
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 100.0F);
+  const GdkRGBA white{1.0F, 1.0F, 1.0F, 1.0F};
+  rn_view_set_text_layout(view, layout, &white);
+
+  // The glyph's own box, from the picture.
+  const basalt::testing::RnPixels plain = basalt::testing::renderView(view, 200, 100);
+  int left = 200;
+  int right = -1;
+  int top = 100;
+  int bottom = -1;
+  for (int x = 0; x < 200; x++) {
+    for (int y = 0; y < 100; y++) {
+      if (plain.at(x, y).alpha > 40) {
+        left = std::min(left, x);
+        right = std::max(right, x);
+        top = std::min(top, y);
+        bottom = std::max(bottom, y);
+      }
+    }
+  }
+  EXPECT(right > left);
+  EXPECT(bottom > top);
+  const int middle = (top + bottom) / 2;
+
+  // A hard red shadow twenty points to the right: no blur, so the shadow is the
+  // glyph's own silhouette in red, and the part of it past the glyph's right
+  // edge is where nothing was drawn before.
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_text_shadow(view, 20.0F, 0.0F, 0.0F, &red);
+  const basalt::testing::RnPixels shadowed = basalt::testing::renderView(view, 200, 100);
+
+  const auto redBetween = [&](const basalt::testing::RnPixels &pixels, int fromX, int toX) {
+    for (int x = fromX; x <= toX; x++) {
+      for (int y = top; y <= bottom; y++) {
+        const basalt::testing::RnPixel pixel = pixels.at(x, y);
+        if (pixel.red > 150 && pixel.green < 100 && pixel.blue < 100) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Past the glyph, inside the twenty points the shadow moved: red.
+  EXPECT(redBetween(shadowed, right + 1, right + 19));
+  // The glyph is still on top of its own shadow rather than behind it: the
+  // leftmost ink is white, not red.
+  const basalt::testing::RnPixel onGlyph = shadowed.at(left + 1, middle);
+  EXPECT(onGlyph.red > 150);
+  EXPECT(onGlyph.green > 150);
+  EXPECT(onGlyph.blue > 150);
+
+  // It follows the glyphs rather than the box: above the glyph's own top there
+  // is nothing, because the H's silhouette does not reach there. A view-shaped
+  // shadow would have filled it.
+  int redAboveTheGlyph = 0;
+  for (int x = right + 1; x <= right + 19; x++) {
+    const basalt::testing::RnPixel pixel = shadowed.at(x, std::max(top - 4, 0));
+    if (pixel.red > 150 && pixel.green < 100) {
+      redAboveTheGlyph++;
+    }
+  }
+  EXPECT_EQ(redAboveTheGlyph, 0);
+
+  // Taken away again, and the red goes with it: a shadow left behind is the
+  // failure the filter shadows actually had.
+  rn_view_set_text_shadow(view, 0.0F, 0.0F, 0.0F, nullptr);
+  const basalt::testing::RnPixels cleared = basalt::testing::renderView(view, 200, 100);
+  EXPECT(!redBetween(cleared, right + 1, right + 19));
+
+  g_object_unref(layout);
+  g_object_unref(view);
 }

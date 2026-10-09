@@ -7,6 +7,7 @@
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
 #include "BackgroundLayers.h"
+#include "TextShadows.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
 #include "CursorNames.h"
@@ -1064,6 +1065,19 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   const auto &fragments = data.attributedString.getFragments();
   if (!fragments.empty() && fragments.front().textAttributes.foregroundColor) {
     color = toRgba(colorComponentsFromColor(fragments.front().textAttributes.foregroundColor));
+  }
+
+  // The paragraph's text shadow, resolved in core/TextShadows.h: the props are
+  // per fragment and one PangoLayout draws them all, so the first fragment that
+  // asks for a shadow decides it. GSK's shadow radius is CSS's, which is twice
+  // the standard deviation React Native hands over -- the same conversion a
+  // `dropShadow()` filter needs, in the same direction.
+  if (const auto shadow = basalt::textShadow(data.attributedString)) {
+    const GdkRGBA shadowColor{shadow->red, shadow->green, shadow->blue, shadow->alpha};
+    rn_view_set_text_shadow(
+        view, shadow->dx, shadow->dy, shadow->standardDeviation * 2.0F, &shadowColor);
+  } else {
+    rn_view_set_text_shadow(view, 0.0F, 0.0F, 0.0F, nullptr);
   }
 
   rn_view_set_text_layout(view, layout, &color);

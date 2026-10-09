@@ -2752,6 +2752,22 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
       [out appendFormat:@" text=\"%@\"", escaped];
     }
   }
+  // The paragraph's text shadow, spelled as GTK spells it: no other line can
+  // show it, a shadowed paragraph having the same text, colour and box. The
+  // standard deviation React Native parsed, which is also what this context was
+  // given.
+  if (_textLayout != nil && _textLayout.shadowColor != nil) {
+    NSColor *colour = [_textLayout.shadowColor
+        colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    [out appendFormat:@" text-shadow=(%g,%g,%g,#%02x%02x%02x%02x)",
+                      (double)_textLayout.shadowOffset.width,
+                      (double)_textLayout.shadowOffset.height,
+                      (double)_textLayout.shadowStandardDeviation,
+                      (unsigned)(colour.redComponent * 255.0 + 0.5),
+                      (unsigned)(colour.greenComponent * 255.0 + 0.5),
+                      (unsigned)(colour.blueComponent * 255.0 + 0.5),
+                      (unsigned)(colour.alphaComponent * 255.0 + 0.5)];
+  }
 
   // A text field's content lives in its NSTextField peer, not in anything this
   // view draws, so it would otherwise be invisible to every test that reads

@@ -574,3 +574,144 @@ TEST(appkit_text_transform_changes_what_the_paragraph_measures) {
     EXPECT(widthOf(TextTransform::Uppercase) > widthOf(TextTransform::None));
   }
 }
+
+// `textShadowColor`, `textShadowOffset` and `textShadowRadius`, against a real
+// bitmap.
+//
+// Which fragment's shadow wins is core's and is tested there. What only a
+// picture can say is that the shadow is drawn at all -- Core Text ignores an
+// `NSShadow` attribute, so this one is set on the context -- and that its offset
+// goes the way React Native means: the drawing flips the context back to Core
+// Text's y-up orientation, so a positive offset has to be negated on the way in
+// or the shadow lands above the glyphs instead of below them.
+TEST(text_a_shadow_is_drawn_where_react_native_offsets_it) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 100);
+
+    // The red channel of every pixel, so a red shadow and black glyphs on white
+    // are told apart by their green instead.
+    const auto draw = [&](CGFloat dx, CGFloat dy, NSColor *shadowColor) {
+      RnTextLayout *layout =
+          [RnTextLayout layoutWithAttributedString:styled(@"H", 48, NSTextAlignmentLeft)
+                              maximumNumberOfLines:0
+                                    truncationType:kCTLineTruncationEnd
+                                         truncates:YES];
+      layout.shadowOffset = CGSizeMake(dx, dy);
+      layout.shadowStandardDeviation = 0;
+      layout.shadowColor = shadowColor;
+
+      CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                                   8, 0, space, kCGImageAlphaPremultipliedLast);
+      CGColorSpaceRelease(space);
+      CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+      CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+      [layout drawInContext:context size:size];
+      return context;
+    };
+
+    // Where the ink is without a shadow, measured rather than assumed: the font
+    // is whatever this machine has.
+    CGContextRef plain = draw(0, 0, nil);
+    auto *plainPixels = static_cast<unsigned char *>(CGBitmapContextGetData(plain));
+    const size_t stride = CGBitmapContextGetBytesPerRow(plain);
+    int left = (int)size.width;
+    int right = -1;
+    int top = (int)size.height;
+    int bottom = -1;
+    for (int x = 0; x < (int)size.width; x++) {
+      for (int y = 0; y < (int)size.height; y++) {
+        if (plainPixels[y * stride + x * 4] < 200) {
+          left = std::min(left, x);
+          right = std::max(right, x);
+          top = std::min(top, y);
+          bottom = std::max(bottom, y);
+        }
+      }
+    }
+    CGContextRelease(plain);
+    EXPECT(right > left);
+    EXPECT(bottom > top);
+
+    // A hard red shadow twenty points right and ten down. The part past the
+    // glyph's own right edge is where nothing was drawn before, and the rows
+    // *below* the glyph are what say the sign survived the flip.
+    NSColor *red = [NSColor colorWithSRGBRed:1 green:0 blue:0 alpha:1];
+    CGContextRef shadowed = draw(20, 10, red);
+    auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(shadowed));
+
+    const auto redAt = [&](int x, int y) {
+      const unsigned char *pixel = &pixels[(size_t)y * stride + (size_t)x * 4];
+      return pixel[0] > 150 && pixel[1] < 120 && pixel[2] < 120;
+    };
+
+    int redPastTheGlyph = 0;
+    int redBelowTheGlyph = 0;
+    int redAboveTheGlyph = 0;
+    for (int x = right + 1; x <= right + 19 && x < (int)size.width; x++) {
+      for (int y = top; y <= bottom; y++) {
+        if (redAt(x, y)) {
+          redPastTheGlyph++;
+        }
+      }
+    }
+    for (int x = left; x <= right; x++) {
+      for (int y = bottom + 1; y <= bottom + 9 && y < (int)size.height; y++) {
+        if (redAt(x, y)) {
+          redBelowTheGlyph++;
+        }
+      }
+      for (int y = std::max(top - 9, 0); y < top; y++) {
+        if (redAt(x, y)) {
+          redAboveTheGlyph++;
+        }
+      }
+    }
+    CGContextRelease(shadowed);
+
+    EXPECT(redPastTheGlyph > 0);
+    // Down the screen, which is what a positive offset means to React Native.
+    EXPECT(redBelowTheGlyph > 0);
+    // And not up it, which is what the unflipped sign would have done.
+    EXPECT_EQ(redAboveTheGlyph, 0);
+  }
+}
+
+// No colour is no shadow, and taking one away takes the shadow with it: a
+// context shadow left set would shadow everything drawn after the text.
+TEST(text_no_shadow_colour_is_no_shadow) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 100);
+    RnTextLayout *layout =
+        [RnTextLayout layoutWithAttributedString:styled(@"H", 48, NSTextAlignmentLeft)
+                            maximumNumberOfLines:0
+                                  truncationType:kCTLineTruncationEnd
+                                       truncates:YES];
+    layout.shadowOffset = CGSizeMake(20, 10);
+    layout.shadowStandardDeviation = 4;
+    // No colour, which is React Native's default for every <Text>.
+    EXPECT(layout.shadowColor == nil);
+
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                                 8, 0, space, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+    CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+    [layout drawInContext:context size:size];
+
+    // A rectangle drawn after the paragraph, which would pick up a context
+    // shadow that the drawing had left behind.
+    CGContextSetRGBFillColor(context, 0, 0, 1, 1);
+    CGContextFillRect(context, CGRectMake(120, 60, 20, 20));
+
+    auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+    const size_t stride = CGBitmapContextGetBytesPerRow(context);
+    // Just outside the blue rectangle: white, not a shadow of it.
+    const unsigned char *beside = &pixels[(size_t)70 * stride + (size_t)145 * 4];
+    EXPECT(beside[0] > 240);
+    EXPECT(beside[1] > 240);
+    EXPECT(beside[2] > 240);
+    CGContextRelease(context);
+  }
+}

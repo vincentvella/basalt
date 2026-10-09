@@ -7,6 +7,7 @@
 
 #include "ComponentRegistry.h"
 #include "BackgroundLayers.h"
+#include "TextShadows.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
 #include "CursorNames.h"
@@ -763,7 +764,24 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   // Built through the same function the measurement seam uses, which is what
   // makes the painted lines break where the measured ones did. The width is not
   // baked in -- the view draws at whatever size Yoga gave it.
-  [view setRnTextLayout:basalt::buildTextLayout(data.attributedString, data.paragraphAttributes)];
+  RnTextLayout *layout =
+      basalt::buildTextLayout(data.attributedString, data.paragraphAttributes);
+
+  // The paragraph's text shadow, resolved in core/TextShadows.h: the props are
+  // per fragment and one Core Text frame draws them all, so the first fragment
+  // that asks for a shadow decides it. The standard deviation crosses unchanged,
+  // `CGContextSetShadowWithColor`'s blur being one, where the GTK side doubles
+  // it for GSK.
+  if (const auto shadow = basalt::textShadow(data.attributedString)) {
+    layout.shadowOffset = CGSizeMake(shadow->dx, shadow->dy);
+    layout.shadowStandardDeviation = shadow->standardDeviation;
+    layout.shadowColor = [NSColor colorWithSRGBRed:shadow->red
+                                             green:shadow->green
+                                              blue:shadow->blue
+                                             alpha:shadow->alpha];
+  }
+
+  [view setRnTextLayout:layout];
 }
 
 void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &shadowView) {

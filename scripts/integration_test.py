@@ -4594,6 +4594,61 @@ def test_mix_blend_mode(bundle: Path) -> None:
         )
 
 
+def test_text_shadow(bundle: Path) -> None:
+    """`textShadowColor`, `textShadowOffset` and `textShadowRadius` reach the view.
+
+    Three props that every pre-CSS React Native title sets and that no host read
+    until 2026-10-09. They are `TextAttributes`, so they arrive per fragment,
+    and neither text engine here can draw a different shadow per run -- so
+    core/TextShadows.h takes the first fragment that asks for one, which is the
+    limit backlog/text.md records.
+
+    The radius is the number worth comparing. React Native's iOS half puts
+    `textShadowRadius` into `NSShadow.shadowBlurRadius`, which is a standard
+    deviation rather than CSS's blur radius: AppKit hands it to
+    `CGContextSetShadowWithColor` unchanged and GTK doubles it for `GskShadow`,
+    so both dumps print what React Native parsed. e2e/text.tsx asks for 4.
+
+    Windows draws no text shadow yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("DirectWrite is given no text shadow yet")
+
+    app = bundle_app(bundle.parent, "text")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltText"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "text-shadow=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} paragraphs report a text shadow; the app sets one.\n{tree}"
+        )
+    if "text-shadow=(2,3,4,#4d8cf2ff)" not in carrying[0]:
+        raise Failure(
+            "the text shadow is not the one the app asked for. An 8 or a 2 is a "
+            "standard deviation converted on the way here rather than in the "
+            f"host, and (2,-3) is a sign that did not survive.\n{carrying[0]}"
+        )
+
+
 def test_text_transform(bundle: Path) -> None:
     """`textTransform` changes the string the engine lays out.
 
@@ -6050,6 +6105,7 @@ SCENARIOS = [
     ("a radial gradient reaches the view, resolved", test_radial_gradient),
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),
+    ("a text shadow reaches the paragraph", test_text_shadow),
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),

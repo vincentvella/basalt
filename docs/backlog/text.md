@@ -8,9 +8,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
    upstream's
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
-4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, textShadow*,
-   fontVariant, fontVariationSettings (~~textTransform~~ is done on GTK and
-   AppKit)
+4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, fontVariant,
+   fontVariationSettings (~~textTransform~~ and ~~textShadow*~~ are done on GTK
+   and AppKit)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
@@ -158,8 +158,31 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   mode. And a clipped paragraph's measured *width* still comes from every line
   including the hidden ones, which shows only on text with an explicit newline
   whose longest line is below the cut.
-- Ignored: `adjustsFontSizeToFit`, `textBreakStrategy`, hyphenation,
-  `textShadow*`, `fontVariant`, `fontVariationSettings`.
+- Ignored, and now counted: walking `TextAttributes` field by field on
+  2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
+  -- the fields no host reads are `opacity`, `fontVariant`,
+  `fontVariationSettings`, `allowFontScaling`, `maxFontSizeMultiplier`,
+  `baseWritingDirection`, `textDecorationColor`, `textDecorationStyle`,
+  `layoutDirection`, and the `accessibilityRole` and `role` that ride along on a
+  fragment. `lineBreakMode` is read on AppKit only. Beside those,
+  `adjustsFontSizeToFit`, `textBreakStrategy` and hyphenation are
+  `ParagraphAttributes` and equally ignored.
+
+  Four of them are iOS's own with no desktop equivalent, and are not gaps so
+  much as vocabulary: `dynamicTypeRamp` and `lineBreakStrategy` name iOS
+  behaviours, and `isHighlighted` and `isPressable` are the internals of iOS's
+  pressable text. `textEffects` is newer than the pin.
+
+  The rest are real and small. `fontVariant` is one Pango attribute and one
+  `kCTFontFeatureSettingsAttribute`; `textDecorationColor` and
+  `textDecorationStyle` are one more attribute each beside the line type that is
+  already there; `baseWritingDirection` is the RTL question, which is bigger than
+  it looks and belongs with `layoutDirection` rather than on its own. `opacity`
+  on a fragment multiplies the colour's alpha, which is two lines where the
+  colour is built.
+
+  None of this was written down before the support page needed a status per
+  attribute, which is the argument for having one.
 
   **`textTransform` is done on GTK and AppKit, 2026-10-08**, and it is the one of
   that list that is not a drawing question at all: an uppercase label is a
@@ -272,3 +295,43 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `PANGO_IS_FC_FONT_MAP` guard is false and an app font never reaches Pango at
   all.
 - Text is not selectable and reports nothing to AT-SPI.
+
+- ~~**`textShadowColor`, `textShadowOffset` and `textShadowRadius`.**~~ Done on
+  GTK and AppKit 2026-10-09. Three props every pre-CSS React Native title sets
+  and no host read.
+
+  **One shadow per paragraph, and that is a limit rather than the spec.** They
+  are `TextAttributes`, so they arrive per *fragment* -- per `<Text>` inside a
+  `<Text>` -- and neither engine here can draw a different shadow per run: GTK
+  appends one `PangoLayout` to the snapshot, and AppKit draws lines with
+  `CTLineDraw`, which does not honour an `NSShadow` attribute the way AppKit's
+  own text drawing does. So `core/TextShadows.h` takes the first fragment that
+  asks for one, the same rule `borderStyle` follows for four sides that can only
+  have one stroke. A nested `<Text>` with a different shadow draws the outer
+  one. Doing it properly means drawing each run separately, which costs the
+  single-layout arrangement both hosts are built on.
+
+  **The radius is a standard deviation, which is the number to get wrong.**
+  React Native's iOS half puts `textShadowRadius` into
+  `NSShadow.shadowBlurRadius`, the `CALayer.shadowRadius` kind of parameter. So
+  AppKit hands it to `CGContextSetShadowWithColor` unchanged, and GTK doubles it
+  for `GskShadow`, which takes CSS's radius. The same conversion in the same
+  direction as a `dropShadow()` filter, and both dumps print what React Native
+  parsed so a cross-host diff compares that rather than either platform's own
+  idea.
+
+  **The sign is the other one.** AppKit's drawing flips the context back to Core
+  Text's y-up orientation before drawing, so a positive offset has to be negated
+  there or the shadow lands above the glyphs. GTK gets it for free, GSK counting
+  y downwards. A pixel test on each host asserts the shadow is *below* the
+  glyphs and not above them, which is what a missed flip looks like.
+
+  Six tests in core on the resolution, a pixel test on each host -- the shadow
+  past the glyph's edge, the glyph still on top of it, nothing above it, and the
+  shadow gone when the colour is taken away -- and a scenario on both hosts.
+  Sabotage: the node, the context shadow, the sign and both conversions each fail
+  tests of their own.
+
+  **Windows** needs a second `DrawTextLayout` under the first, offset and in the
+  shadow colour, or `CLSID_D2D1Shadow` over the text layer's alpha, which is the
+  same effect the box shadow entry names. Its scenario skips by name.

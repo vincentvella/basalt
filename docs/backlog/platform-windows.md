@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (15):**
+**Open (16):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -21,6 +21,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 14. `textTransform` is ignored, so an uppercase label is not uppercase
 15. The `outline` family is not drawn
 16. `mixBlendMode` blends nothing
+17. No text shadow, so `textShadowColor` and friends do nothing
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -315,3 +316,17 @@ and none of it is a missing half.
   backlog/correctness.md has what the other two decided, including which
   backdrop each of them blends with and why the two differ. The end-to-end
   scenario is skipped here by name.
+
+- **No text shadow, so `textShadowColor` and friends do nothing.** The other two
+  hosts draw one shadow per paragraph -- the props are per fragment and neither
+  engine can draw a different shadow per run -- from the first fragment that
+  asks, with the offset and the standard deviation `core/TextShadows.h` resolves.
+  So the arithmetic and the decision are already shared; what is left here is the
+  drawing.
+
+  Two ways in. `DrawTextLayout` a second time underneath, offset and in the
+  shadow colour, which gives a hard shadow and no blur and is a handful of lines.
+  Or the effect graph `filter` already needs: `CLSID_D2D1Shadow` takes a blurred
+  alpha mask of what is drawn, which is exactly a text shadow with a radius. The
+  standard deviation is what Direct2D's shadow takes too, so nothing converts.
+  The end-to-end scenario is skipped here by name.

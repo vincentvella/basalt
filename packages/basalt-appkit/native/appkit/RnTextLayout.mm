@@ -202,6 +202,19 @@
   CGContextScaleCTM(context, 1, -1);
   CGContextSetTextMatrix(context, CGAffineTransformIdentity);
 
+  // The text shadow, on the context: Core Text ignores an NSShadow attribute,
+  // and one shadow for the paragraph is what core/TextShadows.h resolves anyway.
+  //
+  // The offset's y is negated because the context has just been flipped back to
+  // Core Text's orientation, where y grows upward: React Native means a positive
+  // offset as *down* the screen, which is what the GTK side gets for free.
+  if (self.shadowColor != nil) {
+    CGContextSetShadowWithColor(context,
+                                CGSizeMake(self.shadowOffset.width, -self.shadowOffset.height),
+                                self.shadowStandardDeviation,
+                                self.shadowColor.CGColor);
+  }
+
   CGFloat y = size.height;
   for (id item in lines) {
     CTLineRef line = (__bridge CTLineRef)item;

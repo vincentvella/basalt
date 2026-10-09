@@ -10,6 +10,11 @@
 #ifdef __OBJC__
 #import <Cocoa/Cocoa.h>
 
+// Annotated as a whole, the way RnAppKitView.h is: one `nullable` in a file
+// turns on -Wnullability-completeness for every pointer in it, and the shadow
+// colour below is genuinely optional.
+NS_ASSUME_NONNULL_BEGIN
+
 @interface RnTextLayout : NSObject
 
 @property(nonatomic, readonly) NSAttributedString *attributedString;
@@ -17,6 +22,19 @@
 @property(nonatomic, readonly) NSInteger maximumNumberOfLines;
 @property(nonatomic, readonly) CTLineTruncationType truncationType;
 @property(nonatomic, readonly) BOOL truncates;
+
+// The paragraph's text shadow, from core/TextShadows.h: an offset in React
+// Native's coordinates -- y down -- the gaussian's standard deviation, and a
+// colour, or nil for no shadow.
+//
+// Core Text does not honour an `NSShadow` attribute the way AppKit's own text
+// drawing does, so this is set on the context around the line drawing rather
+// than carried in the attributed string. `standardDeviation` is what
+// `CGContextSetShadowWithColor` calls blur and is what React Native hands over,
+// which is why nothing here converts it.
+@property(nonatomic, strong, nullable) NSColor *shadowColor;
+@property(nonatomic) CGSize shadowOffset;
+@property(nonatomic) CGFloat shadowStandardDeviation;
 
 + (instancetype)layoutWithAttributedString:(NSAttributedString *)attributedString
                       maximumNumberOfLines:(NSInteger)maximumNumberOfLines
@@ -45,4 +63,6 @@
 - (void)drawInContext:(CGContextRef)context size:(CGSize)size;
 
 @end
+NS_ASSUME_NONNULL_END
+
 #endif

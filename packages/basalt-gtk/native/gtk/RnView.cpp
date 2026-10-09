@@ -208,6 +208,13 @@ struct _RnView {
   GskBlendMode blend_mode;
   gboolean blends;
 
+  // The paragraph's text shadow, from core/TextShadows.h. `radius` is CSS's,
+  // which is what GSK takes. A zero alpha is no shadow.
+  float text_shadow_dx;
+  float text_shadow_dy;
+  float text_shadow_radius;
+  GdkRGBA text_shadow_color;
+
   // CSS's outline: drawn outside the box, no layout space. Zero width is none.
   float outline_width;
   float outline_offset;
@@ -731,7 +738,22 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       text_bounds.size.height = clip_height;
       gtk_snapshot_push_clip(snapshot, &text_bounds);
     }
+    // The text shadow, which is a shadow of the glyphs' own alpha: GSK's shadow
+    // node takes the node it wraps, so one push around the layout is the whole
+    // of it. Inside the text's clip, so a shadow cannot escape a paragraph that
+    // `numberOfLines` cut.
+    const gboolean shadows_text = self->text_shadow_color.alpha > 0.0f;
+    if (shadows_text) {
+      const GskShadow shadow{self->text_shadow_color,
+                             self->text_shadow_dx,
+                             self->text_shadow_dy,
+                             self->text_shadow_radius};
+      gtk_snapshot_push_shadow(snapshot, &shadow, 1);
+    }
     gtk_snapshot_append_layout(snapshot, self->text_layout, &self->text_color);
+    if (shadows_text) {
+      gtk_snapshot_pop(snapshot);
+    }
     if (clips_text) {
       gtk_snapshot_pop(snapshot);
     }
@@ -1131,6 +1153,10 @@ static void rn_view_init(RnView *self) {
   }
   self->has_border_radii = FALSE;
   self->has_borders = FALSE;
+  self->text_shadow_dx = 0.0f;
+  self->text_shadow_dy = 0.0f;
+  self->text_shadow_radius = 0.0f;
+  self->text_shadow_color = GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
   self->filter_shadows = nullptr;
   self->blend_name = nullptr;
   self->blend_mode = GSK_BLEND_MODE_DEFAULT;
@@ -1570,6 +1596,24 @@ void rn_view_set_background_color(RnView *self, gboolean has_color, const GdkRGB
 
 void rn_view_set_opacity(RnView *self, double opacity) {
   self->opacity = CLAMP(opacity, 0.0, 1.0);
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void rn_view_set_text_shadow(
+    RnView *self, float dx, float dy, float radius, const GdkRGBA *color) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const GdkRGBA wanted =
+      color != nullptr ? *color : GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
+  if (self->text_shadow_dx == dx && self->text_shadow_dy == dy &&
+      self->text_shadow_radius == radius &&
+      gdk_rgba_equal(&self->text_shadow_color, &wanted)) {
+    return;
+  }
+  self->text_shadow_dx = dx;
+  self->text_shadow_dy = dy;
+  self->text_shadow_radius = radius > 0.0f ? radius : 0.0f;
+  self->text_shadow_color = wanted;
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
@@ -2557,6 +2601,21 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
       g_string_append_printf(out, " text=\"%s\"", escaped);
       g_free(escaped);
     }
+  }
+  // The paragraph's text shadow, which no other line of this dump can show: a
+  // shadowed paragraph has the same text, the same colour and the same box. The
+  // standard deviation React Native parsed rather than the radius GSK was
+  // given, so the two hosts print the same number.
+  if (self->text_shadow_color.alpha > 0.0f) {
+    g_string_append_printf(out,
+                           " text-shadow=(%g,%g,%g,#%02x%02x%02x%02x)",
+                           static_cast<double>(self->text_shadow_dx),
+                           static_cast<double>(self->text_shadow_dy),
+                           static_cast<double>(self->text_shadow_radius / 2.0f),
+                           static_cast<unsigned>(self->text_shadow_color.red * 255.0 + 0.5),
+                           static_cast<unsigned>(self->text_shadow_color.green * 255.0 + 0.5),
+                           static_cast<unsigned>(self->text_shadow_color.blue * 255.0 + 0.5),
+                           static_cast<unsigned>(self->text_shadow_color.alpha * 255.0 + 0.5));
   }
 
   // A text field's content lives in its GtkText peer, not in a PangoLayout, so
