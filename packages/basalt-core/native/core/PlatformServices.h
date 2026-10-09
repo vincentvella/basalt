@@ -21,7 +21,21 @@ namespace basalt {
 
 // --- Clipboard ---------------------------------------------------------------
 
-// The clipboard's text, or empty if it holds none. Called on the main thread.
+// The clipboard's text, or empty if it holds none.
+//
+// **Called from the JavaScript thread**, by DesktopClipboardModule, which is
+// where `Clipboard.getString()` and `setString()` arrive. This comment used to
+// say "on the main thread", which was what the seam wanted rather than what it
+// got: the GTK implementation believed it and called GDK from whichever thread
+// asked, which deadlocked a CI run on 2026-10-08. See
+// PlatformServicesGtk.cpp's clipboard section and backlog/testing.md.
+//
+// So each implementation answers for its own toolkit's threading rule. GTK hands
+// the write to its main thread; Windows posts through a message-only window for
+// other work and its clipboard calls are per-thread by design; macOS uses
+// NSPasteboard, which is documented as not thread-safe and makes no blocking
+// round trip against the main thread. backlog/host-wiring.md carries what is
+// left.
 std::string clipboardText();
 void setClipboardText(const std::string &text);
 

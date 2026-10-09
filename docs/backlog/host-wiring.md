@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (6):**
+**Open (7):**
 
 1. ~~Scheduler::reportMount is never called~~
 2. IDevUIDelegate / LogBox: JS errors currently go to g_warning and nothing else,
@@ -11,6 +11,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 5. src/LinuxNetworking
 6. The linux platform redirects nine React Native shims to their 
 7. Nothing checks that the shim list in metro-config
+8. The clipboard seam reads on the JavaScript thread, and cannot read another
+   application's clipboard at all
 
 - ~~**`Scheduler::reportMount` is never called.**~~ Done, and this entry was
   stale by the time it was read: all three hosts report a finished transaction,
@@ -56,3 +58,32 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   could change under it; only `Platform` diverges today.
 - Nothing checks that the shim list in `metro-config.js` still matches
   React Native. A new shim upstream shows up as an undefined export at runtime.
+
+- **The clipboard seam reads on the JavaScript thread, and cannot read another
+  application's clipboard at all.** Two halves of one shape, left after the write
+  was moved to the main thread on 2026-10-08 (backlog/testing.md entry 11 has
+  why).
+
+  `Clipboard.getString()` returns a promise that `DesktopClipboardModule`
+  resolves at once, so the seam is synchronous, so what it can answer with is
+  whatever is available without waiting. On GTK that is the content provider's
+  *local* value: what this application last put there, or what a copy inside one
+  of its own text fields put there. Another application's clipboard needs
+  `gdk_clipboard_read_text_async` and a promise core does not hand down -- the
+  module would have to keep the `jsi::Function` pair and resolve later, which is
+  the same machinery `canOpenUrl` and the alert callbacks already have, so it is
+  wiring rather than invention.
+
+  The read is also still GDK from the JavaScript thread, deliberately and with a
+  reason that is measured rather than assumed: `gdk_clipboard_get_content` is a
+  property getter and `gdk_content_provider_get_value` copies a GValue out of a
+  local provider, so neither makes an X round trip, which is why the write was
+  the half that deadlocked and this is not. It is still outside GTK's contract,
+  and the async read above is what would move it, so the two are one entry.
+
+  The other two hosts call the same seam from the same thread and neither has the
+  GTK shape of problem: Windows' clipboard calls are per-thread by design, with
+  its own tests for the collision case, and macOS uses `NSPasteboard`, which is
+  documented as not thread-safe but makes no blocking round trip against the main
+  thread and has not been observed to fail. Recorded rather than changed, because
+  changing either without a failure to point at would be a guess.

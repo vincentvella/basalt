@@ -339,6 +339,10 @@ if(TARGET basalt_core)
     # Windows. Needs a shown window: it walks up from gtk_widget_pick.
     tests/test_titlebar_drag.cpp
     tests/test_version.cpp
+    # The clipboard seam and which thread it runs on, asking what
+    # tests/test_win32_clipboard.cpp asks of Windows. Uses the real clipboard and
+    # puts back what was there.
+    tests/test_gtk_clipboard.cpp
     # Hit testing lives with the touch dispatcher, which the host builds; the
     # tests need it too, and it pulls in nothing else.
     gtk/GtkFocus.cpp

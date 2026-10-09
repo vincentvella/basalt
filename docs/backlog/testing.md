@@ -17,7 +17,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 11. GTK's clipboard paste does not complete under CI's display
 
 - **GTK's clipboard paste does not complete under the display CI runs on, and
-  once the host hung instead.** Found 2026-10-07 while asserting that a text menu
+  the host hung instead. The hangs are explained and fixed; the paste is not.**
+  Found 2026-10-07 while asserting that a text menu
   role performs. The same scenario pastes on the GTK host on a developer's Mac,
   which is not an X server at all but the quartz backend, as recorded below.
 
@@ -149,7 +150,48 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   **What it still cannot do is dump a thread other than the one that stalled**,
   which is exactly what the second hang needs. `gdb -p` or `gcore` on the runner
-  is the way in.
+  is the way in. **That was added**, and it is what found the answer below.
+
+  **Three: the clipboard write itself, from the JavaScript thread. Found
+  2026-10-08 and fixed.** The first occurrence after the gdb dump landed printed
+  every thread, and the two that matter were:
+
+      Thread 3 "MessageQueue" (the JavaScript thread)
+        DesktopClipboardModule::setString -> basalt::setClipboardText
+          -> gdk_clipboard_set -> gdk_clipboard_set_content
+            -> gdk_x11_get_server_time -> XIfEvent -> xcb_wait_for_event
+
+      the main thread
+        g_application_run -> g_main_context_iteration -> GTK's frame clock
+          -> XSyncSetCounter -> pthread_mutex_lock, for good
+
+  Claiming a selection needs a server timestamp, which is a blocking round trip;
+  making it from a second thread is two threads on one `Display`, and the main
+  thread stops on the lock the first one holds. It is the same blocking call as
+  hang one, from a different thread, and `core/PlatformServices.h` said "called
+  on the main thread" while `DesktopClipboardModule` called it from the
+  JavaScript thread. That comment is now the truth instead.
+
+  **The fix** is the pattern the rest of PlatformServicesGtk.cpp already used for
+  `showAlert`: the string is copied and `g_idle_add_full` hands the write to the
+  main thread, unless the caller already is the main thread, which the share
+  picker is. A write waiting for the main thread is what `clipboardText()`
+  answers with, so a `getString()` straight after a `setString()` still sees it.
+
+  `g_main_context_invoke` was the first attempt and is wrong here: it runs the
+  function inline whenever the calling thread can *acquire* the context, and
+  nothing holds the default context while the main loop is between iterations --
+  so the JavaScript thread acquires it and makes the blocking call itself. A test
+  with no loop running proved that rather than the documentation being read
+  twice, which is also the first thing in this repository to exercise the two
+  threads concurrently, the second entry in the list above.
+
+  **And this corrects a wrong answer recorded below.** "The clipboard module was
+  blamed first; it is in neither stack" was true of the two stacks that had been
+  read by then. The module is still not at fault -- it is portable code doing
+  nothing wrong -- but the clipboard *service* under it was, and it is in this
+  stack. The lesson stands with a correction: absence from the stacks you have is
+  not absence from the ones you have not read.
 
   **How both were caught: a `hunt` input on ci.yml's `workflow_dispatch`**, which
   replaces the end-to-end step with a loop over the two context-menu scenarios
@@ -272,7 +314,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   in [upstream.md](upstream.md). So the eleven are all questions both renderers
   answer the same way, and transforms are still asserted through
   `gtk_widget_compute_point` rather than through pixels.
-- Nothing exercises the JS thread and the main thread concurrently.
+- Nothing exercises the JS thread and the main thread concurrently. **One thing
+  now does**, as of 2026-10-08: `packages/basalt-gtk/native/tests/test_gtk_clipboard.cpp`
+  writes the clipboard from a second thread and asserts that GDK does not change
+  until the main loop runs, which is what stops the deadlock in entry 11. It is
+  one seam out of the several that cross those threads, so this stays open, but
+  it is the shape the rest want: assert *which thread* did the work, by asserting
+  what has not happened yet.
 - ~~The end-to-end scenarios hard-code tap coordinates from the demo's
   layout.~~ They find the button by its label now, in a tree measured from one
   extra run of the host per bundle. The three demo scenarios that tapped

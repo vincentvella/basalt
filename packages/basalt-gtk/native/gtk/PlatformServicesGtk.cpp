@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,6 +21,43 @@ namespace {
 GdkClipboard *defaultClipboard() {
   GdkDisplay *display = gdk_display_get_default();
   return display != nullptr ? gdk_display_get_clipboard(display) : nullptr;
+}
+
+// The thread this program started on, which is the one GTK runs on. Taken at
+// static initialisation, which happens on it, before main.
+//
+// Needed because the test for "is this the main thread" that GLib offers --
+// `g_main_context_is_owner` -- answers "does this thread currently hold the
+// default context", and nobody holds it while the main loop is between
+// iterations or not running at all. That is the moment the deadlock below
+// happens, so the question has to be about identity rather than ownership.
+GThread *const mainThread = g_thread_self();
+
+// What this application last asked for, and the lock the JavaScript thread reads
+// it under. The write below is handed to the main thread, so without this a
+// `Clipboard.getString()` straight after a `setString()` would read the
+// clipboard before the write had happened.
+std::mutex clipboardWriteLock;
+std::string clipboardWrite;
+bool clipboardWritten = false;
+// How many writes are waiting for the main thread. While any is, it rather than
+// GDK is what this application's clipboard says: the write is what was asked
+// for, and GDK still holds whatever came before it.
+int clipboardWritesQueued = 0;
+
+// The write itself, on the main thread. Owns the string it is given.
+gboolean setClipboardTextOnMainThread(gpointer data) {
+  auto *text = static_cast<std::string *>(data);
+  GdkClipboard *clipboard = defaultClipboard();
+  if (clipboard != nullptr) {
+    gdk_clipboard_set_text(clipboard, text->c_str());
+  }
+  delete text;
+  {
+    const std::lock_guard<std::mutex> guard(clipboardWriteLock);
+    clipboardWritesQueued--;
+  }
+  return G_SOURCE_REMOVE;
 }
 
 } // namespace
@@ -34,37 +72,92 @@ GdkClipboard *defaultClipboard() {
 // application last put there, plus nothing. Reading another application's
 // clipboard needs the async read and a promise core does not yet hand down.
 // Saying so here beats an empty string that looks like an empty clipboard.
+//
+// This one is still read on the JavaScript thread, which is deliberate and is
+// not the bug the write had. `gdk_clipboard_get_content` is a property getter
+// and `gdk_content_provider_get_value` copies a GValue out of a local provider:
+// neither makes an X round trip, which is why the write is the half that
+// deadlocked. Reading GDK off the main thread is still outside GTK's contract,
+// and moving it needs the async read and a real promise -- see
+// backlog/host-wiring.md.
+//
+// A write waiting for the main thread wins, because it is what was asked for and
+// GDK still holds what came before it: a `getString()` straight after a
+// `setString()` has to see the `setString()`. With nothing in flight it asks
+// GDK, so a copy made inside one of this application's own text fields is what
+// comes back, and falls back to the last write for the case where GDK has
+// nothing to say.
 std::string clipboardText() {
-  GdkClipboard *clipboard = defaultClipboard();
-  if (clipboard == nullptr) {
-    return {};
-  }
-
-  GdkContentProvider *provider = gdk_clipboard_get_content(clipboard);
-  if (provider == nullptr) {
-    // Owned by another application. See the note above.
-    return {};
-  }
-
-  GValue value = G_VALUE_INIT;
-  g_value_init(&value, G_TYPE_STRING);
-  std::string text;
-  if (gdk_content_provider_get_value(provider, &value, nullptr)) {
-    const char *string = g_value_get_string(&value);
-    if (string != nullptr) {
-      text = string;
+  {
+    const std::lock_guard<std::mutex> guard(clipboardWriteLock);
+    if (clipboardWritesQueued > 0) {
+      return clipboardWrite;
     }
   }
-  g_value_unset(&value);
-  return text;
+
+  GdkClipboard *clipboard = defaultClipboard();
+  GdkContentProvider *provider =
+      clipboard != nullptr ? gdk_clipboard_get_content(clipboard) : nullptr;
+  if (provider != nullptr) {
+    GValue value = G_VALUE_INIT;
+    g_value_init(&value, G_TYPE_STRING);
+    std::string text;
+    if (gdk_content_provider_get_value(provider, &value, nullptr)) {
+      const char *string = g_value_get_string(&value);
+      if (string != nullptr) {
+        text = string;
+      }
+    }
+    g_value_unset(&value);
+    if (!text.empty()) {
+      return text;
+    }
+  }
+
+  // Either another application owns it -- see the note above -- or this
+  // application's own write has not reached the main thread yet.
+  const std::lock_guard<std::mutex> guard(clipboardWriteLock);
+  return clipboardWritten ? clipboardWrite : std::string{};
 }
 
+// Onto the GTK main thread, for the reason `showAlert` is: this is called from
+// the JavaScript thread, and GDK may only be used on the main one.
+//
+// **Measured rather than assumed, and it is a deadlock.** On 2026-10-08 a CI run
+// hung with the JavaScript thread inside this function --
+// `gdk_clipboard_set_text` -> `gdk_clipboard_set_content` ->
+// `gdk_x11_get_server_time` -> `XIfEvent` -> `xcb_wait_for_event` -- while the
+// main thread sat in `pthread_mutex_lock` under `XSyncSetCounter`, in GTK's
+// frame clock. Claiming a selection needs a server timestamp, which is a
+// blocking round trip; making it from a second thread is two threads on one
+// `Display`, and the main thread stops. The same stack, from the main thread,
+// was the focus hang fixed in e13a649; backlog/testing.md has both.
+//
+// So the string is copied and the call is handed over, unless this already *is*
+// the main thread: the share picker in core/ShareFallback.h writes from there
+// and then opens a mail client, and a clipboard that filled a loop iteration
+// later would be a race.
+//
+// `g_idle_add_full` rather than `g_main_context_invoke`, which was the first
+// attempt and is wrong here. Invoke runs the function inline whenever the
+// calling thread can *acquire* the context, and nothing holds the default
+// context while the main loop is between iterations or not yet running -- so the
+// JavaScript thread acquires it and makes the blocking call itself, which is the
+// case this is all about. A test with no loop running proved it rather than the
+// documentation being read more carefully.
 void setClipboardText(const std::string &text) {
-  GdkClipboard *clipboard = defaultClipboard();
-  if (clipboard == nullptr) {
+  {
+    const std::lock_guard<std::mutex> guard(clipboardWriteLock);
+    clipboardWrite = text;
+    clipboardWritten = true;
+    clipboardWritesQueued++;
+  }
+  if (g_thread_self() == mainThread) {
+    setClipboardTextOnMainThread(new std::string(text));
     return;
   }
-  gdk_clipboard_set_text(clipboard, text.c_str());
+  g_idle_add_full(
+      G_PRIORITY_DEFAULT, setClipboardTextOnMainThread, new std::string(text), nullptr);
 }
 
 // --- Opening things ----------------------------------------------------------
