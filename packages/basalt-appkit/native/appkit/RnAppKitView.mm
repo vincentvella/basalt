@@ -649,11 +649,43 @@ static NSAccessibilityRole RnAccessibilityRoleFor(NSString *name) {
   return role != nil ? role : NSAccessibilityGroupRole;
 }
 
+// The subrole for a React Native role, or nil.
+//
+// macOS says some things with a role and the rest with a *subrole*, and four of
+// React Native's roles are in the second group: the role above reports a search
+// field as a text field, a switch and a toggle button as check boxes, and a tab
+// as a radio button, each of which loses the part that says what it is. GTK
+// needs none of this -- `GTK_ACCESSIBLE_ROLE_SEARCH_BOX`, `_SWITCH` and `_TAB`
+// are roles there -- which is why this was a macOS entry.
+//
+// Nothing else gets one. A subrole that is not one of AppKit's own tells
+// VoiceOver less than no subrole, and a view with no subrole is read by its
+// role, which is already the nearest thing.
+static NSAccessibilitySubrole RnAccessibilitySubroleFor(NSString *name) {
+  static NSDictionary<NSString *, NSAccessibilitySubrole> *subroles = nil;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    subroles = @{
+      @"search" : NSAccessibilitySearchFieldSubrole,
+      // A switch and a toggle button are both check boxes by role, and these
+      // are what tell them apart: "switch" and "toggle".
+      @"switch" : NSAccessibilitySwitchSubrole,
+      @"togglebutton" : NSAccessibilityToggleSubrole,
+      // A tab is a radio button by role, which reads oddly on its own.
+      @"tab" : NSAccessibilityTabButtonSubrole,
+    };
+  });
+  return subroles[name];
+}
+
 - (void)setRnAccessibleRole:(NSString *)role {
   _roleName = role.length > 0 ? [role copy] : nil;
 
   if (_roleName == nil) {
     self.accessibilityRole = NSAccessibilityGroupRole;
+    // Cleared as well as set: a view whose role prop goes away must not keep
+    // the subrole its last role carried.
+    self.accessibilitySubrole = nil;
     // A plain <View> is scenery. Leaving every one of them in the tree would
     // bury the handful that mean something under hundreds that do not.
     self.accessibilityElement = NO;
@@ -662,6 +694,7 @@ static NSAccessibilityRole RnAccessibilityRoleFor(NSString *name) {
 
   const NSAccessibilityRole mapped = RnAccessibilityRoleFor(_roleName);
   self.accessibilityRole = mapped;
+  self.accessibilitySubrole = RnAccessibilitySubroleFor(_roleName);
   self.accessibilityElement = mapped != NSAccessibilityUnknownRole;
 }
 

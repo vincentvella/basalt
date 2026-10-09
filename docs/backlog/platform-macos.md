@@ -6,14 +6,14 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (6):**
+**Open (5):**
 
 1. ~~Justified text~~, which worked all along
 2. Fonts loaded at runtime are untested
 3. ~~`keyboardType`, `autoCapitalize`, `autoCorrect` and `spellCheck`~~: two
    done on both hosts, two recorded here as having no macOS call at all
 4. Nothing tested against a real screen reader
-5. No accessibility subroles
+5. ~~No accessibility subroles~~
 6. ~~`accessibilityValue`, `accessibilityLiveRegion` and `accessibilityLabelledBy`~~
 7. No animated images
 8. No gesture cancellation from the platform
@@ -152,9 +152,34 @@ If an entry here is about to be picked up, run the thing it describes first.
   struck entry rather than deleted, because this file's own note at the top is
   about entries that go stale and get read as though they were still true.
 
-- **No accessibility subroles.** A search field should be a text field with
-  `NSAccessibilitySearchFieldSubrole`; reporting only the role loses the "this
-  searches" part.
+- ~~**No accessibility subroles.**~~ Done 2026-10-09. macOS says some things
+  with a role and the rest with a *subrole*, and four of React Native's roles
+  are in the second group:
+
+  | Role | AppKit role | AppKit subrole |
+  | --- | --- | --- |
+  | `search` | text field | `NSAccessibilitySearchFieldSubrole` |
+  | `switch` | check box | `NSAccessibilitySwitchSubrole` |
+  | `togglebutton` | check box | `NSAccessibilityToggleSubrole` |
+  | `tab` | radio button | `NSAccessibilityTabButtonSubrole` |
+
+  Each role alone loses the part that says what the thing is: a switch and a
+  toggle button are both "check box", and a tab is "radio button".
+
+  **GTK needed nothing**, which is why this was a macOS entry and worth
+  confirming rather than assuming: `GTK_ACCESSIBLE_ROLE_SEARCH_BOX`, `_SWITCH`
+  and `_TAB` are roles of their own there, and the mounting manager already
+  mapped all three. So this closes a real difference between the two hosts
+  rather than adding a macOS flourish.
+
+  Nothing else gets a subrole. One that is not AppKit's own tells VoiceOver
+  less than none at all, and a view without one is read by its role, which is
+  already the nearest thing available.
+
+  Four tests, including the two that matter for a prop that can change after
+  mount: a role taken away takes its subrole, and a role replaced replaces it.
+  AppKit allows that where GTK does not, a `GtkAccessible`'s role being
+  construct-only, which `docs/DECISIONS.md` records.
 - **No animated images.** The first frame of a GIF is drawn as a still, on both
   desktops.
 - ~~**No scrollbars.**~~ Done, and on all three, the claim that the GTK side

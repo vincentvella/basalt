@@ -390,3 +390,70 @@ TEST(an_accessibility_order_replaces_the_accessibility_children) {
            == std::string::npos);
   }
 }
+
+// Subroles, which are how macOS says the four things a role cannot.
+//
+// The role maps a search field to a text field, a switch and a toggle button to
+// check boxes, and a tab to a radio button -- each losing the part that says
+// what it is. GTK needs none of this, those being roles of their own there,
+// which is why it was a macOS entry.
+TEST(a_role_that_macos_says_with_a_subrole_gets_one) {
+  @autoreleasepool {
+    RnAppKitView *search = viewWithRole(@"search");
+    EXPECT_EQ(search.accessibilityRole, NSAccessibilityTextFieldRole);
+    EXPECT_EQ(search.accessibilitySubrole, NSAccessibilitySearchFieldSubrole);
+
+    RnAppKitView *switched = viewWithRole(@"switch");
+    EXPECT_EQ(switched.accessibilityRole, NSAccessibilityCheckBoxRole);
+    EXPECT_EQ(switched.accessibilitySubrole, NSAccessibilitySwitchSubrole);
+
+    RnAppKitView *toggle = viewWithRole(@"togglebutton");
+    EXPECT_EQ(toggle.accessibilityRole, NSAccessibilityCheckBoxRole);
+    EXPECT_EQ(toggle.accessibilitySubrole, NSAccessibilityToggleSubrole);
+
+    RnAppKitView *tab = viewWithRole(@"tab");
+    EXPECT_EQ(tab.accessibilityRole, NSAccessibilityRadioButtonRole);
+    EXPECT_EQ(tab.accessibilitySubrole, NSAccessibilityTabButtonSubrole);
+  }
+}
+
+// And nothing else gets one: a subrole AppKit does not know tells VoiceOver
+// less than none, and a view with no subrole is read by its role.
+TEST(an_ordinary_role_gets_no_subrole) {
+  @autoreleasepool {
+    RnAppKitView *button = viewWithRole(@"button");
+    EXPECT(button.accessibilitySubrole == nil);
+
+    RnAppKitView *text = viewWithRole(@"text");
+    EXPECT(text.accessibilitySubrole == nil);
+  }
+}
+
+// A role that goes away takes its subrole with it. Without that a view whose
+// prop was removed would keep announcing itself as a switch.
+TEST(a_role_taken_away_takes_its_subrole) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"switch");
+    EXPECT_EQ(view.accessibilitySubrole, NSAccessibilitySwitchSubrole);
+
+    [view setRnAccessibleRole:nil];
+    EXPECT(view.accessibilitySubrole == nil);
+    EXPECT(!view.isAccessibilityElement);
+  }
+}
+
+// And a role *changing* replaces the subrole rather than keeping the old one,
+// which is the case AppKit allows and GTK cannot: a GtkAccessible's role is
+// construct-only.
+TEST(a_role_change_replaces_the_subrole) {
+  @autoreleasepool {
+    RnAppKitView *view = viewWithRole(@"switch");
+    EXPECT_EQ(view.accessibilitySubrole, NSAccessibilitySwitchSubrole);
+
+    [view setRnAccessibleRole:@"search"];
+    EXPECT_EQ(view.accessibilitySubrole, NSAccessibilitySearchFieldSubrole);
+
+    [view setRnAccessibleRole:@"button"];
+    EXPECT(view.accessibilitySubrole == nil);
+  }
+}
