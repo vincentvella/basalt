@@ -167,3 +167,36 @@ for every shard count, and that the parser refuses `0/4`, `5/4` and `2/4/8`. It
 is there because the bug it guards against points towards green: a boundary
 that dropped a scenario would make the suite pass while running less of it, and
 nothing in the output would look wrong.
+
+## The documentation site deployed on every commit, and almost never changed
+
+Measured 2026-10-08, after a day of pushing one commit per finished area.
+
+Vercel's git integration deploys a production build on every push to `main`:
+**20 deployments in 22 hours**, one per commit, each one cloning, installing and
+running `docusaurus build`. The GitHub Actions `Docs` workflow built the same
+site on the same pushes, its paths being `website/**`, `docs/**` and `**/*.md`.
+
+What the site actually renders is narrower than that. `docusaurus.config.ts`
+takes `../docs` as a second docs plugin and excludes `BACKLOG.md`, `backlog/**`
+and `ci-performance.md` -- this file. Of those 20 commits, **2 changed a file
+the site renders.** The other 18 touched only the backlog, which is what a day
+of this work mostly writes, and rebuilt a byte-identical site twice over.
+
+Two fixes, both path-aware rather than clever:
+
+- `website/vercel.json` sets `git.deploymentEnabled.main` to `false`, so a push
+  deploys nothing. The site ships with `npx vercel --prod` from `website/`, which
+  is written down in `website/README.md`. The custom domains keep serving the
+  last production deployment in the meantime, so nothing goes dark.
+- `.github/workflows/docs.yml` filters its paths with the same exclusions, so the
+  build check runs when something it would catch has changed. A commit that
+  touches an excluded file *and* a rendered one still matches: GitHub takes the
+  last matching rule, and the rendered paths are listed before the negations.
+
+An ignore step was the other candidate -- `ignoreCommand` running `git diff
+HEAD^ HEAD --quiet` over the same pathspec -- and would have skipped 18 of the
+20 builds while keeping the convenience of a deploy on push. It was not chosen:
+a deploy that happens because a `docs/DECISIONS.md` line changed is still a
+deploy nobody asked for, and the site is not time-critical. This is the choice to
+revisit if deploying by hand turns out to be the thing that gets forgotten.

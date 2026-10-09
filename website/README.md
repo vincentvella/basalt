@@ -28,16 +28,31 @@ This command generates static content into the `build` directory and can be serv
 
 ## Deployment
 
-Using SSH:
+The site is a Vercel project (`basalt`, root directory `website`), serving
+basaltjs.dev. **A push to `main` does not deploy it.** `vercel.json` turns the
+git integration's production deploys off for that branch:
 
-```bash
-USE_SSH=true npm run deploy
+```json
+{"git": {"deploymentEnabled": {"main": false}}}
 ```
 
-Not using SSH:
+Why: the site renders `website/**` and `../docs`, and `docusaurus.config.ts`
+excludes `BACKLOG.md`, `backlog/**` and `ci-performance.md` from the latter.
+Almost every commit in this repository touches one of those excluded files and
+nothing else the site renders, so auto-deploying on push rebuilt an identical
+site about twenty times a day. The numbers are in `docs/ci-performance.md`.
+
+To ship it, from this directory:
 
 ```bash
-GIT_USER=<Your GitHub username> npm run deploy
+npx vercel --prod
 ```
 
-If you are using GitHub Pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+The GitHub Actions `Docs` workflow still builds the site on every push that
+changes something it renders, so a commit that breaks the build says so on the
+commit. What it does not do is deploy, which is the one thing that now needs
+asking for.
+
+`npm run deploy` is Docusaurus's own GitHub Pages command and is not what hosts
+this site; it is left alone rather than removed because it is Docusaurus's, not
+this repository's.

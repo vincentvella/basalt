@@ -5,16 +5,38 @@ name: Docs
 # builds the site, which is what catches a broken link, a sidebar naming a page
 # that does not exist, or markdown that MDX cannot parse.
 #
-# Vercel builds and deploys the site itself. This is only the check, so that a
-# commit that breaks the build says so on the commit rather than in a failed
-# deployment nobody is watching.
+# Since 2026-10-08 this is the only thing that builds the site on a push:
+# `website/vercel.json` turns the git integration's deploys off for main, so the
+# site ships when somebody asks for it rather than twenty times a day. See the
+# measurement in docs/ci-performance.md and the how in website/README.md.
+#
+# ## The paths are what the site renders, which is not all the prose
+#
+# `docusaurus.config.ts` takes `../docs` and *excludes* `BACKLOG.md`,
+# `backlog/**` and `ci-performance.md`, so a commit touching only those rebuilds
+# an identical site. They were in this filter and they are the commits this
+# repository mostly makes: 18 of 20 one day ran this job for nothing. The
+# negations below say so, and a commit that touches an excluded file *and* a
+# rendered one still matches, which is what the trailing entries are for.
 
 on:
   push:
     branches: [main]
-    paths: ["website/**", "docs/**", "**/*.md", ".github/workflows/docs.yml"]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "!docs/BACKLOG.md"
+      - "!docs/backlog/**"
+      - "!docs/ci-performance.md"
+      - ".github/workflows/docs.yml"
   pull_request:
-    paths: ["website/**", "docs/**", "**/*.md", ".github/workflows/docs.yml"]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "!docs/BACKLOG.md"
+      - "!docs/backlog/**"
+      - "!docs/ci-performance.md"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 concurrency:
