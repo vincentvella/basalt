@@ -2,12 +2,13 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (5):**
 
 1. overlayColor, fadeDuration and progressiveRenderingEnabled are ignored; blurRadius is done
 2. Assets are never fetched over the network, so a dev server's assets do not wor
 3. Nothing caches a downloaded asset, which is right for a local file and will no
 4. onProgress and onPartialLoad are never emitted
+5. `ImageProps` and `<Image>`'s own style names have no rows on the support page
 
 - ~~Nothing evicts the texture cache.~~ Done on all three, in
   `core/ImageCache.h`. Each host kept decoded images in an `unordered_map`
@@ -140,3 +141,32 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   in; the module has to be built by the host instead, which works because a
   host's own providers are consulted before the built-in ones. See
   `docs/backlog/upstream.md`.
+
+- **`ImageProps` and `<Image>`'s own style names have no rows on the support
+  page.** The page scrapes React Native's prop structs, and as of 2026-10-09 it
+  scrapes four of them plus Yoga's: `BaseViewProps`, `AccessibilityProps`,
+  `TextAttributes`, `ParagraphAttributes`. `ImageProps` is not among them, so
+  thirteen props an app writes on an `<Image>` are answered for by a
+  hand-written "Image" section of five rows instead, which is the arrangement
+  the scraped tables replaced everywhere else.
+
+  Two halves, and neither is hard.
+
+  `ImageProps` has a `#pragma mark - Props` region of the same shape as the four
+  already read, so adding it to `STRUCTS` in `scripts/scrape_props.py` is one
+  entry. What it needs is a judgement per field, and some of them are not
+  obvious: `sources` and `resizeMode` are done on all three, `blurRadius` on two,
+  `overlayColor`, `fadeDuration` and `progressiveRenderingEnabled` are entry 1
+  here, and `defaultSource`, `loadingIndicatorSource`, `capInsets`,
+  `resizeMethod`, `resizeMultiplier` and `internal_analyticTag` have never been
+  looked at. Reading what each host does rather than assuming is the work.
+
+  The other half is the style names. `____ImageStyle_InternalCore` adds
+  `resizeMode`, `objectFit`, `tintColor` and `overlayColor` to what an
+  `<Image style={{...}}>` takes, and `STYLE_TYPES` reads five types that do not
+  include it. Adding it makes the scrape report those four as unaccounted for,
+  which is the check working: they are accounted for by `ImageProps`, so the two
+  halves want doing together.
+
+  Then the hand-written section can go, and the page's claim can stop having an
+  exception in it.

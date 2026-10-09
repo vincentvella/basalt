@@ -3800,6 +3800,122 @@ def test_press_location(bundle: Path) -> None:
         raise Failure(f"the press landed at {x},{y} inside the button; expected about 76,36")
 
 
+def test_layout_styles(bundle: Path) -> None:
+    """The layout props arrive, and Yoga's answer is the frame each host applies.
+
+    `padding`, `margin`, `gap`, `flexGrow`, `position: 'absolute'` with insets,
+    `aspectRatio`: the props an app writes most, and the one group on the
+    support page that no host reads. Fabric hands Yoga the style, Yoga answers
+    with a frame, and each host applies the frame -- so there is nothing in a
+    host to get wrong and exactly one thing that can go wrong anywhere, which is
+    arrival. A name dropped from `ReactNativeStyleAttributes` or from the style
+    flattener reaches nobody, silently, which is how `accessibilityViewIsModal`
+    and `writingDirection` were each broken for months.
+
+    So this is a scenario rather than a unit test: only an app can write a style,
+    and only the tree can say what came of it. Six probes in e2e/views.tsx, each
+    isolating one prop against a fixed box and carrying a `testID` so its line
+    is findable wherever the tree puts it.
+
+    **Every assertion is a difference rather than a position**, which is what
+    view flattening makes necessary and is worth knowing before reading them:
+    Fabric hoists a view that groups nothing natively and rebases its children's
+    frames onto the nearest ancestor that stayed, so a child's frame in the dump
+    is not relative to the parent in the JSX. See docs/ARCHITECTURE.md. A gap of
+    nine points is still nine points between two boxes whatever they were
+    rebased onto, and the arithmetic is exact because Yoga's is.
+
+    Runs on all three hosts and skips none: there is no platform half to be
+    missing. A host whose frames disagreed with these numbers would be applying
+    Yoga's answer wrongly, which is the other thing this would catch.
+    """
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    frames = {}
+    for line in tree.splitlines():
+        name = re.search(r"testid=(\S+)", line)
+        frame = re.search(r"frame=\(([-\d.]+),([-\d.]+) ([\d.]+)x([\d.]+)\)", line)
+        if name is None or frame is None:
+            continue
+        frames[name.group(1)] = tuple(float(frame.group(index)) for index in (1, 2, 3, 4))
+
+    probes = ["pad-parent", "pad-child", "margin-first", "margin-second",
+              "gap-first", "gap-second", "grow-fixed", "grow-rest",
+              "inset-parent", "inset-child", "ratio"]
+    missing = [name for name in probes if name not in frames]
+    if missing:
+        raise Failure(
+            f"no view in the tree carries {', '.join(missing)}. A probe with no "
+            "line was flattened away before it reached the host, which is what "
+            f"its background colour is for.\n{tree}"
+        )
+
+    # Each box is 20 by 10, which is the other half of every number below: a
+    # width that moved means the prop that set it did not arrive either.
+    for name in ["pad-child", "margin-first", "margin-second", "gap-first",
+                 "gap-second", "grow-fixed", "inset-child"]:
+        if frames[name][2:] != (20.0, 10.0):
+            raise Failure(
+                f"{name} measures {frames[name][2]}x{frames[name][3]} and the app asks "
+                "for 20x10, so `width` or `height` did not arrive"
+            )
+
+    def difference(inner, outer, expected, why):
+        dx = frames[inner][0] - frames[outer][0]
+        dy = frames[inner][1] - frames[outer][1]
+        if abs(dx - expected[0]) > 0.01 or abs(dy - expected[1]) > 0.01:
+            raise Failure(
+                f"{why}: {inner} is ({dx},{dy}) from {outer}, and Yoga says {expected}"
+            )
+
+    difference("pad-child", "pad-parent", (12.0, 12.0),
+               "padding: 12 did not inset the child on both axes")
+    # 20 points of box and then the 7 the margin asked for.
+    difference("margin-second", "margin-first", (27.0, 0.0),
+               "marginLeft: 7 did not space the second child")
+    difference("gap-second", "gap-first", (29.0, 0.0),
+               "gap: 9 did not space the children")
+    difference("grow-rest", "grow-fixed", (20.0, 0.0),
+               "the grown child does not start where the fixed one ends")
+    difference("inset-child", "inset-parent", (4.0, 3.0),
+               "position: 'absolute' with top: 3 and left: 4 did not place the child")
+
+    # flexGrow takes what is left of a 100 point row after a 20 point box.
+    if abs(frames["grow-rest"][2] - 80.0) > 0.01:
+        raise Failure(
+            f"flexGrow: 1 took {frames['grow-rest'][2]} of a 100 point row rather "
+            "than the 80 that was left"
+        )
+
+    # aspectRatio decides a width from a height, so the ratio is the assertion
+    # and the place in the row is not.
+    ratio = frames["ratio"]
+    if abs(ratio[2] - ratio[3] * 2.0) > 0.01:
+        raise Failure(
+            f"aspectRatio: 2 on a 10 point box measured {ratio[2]}x{ratio[3]}"
+        )
+
+
 def test_hit_slop(bundle: Path) -> None:
     """`hitSlop` grows what a press can land on, and only that.
 
@@ -6857,6 +6973,7 @@ SCENARIOS = [
      test_content_inset),
     ("locationX and locationY are relative to the view that was pressed",
      test_press_location),
+    ("the layout style props arrive, and Yoga lays them out", test_layout_styles),
     ("hitSlop grows what a press can land on", test_hit_slop),
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
     ("an animated GIF is animated", test_animated_image),

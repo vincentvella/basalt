@@ -25,12 +25,37 @@
         {
           "name": "borderRadii",
           "kind": "style",
-          "javascript": "borderRadius"
+          "javascript": "borderRadius",
+          "spellings": [
+            "borderTopLeftRadius",
+            "borderTopRightRadius",
+            "borderBottomLeftRadius",
+            "borderBottomRightRadius",
+            "borderTopStartRadius",
+            "borderTopEndRadius",
+            "borderBottomStartRadius",
+            "borderBottomEndRadius",
+            "borderStartStartRadius",
+            "borderStartEndRadius",
+            "borderEndStartRadius",
+            "borderEndEndRadius"
+          ]
         },
         {
           "name": "borderColors",
           "kind": "style",
-          "javascript": "borderColor"
+          "javascript": "borderColor",
+          "spellings": [
+            "borderTopColor",
+            "borderBottomColor",
+            "borderLeftColor",
+            "borderRightColor",
+            "borderStartColor",
+            "borderEndColor",
+            "borderBlockColor",
+            "borderBlockStartColor",
+            "borderBlockEndColor"
+          ]
         },
         {
           "name": "borderCurves",
@@ -88,7 +113,8 @@
         },
         {
           "name": "backgroundImage",
-          "kind": "style"
+          "kind": "style",
+          "javascript": "experimental_backgroundImage"
         },
         {
           "name": "backgroundSize",
@@ -409,6 +435,384 @@
           "kind": "internal"
         }
       ]
+    },
+    {
+      "name": "ParagraphAttributes",
+      "header": "packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h",
+      "note": "What belongs to a whole paragraph rather than to a fragment: how many lines it may take, how it is truncated, and whether it shrinks to fit.",
+      "props": [
+        {
+          "name": "maximumNumberOfLines",
+          "kind": "component",
+          "javascript": "numberOfLines"
+        },
+        {
+          "name": "ellipsizeMode",
+          "kind": "component"
+        },
+        {
+          "name": "textBreakStrategy",
+          "kind": "component"
+        },
+        {
+          "name": "adjustsFontSizeToFit",
+          "kind": "component"
+        },
+        {
+          "name": "includeFontPadding",
+          "kind": "style"
+        },
+        {
+          "name": "android_hyphenationFrequency",
+          "kind": "component"
+        },
+        {
+          "name": "minimumFontSize",
+          "kind": "internal"
+        },
+        {
+          "name": "maximumFontSize",
+          "kind": "internal"
+        },
+        {
+          "name": "minimumFontScale",
+          "kind": "component"
+        },
+        {
+          "name": "textAlignVertical",
+          "kind": "style"
+        }
+      ]
+    },
+    {
+      "name": "YogaStylableProps",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/view/YogaStylableProps.h",
+      "note": "Everything Yoga lays out with: padding, margin, flex, inset, gap and the rest. This struct carries one field, `yogaStyle`, so these names come from React Native's own `____LayoutStyle_Internal` instead.",
+      "styleFrom": [
+        "____LayoutStyle_Internal"
+      ],
+      "props": [
+        {
+          "name": "alignContent",
+          "kind": "style"
+        },
+        {
+          "name": "alignItems",
+          "kind": "style"
+        },
+        {
+          "name": "alignSelf",
+          "kind": "style"
+        },
+        {
+          "name": "aspectRatio",
+          "kind": "style"
+        },
+        {
+          "name": "borderBottomWidth",
+          "kind": "style"
+        },
+        {
+          "name": "borderEndWidth",
+          "kind": "style"
+        },
+        {
+          "name": "borderLeftWidth",
+          "kind": "style"
+        },
+        {
+          "name": "borderRightWidth",
+          "kind": "style"
+        },
+        {
+          "name": "borderStartWidth",
+          "kind": "style"
+        },
+        {
+          "name": "borderTopWidth",
+          "kind": "style"
+        },
+        {
+          "name": "borderWidth",
+          "kind": "style"
+        },
+        {
+          "name": "bottom",
+          "kind": "style"
+        },
+        {
+          "name": "boxSizing",
+          "kind": "style"
+        },
+        {
+          "name": "columnGap",
+          "kind": "style"
+        },
+        {
+          "name": "direction",
+          "kind": "style"
+        },
+        {
+          "name": "display",
+          "kind": "style"
+        },
+        {
+          "name": "end",
+          "kind": "style"
+        },
+        {
+          "name": "flex",
+          "kind": "style"
+        },
+        {
+          "name": "flexBasis",
+          "kind": "style"
+        },
+        {
+          "name": "flexDirection",
+          "kind": "style"
+        },
+        {
+          "name": "flexGrow",
+          "kind": "style"
+        },
+        {
+          "name": "flexShrink",
+          "kind": "style"
+        },
+        {
+          "name": "flexWrap",
+          "kind": "style"
+        },
+        {
+          "name": "gap",
+          "kind": "style"
+        },
+        {
+          "name": "height",
+          "kind": "style"
+        },
+        {
+          "name": "inset",
+          "kind": "style"
+        },
+        {
+          "name": "insetBlock",
+          "kind": "style"
+        },
+        {
+          "name": "insetBlockEnd",
+          "kind": "style"
+        },
+        {
+          "name": "insetBlockStart",
+          "kind": "style"
+        },
+        {
+          "name": "insetInline",
+          "kind": "style"
+        },
+        {
+          "name": "insetInlineEnd",
+          "kind": "style"
+        },
+        {
+          "name": "insetInlineStart",
+          "kind": "style"
+        },
+        {
+          "name": "justifyContent",
+          "kind": "style"
+        },
+        {
+          "name": "left",
+          "kind": "style"
+        },
+        {
+          "name": "margin",
+          "kind": "style"
+        },
+        {
+          "name": "marginBlock",
+          "kind": "style"
+        },
+        {
+          "name": "marginBlockEnd",
+          "kind": "style"
+        },
+        {
+          "name": "marginBlockStart",
+          "kind": "style"
+        },
+        {
+          "name": "marginBottom",
+          "kind": "style"
+        },
+        {
+          "name": "marginEnd",
+          "kind": "style"
+        },
+        {
+          "name": "marginHorizontal",
+          "kind": "style"
+        },
+        {
+          "name": "marginInline",
+          "kind": "style"
+        },
+        {
+          "name": "marginInlineEnd",
+          "kind": "style"
+        },
+        {
+          "name": "marginInlineStart",
+          "kind": "style"
+        },
+        {
+          "name": "marginLeft",
+          "kind": "style"
+        },
+        {
+          "name": "marginRight",
+          "kind": "style"
+        },
+        {
+          "name": "marginStart",
+          "kind": "style"
+        },
+        {
+          "name": "marginTop",
+          "kind": "style"
+        },
+        {
+          "name": "marginVertical",
+          "kind": "style"
+        },
+        {
+          "name": "maxHeight",
+          "kind": "style"
+        },
+        {
+          "name": "maxWidth",
+          "kind": "style"
+        },
+        {
+          "name": "minHeight",
+          "kind": "style"
+        },
+        {
+          "name": "minWidth",
+          "kind": "style"
+        },
+        {
+          "name": "overflow",
+          "kind": "style"
+        },
+        {
+          "name": "padding",
+          "kind": "style"
+        },
+        {
+          "name": "paddingBlock",
+          "kind": "style"
+        },
+        {
+          "name": "paddingBlockEnd",
+          "kind": "style"
+        },
+        {
+          "name": "paddingBlockStart",
+          "kind": "style"
+        },
+        {
+          "name": "paddingBottom",
+          "kind": "style"
+        },
+        {
+          "name": "paddingEnd",
+          "kind": "style"
+        },
+        {
+          "name": "paddingHorizontal",
+          "kind": "style"
+        },
+        {
+          "name": "paddingInline",
+          "kind": "style"
+        },
+        {
+          "name": "paddingInlineEnd",
+          "kind": "style"
+        },
+        {
+          "name": "paddingInlineStart",
+          "kind": "style"
+        },
+        {
+          "name": "paddingLeft",
+          "kind": "style"
+        },
+        {
+          "name": "paddingRight",
+          "kind": "style"
+        },
+        {
+          "name": "paddingStart",
+          "kind": "style"
+        },
+        {
+          "name": "paddingTop",
+          "kind": "style"
+        },
+        {
+          "name": "paddingVertical",
+          "kind": "style"
+        },
+        {
+          "name": "position",
+          "kind": "style"
+        },
+        {
+          "name": "right",
+          "kind": "style"
+        },
+        {
+          "name": "rowGap",
+          "kind": "style"
+        },
+        {
+          "name": "start",
+          "kind": "style"
+        },
+        {
+          "name": "top",
+          "kind": "style"
+        },
+        {
+          "name": "width",
+          "kind": "style"
+        }
+      ]
+    },
+    {
+      "name": "StyleSheetTypes",
+      "header": "packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js",
+      "note": "Style names JavaScript declares and no ReactCommon struct these hosts read takes. An app can write them, so they are listed; what each one's status says is where it actually goes.",
+      "styleFrom": [],
+      "props": [
+        {
+          "name": "elevation",
+          "kind": "style"
+        },
+        {
+          "name": "userSelect",
+          "kind": "style"
+        },
+        {
+          "name": "verticalAlign",
+          "kind": "style"
+        }
+      ]
     }
   ],
   "styleProps": [
@@ -582,5 +986,87 @@
     "packages/react-native/Libraries/Components/View/ViewAccessibility.js",
     "packages/react-native/Libraries/Text/TextProps.js",
     "packages/react-native/Libraries/Components/TextInput/TextInput.flow.js"
+  ],
+  "layoutProps": [
+    "alignContent",
+    "alignItems",
+    "alignSelf",
+    "aspectRatio",
+    "borderBottomWidth",
+    "borderEndWidth",
+    "borderLeftWidth",
+    "borderRightWidth",
+    "borderStartWidth",
+    "borderTopWidth",
+    "borderWidth",
+    "bottom",
+    "boxSizing",
+    "columnGap",
+    "direction",
+    "display",
+    "end",
+    "flex",
+    "flexBasis",
+    "flexDirection",
+    "flexGrow",
+    "flexShrink",
+    "flexWrap",
+    "gap",
+    "height",
+    "inset",
+    "insetBlock",
+    "insetBlockEnd",
+    "insetBlockStart",
+    "insetInline",
+    "insetInlineEnd",
+    "insetInlineStart",
+    "justifyContent",
+    "left",
+    "margin",
+    "marginBlock",
+    "marginBlockEnd",
+    "marginBlockStart",
+    "marginBottom",
+    "marginEnd",
+    "marginHorizontal",
+    "marginInline",
+    "marginInlineEnd",
+    "marginInlineStart",
+    "marginLeft",
+    "marginRight",
+    "marginStart",
+    "marginTop",
+    "marginVertical",
+    "maxHeight",
+    "maxWidth",
+    "minHeight",
+    "minWidth",
+    "overflow",
+    "padding",
+    "paddingBlock",
+    "paddingBlockEnd",
+    "paddingBlockStart",
+    "paddingBottom",
+    "paddingEnd",
+    "paddingHorizontal",
+    "paddingInline",
+    "paddingInlineEnd",
+    "paddingInlineStart",
+    "paddingLeft",
+    "paddingRight",
+    "paddingStart",
+    "paddingTop",
+    "paddingVertical",
+    "position",
+    "right",
+    "rowGap",
+    "start",
+    "top",
+    "width"
+  ],
+  "unreadStyleProps": [
+    "elevation",
+    "userSelect",
+    "verticalAlign"
   ]
 }

@@ -78,6 +78,46 @@ const styles = StyleSheet.create({
     backgroundColor: '#e6eeff',
     opacity: 0.85,
   },
+  // The layout probes. Absolute and off to one side, so they measure what they
+  // ask about and move nothing else: `left: 0, top: 0` inside the page's
+  // padding puts them at (24,24) on every host.
+  // Every probe has a background, and not for looks: a view with nothing to
+  // draw is flattened away before it reaches a host, and a flattened probe is
+  // a probe with no line in the tree. The colour is what keeps it.
+  probes: {position: 'absolute', left: 0, top: 0},
+  probeBox: {width: 20, height: 10, backgroundColor: '#4d8cf2'},
+  padParent: {width: 100, height: 30, padding: 12, backgroundColor: '#2b3445'},
+  marginParent: {
+    width: 100,
+    height: 30,
+    flexDirection: 'row',
+    backgroundColor: '#2b3445',
+  },
+  marginSecond: {width: 20, height: 10, marginLeft: 7, backgroundColor: '#4d8cf2'},
+  gapParent: {
+    width: 100,
+    height: 30,
+    flexDirection: 'row',
+    gap: 9,
+    backgroundColor: '#2b3445',
+  },
+  growParent: {
+    width: 100,
+    height: 30,
+    flexDirection: 'row',
+    backgroundColor: '#2b3445',
+  },
+  growRest: {height: 10, flexGrow: 1, backgroundColor: '#59cc8c'},
+  insetParent: {width: 100, height: 30, backgroundColor: '#2b3445'},
+  insetChild: {
+    position: 'absolute',
+    top: 3,
+    left: 4,
+    width: 20,
+    height: 10,
+    backgroundColor: '#4d8cf2',
+  },
+  ratio: {height: 10, aspectRatio: 2, backgroundColor: '#59cc8c'},
   footer: {
     flex: 1,
     marginTop: 16,
@@ -261,9 +301,52 @@ function onDotLayout(event: LayoutChangeEvent) {
   console.log(`onLayout ${width}x${height}`);
 }
 
+// The layout props, which are Yoga's and reach no host: Fabric hands Yoga the
+// style, Yoga answers with a frame, and every host applies the frame. So the
+// only thing that can go wrong is arrival -- a name dropped from
+// `ReactNativeStyleAttributes` or the style flattener reaches nobody -- and the
+// only thing that can show it is the frame itself.
+//
+// Each probe isolates one prop against a fixed box, and carries a `testID` so
+// the scenario can find its line without depending on where in the tree it
+// sits. Absolute, so none of them moves anything else on the page: this app is
+// also the cross-host parity fixture, where frames are compared.
+function LayoutProbes() {
+  return (
+    <View style={styles.probes}>
+      {/* `padding`: the child starts 12 in from the parent's edge. */}
+      <View testID="pad-parent" style={styles.padParent}>
+        <View testID="pad-child" style={styles.probeBox} />
+      </View>
+      {/* `marginLeft` on the second child, which is the gap between the two. */}
+      <View testID="margin-parent" style={styles.marginParent}>
+        <View testID="margin-first" style={styles.probeBox} />
+        <View testID="margin-second" style={styles.marginSecond} />
+      </View>
+      {/* `gap`, which is the same spacing asked for by the parent instead. */}
+      <View testID="gap-parent" style={styles.gapParent}>
+        <View testID="gap-first" style={styles.probeBox} />
+        <View testID="gap-second" style={styles.probeBox} />
+      </View>
+      {/* `flexGrow`, which takes what is left of a fixed row. */}
+      <View testID="grow-parent" style={styles.growParent}>
+        <View testID="grow-fixed" style={styles.probeBox} />
+        <View testID="grow-rest" style={styles.growRest} />
+      </View>
+      {/* `position: 'absolute'` with two insets, inside a relative parent. */}
+      <View testID="inset-parent" style={styles.insetParent}>
+        <View testID="inset-child" style={styles.insetChild} />
+      </View>
+      {/* `aspectRatio`, which decides a width from a height. */}
+      <View testID="ratio" style={styles.ratio} />
+    </View>
+  );
+}
+
 function App() {
   return (
     <View style={styles.page}>
+      <LayoutProbes />
       <View style={styles.row}>
         <View style={styles.left}>
           <View style={styles.badge} />

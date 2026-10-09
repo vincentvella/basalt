@@ -26,9 +26,9 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | Area | Open | What is left there |
 | --- | --- | --- |
 | [Input](backlog/input.md) | 4 | Multi-touch is not modelled, Wayland input is unverified, `setIsJSResponder` is a no-op. |
-| [Text](backlog/text.md) | 5 | Measurement and layout gaps. |
-| [TextInput](backlog/textinput.md) | 6 | Keyboard types, spell check, the placeholder and selection colours. |
-| [Image](backlog/image.md) | 4 | Decorative props, and assets over the network: fetching, caching, progress. |
+| [Text](backlog/text.md) | 7 | Measurement and layout gaps. |
+| [TextInput](backlog/textinput.md) | 7 | Keyboard types, spell check, the placeholder and selection colours. |
+| [Image](backlog/image.md) | 5 | Decorative props, and assets over the network: fetching, caching, progress. |
 | [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |
 | [Accessibility](backlog/accessibility.md) | 5 | Nothing has been tested against a real screen reader. |

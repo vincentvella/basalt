@@ -31,6 +31,31 @@ Run with:  python3 scripts/scrape_props.py --from-pin   # rewrite the inventory
            python3 scripts/scrape_props.py --check      # fail if it is stale
            python3 scripts/scrape_props.py              # read RN_DIR instead
 
+## Yoga's props, which no struct here declares
+
+A style name an app writes is not always a field in one of these structs.
+`padding`, `margin`, `flex`, `inset` and the rest live in `yoga::Style`, behind
+`YogaStylableProps`, which carries one field -- `yogaStyle` -- and no per-prop
+members to scrape. Nothing in a host ever sees them: Fabric gives Yoga the
+style, Yoga computes a frame, and the host applies the frame.
+
+They are still props an app writes, so leaving them off the page made it say
+less than it knew. `____LayoutStyle_Internal` is React Native's own list of
+them, this file already reads it, and those names now come out as a group of
+their own with the same rule as the rest: each one needs a status, and a name
+upstream adds has none until somebody says what happens to it.
+
+## Every style name is accounted for, which is the check this exists for
+
+The three sources above do not partition the style names, and the gap used to
+be invisible: `borderTopLeftRadius` is one of thirteen spellings that land in
+`borderRadii`, and a reader looking for it found nothing and could not tell
+whether it was unimplemented or unlisted. So SPELLINGS says which extra names
+land in a field, and the scrape reports any style name that is neither a field,
+nor one of its spellings, nor one of Yoga's. That report is what makes "every
+value a `style` takes is on the page" a thing a check can say rather than a
+thing somebody remembers.
+
 ## Style props and component props, which is upstream's line and not ours
 
 reactnative.dev splits a component's props from the style props its `style`
@@ -116,6 +141,13 @@ STRUCTS = [
         "Fields",
         "Per-fragment text styling, so a nested <Text> can differ from its parent.",
     ),
+    (
+        "ParagraphAttributes",
+        "packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h",
+        "Fields",
+        "What belongs to a whole paragraph rather than to a fragment: how many "
+        "lines it may take, how it is truncated, and whether it shrinks to fit.",
+    ),
 ]
 
 # Where React Native declares what a `style` takes. Each entry is a file and the
@@ -136,6 +168,15 @@ STYLE_TYPES = [
         ["____TransformStyle_Internal"],
     ),
 ]
+
+# Yoga's own, out of the same file. Named separately from STYLE_TYPES because
+# these are the style names that reach no struct here: `YogaStylableProps` holds
+# one `yogaStyle` field and nothing per prop, so there is nothing to scrape and
+# the Flow type is the list.
+LAYOUT_TYPE = (
+    "packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js",
+    "____LayoutStyle_Internal",
+)
 
 # And where it declares what a component takes. Every name these files declare
 # counts, which is deliberately looser than reading one type: `ViewProps` spreads
@@ -159,6 +200,7 @@ ALIASES = {
     "borderCurves": "borderCurve",
     "borderStyles": "borderStyle",
     # Still behind the experimental prefix in the pinned release.
+    "backgroundImage": "experimental_backgroundImage",
     "backgroundSize": "experimental_backgroundSize",
     "backgroundPosition": "experimental_backgroundPosition",
     "backgroundRepeat": "experimental_backgroundRepeat",
@@ -167,6 +209,8 @@ ALIASES = {
     "shouldRasterize": "shouldRasterizeIOS",
     "lineBreakStrategy": "lineBreakStrategyIOS",
     "lineBreakMode": "lineBreakModeIOS",
+    # A paragraph, where ReactCommon's name is longer than JavaScript's.
+    "maximumNumberOfLines": "numberOfLines",
     # Text, where ReactCommon's names are its own.
     "foregroundColor": "color",
     "alignment": "textAlign",
@@ -176,6 +220,58 @@ ALIASES = {
     "testId": "testID",
     "nativeId": "nativeID",
 }
+
+# The extra JavaScript names that land in one ReactCommon field, beyond the one
+# ALIASES gives it. Hand-written and checked the same way: a spelling React
+# Native does not declare is reported rather than believed.
+#
+# These are not aliases in the sense ALIASES means -- `borderTopLeftRadius` is
+# not another name for the whole struct, it is one corner of it -- but for this
+# page they belong on the same row, because one field is what a host reads and
+# one entry is what says whether it works.
+SPELLINGS = {
+    "borderRadii": [
+        "borderTopLeftRadius",
+        "borderTopRightRadius",
+        "borderBottomLeftRadius",
+        "borderBottomRightRadius",
+        "borderTopStartRadius",
+        "borderTopEndRadius",
+        "borderBottomStartRadius",
+        "borderBottomEndRadius",
+        "borderStartStartRadius",
+        "borderStartEndRadius",
+        "borderEndStartRadius",
+        "borderEndEndRadius",
+    ],
+    "borderColors": [
+        "borderTopColor",
+        "borderBottomColor",
+        "borderLeftColor",
+        "borderRightColor",
+        "borderStartColor",
+        "borderEndColor",
+        "borderBlockColor",
+        "borderBlockStartColor",
+        "borderBlockEndColor",
+    ],
+}
+
+# Style names React Native declares in JavaScript and no struct here reads.
+#
+# Not a gap in this file: a prop reaches a Fabric platform only if some
+# ReactCommon field takes it, and these three have none that any of these hosts
+# can see. They are listed rather than dropped because an app can still write
+# them, and "the page does not mention it" is indistinguishable from "nobody has
+# looked". Each one's status says what is actually true of it.
+#
+# Checked like the rest: a name here that upstream stops declaring, or starts
+# declaring a field for, is reported.
+UNREAD = [
+    "elevation",
+    "userSelect",
+    "verticalAlign",
+]
 
 # `  <type> <name>{...};` or `  <type> <name>;`, with the type allowed to carry
 # templates, namespaces and references, and the initialiser allowed to be
@@ -197,6 +293,17 @@ FIELD = re.compile(
 SKIP = re.compile(
     r"^\s*(//|/\*|\*|#|\}|\{|$)|\busing\b|\bstruct\b|\bclass\b|\benum\b|\bstatic\b"
 )
+
+
+# An `operator==` declaration, which the field regex reads as a field called
+# `operator`: its `==(...)` matches the "or an initialiser" branch, because that
+# branch has to accept anything at all. Checked for by name rather than by
+# tightening the regex, so a field whose initialiser contains `==` keeps
+# working.
+#
+# Found by `ParagraphAttributes`, which declares one inside its field region
+# where the other three declare theirs after a `#pragma mark`.
+OPERATOR = re.compile(r"\boperator\b")
 
 
 def looks_like_a_method(line: str) -> bool:
@@ -305,7 +412,7 @@ def scrape(text: str, section: str) -> tuple[list[str], list[str]]:
     unread: list[str] = []
     for line in props_region(text, section):
         match = FIELD.match(line)
-        if match is not None:
+        if match is not None and not OPERATOR.search(line):
             names.append(match.group("name"))
             continue
         if SKIP.search(line) or looks_like_a_method(line):
@@ -322,6 +429,55 @@ def kind_of(name: str, style: set[str], public: set[str]) -> tuple[str, str]:
     if spelling in public:
         return "component", spelling
     return "internal", spelling
+
+
+def account(
+    style_props: set[str],
+    structs: list[dict],
+    layout_members: list[str],
+    unread: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Which style names are Yoga's, which are read by nothing, and what is left.
+
+    The left-over list is the point. A style name that is neither a field here,
+    nor one of a field's other spellings, nor one of Yoga's, nor one somebody has
+    judged unread, is a name an app can write and this page cannot answer for --
+    which is what `padding` and `margin` were until somebody went looking for
+    them. Returned as problems rather than dropped.
+    """
+    claimed: set[str] = set()
+    for struct in structs:
+        for prop in struct["props"]:
+            claimed.add(prop["name"])
+            claimed.add(prop.get("javascript", prop["name"]))
+            claimed.update(prop.get("spellings", []))
+
+    layout = sorted(name for name in layout_members if name not in claimed)
+    claimed.update(layout)
+
+    problems: list[str] = []
+    for name in unread:
+        if name not in style_props:
+            problems.append(
+                f"UNREAD lists {name}, which React Native no longer declares as a style prop"
+            )
+        if name in claimed:
+            problems.append(
+                f"UNREAD lists {name}, and something here now reads it: take it out and "
+                "give it the status its field deserves"
+            )
+    unread_names = sorted(name for name in unread if name in style_props)
+    claimed.update(unread_names)
+
+    for name in sorted(style_props):
+        if name not in claimed:
+            problems.append(
+                f"{name} is a style prop React Native declares and nothing here accounts "
+                "for: add it to SPELLINGS beside the field it lands in, or give it a "
+                "status of its own"
+            )
+
+    return layout, unread_names, problems
 
 
 def main() -> int:
@@ -405,6 +561,32 @@ def main() -> int:
                 f"{version} declares in neither a style type nor a prop type"
             )
 
+    for field, spellings in sorted(SPELLINGS.items()):
+        for spelling in spellings:
+            if spelling not in style_props:
+                problems.append(
+                    f"SPELLINGS says {spelling} lands in {field}, which React Native "
+                    f"{version} does not declare as a style prop"
+                )
+
+    # Yoga's. Read from the layout type and then narrowed to the names no struct
+    # here declares: `borderWidth` and `zIndex` are in that type as well, because
+    # Yoga needs a border's width to lay out inside it, and both are fields a
+    # host reads.
+    layout_relative, layout_type = LAYOUT_TYPE
+    layout_text = read(layout_relative)
+    layout_members: list[str] = []
+    if layout_text is not None:
+        members = flow_members(layout_text, layout_type)
+        if members is None:
+            problems.append(
+                f"{layout_relative}: no `type {layout_type}`; has it been renamed?"
+            )
+        elif not members:
+            problems.append(f"{layout_relative}: `type {layout_type}` parsed to no members")
+        else:
+            layout_members = members
+
     inventory["styleProps"] = sorted(style_props)
     inventory["styleTypes"] = [
         {"file": relative, "types": type_names} for relative, type_names in STYLE_TYPES
@@ -415,13 +597,15 @@ def main() -> int:
         text = read(relative)
         if text is None:
             continue
-        names, unread = scrape(text, section)
+        # `unreadable` rather than `unread`: the module's UNREAD is a list of
+        # style names, and these are lines that did not parse.
+        names, unreadable = scrape(text, section)
         if not names:
             problems.append(
                 f"{relative}: no fields under `#pragma mark - {section}`; has the header "
                 "changed shape?"
             )
-        for line in unread:
+        for line in unreadable:
             problems.append(f"{relative}: cannot read {line!r}")
         props = []
         for field in names:
@@ -429,10 +613,47 @@ def main() -> int:
             prop = {"name": field, "kind": kind}
             if spelling != field:
                 prop["javascript"] = spelling
+            if field in SPELLINGS:
+                prop["spellings"] = list(SPELLINGS[field])
             props.append(prop)
         inventory["structs"].append(
             {"name": name, "header": relative, "note": note, "props": props}
         )
+
+    layout_names, unread_names, accounting = account(
+        style_props, inventory["structs"], layout_members, UNREAD
+    )
+    problems.extend(accounting)
+
+    inventory["layoutProps"] = layout_names
+    # Emitted as a struct of its own so that everything downstream -- a status
+    # per row, the audit against the hosts' sources, the page's tables -- works
+    # on it unchanged. `YogaStylableProps` is where ReactCommon really keeps
+    # them, even though it keeps them in one field.
+    inventory["structs"].append(
+        {
+            "name": "YogaStylableProps",
+            "header": "packages/react-native/ReactCommon/react/renderer/components/view/YogaStylableProps.h",
+            "note": "Everything Yoga lays out with: padding, margin, flex, inset, gap and "
+            "the rest. This struct carries one field, `yogaStyle`, so these names come "
+            "from React Native's own `____LayoutStyle_Internal` instead.",
+            "styleFrom": [layout_type],
+            "props": [{"name": name, "kind": "style"} for name in layout_names],
+        }
+    )
+
+    inventory["unreadStyleProps"] = unread_names
+    inventory["structs"].append(
+        {
+            "name": "StyleSheetTypes",
+            "header": "packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js",
+            "note": "Style names JavaScript declares and no ReactCommon struct these hosts "
+            "read takes. An app can write them, so they are listed; what each one's status "
+            "says is where it actually goes.",
+            "styleFrom": [],
+            "props": [{"name": name, "kind": "style"} for name in unread_names],
+        }
+    )
 
     for problem in problems:
         print(problem)

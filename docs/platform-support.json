@@ -148,6 +148,26 @@
     "win-decoration-paint": {
       "text": "the line is drawn, its colour and pattern need an IDWriteTextRenderer",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "yoga": {
+      "text": "Yoga computes it and every host applies the frame it answers with",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md"
+    },
+    "android-only": {
+      "text": "Android's own: ReactCommon declares it in that platform's host props",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "vertical-align": {
+      "text": "no engine here aligns a paragraph inside its box yet",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "user-select": {
+      "text": "ReactCommon declares no field for it, and text is not selectable here",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "android-view": {
+      "text": "Android's shadow prop, declared in that platform's host props",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
     }
   },
   "statuses": {
@@ -749,6 +769,554 @@
       "macos": "no",
       "windows": "no",
       "why": "text-ios"
+    },
+    "YogaStylableProps.alignContent": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.alignItems": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.alignSelf": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.aspectRatio": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.borderBottomWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.borderEndWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.borderLeftWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.borderRightWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.borderStartWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.borderTopWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.borderWidth": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "borderWidths"
+      ]
+    },
+    "YogaStylableProps.bottom": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.boxSizing": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.columnGap": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.direction": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.display": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.end": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.flex": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.flexBasis": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.flexDirection": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.flexGrow": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.flexShrink": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.flexWrap": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.gap": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.height": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.inset": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.insetBlock": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.insetBlockEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.insetBlockStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.insetInline": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.insetInlineEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.insetInlineStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.justifyContent": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.left": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.margin": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginBlock": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginBlockEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginBlockStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginBottom": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginHorizontal": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginInline": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginInlineEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginInlineStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginLeft": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginRight": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginTop": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.marginVertical": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.maxHeight": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.maxWidth": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.minHeight": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.minWidth": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.overflow": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "getClipsContentToBounds"
+      ]
+    },
+    "YogaStylableProps.padding": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingBlock": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingBlockEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingBlockStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingBottom": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingHorizontal": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingInline": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingInlineEnd": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingInlineStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingLeft": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingRight": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingStart": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingTop": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.paddingVertical": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.position": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.right": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.rowGap": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.start": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.top": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "YogaStylableProps.width": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "yoga"
+    },
+    "ParagraphAttributes.maximumNumberOfLines": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "maximumNumberOfLines"
+      ]
+    },
+    "ParagraphAttributes.ellipsizeMode": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "ellipsizeMode"
+      ]
+    },
+    "ParagraphAttributes.textBreakStrategy": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "android-only"
+    },
+    "ParagraphAttributes.adjustsFontSizeToFit": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "ParagraphAttributes.includeFontPadding": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "android-only"
+    },
+    "ParagraphAttributes.android_hyphenationFrequency": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "android-only"
+    },
+    "ParagraphAttributes.minimumFontSize": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "ParagraphAttributes.maximumFontSize": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "ParagraphAttributes.minimumFontScale": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-ignored"
+    },
+    "ParagraphAttributes.textAlignVertical": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "vertical-align"
+    },
+    "StyleSheetTypes.elevation": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "android-view"
+    },
+    "StyleSheetTypes.userSelect": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "user-select"
+    },
+    "StyleSheetTypes.verticalAlign": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "vertical-align"
     }
   },
   "areas": [

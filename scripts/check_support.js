@@ -284,22 +284,42 @@ function render(inventory, data) {
   lines.push('that says what is missing and which call would do it.');
   lines.push('');
   lines.push(
-    `The attributes are React Native's own, read out of its headers rather than listed`,
+    `The attributes are React Native's own, read out of its declarations rather than`,
   );
   lines.push(
-    `here: this page is generated from \`${inventory.structs.length}\` prop structs of React`,
+    `listed here: \`scripts/scrape_props.py\` scrapes React Native ${inventory.reactNative}`,
   );
-  lines.push(
-    `Native ${inventory.reactNative}, so a prop added upstream turns up as a row with no`,
-  );
-  lines.push('status and fails the check until somebody fills it in.');
+  lines.push('and this renders what it found, so a prop added upstream turns up as a row');
+  lines.push('with no status and fails the check until somebody fills it in.');
+  lines.push('');
+  lines.push('**Every style name a `<View>` or a `<Text>` takes has a row.** Most are');
+  lines.push("fields in one of ReactCommon's prop structs. The rest belong to Yoga:");
+  lines.push('`padding`, `margin`, `flex`, `inset`, `gap` and their spellings, which no');
+  lines.push('struct declares one by one, because `YogaStylableProps` carries a single');
+  lines.push("`yogaStyle` field. Those names come from React Native's own");
+  lines.push('`____LayoutStyle_Internal` and sit in a section of their own. A handful are');
+  lines.push('declared in JavaScript and read by no struct at all, and they are listed too,');
+  lines.push('because an app can still write them.');
+  lines.push('');
+  lines.push('The scrape reports any style name that is none of those three, which is what');
+  lines.push('makes this list complete rather than long: the layout props were missing from');
+  lines.push('this page until somebody went looking for `padding`, and nothing could have');
+  lines.push('said so.');
+  lines.push('');
+  lines.push("**What is not here yet**: an `<Image>`'s own four style names, which come");
+  lines.push('from a sixth Flow type this does not read, and the props of `<Image>` and');
+  lines.push('`<TextInput>`, which have ReactCommon structs of their own that nothing');
+  lines.push('scrapes. The Image section near the bottom is hand-written and covers some');
+  lines.push('of it; `backlog/image.md` and `backlog/textinput.md` record the rest.');
   lines.push('');
   lines.push('Each struct is split the way reactnative.dev splits a component page: the');
   lines.push('style props a `style={{...}}` takes, then the props written on the element');
   lines.push('itself. That split is read from React Native too, out of the Flow types that');
   lines.push('declare both, so a prop that moves between them moves here. Where');
   lines.push('ReactCommon spells a prop differently from JavaScript, the name an app writes');
-  lines.push('is the one in the row and ReactCommon\'s is under it.');
+  lines.push('is the one in the row and ReactCommon\'s is under it; where several names land');
+  lines.push('in one field, as thirteen corner radii land in `borderRadii`, they are listed');
+  lines.push('under the row that implements them.');
   lines.push('');
 
   lines.push('| | ' + keys.map((key) => label(data, key)).join(' | ') + ' |');
@@ -313,7 +333,9 @@ function render(inventory, data) {
   lines.push('| Done | ' + done.map(({done: d, total}) => `${d} of ${total}`).join(' | ') + ' |');
   lines.push('| | ' + done.map(({done: d, total}) => '`' + bar(d, total) + '`').join(' | ') + ' |');
   lines.push('');
-  lines.push('Counting a row as done when the host implements it or ReactCommon does.');
+  lines.push('Counting a row as done when the host implements it, or when ReactCommon or');
+  lines.push('Yoga does it for every host: a layout prop never reaches one of these');
+  lines.push('toolkits, so there is nothing for a host to implement and nothing to claim.');
   lines.push('');
 
   lines.push('| | |');
@@ -360,9 +382,21 @@ function render(inventory, data) {
         .map((prop) => ({
           // The name an app writes, which is not always ReactCommon's: it says
           // `borderRadii` for `borderRadius` and `foregroundColor` for `color`.
-          feature: prop.javascript === undefined
-            ? `\`${prop.name}\``
-            : `\`${prop.javascript}\` <sub>\`${prop.name}\`</sub>`,
+          // And every other name that lands in the same field, spelled out
+          // rather than counted: the reason this page exists is somebody
+          // looking for one name and wanting to know whether it works, so
+          // `borderTopLeftRadius` has to be findable even though
+          // `borderRadii` is what a host reads.
+          feature: [
+            prop.javascript === undefined
+              ? `\`${prop.name}\``
+              : `\`${prop.javascript}\` <sub>\`${prop.name}\`</sub>`,
+            (prop.spellings ?? []).length > 0
+              ? '<br/><sub>'
+                + prop.spellings.map((name) => `\`${name}\``).join(' ')
+                + '</sub>'
+              : '',
+          ].join(''),
           row: data.statuses[`${struct.name}.${prop.name}`],
         }));
       if (rows.length === 0) {
@@ -373,12 +407,15 @@ function render(inventory, data) {
       // The style note names the types it was read from rather than a
       // paraphrase of them: `ViewStyle` is the published name and
       // `____ViewStyle_InternalBase` is the one that declares the members.
-      const where = kind === 'style' && inventory.styleTypes !== undefined
-        ? ' Read from '
-          + inventory.styleTypes
-            .flatMap(({types}) => types.map((type) => `\`${type}\``))
-            .join(', ')
-          + '.'
+      // Which Flow types these names were read from. Per struct where the
+      // struct says -- Yoga's come from the layout type alone, and the ones
+      // nothing reads come from wherever they are declared, which is what their
+      // own note is for -- and the whole list otherwise.
+      const from = struct.styleFrom !== undefined
+        ? struct.styleFrom
+        : (inventory.styleTypes ?? []).flatMap(({types}) => types);
+      const where = kind === 'style' && from.length > 0
+        ? ' Read from ' + from.map((type) => `\`${type}\``).join(', ') + '.'
         : '';
       lines.push(mdxSafe(note + where));
       lines.push('');

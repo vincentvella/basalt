@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (6):**
+**Open (7):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
@@ -13,6 +13,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 7. src/overrides/TextInput
 8. autoCapitalize, autoCorrect, spellCheck, keyboardType, returnKeyType, clearBut
 9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
+10. `TextInputProps` and its traits have no rows on the support page
 
 - ~~**An uncontrolled field loses what was typed into it.**~~ Found on Windows
   in phase 46 and fixed on all three in phase 47. React Native's `TextInput.js`
@@ -168,3 +169,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   all three hosts focus today. And **both hosts failed silently**, AppKit
   discarding the `BOOL` from `makeFirstResponder:` and messaging a nil window
   being a no-op; AppKit now says which of the two happened.
+
+- **`TextInputProps` and its traits have no rows on the support page.** The page
+  scrapes four prop structs plus Yoga's, and neither `BaseTextInputProps` nor
+  the `TextInputTraits` beside it is one of them. So the thirty-odd props an app
+  writes on a `<TextInput>` have no row at all: `autoCapitalize`,
+  `keyboardType`, `secureTextEntry`, `returnKeyType`, `selectionColor`,
+  `maxLength`, `multiline`, `placeholder` and the rest. That is the same hole
+  the layout props had until 2026-10-09, which is neither implemented nor
+  recorded but absent, with nothing able to say so.
+
+  Several of them are done and some are deliberately not, which is exactly why
+  the rows are worth having: `maxLength`, `multiline`, `spellCheck`,
+  `autoCorrect`, `autoCapitalize` and `keyboardType` landed between 2026-10-05
+  and 2026-10-09, two of them as "no macOS call at all" rather than as work;
+  entries 6 and 8 here cover others. A reader cannot tell which from this file,
+  and that is what a table is for.
+
+  `BaseTextInputProps.h` has the same `#pragma mark - Props` shape the four
+  scraped structs have, so the scrape is one entry in `STRUCTS`. The judgement
+  per field is the work, and it wants doing after the Image half of the same
+  job: backlog/image.md entry 5 has the shape of it.

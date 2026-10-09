@@ -668,3 +668,44 @@ at the moment of the emit rather than holding a `jsi::Object` that a reload woul
 outlive. Posting only, never waiting: the `CallInvoker` over it throws on
 `invokeSync`, because a synchronous call from another thread into a busy runtime
 is a deadlock and an invoker offering it would be lying about the door it has.
+
+## A layout prop reaches no host, so the support page says Yoga does it (2026-10-09)
+
+`padding`, `margin`, `flex`, `inset`, `gap` and the sixty-odd names beside them
+were missing from the platform support page until somebody asked where they
+were. Not implemented and not recorded: absent, with nothing able to say so.
+
+The reason they were missing is the reason they work. The page is generated from
+React Native's own prop structs, and no struct declares those names one by one:
+`YogaStylableProps` carries a single `yogaStyle` field. Fabric gives Yoga the
+style, Yoga computes a frame, and each host applies the frame, so there is no
+line in any host that reads `padding` and nothing for a host column to claim.
+
+Three things follow, and they are the decision rather than the discovery.
+
+**They get rows anyway, as a group of their own.** React Native's
+`____LayoutStyle_Internal` is the list, `scripts/scrape_props.py` reads it, and
+every name in it that no struct declares becomes a row under
+`YogaStylableProps`. Their status is the one `onLayout` already had: done
+upstream, on every host, because that is what is true.
+
+**The scrape reports any style name it cannot account for.** A name is answered
+for when it is a field, or another spelling of a field, as thirteen corner radii
+are of `borderRadii`, or one of Yoga's, or one somebody has judged to be read by
+nothing at all. Anything else is printed, and `scripts/test_scrape_props.py`
+tests that it is. That check is the part worth keeping: a page that is merely
+long looks the same as a page that is complete.
+
+**What proves them is a scenario, not a tick.** `test_layout_styles` writes six
+probes in `e2e/views.tsx` and reads the frames back out of the tree on every
+host, because the one thing that can go wrong is arrival: a name dropped from
+`ReactNativeStyleAttributes` or from the style flattener reaches nobody,
+silently, which is exactly how `accessibilityViewIsModal` and `writingDirection`
+were each broken for months. Every assertion there is a difference rather than a
+position, since view flattening rebases a hoisted child's frame; see
+ARCHITECTURE.md.
+
+Three names came out of the same audit with nowhere to go, and are listed on the
+page rather than dropped: `elevation` is Android's, `userSelect` has no
+ReactCommon field at all, and `verticalAlign` reaches ReactCommon under a name it
+does not read. backlog/text.md has the last two.

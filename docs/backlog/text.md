@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (7):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -17,6 +17,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 7. Text is not selectable and reports nothing to AT-SPI
 9. `textAlign: 'end'` is physical right on GTK and AppKit, and relative on
    Windows
+10. `verticalAlign` reaches ReactCommon under a name it does not read
+11. `userSelect` has no ReactCommon field at all
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -394,7 +396,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   it is inert regardless: the backend here is `PangoCoreTextFontMap`, so the
   `PANGO_IS_FC_FONT_MAP` guard is false and an app font never reaches Pango at
   all.
-- Text is not selectable and reports nothing to AT-SPI.
+- Text is not selectable and reports nothing to AT-SPI. `userSelect` is the prop
+  an app would write for the first half of that; entry 11 is about where it
+  goes.
 
 - ~~**`textShadowColor`, `textShadowOffset` and `textShadowRadius`.**~~ Done on
   GTK and AppKit 2026-10-09. Three props every pre-CSS React Native title sets
@@ -463,3 +467,45 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   each: here it is one enum value, and there it is each engine's direction
   resolution. The e2e scenario that would show it needs a right-to-left
   paragraph with an explicit `end`, which `e2e/text.tsx` does not have yet.
+
+- **`verticalAlign` reaches ReactCommon under a name it does not read.** The
+  prop aligns a paragraph inside its own box: `top`, `bottom`, `middle` or
+  `auto`. Nothing here implements it, and the reason it is worth an entry rather
+  than a line on the ignored list is what the audit on 2026-10-09 found about
+  where it goes.
+
+  `____TextStyle_InternalBase` declares `verticalAlign`, and
+  `ReactNativeStyleAttributes` passes it through, so it arrives at the shadow
+  node. `ParagraphAttributes` has the field it belongs in,
+  `textAlignVertical`, and `attributedstring/conversions.h` reads the raw prop
+  named `textAlignVertical` and nothing named `verticalAlign`. So the
+  cross-platform spelling an app is told to write is dropped before any
+  platform sees it, and the Android spelling is the one that works.
+
+  Both names are on the support page for that reason, as two rows that say the
+  same "not yet": one is the prop, the other is the only name that can currently
+  carry it.
+
+  What implementing it would take, per engine, is one line each and the same
+  arithmetic: the paragraph's height against the box's, and an offset of zero,
+  the difference, or half of it. Pango has `pango_layout_get_pixel_extents` and
+  the snapshot does the translating; Core Text already positions a frame, so it
+  is the frame's origin; DirectWrite has `SetParagraphAlignment`, which is
+  exactly this property and is already set to `NEAR`. The shared part belongs in
+  `core/` with the rest, since three hosts asking the same question twice is how
+  the shadow props drifted.
+
+- **`userSelect` has no ReactCommon field at all.** `____TextStyle_InternalBase`
+  declares it, `ReactNativeStyleAttributes` passes it through, and a grep of the
+  whole of `ReactCommon/react/renderer` for the name finds nothing: measured on
+  2026-10-09. So on a Fabric platform the prop arrives at the shadow node and
+  stops there, and there is no field for a host to read even if it wanted to.
+
+  Which makes it an upstream gap rather than a desktop one, and it is recorded
+  here rather than in backlog/upstream.md because what an app actually wants is
+  the entry above it: selectable text. iOS gets that from `<Text selectable>`,
+  which is a *prop* and not a style, and which ReactCommon does carry.
+
+  The honest status on the support page is "not yet" on all three hosts with
+  this entry as the reason, rather than "deliberately not done": nobody decided
+  against it.

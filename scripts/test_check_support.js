@@ -210,3 +210,52 @@ test("the name an app writes leads, and ReactCommon's spelling follows it", () =
     'BaseViewProps.borderRadii': {linux: 'yes', macos: 'yes'},
   }), 'linux').done, 1);
 });
+
+// Every other name that lands in the same field is on the page too, spelled
+// out rather than counted: somebody looking for `borderTopLeftRadius` wants to
+// know whether it works, and a row that only says `borderRadius` cannot tell
+// them.
+test('the other spellings of one field are listed under its row', () => {
+  const page = render(
+    inventoryOf([
+      {
+        name: 'borderRadii',
+        kind: 'style',
+        javascript: 'borderRadius',
+        spellings: ['borderTopLeftRadius', 'borderEndEndRadius'],
+      },
+    ]),
+    dataOf({'BaseViewProps.borderRadii': {linux: 'yes', macos: 'yes'}}),
+  );
+  assert.match(page, /`borderTopLeftRadius`/);
+  assert.match(page, /`borderEndEndRadius`/);
+  // One row, not three: the spellings are part of the feature cell.
+  assert.equal(page.split('\n').filter((line) => line.includes('borderRadius')).length, 1);
+});
+
+// Yoga's props come out of the scrape as a struct of their own, with the Flow
+// type they were read from rather than the whole list of style types: the
+// others are read from five, and these from one.
+test('a struct that names its own style types says so and not the rest', () => {
+  const inventory = inventoryOf(['padding']);
+  inventory.styleTypes = [{file: 'a.js', types: ['____ViewStyle_InternalBase']}];
+  inventory.structs[0].styleFrom = ['____LayoutStyle_Internal'];
+  const page = render(inventory, dataOf({
+    'BaseViewProps.padding': {linux: 'upstream', macos: 'upstream', why: 'because'},
+  }));
+  assert.match(page, /Read from `____LayoutStyle_Internal`\./);
+  assert.doesNotMatch(page, /____ViewStyle_InternalBase/);
+});
+
+// And a struct that declares no style types at all gets no "read from" line,
+// which is the group whose names are declared in JavaScript and read by
+// nothing: its own note is what says where they come from.
+test('a struct with no style types of its own gets no read-from line', () => {
+  const inventory = inventoryOf(['userSelect']);
+  inventory.styleTypes = [{file: 'a.js', types: ['____ViewStyle_InternalBase']}];
+  inventory.structs[0].styleFrom = [];
+  const page = render(inventory, dataOf({
+    'BaseViewProps.userSelect': {linux: 'no', macos: 'no', why: 'because'},
+  }));
+  assert.doesNotMatch(page, /Read from/);
+});

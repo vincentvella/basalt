@@ -161,6 +161,10 @@ if command -v node >/dev/null 2>&1; then
   # has to be what the data renders to.
   step "support matrix tests" node --test scripts/test_check_support.js
   step "support matrix" node scripts/check_support.js --check
+  # The scrape's own accounting, which is what says every style name a `style`
+  # takes has a row. Not `scrape_props.py --check`, which fetches React Native
+  # from GitHub and so cannot run offline or in CI.
+  step "prop scrape tests" python3 scripts/test_scrape_props.py
   # Not scripts/scrape_props.py --check, which reads React Native's headers from
   # GitHub at the pinned tag and so needs the network. The committed inventory is
   # what the check above renders from; run the scraper by hand -- with --from-pin

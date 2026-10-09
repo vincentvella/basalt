@@ -13,25 +13,49 @@ Three desktops, three native toolkits, and not the same amount finished on
 each. One row per attribute, with anything short of done linking to the entry
 that says what is missing and which call would do it.
 
-The attributes are React Native's own, read out of its headers rather than listed
-here: this page is generated from `3` prop structs of React
-Native 0.87.1, so a prop added upstream turns up as a row with no
-status and fails the check until somebody fills it in.
+The attributes are React Native's own, read out of its declarations rather than
+listed here: `scripts/scrape_props.py` scrapes React Native 0.87.1
+and this renders what it found, so a prop added upstream turns up as a row
+with no status and fails the check until somebody fills it in.
+
+**Every style name a `<View>` or a `<Text>` takes has a row.** Most are
+fields in one of ReactCommon's prop structs. The rest belong to Yoga:
+`padding`, `margin`, `flex`, `inset`, `gap` and their spellings, which no
+struct declares one by one, because `YogaStylableProps` carries a single
+`yogaStyle` field. Those names come from React Native's own
+`____LayoutStyle_Internal` and sit in a section of their own. A handful are
+declared in JavaScript and read by no struct at all, and they are listed too,
+because an app can still write them.
+
+The scrape reports any style name that is none of those three, which is what
+makes this list complete rather than long: the layout props were missing from
+this page until somebody went looking for `padding`, and nothing could have
+said so.
+
+**What is not here yet**: an `<Image>`'s own four style names, which come
+from a sixth Flow type this does not read, and the props of `<Image>` and
+`<TextInput>`, which have ReactCommon structs of their own that nothing
+scrapes. The Image section near the bottom is hand-written and covers some
+of it; `backlog/image.md` and `backlog/textinput.md` record the rest.
 
 Each struct is split the way reactnative.dev splits a component page: the
 style props a `style={{...}}` takes, then the props written on the element
 itself. That split is read from React Native too, out of the Flow types that
 declare both, so a prop that moves between them moves here. Where
 ReactCommon spells a prop differently from JavaScript, the name an app writes
-is the one in the row and ReactCommon's is under it.
+is the one in the row and ReactCommon's is under it; where several names land
+in one field, as thirteen corner radii land in `borderRadii`, they are listed
+under the row that implements them.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 64 of 96 | 66 of 96 | 46 of 96 |
-| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `██████████░░░░░░░░░░` |
+| Done | 141 of 184 | 143 of 184 | 123 of 184 |
+| | `███████████████░░░░░` | `████████████████░░░░` | `█████████████░░░░░░░` |
 
-Counting a row as done when the host implements it or ReactCommon does.
+Counting a row as done when the host implements it, or when ReactCommon or
+Yoga does it for every host: a layout prop never reaches one of these
+toolkits, so there is nothing for a host to implement and nothing to claim.
 
 | | |
 | --- | --- |
@@ -59,8 +83,8 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 | --- | --- | --- | --- | --- |
 | `opacity` | ✅ | ✅ | ✅ |  |
 | `backgroundColor` | ✅ | ✅ | ✅ |  |
-| `borderRadius` <sub>`borderRadii`</sub> | ✅ | ✅ | ✅ |  |
-| `borderColor` <sub>`borderColors`</sub> | ✅ | ✅ | ✅ |  |
+| `borderRadius` <sub>`borderRadii`</sub><br/><sub>`borderTopLeftRadius` `borderTopRightRadius` `borderBottomLeftRadius` `borderBottomRightRadius` `borderTopStartRadius` `borderTopEndRadius` `borderBottomStartRadius` `borderBottomEndRadius` `borderStartStartRadius` `borderStartEndRadius` `borderEndStartRadius` `borderEndEndRadius`</sub> | ✅ | ✅ | ✅ |  |
+| `borderColor` <sub>`borderColors`</sub><br/><sub>`borderTopColor` `borderBottomColor` `borderLeftColor` `borderRightColor` `borderStartColor` `borderEndColor` `borderBlockColor` `borderBlockStartColor` `borderBlockEndColor`</sub> | ✅ | ✅ | ✅ |  |
 | `borderCurve` <sub>`borderCurves`</sub> | – | – | – | [only the iOS view config declares it, and the two desktops would draw different corners](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `borderStyle` <sub>`borderStyles`</sub> | ✅ | ✅ | ✅ |  |
 | `outlineColor` | ✅ | ✅ | ✅ |  |
@@ -74,7 +98,7 @@ Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____Shado
 | `cursor` | ✅ | ✅ | ✖ | [WM_SETCURSOR needs a hit test](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `boxShadow` | ✅ | ✅ | ✖ | [CLSID_D2D1Shadow](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `filter` | ✅ | ◐ | ✖ | [macOS draws the first of a list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md) |
-| `backgroundImage` | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `experimental_backgroundImage` <sub>`backgroundImage`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `experimental_backgroundSize` <sub>`backgroundSize`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `experimental_backgroundPosition` <sub>`backgroundPosition`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `experimental_backgroundRepeat` <sub>`backgroundRepeat`</sub> | ✅ | ✅ | ✖ | [the gradient brushes](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
@@ -205,6 +229,141 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | `isPressable` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `layoutDirection` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textEffects` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+
+## ParagraphAttributes
+
+What belongs to a whole paragraph rather than to a fragment: how many lines it may take, how it is truncated, and whether it shrinks to fit. From `packages/react-native/ReactCommon/react/renderer/attributedstring/ParagraphAttributes.h`.
+
+### Style props
+
+Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`, `____ShadowStyle_InternalCore`, `____ViewStyle_InternalBase`, `____TextStyle_InternalBase`, `____TransformStyle_Internal`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `includeFontPadding` | – | – | – | [Android's own: ReactCommon declares it in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textAlignVertical` | ✖ | ✖ | ✖ | [no engine here aligns a paragraph inside its box yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `numberOfLines` <sub>`maximumNumberOfLines`</sub> | ✅ | ✅ | ✅ |  |
+| `ellipsizeMode` | ✅ | ✅ | ✅ |  |
+| `textBreakStrategy` | – | – | – | [Android's own: ReactCommon declares it in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `adjustsFontSizeToFit` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `android_hyphenationFrequency` | – | – | – | [Android's own: ReactCommon declares it in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `minimumFontScale` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `minimumFontSize` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `maximumFontSize` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+
+## YogaStylableProps
+
+Everything Yoga lays out with: padding, margin, flex, inset, gap and the rest. This struct carries one field, `yogaStyle`, so these names come from React Native's own `____LayoutStyle_Internal` instead. From `packages/react-native/ReactCommon/react/renderer/components/view/YogaStylableProps.h`.
+
+### Style props
+
+Written inside `style={{...}}`. Read from `____LayoutStyle_Internal`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `alignContent` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `alignItems` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `alignSelf` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `aspectRatio` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `borderBottomWidth` | ✅ | ✅ | ✅ |  |
+| `borderEndWidth` | ✅ | ✅ | ✅ |  |
+| `borderLeftWidth` | ✅ | ✅ | ✅ |  |
+| `borderRightWidth` | ✅ | ✅ | ✅ |  |
+| `borderStartWidth` | ✅ | ✅ | ✅ |  |
+| `borderTopWidth` | ✅ | ✅ | ✅ |  |
+| `borderWidth` | ✅ | ✅ | ✅ |  |
+| `bottom` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `boxSizing` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `columnGap` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `direction` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `display` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `end` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `flex` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `flexBasis` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `flexDirection` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `flexGrow` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `flexShrink` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `flexWrap` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `gap` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `height` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `inset` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `insetBlock` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `insetBlockEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `insetBlockStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `insetInline` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `insetInlineEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `insetInlineStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `justifyContent` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `left` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `margin` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginBlock` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginBlockEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginBlockStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginBottom` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginHorizontal` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginInline` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginInlineEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginInlineStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginLeft` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginRight` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginTop` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `marginVertical` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `maxHeight` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `maxWidth` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `minHeight` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `minWidth` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `overflow` | ✅ | ✅ | ✅ |  |
+| `padding` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingBlock` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingBlockEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingBlockStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingBottom` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingHorizontal` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingInline` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingInlineEnd` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingInlineStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingLeft` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingRight` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingStart` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingTop` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `paddingVertical` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `position` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `right` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `rowGap` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `start` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `top` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+| `width` | △ | △ | △ | [Yoga computes it and every host applies the frame it answers with](https://github.com/vincentvella/basalt/blob/main/docs/DECISIONS.md) |
+
+## StyleSheetTypes
+
+Style names JavaScript declares and no ReactCommon struct these hosts read takes. An app can write them, so they are listed; what each one's status says is where it actually goes. From `packages/react-native/Libraries/StyleSheet/StyleSheetTypes.js`.
+
+### Style props
+
+Written inside `style={{...}}`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `elevation` | – | – | – | [Android's shadow prop, declared in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
+| `userSelect` | ✖ | ✖ | ✖ | [ReactCommon declares no field for it, and text is not selectable here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `verticalAlign` | ✖ | ✖ | ✖ | [no engine here aligns a paragraph inside its box yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ## Image
 
