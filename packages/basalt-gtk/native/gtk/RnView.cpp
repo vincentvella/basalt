@@ -246,6 +246,8 @@ struct _RnView {
   // The tags of the views in this one's LABELLED_BY relation, for the tree dump:
   // GTK holds the references itself and will not say what they are.
   GArray *labelled_by;
+  // The resolved `experimental_accessibilityOrder`, by tag, for the dump.
+  GArray *accessibility_order;
   // The last text this view announced as a live region. See rn_view_announce.
   char *last_announcement;
   GdkRGBA border_colors[4];
@@ -1124,6 +1126,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_object(&self->texture);
   g_clear_pointer(&self->role_name, g_free);
   g_clear_pointer(&self->test_id, g_free);
+  g_clear_pointer(&self->accessibility_order, g_array_unref);
   g_clear_pointer(&self->native_id, g_free);
   g_clear_pointer(&self->cursor_name, g_free);
   g_clear_pointer(&self->blend_name, g_free);
@@ -1186,6 +1189,7 @@ static void rn_view_init(RnView *self) {
   self->box_shadows = nullptr;
   self->gradients = nullptr;
   self->labelled_by = nullptr;
+  self->accessibility_order = nullptr;
   self->last_announcement = nullptr;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
@@ -1489,24 +1493,18 @@ const char *rn_view_get_last_announcement(RnView *self) {
   return self->last_announcement;
 }
 
-void rn_view_set_labelled_by(RnView *self, RnView **labels, int count) {
-  g_return_if_fail(RN_IS_VIEW(self));
-
-  const guint wanted = labels != nullptr && count > 0 ? static_cast<guint>(count) : 0;
-  if (wanted == 0) {
-    g_clear_pointer(&self->labelled_by, g_array_unref);
-    gtk_accessible_reset_relation(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_RELATION_LABELLED_BY);
+// One accessible relation that takes a list of views, applied or reset.
+//
+// Shared by `labelled-by` and the reading order, which differ only in the
+// relation and in which tags the dump remembers. The awkward parts below are
+// GTK's and are the same for both.
+static void rn_view_apply_relation_list(RnView *self,
+                                        GtkAccessibleRelation relation,
+                                        RnView **views,
+                                        guint count) {
+  if (count == 0) {
+    gtk_accessible_reset_relation(GTK_ACCESSIBLE(self), relation);
     return;
-  }
-
-  if (self->labelled_by == nullptr) {
-    self->labelled_by = g_array_sized_new(FALSE, FALSE, sizeof(int), wanted);
-  } else {
-    g_array_set_size(self->labelled_by, 0);
-  }
-  for (guint i = 0; i < wanted; i++) {
-    const int tag = rn_view_get_tag(labels[i]);
-    g_array_append_val(self->labelled_by, tag);
   }
 
 #if GTK_CHECK_VERSION(4, 14, 0)
@@ -1514,15 +1512,15 @@ void rn_view_set_labelled_by(RnView *self, RnView **labels, int count) {
   // not known where the call is written: `gtk_accessible_update_relation` takes
   // its references as varargs.
   //
-  // Built from a GList rather than from the array already in hand, because
+  // Built from a GList rather than from an array, because
   // `gtk_accessible_list_new_from_array` is unusable: its guard reads
   // `accessibles == NULL || n_accessibles == 0`, so every non-empty array is
   // refused with a Gtk-CRITICAL and a NULL return. Measured on GTK 4.22.4, and
   // recorded in backlog/upstream.md -- `new_from_list` has the right guard and
   // the same effect.
   GList *references = nullptr;
-  for (guint i = wanted; i > 0; i--) {
-    references = g_list_prepend(references, labels[i - 1]);
+  for (guint i = count; i > 0; i--) {
+    references = g_list_prepend(references, views[i - 1]);
   }
   GtkAccessibleList *list = gtk_accessible_list_new_from_list(references);
   g_list_free(references);
@@ -1532,20 +1530,58 @@ void rn_view_set_labelled_by(RnView *self, RnView **labels, int count) {
   // GtkAccessibleList has no unref of its own to pair with that copy. The
   // g_value_unset below is what frees it.
   g_value_take_boxed(&value, list);
-  GtkAccessibleRelation relation = GTK_ACCESSIBLE_RELATION_LABELLED_BY;
   gtk_accessible_update_relation_value(GTK_ACCESSIBLE(self), 1, &relation, &value);
   g_value_unset(&value);
 #else
   // GTK 4.10 to 4.13, which this project still supports: GtkAccessibleList
   // arrived in 4.14, and the varargs form can only carry a list written out in
   // full. The first reference is taken and the rest are dropped, one label being
-  // what the prop almost always carries.
-  gtk_accessible_update_relation(GTK_ACCESSIBLE(self),
-                                 GTK_ACCESSIBLE_RELATION_LABELLED_BY,
-                                 labels[0],
-                                 nullptr,
-                                 -1);
+  // what `labelled-by` almost always carries.
+  gtk_accessible_update_relation(GTK_ACCESSIBLE(self), relation, views[0], nullptr, -1);
 #endif
+}
+
+// The tags a relation resolved to, remembered for the tree dump.
+static void rn_view_remember_tags(GArray **into, RnView **views, guint count) {
+  if (count == 0) {
+    g_clear_pointer(into, g_array_unref);
+    return;
+  }
+  if (*into == nullptr) {
+    *into = g_array_sized_new(FALSE, FALSE, sizeof(int), count);
+  } else {
+    g_array_set_size(*into, 0);
+  }
+  for (guint i = 0; i < count; i++) {
+    const int tag = rn_view_get_tag(views[i]);
+    g_array_append_val(*into, tag);
+  }
+}
+
+void rn_view_set_labelled_by(RnView *self, RnView **labels, int count) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const guint wanted = labels != nullptr && count > 0 ? static_cast<guint>(count) : 0;
+  rn_view_remember_tags(&self->labelled_by, labels, wanted);
+  rn_view_apply_relation_list(
+      self, GTK_ACCESSIBLE_RELATION_LABELLED_BY, labels, wanted);
+}
+
+// `experimental_accessibilityOrder`: the children this view wants read, in that
+// order.
+//
+// ARIA's `aria-flowto`, which GTK spells `GTK_ACCESSIBLE_RELATION_FLOW_TO`:
+// "from here, read these next". Set on the view that asked rather than as a
+// chain between the children -- `c1` flows to `c2`, `c2` to `c3` -- which is
+// the other reading of the same relation. One call on one view is resettable in
+// one call and needs no record of which children were in the last order;
+// backlog/accessibility.md records the choice and the alternative.
+void rn_view_set_accessibility_order(RnView *self, RnView **children, int count) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const guint wanted = children != nullptr && count > 0 ? static_cast<guint>(count) : 0;
+  rn_view_remember_tags(&self->accessibility_order, children, wanted);
+  rn_view_apply_relation_list(self, GTK_ACCESSIBLE_RELATION_FLOW_TO, children, wanted);
 }
 
 void rn_view_set_accessible_role_description(RnView *self, const char *description) {
@@ -2630,6 +2666,16 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
     for (guint i = 0; i < self->labelled_by->len; i++) {
       g_string_append_printf(
           out, "%s%d", i == 0 ? "" : ",", g_array_index(self->labelled_by, int, i));
+    }
+  }
+  // The resolved reading order, by tag and in the order the app asked for,
+  // which is the whole point of the prop: the tags are Fabric's, so the two
+  // hosts print the same line.
+  if (self->accessibility_order != nullptr && self->accessibility_order->len > 0) {
+    g_string_append(out, " a11y-order=");
+    for (guint i = 0; i < self->accessibility_order->len; i++) {
+      g_string_append_printf(
+          out, "%s%d", i == 0 ? "" : ",", g_array_index(self->accessibility_order, int, i));
     }
   }
   if (self->texture != nullptr) {

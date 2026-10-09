@@ -90,9 +90,27 @@ function App() {
         </Pressable>
       </View>
 
-      <View style={styles.row}>
-        <View style={styles.chip} accessibilityRole="link" accessibilityLabel="Documentation" />
-        <View style={styles.chip} accessibilityRole="adjustable" accessibilityLabel="Volume" />
+      {/* experimental_accessibilityOrder: the children this row wants read, in
+          an order that is deliberately not the mount order. Cast because
+          `ReactNativeApi.d.ts` does not declare it at v0.87.1 although the Flow
+          types and the Android view config both do, which is the gap
+          backlog/upstream.md entry 19 records and the reason the pinned
+          TypeScript job is the one that would catch it. */}
+      <View
+        style={styles.row}
+        {...({experimental_accessibilityOrder: ['volume', 'docs']} as object)}>
+        <View
+          style={styles.chip}
+          nativeID="docs"
+          accessibilityRole="link"
+          accessibilityLabel="Documentation"
+        />
+        <View
+          style={styles.chip}
+          nativeID="volume"
+          accessibilityRole="adjustable"
+          accessibilityLabel="Volume"
+        />
         <View style={styles.chip} accessibilityRole="list" accessibilityLabel="Results" />
       </View>
 

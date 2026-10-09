@@ -4334,6 +4334,73 @@ def test_modal_view(bundle: Path) -> None:
         raise Failure(f"the modal flag landed on the wrong view.\n{modal[0]}")
 
 
+def test_accessibility_order(bundle: Path) -> None:
+    """`experimental_accessibilityOrder` reaches the view, resolved to tags.
+
+    A parent lists its children by `nativeID` in the order a screen reader
+    should read them, which is the one accessibility prop that needs a *lookup*
+    rather than a value: the ids name views that may not have mounted yet.
+    `core/LabelRegistry.h` already did that for `accessibilityLabelledBy` and
+    now holds both relations against one index.
+
+    Each host expresses it in its own way and the dump prints neither: GTK sets
+    `aria-flowto`, AppKit replaces `accessibilityChildren`, and the line here is
+    the resolved tags in the order the app asked for. That is the half worth
+    asserting end to end, since the ids have to survive the JavaScript side as
+    well: `experimental_accessibilityOrder` is declared in the Android view
+    config and *not* in `ReactNativeApi.d.ts`, so the app casts and only a real
+    run can say whether React sent it.
+
+    Windows reads no reading order yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("UIA has no reading-order property; the tree order is the order")
+
+    app = bundle_app(bundle.parent, "a11y")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltA11y"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    ordered = [line for line in tree.splitlines() if "a11y-order=" in line]
+    if len(ordered) != 1:
+        raise Failure(
+            f"{len(ordered)} views report a reading order; e2e/a11y.tsx sets one.\n{tree}"
+        )
+    tags = re.search(r"a11y-order=([\d,]+)", ordered[0])
+    if tags is None:
+        raise Failure(f"could not read the order off the line.\n{ordered[0]}")
+    resolved = [int(tag) for tag in tags.group(1).split(",")]
+    if len(resolved) != 2:
+        raise Failure(
+            f"the order resolved to {len(resolved)} views; the app named two.\n{ordered[0]}"
+        )
+    # The app asked for the *second* child before the first, so the tags come
+    # back descending. An order that silently followed the mount order would
+    # come back ascending, which is the failure this is here to catch.
+    if resolved[0] < resolved[1]:
+        raise Failure(
+            "the reading order is the mount order; the app asked for the "
+            f"second child first.\n{ordered[0]}"
+        )
+
+
 def test_accessibility_live_region(bundle: Path) -> None:
     """`accessibilityLiveRegion` reads a status message out when it changes.
 
@@ -6569,6 +6636,7 @@ SCENARIOS = [
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("a testID reaches the view and the platform", test_test_id),
     ("accessibilityViewIsModal reaches the view", test_modal_view),
+    ("experimental_accessibilityOrder resolves to views", test_accessibility_order),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),
     ("a window reports its own size, and the state changes that are not resizes",
      test_window),

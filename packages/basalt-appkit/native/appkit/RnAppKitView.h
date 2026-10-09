@@ -573,6 +573,11 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // hosts. backlog/accessibility.md records that.
 - (void)setRnLabelledBy:(nullable NSArray<RnAppKitView *> *)labels;
 
+// `experimental_accessibilityOrder`, resolved: the children this view wants a
+// screen reader to read, in that order. Sets `accessibilityChildren`, which is
+// what VoiceOver walks in place of the view hierarchy.
+- (void)setRnAccessibilityOrder:(nullable NSArray<RnAppKitView *> *)children;
+
 // The text of this view and everything inside it, as a screen reader would read
 // it: each paragraph's string in tree order, separated by single spaces.
 //

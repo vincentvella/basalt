@@ -282,6 +282,23 @@ void GtkMountingManager::applyLabelRelations() {
     }
     rn_view_set_labelled_by(view, resolved.data(), static_cast<int>(resolved.size()));
   }
+
+  // The reading order, from the same registry and on the same terms: only what
+  // changed, and an empty list is a view that stopped asking.
+  for (const auto &change : labels_.orderChanges()) {
+    RnView *view = viewForTag(change.tag);
+    if (view == nullptr) {
+      continue;
+    }
+    std::vector<RnView *> children;
+    children.reserve(change.labels.size());
+    for (const facebook::react::Tag tag : change.labels) {
+      if (RnView *child = viewForTag(tag); child != nullptr) {
+        children.push_back(child);
+      }
+    }
+    rn_view_set_accessibility_order(view, children.data(), static_cast<int>(children.size()));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1123,6 +1140,10 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // needs: that prop names other views by their nativeID and nothing else here
   // can look one up. See core/LabelRegistry.h.
   labels_.setNativeId(shadowView.tag, props->nativeId);
+  // `experimental_accessibilityOrder`, which names children by their nativeID
+  // the way `accessibilityLabelledBy` names labels, and is resolved by the same
+  // registry for the same reason: a view can be named before it mounts.
+  labels_.setAccessibilityOrder(shadowView.tag, props->accessibilityOrder);
 
   // overflow: 'hidden'. React Native's default is 'visible', which is why the
   // phase-1 screenshots show a child outgrowing its shrunk parent.

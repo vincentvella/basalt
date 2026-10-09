@@ -152,6 +152,10 @@
     "win-reading-direction": {
       "text": "IDWriteTextLayout::SetReadingDirection, and a natural alignment that follows it",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-reading-order": {
+      "text": "UIA has no reading-order property: the tree order is the order",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     }
   },
   "statuses": {
@@ -399,10 +403,14 @@
       "windows": "yes"
     },
     "AccessibilityProps.accessibilityOrder": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "yes",
+      "macos": "yes",
       "windows": "no",
-      "why": "a11y-ignored"
+      "why": "win-reading-order",
+      "reads": [
+        "setAccessibilityOrder",
+        "accessibilityOrder"
+      ]
     },
     "AccessibilityProps.accessibilityLabelledBy": {
       "linux": "yes",

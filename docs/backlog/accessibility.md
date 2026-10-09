@@ -9,7 +9,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
 4. accessibilityActions is ignored (~~accessibilityLabelledBy~~ and
    ~~accessibilityLiveRegion~~ are done on GTK and AppKit)
-5. Twelve more AccessibilityProps fields that no host reads, counted rather
+5. Eleven more AccessibilityProps fields that no host reads, counted rather
    than guessed
 
 - Not tested against a real screen reader. GTK's assertions say the properties
@@ -147,15 +147,15 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   (`focus_*`) and two on AppKit. A view that stops being accessible leaves the
   tab order, which is the part that had to be got right rather than added.
 
-- **Twelve more fields that no host reads, counted 2026-10-09.** Walking
+- **Eleven more fields that no host reads, counted 2026-10-09.** Walking
   `AccessibilityProps` field by field, which is what `scripts/scrape_props.py`
   now does for the support page: what the three hosts read is `accessible`,
   `accessibilityState`, `accessibilityLabel`, `accessibilityRole`,
   `accessibilityHint`, `accessibilityElementsHidden` and
   `importantForAccessibility`, plus `accessibilityValue`,
   `accessibilityLabelledBy` and `accessibilityLiveRegion` on GTK and AppKit, and
-  `testId` and `accessibilityViewIsModal` on all three. Everything else in the
-  struct is ignored.
+  `testId` and `accessibilityViewIsModal` on all three, and `accessibilityOrder`
+  on GTK and AppKit. Everything else in the struct is ignored.
 
   **Which splits three ways rather than being one gap.** Six are iOS's own with
   no desktop equivalent -- `accessibilityTraits`, `accessibilityLargeContentTitle`,
@@ -164,9 +164,31 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   family, which is entry 2: `accessibilityActions`, `onAccessibilityAction`,
   `onAccessibilityTap` and `accessibilityRespondsToUserInteraction`.
 
-  The remaining two are `accessibilityOrder`, which is the reading order and
-  which AT-SPI has as a relation and NSAccessibility as
-  `accessibilityChildren`, and `accessibilityLanguage`.
+  What is left of that list is `accessibilityLanguage`.
+
+  **`accessibilityOrder` came off it on 2026-10-09**, and it is the one prop
+  here that needed a *lookup* rather than a value: a parent lists its children
+  by `nativeID`, and an id can name a view that has not mounted yet.
+  `core/LabelRegistry.h` already solved that for `accessibilityLabelledBy`, so
+  it now holds both relations against one `nativeID` index -- two classes would
+  have meant two answers to "which view is called that", and they would
+  disagree the first time a view changed its id.
+
+  The two hosts say it differently, and that is the toolkits rather than a
+  choice:
+
+  - GTK sets `GTK_ACCESSIBLE_RELATION_FLOW_TO` on the view that asked, which is
+    ARIA's `aria-flowto`: "from here, read these next". The other reading of the
+    same relation is a chain between the children, `c1` flows to `c2` and `c2`
+    to `c3`. One call on one view was taken instead, because it is resettable in
+    one call and needs no record of which children were in the last order; a
+    chain would need both.
+  - AppKit replaces `accessibilityChildren`, which is what VoiceOver walks in
+    place of the view hierarchy. GTK has no equivalent override, its accessible
+    tree following the widget tree, which is why the two are not the same call.
+
+  Windows is recorded rather than done: UIA has no reading-order property at
+  all, the tree order being the order, so there is nothing to set.
 
   **`accessibilityLanguage` was written here as "one attribute on each
   platform", and that is wrong.** Checked against the three SDKs on 2026-10-09:

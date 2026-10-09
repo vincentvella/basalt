@@ -232,6 +232,22 @@ void AppKitMountingManager::applyLabelRelations() {
     }
     [view setRnLabelledBy:resolved];
   }
+
+  // The reading order, from the same registry and on the same terms: only what
+  // changed, and an empty list is a view that stopped asking.
+  for (const auto &change : labels_.orderChanges()) {
+    RnAppKitView *view = viewForTag(change.tag);
+    if (view == nil) {
+      continue;
+    }
+    NSMutableArray<RnAppKitView *> *children = [NSMutableArray array];
+    for (const facebook::react::Tag tag : change.labels) {
+      if (RnAppKitView *child = viewForTag(tag); child != nil) {
+        [children addObject:child];
+      }
+    }
+    [view setRnAccessibilityOrder:children];
+  }
 }
 
 namespace {
@@ -886,6 +902,10 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
   // needs: that prop names other views by their nativeID and nothing else here
   // can look one up. See core/LabelRegistry.h.
   labels_.setNativeId(shadowView.tag, props->nativeId);
+  // `experimental_accessibilityOrder`, which names children by their nativeID
+  // the way `accessibilityLabelledBy` names labels, and is resolved by the same
+  // registry for the same reason: a view can be named before it mounts.
+  labels_.setAccessibilityOrder(shadowView.tag, props->accessibilityOrder);
 
   // `testID`, which is not `nativeID`: one is how an app names a view to
   // itself, the other is how something outside the process finds it.

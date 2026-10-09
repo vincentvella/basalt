@@ -351,3 +351,42 @@ TEST(a_modal_view_sets_accessibility_modal) {
     EXPECT(std::string([view describeTree].UTF8String).find(" modal") == std::string::npos);
   }
 }
+
+// `experimental_accessibilityOrder`: the children a view wants read, in the
+// order it gave rather than the order they mounted.
+//
+// AppKit expresses it by replacing `accessibilityChildren`, which is what
+// VoiceOver walks in place of the view hierarchy. GTK says the same thing as an
+// `aria-flowto` relation, its accessible tree following the widget tree with no
+// equivalent override; both print the resolved tags, so the dumps compare.
+TEST(an_accessibility_order_replaces_the_accessibility_children) {
+  @autoreleasepool {
+    RnAppKitView *parent = [RnAppKitView viewWithTag:10];
+    RnAppKitView *first = [RnAppKitView viewWithTag:20];
+    RnAppKitView *second = [RnAppKitView viewWithTag:30];
+
+    // What AppKit answers for itself, which is not nil: `accessibilityChildren`
+    // is computed from the view hierarchy when nothing overrides it, so the
+    // assertion below is about the content and not about the property being
+    // unset. Measured rather than assumed -- the first version of this test
+    // expected nil and failed on the line before the feature was exercised.
+    const NSUInteger byHierarchy = parent.accessibilityChildren.count;
+
+    // Deliberately not the tag order: the prop exists to override it.
+    [parent setRnAccessibilityOrder:@[second, first]];
+    EXPECT(parent.accessibilityChildren.count == 2);
+    EXPECT(parent.accessibilityChildren.firstObject == second);
+    EXPECT(parent.accessibilityChildren.lastObject == first);
+    EXPECT(std::string([parent describeTree].UTF8String).find("a11y-order=30,20")
+           != std::string::npos);
+
+    // Taken away again puts the view hierarchy back, which is what a view that
+    // stopped asking means. The setter passes nil rather than an empty array:
+    // an empty array is a claim that the view has no accessible children at
+    // all, where nil is "ask the hierarchy", which is what this reads back.
+    [parent setRnAccessibilityOrder:@[]];
+    EXPECT_EQ(parent.accessibilityChildren.count, byHierarchy);
+    EXPECT(std::string([parent describeTree].UTF8String).find("a11y-order=")
+           == std::string::npos);
+  }
+}

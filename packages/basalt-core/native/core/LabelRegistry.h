@@ -1,5 +1,4 @@
-// Which view a `nativeID` names, and which views are waiting to be labelled by
-// one.
+// Which view a `nativeID` names, and which views are waiting on one.
 //
 // `accessibilityLabelledBy` names other views by their `nativeID` -- "the label
 // for this field is that text over there" -- and nothing else in this project
@@ -21,6 +20,16 @@
 // So this holds both sides and answers which relations have *changed*, which is
 // what a host applies. Asking after every transaction is cheap and is right
 // whatever order things mounted in.
+//
+// ## Two relations, one index
+//
+// `experimental_accessibilityOrder` asks the same question in a different
+// direction: a parent lists its children's `nativeID`s in the order a screen
+// reader should read them. Same bookkeeping, same ordering problem, same need
+// to report only what changed -- and the same `nativeID` index, which is why it
+// is here rather than in a second class. Two classes would mean two answers to
+// "which view is called that", and they would disagree the first time a view
+// changed its id.
 //
 // Header-only, like core/Backface.h, and free of React Native: it takes tags and
 // strings.
@@ -78,11 +87,23 @@ class LabelRegistry {
     labelledBy_[tag] = std::move(ids);
   }
 
-  // A view that has gone away, on either side of a relation.
+  // This view's `experimental_accessibilityOrder`: the ids of its children, in
+  // the order they should be read. Empty forgets it.
+  void setAccessibilityOrder(Tag tag, std::vector<std::string> ids) {
+    if (ids.empty()) {
+      order_.erase(tag);
+      return;
+    }
+    order_[tag] = std::move(ids);
+  }
+
+  // A view that has gone away, on either side of either relation.
   void forget(Tag tag) {
     setNativeId(tag, "");
     labelledBy_.erase(tag);
     applied_.erase(tag);
+    order_.erase(tag);
+    appliedOrder_.erase(tag);
   }
 
   // Nothing to ask about: no view wants a relation, and none has one applied.
@@ -90,7 +111,10 @@ class LabelRegistry {
   // Both halves matter. A host that checked only the first would skip the
   // transaction in which the last relation went away, and the relation it had
   // already applied would stay on the widget for the rest of the screen's life.
-  bool empty() const { return labelledBy_.empty() && applied_.empty(); }
+  bool empty() const {
+    return labelledBy_.empty() && applied_.empty() && order_.empty()
+        && appliedOrder_.empty();
+  }
 
   // The relations whose resolution has changed since the last call, and nothing
   // else: applying an unchanged relation again would tell assistive technology
@@ -99,47 +123,67 @@ class LabelRegistry {
   // An id that names no view yet resolves to nothing, and the view is reported
   // again when the id turns up. A relation whose labels have all gone away is
   // reported with an empty list, which is a host's cue to reset it.
-  std::vector<Resolved> changes() {
+  std::vector<Resolved> changes() { return changesOf(labelledBy_, applied_, true); }
+
+  // The reading orders whose resolution has changed, on the same terms.
+  //
+  // An id that names nothing is dropped rather than skipping the whole order: a
+  // parent that lists four children and has three mounted should read those
+  // three in the order it gave, and take the fourth when it arrives.
+  std::vector<Resolved> orderChanges() { return changesOf(order_, appliedOrder_, false); }
+
+ private:
+  // `excludeSelf` is the difference between the two relations rather than an
+  // option: a view labelled by itself is an app bug worth ignoring, and a
+  // parent is never in its own reading order anyway, so for an order the test
+  // would only cost a comparison per id.
+  std::vector<Resolved> changesOf(
+      const std::unordered_map<Tag, std::vector<std::string>> &wanted,
+      std::unordered_map<Tag, std::vector<Tag>> &applied,
+      bool excludeSelf) {
     std::vector<Resolved> changed;
-    for (const auto &[tag, ids] : labelledBy_) {
+    for (const auto &[tag, ids] : wanted) {
       std::vector<Tag> labels;
       labels.reserve(ids.size());
       for (const std::string &id : ids) {
         const auto found = tagOfNativeId_.find(id);
-        if (found != tagOfNativeId_.end() && found->second != tag) {
+        if (found != tagOfNativeId_.end() && (!excludeSelf || found->second != tag)) {
           labels.push_back(found->second);
         }
       }
-      const auto previous = applied_.find(tag);
-      if (previous != applied_.end() && previous->second == labels) {
+      const auto previous = applied.find(tag);
+      if (previous != applied.end() && previous->second == labels) {
         continue;
       }
-      applied_[tag] = labels;
+      applied[tag] = labels;
       changed.push_back(Resolved{tag, std::move(labels)});
     }
 
     // A view that stopped asking: its relation was applied and is no longer
     // wanted, so it is reported empty once and then forgotten.
-    for (auto it = applied_.begin(); it != applied_.end();) {
-      if (labelledBy_.find(it->first) != labelledBy_.end()) {
+    for (auto it = applied.begin(); it != applied.end();) {
+      if (wanted.find(it->first) != wanted.end()) {
         ++it;
         continue;
       }
       if (!it->second.empty()) {
         changed.push_back(Resolved{it->first, {}});
       }
-      it = applied_.erase(it);
+      it = applied.erase(it);
     }
     return changed;
   }
 
- private:
   std::unordered_map<Tag, std::string> nativeIdOf_;
   std::unordered_map<std::string, Tag> tagOfNativeId_;
   std::unordered_map<Tag, std::vector<std::string>> labelledBy_;
   // What each view's relation was last reported as, so an unchanged one is not
   // reported twice.
   std::unordered_map<Tag, std::vector<Tag>> applied_;
+  // The second relation: which children a view wants read, and what that was
+  // last reported as.
+  std::unordered_map<Tag, std::vector<std::string>> order_;
+  std::unordered_map<Tag, std::vector<Tag>> appliedOrder_;
 };
 
 } // namespace basalt

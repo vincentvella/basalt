@@ -698,3 +698,73 @@ TEST(accessibility_a_plain_view_is_not_modal) {
   g_free(text);
   EXPECT(dump.find(" modal") == std::string::npos);
 }
+
+// `experimental_accessibilityOrder`: the children a view wants read, in the
+// order it gave rather than the order they mounted.
+//
+// GTK expresses it as `aria-flowto`, which is a relation and so can be read
+// back with the test helpers; the dump carries the resolved tags, which is what
+// the AppKit side prints too.
+TEST(accessibility_an_order_becomes_a_flow_to_relation) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  const ShadowView parent = makeAccessibleView(10, [](ViewProps &props) {
+    // Deliberately not the mount order: the prop exists to override it.
+    props.accessibilityOrder = {"second", "first"};
+  });
+  const ShadowView first =
+      makeAccessibleView(20, [](ViewProps &props) { props.nativeId = "first"; });
+  const ShadowView second =
+      makeAccessibleView(30, [](ViewProps &props) { props.nativeId = "second"; });
+
+  ShadowViewMutationList mutations;
+  for (const ShadowView &view : {parent, first, second}) {
+    mutations.push_back(ShadowViewMutation::CreateMutation(view));
+  }
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, parent, 0));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, first, 1));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, second, 2));
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 1, std::move(mutations), TransactionTelemetry{}));
+
+  RnView *view = manager.viewForTag(10);
+  EXPECT(view != nullptr);
+  EXPECT(view != nullptr
+         && gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                             GTK_ACCESSIBLE_RELATION_FLOW_TO));
+
+  char *tree = rn_view_describe_tree(manager.getSurfaceRoot(kSurfaceId));
+  const std::string dumped(tree != nullptr ? tree : "");
+  g_free(tree);
+  // The tags in the order the app asked for, which is the assertion the mount
+  // order cannot accidentally satisfy: 30 before 20.
+  EXPECT(dumped.find("a11y-order=30,20") != std::string::npos);
+}
+
+// A view that stops asking has the relation taken off it, rather than keeping a
+// reading order the app no longer wants.
+TEST(accessibility_an_order_comes_apart_when_the_prop_goes_away) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  const ShadowView parent = makeAccessibleView(10, [](ViewProps &props) {
+    props.accessibilityOrder = {"first"};
+  });
+  const ShadowView first =
+      makeAccessibleView(20, [](ViewProps &props) { props.nativeId = "first"; });
+  mountPair(manager, parent, first, 1);
+
+  RnView *view = manager.viewForTag(10);
+  EXPECT(gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                          GTK_ACCESSIBLE_RELATION_FLOW_TO));
+
+  updateOne(manager, 10, [](ViewProps &props) { props.accessibilityOrder = {}; });
+  EXPECT(!gtk_test_accessible_has_relation(GTK_ACCESSIBLE(view),
+                                           GTK_ACCESSIBLE_RELATION_FLOW_TO));
+
+  char *tree = rn_view_describe_tree(manager.getSurfaceRoot(kSurfaceId));
+  const std::string dumped(tree != nullptr ? tree : "");
+  g_free(tree);
+  EXPECT(dumped.find("a11y-order=") == std::string::npos);
+}

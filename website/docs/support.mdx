@@ -28,7 +28,7 @@ is the one in the row and ReactCommon's is under it.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 63 of 96 | 65 of 96 | 35 of 96 |
+| Done | 64 of 96 | 66 of 96 | 35 of 96 |
 | | `█████████████░░░░░░░` | `██████████████░░░░░░` | `███████░░░░░░░░░░░░░` |
 
 Counting a row as done when the host implements it or ReactCommon does.
@@ -120,7 +120,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `accessible` | ✅ | ✅ | ✅ |  |
 | `accessibilityState` | ✅ | ✅ | ✅ |  |
 | `accessibilityLabel` | ✅ | ✅ | ✅ |  |
-| `experimental_accessibilityOrder` <sub>`accessibilityOrder`</sub> | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `experimental_accessibilityOrder` <sub>`accessibilityOrder`</sub> | ✅ | ✅ | ✖ | [UIA has no reading-order property: the tree order is the order](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityLabelledBy` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `accessibilityLiveRegion` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `accessibilityRole` | ✅ | ✅ | ✅ |  |

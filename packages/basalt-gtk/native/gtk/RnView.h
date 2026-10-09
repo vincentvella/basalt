@@ -588,6 +588,10 @@ const char *rn_view_get_blend_mode(RnView *self);
 // its text does not leave a stale copy behind.
 void rn_view_set_labelled_by(RnView *self, RnView **labels, int count);
 
+// `experimental_accessibilityOrder`, resolved: the children this view wants a
+// screen reader to read, in that order. GTK spells it `aria-flowto`.
+void rn_view_set_accessibility_order(RnView *self, RnView **children, int count);
+
 // The text of this view and everything inside it, as a screen reader would read
 // it: each paragraph's string in tree order, separated by single spaces.
 //

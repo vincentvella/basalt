@@ -480,6 +480,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   NSString *_lastAnnouncement;
   // The tags of the views in this one's labelled-by relation, for the tree dump.
   std::vector<NSInteger> _labelledBy;
+  // The resolved `experimental_accessibilityOrder`, by tag, for the dump.
+  std::vector<NSInteger> _accessibilityOrder;
   NSCursor *_cursor;
   CATransform3D _transform;
   BOOL _hasTransform;
@@ -727,6 +729,22 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   if (labels.count > 0) {
     self.accessibilityElement = YES;
   }
+}
+
+- (void)setRnAccessibilityOrder:(NSArray<RnAppKitView *> *)children {
+  _accessibilityOrder.clear();
+  for (RnAppKitView *child in children) {
+    _accessibilityOrder.push_back(child.rnTag);
+  }
+  // `accessibilityChildren` replaces the children AppKit would have found by
+  // walking the view hierarchy, which is exactly what the prop asks for: a
+  // reading order that is not the mount order. Nil puts the hierarchy back,
+  // which is what a view that stopped asking means.
+  //
+  // GTK says the same thing as a relation -- `aria-flowto` from this view to
+  // each child -- rather than by replacing the children, because GTK's
+  // accessible tree follows the widget tree and has no equivalent override.
+  self.accessibilityChildren = children.count > 0 ? children : nil;
 }
 
 - (void)setRnAccessibleLabel:(NSString *)label hint:(NSString *)hint {
@@ -2727,6 +2745,14 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     [out appendString:@" labelled-by="];
     for (size_t i = 0; i < _labelledBy.size(); i++) {
       [out appendFormat:@"%s%ld", i == 0 ? "" : ",", (long)_labelledBy[i]];
+    }
+  }
+  // The resolved reading order, by tag and in the order the app asked for,
+  // spelled as GTK spells it so the two dumps compare.
+  if (!_accessibilityOrder.empty()) {
+    [out appendString:@" a11y-order="];
+    for (size_t i = 0; i < _accessibilityOrder.size(); i++) {
+      [out appendFormat:@"%s%ld", i == 0 ? "" : ",", (long)_accessibilityOrder[i]];
     }
   }
   if (_image != nullptr) {
