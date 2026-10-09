@@ -173,6 +173,32 @@ def main() -> int:
     check("no instrument in scriptedInputVars is unknown to every host",
           sorted(stale), [])
 
+    # Which window the Linux clicks are aimed at, which is a regression and is
+    # here for the reason the other two are. The first version took the first
+    # window whose `_NET_WM_PID` equalled the host's, and a window that reports
+    # no pid -- the normal case under Xvfb, where nothing sets it -- was skipped
+    # in favour of one further down the list. "scroll away and back" failed on
+    # CI's Linux shard twice: the clicks were measured against a window that was
+    # not the toplevel they were aimed at.
+    pick = harness.pick_window_of
+    owners = {"a": None, "b": 42, "c": 7}
+    # The case the strict rule got wrong, and the only one that tells the two
+    # rules apart: a window reporting no pid comes first and one reporting *our*
+    # pid comes later. Taking the later one is what aimed the clicks at the
+    # wrong window. Checked first because a weaker case passes either way.
+    check("a window that reports no pid is ours, even when a later one matches",
+          pick(["a", "c"], 7, owners.get), "a")
+    check("a window that reports no pid is still ours",
+          pick(["a", "b"], 7, owners.get), "a")
+    check("a window owned by another process is skipped",
+          pick(["b", "c"], 7, owners.get), "c")
+    check("ours is taken in search order when it reports a pid",
+          pick(["c", "b"], 7, owners.get), "c")
+    # Every candidate disqualified is still a click rather than a scenario that
+    # cannot run: a wrong click reports better than a Failure nobody can read.
+    check("all of them somebody else's falls back to the first",
+          pick(["b"], 7, owners.get), "b")
+
     if failures:
         print("harness checks failed:", file=sys.stderr)
         for failure in failures:

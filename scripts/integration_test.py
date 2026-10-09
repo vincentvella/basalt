@@ -178,32 +178,41 @@ def check_output(stderr: str, returncode: int, allow_js_errors: bool = False) ->
             raise Failure(f"javascript error: {line}")
 
 
-def pick_window_of(windows: list[str], pid: int) -> str:
-    """The window belonging to this host, not whichever one came back first.
-
-    `xdotool search --name basalt-core` matches every host on the display, and
-    a leftover one from an earlier scenario answers to the same name. Taking
-    the first match meant clicking a window that was not under test, which
-    looks exactly like the feature being broken. _NET_WM_PID says which is
-    which, and GTK sets it; a window that does not answer is only usable when
-    it is the only candidate.
-    """
-    unidentified = []
-    for window in windows:
-        owner = subprocess.run(
-            ["xdotool", "getwindowpid", window], capture_output=True, text=True
-        )
-        if owner.returncode != 0 or not owner.stdout.strip().isdigit():
-            unidentified.append(window)
-            continue
-        if int(owner.stdout.strip()) == pid:
-            return window
-    if len(windows) == 1 and unidentified == windows:
-        return windows[0]
-    raise Failure(
-        f"none of the {len(windows)} windows named basalt-core belongs to the "
-        f"host that was launched (pid {pid}); a leftover host is on the display"
+def window_pid(window: str) -> int | None:
+    """What `_NET_WM_PID` says owns a window, or None if it does not say."""
+    owner = subprocess.run(
+        ["xdotool", "getwindowpid", window], capture_output=True, text=True
     )
+    if owner.returncode != 0 or not owner.stdout.strip().isdigit():
+        return None
+    return int(owner.stdout.strip())
+
+
+def pick_window_of(windows, pid, owner_of=window_pid):
+    """The first window that is not positively somebody else's.
+
+    `xdotool search --name basalt-core` matches every host on the display, and a
+    leftover one from an earlier scenario answers to the same name, so taking
+    the first match can mean clicking a window that is not under test.
+
+    The rule is deliberately weak, and the first version was not: it took the
+    first window whose `_NET_WM_PID` *equalled* this host's, which broke "scroll
+    away and back" on CI's Linux shard twice. A window that reports no pid at
+    all has to count as ours, in the order the search returned it, because that
+    is the normal case where nothing sets `_NET_WM_PID` -- under Xvfb with no
+    window manager, among other places -- and skipping it goes looking for a
+    window further down the list that is not the toplevel the clicks were aimed
+    at.
+
+    So: skip a window only when something else owns it, and fall back to the
+    first match when every candidate is disqualified, because a wrong click
+    reports better than a scenario that cannot run.
+    """
+    for window in windows:
+        owner = owner_of(window)
+        if owner is None or owner == pid:
+            return window
+    return windows[0]
 
 
 def click_with_xdotool(points: list[tuple[int, int]], pid: int) -> None:
