@@ -162,9 +162,15 @@ const styles = StyleSheet.create({
     width: 60,
     height: 40,
     backgroundImage: 'linear-gradient(90deg, #4d8cf2 0%, #e0484d 100%)',
-    backgroundSize: '20px 20px',
-    backgroundPosition: 'left 5px top 5px',
-    backgroundRepeat: 'repeat',
+    // The `experimental_` names, which are the only ones the pinned React
+    // Native has: v0.87.1 declares `experimental_backgroundSize` and friends in
+    // `validAttributes` and its C++ reads that raw prop, where `main` reads the
+    // plain name *and* falls back to the prefixed one. So the prefixed spelling
+    // is the one that both arrives and type-checks on both, and the plain one
+    // compiled here against a `main` checkout and failed CI against the pin.
+    experimental_backgroundSize: '20px 20px',
+    experimental_backgroundPosition: 'left 5px top 5px',
+    experimental_backgroundRepeat: 'repeat',
   },
   // View flattening, which `collapsable` turns off. A view with nothing to draw
   // -- no background, no border, no shadow -- forms no view at all:

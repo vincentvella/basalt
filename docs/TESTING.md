@@ -36,6 +36,25 @@ Not `npx tsc`. There is an unrelated package on npm called `tsc`, and from a
 directory with no local TypeScript `npx` fetches that one, which prints a banner
 and exits 0. It reported a clean `e2e/` while checking nothing at all.
 
+**The *version* can disagree too, and that is the sharper trap.** The check is
+only as good as the checkout it runs against, and the two differ on purpose:
+`scripts/react-native.pin` is a release, because applications pin releases, and
+development happens against `main`. So a type that exists only on main passes
+here and fails the CI job that gates every other job.
+
+Which happened on 2026-10-09, with a prop that is a good example of the shape:
+`main` declares `backgroundSize` in `ViewStyle` and its C++ reads that raw prop
+*and* falls back to `experimental_backgroundSize`; v0.87.1 declares only the
+prefixed name. A demo app written against main's spelling type-checked locally,
+failed the pinned job in nineteen seconds, and would not have arrived at the C++
+at all on the pin even if it had compiled. The prefixed spelling works on both,
+which is what `e2e/views.tsx` uses and says.
+
+`build_ts.sh` now prints which React Native it is checking against whenever that
+is not the pin. It is a warning rather than an error, because working against
+main is the normal case -- the point is that the next red is obvious rather than
+mysterious.
+
 ## Running one thing
 
 The whole suite is about a quarter of an hour per host, and most changes want

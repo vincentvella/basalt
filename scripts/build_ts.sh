@@ -39,6 +39,25 @@ TSC="$RN_DIR/node_modules/.bin/tsc"
   exit 1
 }
 
+# Which React Native the types come from, said out loud when it is not the one
+# CI uses.
+#
+# This check is only ever as good as the checkout it runs against, and the two
+# differ on purpose: `scripts/react-native.pin` is a release because
+# applications pin releases, and development happens against `main`. So a type
+# that exists only on main type-checks here and fails the CI job that gates
+# everything else -- which is what `experimental_backgroundSize` did on
+# 2026-10-09, green locally and red in the one job that runs first.
+#
+# A warning rather than an error: working against main is the normal case, and a
+# line saying so is enough to make the next red obvious instead of mysterious.
+RN_VERSION="$(node -e 'try { process.stdout.write(require(process.argv[1] + "/package.json").version) } catch (e) { process.stdout.write("unknown") }' "$RN_DIR/packages/react-native" 2>/dev/null || echo unknown)"
+RN_PIN="$(grep -v '^#' "$REPO_ROOT/scripts/react-native.pin" | tr -d '[:space:]')"
+if [ "v$RN_VERSION" != "$RN_PIN" ]; then
+  echo "==> type-checking against React Native $RN_VERSION; CI pins $RN_PIN"
+  echo "    a type that exists in only one of them will not be caught here"
+fi
+
 # Where TypeScript finds `react` and `react-native`.
 #
 # Nothing here has node_modules of its own -- see e2e/package.json -- so tsc
