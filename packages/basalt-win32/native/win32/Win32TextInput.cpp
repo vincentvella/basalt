@@ -237,8 +237,9 @@ void Win32TextInputManager::measureShape(Entry &entry,
 void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props) {
   // The style, through the same translation a <Text> goes through, so a font
   // family or size means the same thing in a field as it does in a label.
-  // fontSizeMultiplier is 1: nothing on this platform scales text for
-  // accessibility settings yet, and passing 0 would multiply the size away.
+  // 1 for fontSizeMultiplier: buildTextStyle applies the text scale itself,
+  // through core/FontScaling.h, so passing one here would square it. On this
+  // host that scale is 1 anyway; DirectWriteLayout.cpp says why.
   const RnTextStyle style = win32::buildTextStyle(props.getEffectiveTextAttributes(1.0F));
 
   entry.textColor = toColorRef(style.color);

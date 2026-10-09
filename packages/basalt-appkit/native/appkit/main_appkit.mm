@@ -29,6 +29,9 @@
 
 #import "AppKitAnimationChoreographer.h"
 #import "AppKitMountingManager.h"
+#import "CoreTextLayout.h"
+
+#include "FontScaling.h"
 
 #include <react/io/ImageLoaderModule.h>
 
@@ -1101,6 +1104,12 @@ int main(int argc, const char *argv[]) {
     // answer the first `Appearance.getColorScheme()` a bundle makes, which for an
     // Expo app is during its first import.
     basalt::startObservingColorScheme();
+
+    // The platform's text scale, which on macOS is 1: appKitTextScale() is
+    // where that is explained. Handed over the same way GTK hands over the one
+    // it reads from GtkSettings, so core/FontScaling.h is the only thing that
+    // decides what `allowFontScaling` means.
+    basalt::setSystemFontScale(basalt::appKitTextScale());
 
     // Before ReactHost, so the beat is being induced from the first event on.
     gHost.runLoopObserver = basalt::installRunLoopObserver(gHost.runLoopObserverManager);

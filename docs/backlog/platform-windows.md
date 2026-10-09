@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (16):**
+**Open (17):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -22,6 +22,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 15. The `outline` family is not drawn
 16. `mixBlendMode` blends nothing
 17. No text shadow, so `textShadowColor` and friends do nothing
+18. The desktop's text scale is not read, so large text does not enlarge text
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -316,6 +317,24 @@ and none of it is a missing half.
   backlog/correctness.md has what the other two decided, including which
   backdrop each of them blends with and why the two differ. The end-to-end
   scenario is skipped here by name.
+
+- **The desktop's text scale is not read, so Windows's large-text setting does
+  not enlarge anything.** `allowFontScaling` and `maxFontSizeMultiplier` *are*
+  read here, through `core/FontScaling.h`, so a `<Text>` that refuses scaling
+  refuses it on all three hosts and a ceiling caps what it caps. What this host
+  passes as the platform's scale is 1.
+
+  The scale exists: `Windows::UI::ViewManagement::UISettings::TextScaleFactor`,
+  which is 1.0 to 2.25 and raises `TextScaleFactorChanged` when the user moves
+  the slider in Settings > Accessibility > Text size. It is WinRT, and this host
+  is Win32 with no WinRT in it, so reaching it means either `RoActivateInstance`
+  by hand or taking a C++/WinRT dependency into a host that has so far needed
+  neither. That is the decision, not the call.
+
+  Until then the group is testable but not useful here: `BASALT_TEST_FONT_SCALE`
+  supplies a scale, which is what the e2e scenario uses on macOS too, since
+  macOS publishes no scale either. The scenario is skipped by name on Windows
+  because the *platform* half is what is missing.
 
 - **No text shadow, so `textShadowColor` and friends do nothing.** The other two
   hosts draw one shadow per paragraph -- the props are per fragment and neither

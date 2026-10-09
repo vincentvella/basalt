@@ -4651,6 +4651,106 @@ def test_mix_blend_mode(bundle: Path) -> None:
         )
 
 
+def test_font_scaling(bundle: Path) -> None:
+    """`allowFontScaling` and `maxFontSizeMultiplier`, against a desktop that scales.
+
+    The pair that decides whether a label grows when the desktop is set to large
+    text. Both hosts multiplied by `fontSizeMultiplier` and read neither of them
+    until 2026-10-09, which is the usual shape of this: the prop that does the
+    work was wired and the two that control it were not.
+
+    `BASALT_TEST_FONT_SCALE` supplies the scale, and is an instrument rather
+    than a shortcut: GTK reads a real one from `GtkSettings:gtk-xft-dpi`, macOS
+    publishes none at all, and a scenario that could only run where the desktop
+    happened to be set to large text would run nowhere. What it does not skip is
+    anything above it -- the scale goes in where the platform's own goes, and
+    core/FontScaling.h decides the rest.
+
+    Three paragraphs in one run. The plain one grows, the one with
+    `allowFontScaling={false}` does not move at all, and the one with
+    `maxFontSizeMultiplier={1.25}` grows by less than the plain one, the scale
+    having asked for 1.6. Heights rather than widths: a width depends on where
+    the card wrapped.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("the Win32 host reads no text scale; UISettings is WinRT")
+
+    app = bundle_app(bundle.parent, "text")
+
+    def heights(scale):
+        env = dict(os.environ)
+        env["BASALT_QUIT_AFTER_MS"] = "3000"
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                     "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                     "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+            env.pop(name, None)
+        if scale is None:
+            env.pop("BASALT_TEST_FONT_SCALE", None)
+        else:
+            env["BASALT_TEST_FONT_SCALE"] = scale
+
+        with tempfile.TemporaryDirectory() as directory:
+            dump = Path(directory) / "tree.txt"
+            env["BASALT_DUMP_TREE"] = str(dump)
+            result = run_host_process(
+                [str(HOST), str(app), "BasaltText"],
+                cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+            )
+            _remember_output(result.stderr)
+            check_output(result.stderr, result.returncode)
+            if not dump.exists():
+                raise Failure("host wrote no widget tree")
+            tree = dump.read_text()
+
+        # By the string each label holds, which is what the dump prints and what
+        # survives a card being reordered.
+        found = {}
+        for label, needle in (
+            ("scaling", "Scales with the desktop"),
+            ("fixed", "Fixed whatever the desktop says"),
+            ("capped", "Capped at a quarter larger"),
+        ):
+            for line in tree.splitlines():
+                if 'text="' + needle + '"' not in line:
+                    continue
+                frame = re.search(r"frame=\(([-\d.]+),([-\d.]+) ([\d.]+)x([\d.]+)\)", line)
+                if frame is None:
+                    raise Failure(f"no frame on the {label} label's line: {line}")
+                found[label] = float(frame.group(4))
+                break
+        if len(found) != 3:
+            raise Failure(
+                "the three font-scaling labels are not all in the tree; "
+                f"found {sorted(found)}.\n{tree}"
+            )
+        return found
+
+    plain = heights(None)
+    scaled = heights("1.6")
+
+    if not scaled["scaling"] > plain["scaling"] + 1.0:
+        raise Failure(
+            "a desktop text scale of 1.6 did not grow a plain paragraph: "
+            f'{plain["scaling"]} -> {scaled["scaling"]}. On GTK the scale comes '
+            "from gtk-xft-dpi and on macOS from nothing at all, so both honour "
+            "the instrument instead; a host ignoring it reads as no change."
+        )
+
+    if abs(scaled["fixed"] - plain["fixed"]) > 0.5:
+        raise Failure(
+            "allowFontScaling={false} grew anyway: "
+            f'{plain["fixed"]} -> {scaled["fixed"]}'
+        )
+
+    # Between the two: a quarter larger rather than three fifths.
+    if not plain["capped"] < scaled["capped"] < scaled["scaling"]:
+        raise Failure(
+            "maxFontSizeMultiplier={1.25} did not cap the growth at a quarter: "
+            f'{plain["capped"]} -> {scaled["capped"]}, while the uncapped '
+            f'paragraph went {plain["scaling"]} -> {scaled["scaling"]}'
+        )
+
+
 def test_text_shadow(bundle: Path) -> None:
     """`textShadowColor`, `textShadowOffset` and `textShadowRadius` reach the view.
 
@@ -6163,6 +6263,7 @@ SCENARIOS = [
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),
     ("a text shadow reaches the paragraph", test_text_shadow),
+    ("a desktop text scale, and the props that refuse it", test_font_scaling),
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),

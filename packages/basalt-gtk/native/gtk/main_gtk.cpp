@@ -36,6 +36,8 @@
 #include <react/io/ImageLoaderModule.h>
 #include "GtkRunLoopObserver.h"
 #include "GtkFocus.h"
+#include "FontScaling.h"
+#include "PangoTextLayout.h"
 #include "LogBoxSurface.h"
 
 #include <react/renderer/animated/NativeAnimatedNodesManagerProvider.h>
@@ -1229,6 +1231,17 @@ HostWindow *createHostWindow(Host *host,
 // TurboModule -- would mean the module knowing what a Host is.
 Host *gWindowHost = nullptr;
 
+// The desktop's text scale changed while the app was running.
+//
+// New text picks the new scale up; text already laid out does not reflow,
+// because nothing here tells Fabric the measurements it cached are stale. The
+// call that would is a dirty-layout on every paragraph, which React Native
+// spells as a `ShadowTree` commit with `forceRemount`; backlog/text.md records
+// it rather than this pretending to do it.
+void onTextScaleChanged(GtkSettings *settings, GParamSpec * /*pspec*/, gpointer /*data*/) {
+  basalt::setSystemFontScale(basalt::gtkTextScale(settings));
+}
+
 void onActivate(GtkApplication *app, gpointer data) {
   auto *host = static_cast<Host *>(data);
 
@@ -1241,6 +1254,15 @@ void onActivate(GtkApplication *app, gpointer data) {
   host->application = app;
   gWindowHost = host;
   createHostWindow(host, app, kSurfaceId, "basalt-core", kInitialWidth, kInitialHeight);
+
+  // The desktop's text scale, on this thread because GtkSettings belongs to it
+  // and text is measured off it. See core/FontScaling.h, which is where
+  // `allowFontScaling` decides whether a fragment honours this at all.
+  GtkSettings *settings = gtk_settings_get_default();
+  basalt::setSystemFontScale(basalt::gtkTextScale(settings));
+  if (settings != nullptr) {
+    g_signal_connect(settings, "notify::gtk-xft-dpi", G_CALLBACK(onTextScaleChanged), nullptr);
+  }
 
   // Prime the bounds cache, which `getBounds()` answers from: without this an
   // app's first render sees a window of no size, and only a later resize

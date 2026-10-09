@@ -156,6 +156,11 @@ def main() -> int:
         "BASALT_TEST_QUIT_FILE",
         # A modifier on BASALT_TEST_TYPE's timing, not an instrument of its own.
         "BASALT_TEST_TYPE_AFTER_MS",
+        # A setting rather than an event: it stands in for a desktop's text
+        # scale, which two of the three platforms do not publish, and is read
+        # once by core/FontScaling.h. Nothing is scheduled for it, so nothing
+        # waits on it.
+        "BASALT_TEST_FONT_SCALE",
     }
 
     unlisted = read_by_hosts - listed - NOT_INPUT

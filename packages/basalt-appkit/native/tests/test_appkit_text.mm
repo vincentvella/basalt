@@ -14,9 +14,13 @@
 #include "TestHarness.h"
 
 #import "CoreTextLayout.h"
+
+#include "FontScaling.h"
 #import "RnTextLayout.h"
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -714,4 +718,65 @@ TEST(text_no_shadow_colour_is_no_shadow) {
     EXPECT(beside[2] > 240);
     CGContextRelease(context);
   }
+}
+
+// The text scale, and the two props that decide whether a fragment honours it.
+//
+// The same question the GTK suite asks, spelled the same way, because the rule
+// is core's and the only thing that differs is which font the scale reaches.
+// macOS reports no scale of its own -- appKitTextScale() says why -- so what is
+// asserted here is that the host passes whatever it is given through to the
+// font, which is what makes the two props mean anything on this platform.
+namespace {
+
+CGFloat pointSizeAt(float scale, std::optional<bool> allowFontScaling,
+                    double maxFontSizeMultiplier) {
+  basalt::setSystemFontScale(scale);
+
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.allowFontScaling = allowFontScaling;
+  attributes.maxFontSizeMultiplier = maxFontSizeMultiplier;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = "scaled";
+  fragment.textAttributes = attributes;
+
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  RnTextLayout *layout = basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+  NSFont *font = [layout.attributedString attribute:NSFontAttributeName
+                                            atIndex:0
+                                     effectiveRange:nullptr];
+  basalt::setSystemFontScale(1.0F);
+  return font != nil ? font.pointSize : 0.0;
+}
+
+} // namespace
+
+TEST(appkit_a_text_scale_reaches_the_font) {
+  @autoreleasepool {
+    EXPECT(std::fabs(pointSizeAt(1.0F, std::nullopt, std::nan("")) - 16.0) < 0.01);
+    EXPECT(std::fabs(pointSizeAt(1.5F, std::nullopt, std::nan("")) - 24.0) < 0.01);
+  }
+}
+
+TEST(appkit_allow_font_scaling_false_keeps_the_size) {
+  @autoreleasepool {
+    EXPECT(std::fabs(pointSizeAt(1.5F, false, std::nan("")) - 16.0) < 0.01);
+    EXPECT(std::fabs(pointSizeAt(1.5F, true, std::nan("")) - 24.0) < 0.01);
+  }
+}
+
+TEST(appkit_max_font_size_multiplier_is_a_ceiling) {
+  @autoreleasepool {
+    EXPECT(std::fabs(pointSizeAt(2.0F, std::nullopt, 1.25) - 20.0) < 0.01);
+    // And it is upstream's rule that a ceiling under 1 is no ceiling at all.
+    EXPECT(std::fabs(pointSizeAt(2.0F, std::nullopt, 0.5) - 32.0) < 0.01);
+  }
+}
+
+TEST(appkit_text_scale_is_one_because_macos_publishes_none) {
+  EXPECT(std::fabs(basalt::appKitTextScale() - 1.0F) < 0.001F);
 }

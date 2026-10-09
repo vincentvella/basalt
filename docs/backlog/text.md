@@ -9,8 +9,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    upstream's
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
 4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation, fontVariant,
-   fontVariationSettings (~~textTransform~~ and ~~textShadow*~~ are done on GTK
-   and AppKit)
+   fontVariationSettings (~~textTransform~~, ~~textShadow*~~ and
+   ~~the font-scaling three~~ are done on GTK and AppKit)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
@@ -161,8 +161,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - Ignored, and now counted: walking `TextAttributes` field by field on
   2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
   -- the fields no host reads are `opacity`, `fontVariant`,
-  `fontVariationSettings`, `allowFontScaling`, `maxFontSizeMultiplier`,
-  `baseWritingDirection`, `textDecorationColor`, `textDecorationStyle`,
+  `fontVariationSettings`, `baseWritingDirection`, `textDecorationColor`,
+  `textDecorationStyle`,
   `layoutDirection`, and the `accessibilityRole` and `role` that ride along on a
   fragment. `lineBreakMode` is read on AppKit only. Beside those,
   `adjustsFontSizeToFit`, `textBreakStrategy` and hyphenation are
@@ -183,6 +183,26 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   None of this was written down before the support page needed a status per
   attribute, which is the argument for having one.
+
+  **`allowFontScaling` and `maxFontSizeMultiplier` came off this list on
+  2026-10-09**, with `fontSizeMultiplier`, into `core/FontScaling.h`. Two things
+  are worth keeping from that:
+
+  - `dynamicTypeRamp` is the one left of the group, and it is iOS's by
+    construction. Upstream resolves it with `[UIFontMetrics
+    metricsForTextStyle:]` and `-scaledValueForValue:`, asking the system what
+    size a text style is at the user's setting. macOS's nearest equivalent is
+    `[NSFont preferredFontForTextStyle:options:]`, which answers a *font* rather
+    than a multiplier and only moves with Accessibility's "Text size"; GTK and
+    Win32 have no ramp at all. So it is a mapping from eleven iOS text styles to
+    eleven sizes, which is a table somebody has to choose rather than a call to
+    make.
+  - A text scale changed while the app is running does not reflow text already
+    laid out. GTK notices the change, `notify::gtk-xft-dpi` on `GtkSettings`
+    being what main_gtk.cpp connects, and new paragraphs come out at the new
+    scale; but Fabric is holding measurements taken at the old one. What would
+    fix it is telling the shadow tree that every paragraph is dirty, which is a
+    re-measuring commit rather than anything in the host.
 
   **`textTransform` is done on GTK and AppKit, 2026-10-08**, and it is the one of
   that list that is not a drawing question at all: an uppercase label is a

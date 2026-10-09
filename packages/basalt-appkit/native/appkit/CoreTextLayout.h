@@ -48,4 +48,17 @@ NSString *transformedFragmentText(const facebook::react::AttributedString::Fragm
 NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(
     const facebook::react::TextAttributes &textAttributes);
 
+// The desktop's text scale, which on macOS is 1 and is a function anyway.
+//
+// macOS publishes no scalar for this. Accessibility's "Text size" works through
+// the text-style ramp instead: an app opts in by asking
+// `[NSFont preferredFontForTextStyle:options:]` for its fonts, and the system
+// answers a larger font for the style. That is `dynamicTypeRamp`'s shape rather
+// than `fontSizeMultiplier`'s, and it is a different feature; backlog/text.md
+// records it with that call named.
+//
+// So this exists to say so in one place, and to keep the host's wiring the same
+// shape as GTK's, which does have a scale to read.
+float appKitTextScale();
+
 } // namespace basalt

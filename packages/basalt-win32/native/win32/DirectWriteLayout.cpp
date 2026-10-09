@@ -1,5 +1,7 @@
 #include "DirectWriteLayout.h"
 
+#include "FontScaling.h"
+
 #include "FontRegistry.h"
 
 #include <react/renderer/graphics/Color.h>
@@ -68,10 +70,21 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
   }
 
   // A NaN fontSize is React Native's "unset", and passing it to DirectWrite
-  // produces a layout with no metrics at all rather than an error.
-  if (!std::isnan(attributes.fontSize) && attributes.fontSize > 0) {
-    style.fontSize = static_cast<float>(attributes.fontSize);
-  }
+  // produces a layout with no metrics at all rather than an error, so the
+  // style's own default stands in for it.
+  //
+  // The multiplier comes from core/FontScaling.h, which is where
+  // `allowFontScaling` and `maxFontSizeMultiplier` are honoured. The platform's
+  // scale is 1 here: Windows does publish one, as
+  // `Windows::UI::ViewManagement::UISettings::TextScaleFactor`, but reaching it
+  // means WinRT and this host is Win32 all the way down.
+  // backlog/platform-windows.md records that with the call named; a test can
+  // supply a scale either way.
+  const float requested = (!std::isnan(attributes.fontSize) && attributes.fontSize > 0)
+      ? static_cast<float>(attributes.fontSize)
+      : style.fontSize;
+  style.fontSize =
+      requested * basalt::effectiveFontSizeMultiplier(attributes, basalt::systemFontScale());
 
   style.bold = isBold(attributes);
   style.italic = attributes.fontStyle.has_value() &&

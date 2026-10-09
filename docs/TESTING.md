@@ -560,6 +560,18 @@ opens React Native's developer menu, the thing Ctrl+D (Cmd+D on macOS) opens.
 This is the instrument for "a key was pressed and nothing on the window has to
 be focused for it to arrive", which is what both of those are.
 
+`BASALT_TEST_FONT_SCALE` is the odd one in a different direction: it is a
+setting rather than an event, and it stands in for something two of the three
+desktops do not have. GTK reads a real text scale from
+`GtkSettings:gtk-xft-dpi`, which is what GNOME's "Large Text" moves; macOS
+publishes no scalar at all, and Win32 would need WinRT for the one Windows
+publishes. So `allowFontScaling` and `maxFontSizeMultiplier` could otherwise
+only be tested where the machine running the suite happened to be set to large
+text. The variable goes in where the platform's own scale goes, so nothing above
+it is skipped, and because nothing is scheduled for it, it is deliberately not
+in `core/TestSettle.h`'s list; `scripts/test_harness.py` records that with its
+reason.
+
 A popup menu is the second thing an automated run cannot get past, and for a
 sharper reason than a dialog: on macOS `popUpMenuPositioningItem` runs the
 menu's own tracking loop on the main thread, so a menu nobody dismisses stops
@@ -693,6 +705,20 @@ The root cause is fixed too: `cancel-in-progress` is now
 branches still free their runners. `scripts/test_ci_status.py` checks the logic
 against that five-run history, because a bug in a tool like this points the same
 comfortable way as the problem it was written for.
+
+### `near` is a macro, and it is in `<minwindef.h>`
+
+A test helper called `near` compiles on both desktops and fails on Windows with
+`error: expected unqualified-id`, because `near` and `far` are legacy no-op
+macros the Windows headers still define. The declaration becomes
+`bool (float, float)`.
+
+It does not fail in every file, which is what makes it confusing: it fails in
+the ones whose includes reach `windows.h`, which
+`<react/renderer/attributedstring/AttributedString.h>` does. Three core tests
+spell it `near` today and compile, and `test_text_shadows.cpp` did not. Call it
+`closeTo`. It cost a CI round trip, which is the only reason it is written down
+here.
 
 ## Windows, on a machine you own
 

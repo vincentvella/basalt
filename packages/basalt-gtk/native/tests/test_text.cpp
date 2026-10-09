@@ -9,6 +9,7 @@
 
 #include "GtkPixels.h"
 
+#include "FontScaling.h"
 #include "PangoTextLayout.h"
 // For rn_pango_clip_height, the contract between measuring a clipped paragraph
 // and painting one. It lives in the widget layer; see the comment there.
@@ -18,6 +19,8 @@
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 #include <sstream>
 #include <thread>
 
@@ -659,4 +662,60 @@ TEST(text_a_shadow_is_drawn_behind_the_glyphs_where_it_was_offset) {
 
   g_object_unref(layout);
   g_object_unref(view);
+}
+
+// The desktop's text scale, which GTK publishes as a font resolution.
+//
+// `gtk-xft-dpi` is what GNOME's "Large Text" moves, and it is in 1024ths of a
+// dot per inch, so the arithmetic is worth asserting rather than reading: 96 is
+// unscaled and a 1.25 scaling factor arrives as 120.
+TEST(gtk_text_scale_comes_from_gtk_xft_dpi) {
+  GtkSettings *settings = gtk_settings_get_default();
+  EXPECT(settings != nullptr);
+  if (settings == nullptr) {
+    return;
+  }
+  int original = -1;
+  g_object_get(settings, "gtk-xft-dpi", &original, nullptr);
+
+  g_object_set(settings, "gtk-xft-dpi", 96 * 1024, nullptr);
+  EXPECT(std::fabs(basalt::gtkTextScale(settings) - 1.0F) < 0.001F);
+
+  g_object_set(settings, "gtk-xft-dpi", 120 * 1024, nullptr);
+  EXPECT(std::fabs(basalt::gtkTextScale(settings) - 1.25F) < 0.001F);
+
+  // What a display that said nothing reads as, which is not a scale of zero.
+  g_object_set(settings, "gtk-xft-dpi", -1, nullptr);
+  EXPECT(std::fabs(basalt::gtkTextScale(settings) - 1.0F) < 0.001F);
+
+  EXPECT(std::fabs(basalt::gtkTextScale(nullptr) - 1.0F) < 0.001F);
+
+  g_object_set(settings, "gtk-xft-dpi", original, nullptr);
+}
+
+// And what it does to a paragraph. Through `measure`, which is the function
+// Yoga asks, so a scale that did not reach the layout would be a scale that
+// changed what was drawn without changing what it was given room for.
+TEST(gtk_a_text_scale_grows_what_a_paragraph_measures) {
+  const auto widthAt = [](float scale, std::optional<bool> allowFontScaling) {
+    basalt::setSystemFontScale(scale);
+    TextAttributes attributes;
+    attributes.fontSize = 16.0F;
+    attributes.allowFontScaling = allowFontScaling;
+    AttributedString::Fragment fragment;
+    fragment.string = "scaled";
+    fragment.textAttributes = attributes;
+    AttributedString text;
+    text.appendFragment(std::move(fragment));
+    const float width = measure(text, ParagraphAttributes{}, -1.0F).width;
+    basalt::setSystemFontScale(1.0F);
+    return width;
+  };
+
+  const float plain = widthAt(1.0F, std::nullopt);
+  EXPECT(widthAt(1.5F, std::nullopt) > plain);
+
+  // The prop an app sets on a label whose box cannot grow.
+  EXPECT(std::fabs(widthAt(1.5F, false) - plain) < 0.5F);
+  EXPECT(widthAt(1.5F, true) > plain);
 }

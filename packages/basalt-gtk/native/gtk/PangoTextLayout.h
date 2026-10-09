@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <gtk/gtk.h>
 #include <pango/pangocairo.h>
 
 #include <react/renderer/attributedstring/AttributedString.h>
@@ -49,6 +50,20 @@ PangoLayout *buildTextLayout(const facebook::react::AttributedString &attributed
 // Returns a new reference; the caller owns it and must pango_attr_list_unref
 // it. Thread-safe on the same terms as buildTextLayout.
 PangoAttrList *buildTextAttributes(const facebook::react::TextAttributes &textAttributes);
+
+// The desktop's text scale, as GTK publishes it.
+//
+// GNOME's "Large Text", and the `text-scaling-factor` behind it, arrive as a
+// font *resolution* rather than as a scale: `GtkSettings:gtk-xft-dpi` is
+// 1024ths of a dot per inch, 96 being unscaled, so a scaling factor of 1.25
+// reads as 120 * 1024. A display that said nothing reads as -1, which is 1.
+//
+// Main thread only, which is why the host reads it once at startup and hands it
+// to core/FontScaling.h rather than the text builders asking: this function
+// touches GtkSettings, and text is measured off the main thread. Takes the
+// settings object rather than fetching it, so the host's `notify::gtk-xft-dpi`
+// handler can pass the one it was given.
+float gtkTextScale(GtkSettings *settings);
 
 // The size of a laid-out paragraph, in points. Pango reports 1/1024ths of a
 // pixel, and forgetting to divide by PANGO_SCALE is the classic bug here.

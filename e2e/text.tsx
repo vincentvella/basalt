@@ -44,6 +44,13 @@ const styles = StyleSheet.create({
   // title sets them. The radius is a standard deviation, which is what iOS puts
   // into NSShadow and what the dump prints, and the offset's sign is what says
   // the shadow went down the screen rather than up.
+  // allowFontScaling and maxFontSizeMultiplier, which only mean anything when
+  // something is scaling: BASALT_TEST_FONT_SCALE supplies that, because two of
+  // the three desktops publish no text scale of their own. See
+  // core/FontScaling.h.
+  scaling: {fontSize: 16, color: '#2b3445'},
+  fixed: {fontSize: 16, color: '#2b3445'},
+  capped: {fontSize: 16, color: '#2b3445'},
   shadowed: {
     fontSize: 16,
     color: '#2b3445',
@@ -80,6 +87,16 @@ function App() {
         <Text style={styles.shouted}>shout quietly</Text>
         <Text style={styles.titled}>iOS and android</Text>
         <Text style={styles.shadowed}>Shadowed</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.scaling}>Scales with the desktop</Text>
+        <Text style={styles.fixed} allowFontScaling={false}>
+          Fixed whatever the desktop says
+        </Text>
+        <Text style={styles.capped} maxFontSizeMultiplier={1.25}>
+          Capped at a quarter larger
+        </Text>
       </View>
 
       <View style={styles.card}>

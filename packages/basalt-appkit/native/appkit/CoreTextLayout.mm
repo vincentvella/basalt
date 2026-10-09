@@ -1,6 +1,7 @@
 #import "CoreTextLayout.h"
 
 #include "FontRegistry.h"
+#include "FontScaling.h"
 
 #include <react/renderer/graphics/Color.h>
 
@@ -86,11 +87,13 @@ NSColor *toColor(const facebook::react::SharedColor &color) {
 }
 
 NSFont *fontFor(const TextAttributes &textAttributes) {
-  float size = isSet(textAttributes.fontSize) ? static_cast<float>(textAttributes.fontSize)
-                                              : kDefaultFontSize;
-  if (isSet(textAttributes.fontSizeMultiplier) && textAttributes.fontSizeMultiplier > 0) {
-    size *= static_cast<float>(textAttributes.fontSizeMultiplier);
-  }
+  // Through core/FontScaling.h, which is where `allowFontScaling` and
+  // `maxFontSizeMultiplier` are honoured. macOS reports no text scale to honour
+  // -- see appKitTextScale() -- so on this host those two props can only clamp
+  // a multiplier something else set, and the test that proves they are read
+  // supplies one with BASALT_TEST_FONT_SCALE.
+  const float size = basalt::effectiveFontSize(textAttributes, kDefaultFontSize,
+                                               basalt::systemFontScale());
 
   const CGFloat weight = textAttributes.fontWeight ? toCoreTextWeight(*textAttributes.fontWeight)
                                                    : NSFontWeightRegular;
@@ -162,6 +165,8 @@ NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes) {
 }
 
 } // namespace
+
+float appKitTextScale() { return 1.0F; }
 
 NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttributes &textAttributes) {
   NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];

@@ -1,5 +1,7 @@
 #include "GtkTextInput.h"
 
+#include "FontScaling.h"
+
 #include "GtkTextPeer.h"
 
 #include "PangoTextLayout.h"
@@ -192,8 +194,11 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   // with the `style` this component was given -- on a dark field that is dark
   // text on dark. A PangoAttrList is how GtkText takes the style instead.
   //
-  // fontSizeMultiplier is 1: nothing on this platform scales text for
-  // accessibility settings yet, and passing 0 would multiply the size away.
+  // 1, and not the desktop's text scale, although this is the argument React
+  // Native leaves for one: getEffectiveTextAttributes would put it in
+  // `fontSizeMultiplier`, and buildTextAttributes applies the scale itself
+  // through core/FontScaling.h -- so passing it here would square it. The field
+  // still scales, and still stops scaling when `allowFontScaling={false}`.
   PangoAttrList *attributes = buildTextAttributes(props->getEffectiveTextAttributes(1.0F));
   rn_peer_set_attributes(entry.editable, attributes);
   pango_attr_list_unref(attributes);

@@ -1,5 +1,7 @@
 #import "AppKitTextInput.h"
 
+#include "FontScaling.h"
+
 #import "AppKitTextPeer.h"
 
 #import "CoreTextLayout.h"
@@ -256,8 +258,10 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
   // text on dark. buildTextAttributes is what the style becomes, and it was
   // written for the text layer with this as its eventual second caller.
   //
-  // fontSizeMultiplier is 1: nothing on this platform scales text for
-  // accessibility settings yet, and passing 0 would multiply the size away.
+  // 1, and not the text scale, although this is the argument React Native leaves
+  // for one: buildTextAttributes applies the scale itself through
+  // core/FontScaling.h, so passing it here would square it. The field still
+  // scales, and still stops when `allowFontScaling={false}`.
   NSDictionary<NSAttributedStringKey, id> *attributes =
       buildTextAttributes(props->getEffectiveTextAttributes(1.0F));
   NSParagraphStyle *paragraph = attributes[NSParagraphStyleAttributeName];

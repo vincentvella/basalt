@@ -1,6 +1,7 @@
 #include "PangoTextLayout.h"
 
 #include "FontRegistry.h"
+#include "FontScaling.h"
 // For rn_pango_clip_height, which is how much of a paragraph `numberOfLines`
 // leaves visible. It lives with the widgets because the widget layer has no
 // React Native in it and so cannot include this header; the dependency only
@@ -187,10 +188,12 @@ void applyFragmentAttributes(PangoAttrList *attributes,
       : resolveFontFamily(textAttributes.fontFamily);
   pango_font_description_set_family(font, family.c_str());
 
-  float fontSize = isSet(textAttributes.fontSize) ? static_cast<float>(textAttributes.fontSize) : kDefaultFontSize;
-  if (isSet(textAttributes.fontSizeMultiplier) && textAttributes.fontSizeMultiplier > 0) {
-    fontSize *= static_cast<float>(textAttributes.fontSizeMultiplier);
-  }
+  // Through core/FontScaling.h, which is where `allowFontScaling` and
+  // `maxFontSizeMultiplier` are honoured: this used to multiply by
+  // `fontSizeMultiplier` and read neither of the two props that exist to
+  // control that multiplication.
+  const float fontSize =
+      basalt::effectiveFontSize(textAttributes, kDefaultFontSize, basalt::systemFontScale());
   // set_absolute_size, not set_size. set_size takes points and resolves them
   // against the context's resolution, which at the default 96dpi would render
   // a fontSize of 16 at about 21px. React Native's fontSize is in
@@ -502,6 +505,18 @@ std::vector<facebook::react::Rect> attachmentFrames(
   }
 
   return frames;
+}
+
+float gtkTextScale(GtkSettings *settings) {
+  if (settings == nullptr) {
+    return 1.0F;
+  }
+  int dpi = -1;
+  g_object_get(settings, "gtk-xft-dpi", &dpi, nullptr);
+  if (dpi <= 0) {
+    return 1.0F;
+  }
+  return static_cast<float>(dpi) / (96.0F * 1024.0F);
 }
 
 void textLayoutSize(PangoLayout *layout, float *outWidth, float *outHeight) {
