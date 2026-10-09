@@ -494,3 +494,119 @@ TEST(filter_is_reported_in_the_tree) {
     EXPECT(described.find("filter=(probe=#969696ff,blur=8)") != std::string::npos);
   }
 }
+
+// `mixBlendMode`, which on macOS is one Core Animation property: a Core Image
+// blend-mode filter set as the layer's `compositingFilter`, which blends the
+// layer with whatever is beneath it in the layer tree.
+//
+// **No pixels, for the reason box shadows and filters have none here**, and it is
+// the same measurement: compositing happens in the window server, and
+// `-[CALayer renderInContext:]` -- which is what this project's snapshots use --
+// composites nothing, so a blended layer draws exactly as an unblended one in a
+// snapshot. The GTK side has the render tree and asserts the blended pixels node
+// by node; here the observable is the filter the layer was given.
+namespace {
+
+RnAppKitView *blendedView(NSString *keyword) {
+  RnAppKitView *view = [RnAppKitView viewWithTag:1];
+  [view setRnFrameX:0 y:0 width:100 height:50];
+  [view setRnBlendModeName:keyword];
+  return view;
+}
+
+NSString *compositingFilterName(RnAppKitView *view) {
+  id filter = view.layer.compositingFilter;
+  if (![filter isKindOfClass:[CIFilter class]]) {
+    return nil;
+  }
+  return ((CIFilter *)filter).name;
+}
+
+} // namespace
+
+TEST(blend_mode_becomes_a_core_image_compositing_filter) {
+  @autoreleasepool {
+    RnAppKitView *view = blendedView(@"multiply");
+    EXPECT([view.rnBlendModeName isEqualToString:@"multiply"]);
+    EXPECT([view.rnBlendFilterName isEqualToString:@"CIMultiplyBlendMode"]);
+    // And it reached the layer as a filter object, which is the half a stored
+    // property cannot show. `compositingFilter` is typed `id`: a string is what
+    // React Native's iOS half sets, and is undocumented.
+    EXPECT([compositingFilterName(view) isEqualToString:@"CIMultiplyBlendMode"]);
+  }
+}
+
+// Every keyword, and that Core Image has a filter for each: the mapping is
+// sixteen lines of table, which is sixteen chances to paste the wrong name, and a
+// name Core Image does not know makes `filterWithName:` return nil -- a view that
+// silently stops blending rather than anything louder.
+TEST(blend_mode_every_css_keyword_has_a_filter_core_image_knows) {
+  @autoreleasepool {
+    NSArray<NSString *> *keywords = @[
+      @"multiply", @"screen", @"overlay", @"darken", @"lighten", @"color-dodge",
+      @"color-burn", @"hard-light", @"soft-light", @"difference", @"exclusion",
+      @"hue", @"saturation", @"color", @"luminosity", @"plus-lighter"
+    ];
+    for (NSString *keyword in keywords) {
+      RnAppKitView *view = blendedView(keyword);
+      EXPECT(view.rnBlendFilterName != nil);
+      EXPECT([CIFilter filterWithName:view.rnBlendFilterName] != nil);
+      EXPECT(compositingFilterName(view) != nil);
+    }
+
+    // The one GSK has no node for, which this host does have: CSS's plus-lighter
+    // is clamped addition, and that is linear dodge.
+    EXPECT([blendedView(@"plus-lighter").rnBlendFilterName
+        isEqualToString:@"CILinearDodgeBlendMode"]);
+    // And two that are easy to swap for each other.
+    EXPECT([blendedView(@"color-dodge").rnBlendFilterName
+        isEqualToString:@"CIColorDodgeBlendMode"]);
+    EXPECT([blendedView(@"color-burn").rnBlendFilterName
+        isEqualToString:@"CIColorBurnBlendMode"]);
+  }
+}
+
+// `mixBlendMode: 'normal'` arrives as no keyword at all, and a view that was
+// blending has to stop: a compositing filter left behind is a view that keeps
+// blending for the rest of its life.
+TEST(blend_mode_normal_leaves_the_layer_alone) {
+  @autoreleasepool {
+    RnAppKitView *view = blendedView(nil);
+    EXPECT(view.rnBlendModeName == nil);
+    EXPECT(view.layer.compositingFilter == nil);
+
+    [view setRnBlendModeName:@"overlay"];
+    EXPECT(view.layer.compositingFilter != nil);
+
+    [view setRnBlendModeName:nil];
+    EXPECT(view.layer.compositingFilter == nil);
+    EXPECT(view.rnBlendModeName == nil);
+  }
+}
+
+// A keyword this host has no filter for leaves the layer unblended, and keeps
+// the keyword: the dump says what the app asked for. Nothing in React Native can
+// send one today, which is exactly why it is worth pinning -- the enum is theirs
+// to extend.
+TEST(blend_mode_an_unknown_keyword_is_kept_and_not_applied) {
+  @autoreleasepool {
+    RnAppKitView *view = blendedView(@"plus-darker");
+    EXPECT([view.rnBlendModeName isEqualToString:@"plus-darker"]);
+    EXPECT(view.rnBlendFilterName == nil);
+    EXPECT(view.layer.compositingFilter == nil);
+  }
+}
+
+// And in the tree dump, spelled as GTK spells it, which is what lets one
+// scenario check the wiring on both hosts.
+TEST(blend_mode_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *plain = blendedView(nil);
+    EXPECT([plain describeTree].UTF8String != nullptr);
+    EXPECT(std::string([plain describeTree].UTF8String).find("blend=") == std::string::npos);
+
+    RnAppKitView *view = blendedView(@"color-dodge");
+    const std::string described = [view describeTree].UTF8String;
+    EXPECT(described.find("blend=color-dodge") != std::string::npos);
+  }
+}

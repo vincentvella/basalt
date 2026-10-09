@@ -195,6 +195,14 @@ struct _RnView {
   graphene_size_t border_radii[4];
   gboolean has_border_radii;
   float border_widths[4];
+  // `mixBlendMode`, as the keyword the app asked for and the GSK mode it came
+  // to. The two are separate because GSK has no plus-lighter: the keyword is
+  // still reported, so the dump says what the app asked for rather than what
+  // this compositor could do with it.
+  char *blend_name;
+  GskBlendMode blend_mode;
+  gboolean blends;
+
   // CSS's outline: drawn outside the box, no layout space. Zero width is none.
   float outline_width;
   float outline_offset;
@@ -360,6 +368,46 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
                         &self->border_radii[2],
                         &self->border_radii[3]);
 
+  // `mixBlendMode` on a child, which CSS blends with its backdrop: everything
+  // painted beneath it. GSK's blend node takes a bottom and a top, both appended
+  // *after* the push -- so the backdrop has to be inside a push made before any
+  // of it is painted, which is why the look-ahead is here rather than in the
+  // child loop.
+  //
+  // One push per blended child, the last one outermost, so the pushes nest the
+  // way the blends do: the first blended child sees this view's own content as
+  // its backdrop, the second sees that blend's result plus whatever came between
+  // them, and so on. Each push is popped in the child loop below, as its child
+  // is reached.
+  //
+  // The backdrop stops at this view, which is a deviation worth naming: CSS
+  // blends with everything beneath in the nearest stacking context, which for a
+  // plain <View> reaches further up. backlog/correctness.md records it.
+  GPtrArray *blended = nullptr;
+  for (GtkWidget *child = gtk_widget_get_first_child(widget); child != nullptr;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (RN_IS_VIEW(child) && RN_VIEW(child)->blends) {
+      if (blended == nullptr) {
+        blended = g_ptr_array_new();
+      }
+      g_ptr_array_add(blended, child);
+    }
+  }
+  if (blended != nullptr) {
+    // In paint order, which zIndex can differ from. Sorting the blended ones
+    // with the same stable comparator the whole list gets below puts them in the
+    // order they will be reached, because a stable sort of a subset keeps the
+    // subset's order within the sort of the whole.
+    g_ptr_array_sort_values(blended, [](gconstpointer a, gconstpointer b) -> int {
+      auto *wa = static_cast<GtkWidget *>(const_cast<gpointer>(a));
+      auto *wb = static_cast<GtkWidget *>(const_cast<gpointer>(b));
+      return rn_view_layout_z_index(RN_VIEW(wa)) - rn_view_layout_z_index(RN_VIEW(wb));
+    });
+    for (guint i = blended->len; i > 0; i--) {
+      gtk_snapshot_push_blend(snapshot, RN_VIEW(g_ptr_array_index(blended, i - 1))->blend_mode);
+    }
+  }
+
   // Outset box shadows, behind everything this view draws, which is where CSS
   // puts them: a shadow is cast by the box rather than painted on it.
   //
@@ -453,6 +501,14 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   }
 
   // Content clipping is separate, and only happens with overflow: 'hidden'.
+  //
+  // With a blended child it cannot be one clip around the whole lot: the pops
+  // that close each blend happen between the children, and a clip pushed around
+  // them would be what those pops closed. So it is pushed around this view's own
+  // content here and around each child on its own below, which paints the same
+  // picture -- clipping a group and clipping each of its members to the same box
+  // are the same thing -- at the cost of one clip node per child.
+  const gboolean clips_each_child = self->clips_children && blended != nullptr;
   if (self->clips_children) {
     if (self->has_border_radii) {
       gtk_snapshot_push_rounded_clip(snapshot, &box);
@@ -587,6 +643,44 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     }
   }
 
+  // The clip around this view's own content is closed here when each child is
+  // getting its own, so that the pops below close blends rather than a clip.
+  if (clips_each_child) {
+    gtk_snapshot_pop(snapshot);
+  }
+
+  // One child, painted where the blends and the clip expect it. Without a
+  // blended child this is `gtk_widget_snapshot_child` and nothing else, which is
+  // what it was before any of this.
+  guint next_blend = 0;
+  auto paint_child = [&](GtkWidget *child) {
+    const gboolean is_blended =
+        blended != nullptr && next_blend < blended->len &&
+        child == static_cast<GtkWidget *>(g_ptr_array_index(blended, next_blend));
+    if (is_blended) {
+      // Closes the backdrop: everything painted since this child's push, which
+      // is this view's content and every child beneath it.
+      gtk_snapshot_pop(snapshot);
+      next_blend++;
+    }
+    if (clips_each_child) {
+      if (self->has_border_radii) {
+        gtk_snapshot_push_rounded_clip(snapshot, &box);
+      } else {
+        gtk_snapshot_push_clip(snapshot, &bounds);
+      }
+    }
+    gtk_widget_snapshot_child(widget, child, snapshot);
+    if (clips_each_child) {
+      gtk_snapshot_pop(snapshot);
+    }
+    if (is_blended) {
+      // And the blend node itself, whose result lands in whatever is beneath:
+      // the next blend's backdrop, or this view's snapshot.
+      gtk_snapshot_pop(snapshot);
+    }
+  };
+
   // zIndex only reorders painting. The child list itself stays in mutation
   // order, because Fabric's Insert and Remove index into it.
   gboolean needs_sorting = FALSE;
@@ -601,7 +695,7 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   if (!needs_sorting) {
     for (GtkWidget *child = gtk_widget_get_first_child(widget); child != nullptr;
          child = gtk_widget_get_next_sibling(child)) {
-      gtk_widget_snapshot_child(widget, child, snapshot);
+      paint_child(child);
     }
   } else {
     GPtrArray *ordered = g_ptr_array_new();
@@ -619,12 +713,25 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       return za - zb;
     });
     for (guint i = 0; i < ordered->len; i++) {
-      gtk_widget_snapshot_child(widget, GTK_WIDGET(g_ptr_array_index(ordered, i)), snapshot);
+      paint_child(GTK_WIDGET(g_ptr_array_index(ordered, i)));
     }
     g_ptr_array_free(ordered, TRUE);
   }
 
-  if (self->clips_children) {
+  if (blended != nullptr) {
+    // Any push the loop did not reach, closed so the snapshot stays balanced.
+    // Nothing should get here -- every blended child is in the list the loop
+    // walks -- but an unbalanced snapshot is a crash in GSK rather than a wrong
+    // picture, so it is worth two lines.
+    for (guint i = next_blend; i < blended->len; i++) {
+      gtk_snapshot_pop(snapshot);
+      gtk_snapshot_pop(snapshot);
+    }
+    g_ptr_array_free(blended, TRUE);
+    blended = nullptr;
+  }
+
+  if (self->clips_children && !clips_each_child) {
     gtk_snapshot_pop(snapshot);
   }
 
@@ -859,6 +966,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->role_name, g_free);
   g_clear_pointer(&self->native_id, g_free);
   g_clear_pointer(&self->cursor_name, g_free);
+  g_clear_pointer(&self->blend_name, g_free);
   g_clear_pointer(&self->box_shadows, g_array_unref);
   g_clear_pointer(&self->gradients, g_array_unref);
   g_clear_pointer(&self->labelled_by, g_array_unref);
@@ -925,6 +1033,9 @@ static void rn_view_init(RnView *self) {
   }
   self->has_border_radii = FALSE;
   self->has_borders = FALSE;
+  self->blend_name = nullptr;
+  self->blend_mode = GSK_BLEND_MODE_DEFAULT;
+  self->blends = FALSE;
   self->outline_width = 0.0f;
   self->outline_offset = 0.0f;
   self->outline_color = GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
@@ -1473,6 +1584,67 @@ void rn_view_set_cursor(RnView *self, const char *name) {
 const char *rn_view_get_cursor(RnView *self) {
   g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
   return self->cursor_name;
+}
+
+// `mixBlendMode`, as the CSS keyword, mapped onto GSK's own list.
+//
+// GSK has a mode per CSS mode bar one: `plus-lighter`, which CSS defines as
+// clamped additive compositing and GSK has no node for. A keyword GSK cannot do
+// leaves the view unblended, and the keyword is still stored and still reported,
+// so the dump says what the app asked for -- the same rule `cursor` follows for
+// a name no theme has.
+static gboolean rn_blend_mode_from_name(const char *name, GskBlendMode *out) {
+  static const struct {
+    const char *name;
+    GskBlendMode mode;
+  } kModes[] = {
+      {"multiply", GSK_BLEND_MODE_MULTIPLY},
+      {"screen", GSK_BLEND_MODE_SCREEN},
+      {"overlay", GSK_BLEND_MODE_OVERLAY},
+      {"darken", GSK_BLEND_MODE_DARKEN},
+      {"lighten", GSK_BLEND_MODE_LIGHTEN},
+      {"color-dodge", GSK_BLEND_MODE_COLOR_DODGE},
+      {"color-burn", GSK_BLEND_MODE_COLOR_BURN},
+      {"hard-light", GSK_BLEND_MODE_HARD_LIGHT},
+      {"soft-light", GSK_BLEND_MODE_SOFT_LIGHT},
+      {"difference", GSK_BLEND_MODE_DIFFERENCE},
+      {"exclusion", GSK_BLEND_MODE_EXCLUSION},
+      {"hue", GSK_BLEND_MODE_HUE},
+      {"saturation", GSK_BLEND_MODE_SATURATION},
+      {"color", GSK_BLEND_MODE_COLOR},
+      {"luminosity", GSK_BLEND_MODE_LUMINOSITY},
+  };
+  for (gsize i = 0; i < G_N_ELEMENTS(kModes); i++) {
+    if (g_strcmp0(name, kModes[i].name) == 0) {
+      *out = kModes[i].mode;
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+void rn_view_set_blend_mode(RnView *self, const char *name) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const char *wanted = name != nullptr && *name != '\0' ? name : nullptr;
+  if (g_strcmp0(self->blend_name, wanted) == 0) {
+    return;
+  }
+  g_free(self->blend_name);
+  self->blend_name = wanted != nullptr ? g_strdup(wanted) : nullptr;
+  self->blends = wanted != nullptr && rn_blend_mode_from_name(wanted, &self->blend_mode);
+  if (!self->blends) {
+    self->blend_mode = GSK_BLEND_MODE_DEFAULT;
+  }
+  // The parent paints the blend, not this view: a blend needs the backdrop, and
+  // this view cannot see it. So it is the parent that has to redraw.
+  GtkWidget *parent = gtk_widget_get_parent(GTK_WIDGET(self));
+  gtk_widget_queue_draw(parent != nullptr ? parent : GTK_WIDGET(self));
+}
+
+const char *rn_view_get_blend_mode(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
+  return self->blend_name;
 }
 
 // The spelling React Native uses for the prop, which is also CSS's, so the
@@ -2079,6 +2251,12 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // picture, so a dump is the only thing that can say it arrived on both hosts.
   if (self->cursor_name != nullptr) {
     g_string_append_printf(out, " cursor=%s", self->cursor_name);
+  }
+  // The blend mode the app asked for, which is also invisible in a frame unless
+  // something is beneath it. The keyword rather than the GSK mode, so the dump
+  // is comparable with the other host's.
+  if (self->blend_name != nullptr) {
+    g_string_append_printf(out, " blend=%s", self->blend_name);
   }
   // The outline, which is invisible in every other line: it is not a border and
   // a view with one has the same frame and the same colours without it.

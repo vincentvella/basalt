@@ -6,6 +6,8 @@
 
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
+#include "BlendModes.h"
+#include "LegacyShadow.h"
 #include "CursorNames.h"
 #include "Filters.h"
 #include "Gradients.h"
@@ -1234,10 +1236,15 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // gets the list as the app wrote it and decides where in the paint order each
   // one goes. A shadow with no colour is one React Native could not parse, and
   // the widget skips it rather than painting black.
+  //
+  // The list also carries the older iOS shadow props, converted in
+  // core/LegacyShadow.h: one mechanism from here down, so a view with
+  // `shadowOpacity` and a view with `boxShadow` take the same path.
   {
+    const std::vector<facebook::react::BoxShadow> all = basalt::allShadows(*props);
     std::vector<RnBoxShadow> shadows;
-    shadows.reserve(props->boxShadow.size());
-    for (const auto &shadow : props->boxShadow) {
+    shadows.reserve(all.size());
+    for (const auto &shadow : all) {
       shadows.push_back(RnBoxShadow{
           .dx = static_cast<float>(shadow.offsetX),
           .dy = static_cast<float>(shadow.offsetY),
@@ -1324,6 +1331,11 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
   // keyword goes straight through; core/CursorNames.h is shared with the AppKit
   // host so the two cannot disagree about what a value is called.
   rn_view_set_cursor(view, basalt::cursorName(props->cursor));
+
+  // `mixBlendMode`, also as a CSS keyword, and shared with the AppKit host for
+  // the same reason: GSK's blend modes are CSS's and Core Image's are too, so
+  // the keyword is the thing that crosses and each host maps it.
+  rn_view_set_blend_mode(view, basalt::blendModeName(props->mixBlendMode));
 
   // borderStyle. React Native carries one per side and a stroked path carries
   // one dash pattern, so the first side that asks for something other than

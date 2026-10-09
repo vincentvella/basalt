@@ -6,6 +6,8 @@
 #import <CoreImage/CoreImage.h>
 
 #include "ComponentRegistry.h"
+#include "BlendModes.h"
+#include "LegacyShadow.h"
 #include "CursorNames.h"
 #include "Filters.h"
 #include "Gradients.h"
@@ -936,10 +938,15 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
   // boxShadow. React Native's BoxShadow carries the six CSS fields and the view
   // layer takes the same six, so nothing is converted here: it decides what a
   // shadow is made of on this platform, and this decides nothing.
+  //
+  // The list also carries the older iOS shadow props, converted in
+  // core/LegacyShadow.h: one mechanism from here down, so a view with
+  // `shadowOpacity` and a view with `boxShadow` take the same path.
   {
+    const std::vector<facebook::react::BoxShadow> all = basalt::allShadows(*props);
     std::vector<RnAppKitBoxShadow> shadows;
-    shadows.reserve(props->boxShadow.size());
-    for (const auto &shadow : props->boxShadow) {
+    shadows.reserve(all.size());
+    for (const auto &shadow : all) {
       RnAppKitBoxShadow converted{};
       converted.dx = (CGFloat)shadow.offsetX;
       converted.dy = (CGFloat)shadow.offsetY;
@@ -1035,6 +1042,14 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
   {
     const char *name = basalt::cursorName(props->cursor);
     [view setRnCursorName:name != nullptr ? [NSString stringWithUTF8String:name] : nil];
+  }
+
+  // `mixBlendMode`, also as a CSS keyword and also shared: Core Image has a
+  // blend-mode filter per CSS mode, so the view layer maps the keyword onto one
+  // and Core Animation does the blending.
+  {
+    const char *name = basalt::blendModeName(props->mixBlendMode);
+    [view setRnBlendModeName:name != nullptr ? [NSString stringWithUTF8String:name] : nil];
   }
 
   // borderStyle. React Native carries one per side and a stroked path carries

@@ -420,3 +420,199 @@ TEST(gtk_paint_an_outline_follows_the_corner_radius) {
   // empty -- where a square ring would paint it.
   EXPECT_TRANSPARENT(pixels, 17, 17);
 }
+
+// `mixBlendMode`, which is the one view prop whose whole observable is what it
+// does to the pixels beneath it. A dump can say the keyword arrived; only a
+// rendered picture can say the blend happened, and happened against the right
+// backdrop.
+//
+// Every case below uses a mid grey child over a red parent, because the three
+// answers that matter are far apart: multiply is (128,0,0), screen is
+// (255,128,128) and no blend at all is (128,128,128).
+namespace {
+
+// A red parent with a grey child in the middle of it, which is the arrangement
+// every blend test here starts from. The child is returned; the parent is at
+// (10,10) so a pixel at (50,50) is inside both.
+RnView *greyOnRed(Tree &tree, RnView *root, const char *blend) {
+  RnView *parent = tree.colouredBox(root, 2, 10, 10, 80, 80, 1.0F, 0.0F, 0.0F);
+  RnView *child = tree.colouredBox(parent, 3, 20, 20, 40, 40, 0.5F, 0.5F, 0.5F);
+  rn_view_set_blend_mode(child, blend);
+  return child;
+}
+
+} // namespace
+
+TEST(gtk_paint_multiply_blends_a_child_with_its_parent) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  greyOnRed(tree, root, "multiply");
+
+  // 0.5 * red is half red, and the green and blue the child had are multiplied
+  // away by the parent's zeroes. Unblended this pixel is (128,128,128).
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 0, 0, 255);
+}
+
+// A second mode, because one mode can be hard-coded and still pass the first
+// test. Screen is multiply's opposite and lands somewhere neither of the other
+// two answers is.
+TEST(gtk_paint_screen_is_not_multiply) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  greyOnRed(tree, root, "screen");
+
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 255, 128, 128, 255);
+}
+
+// The backdrop is everything beneath the child, not only its parent's
+// background. A blend that only saw the parent would come out half red here;
+// one that sees the sibling comes out half blue.
+TEST(gtk_paint_a_blend_sees_the_siblings_beneath_it) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *parent = tree.colouredBox(root, 2, 10, 10, 80, 80, 1.0F, 0.0F, 0.0F);
+  tree.colouredBox(parent, 3, 20, 20, 40, 40, 0.0F, 0.0F, 1.0F);
+  RnView *blended = tree.colouredBox(parent, 4, 20, 20, 40, 40, 0.5F, 0.5F, 0.5F);
+  rn_view_set_blend_mode(blended, "multiply");
+
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 0, 0, 128, 255);
+}
+
+// The negative control, and the way back: `mixBlendMode: 'normal'` arrives as no
+// keyword at all, and a view that was blending has to stop.
+TEST(gtk_paint_no_blend_mode_is_no_blending) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *child = greyOnRed(tree, root, nullptr);
+
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 128, 128, 255);
+
+  rn_view_set_blend_mode(child, "multiply");
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 0, 0, 255);
+
+  rn_view_set_blend_mode(child, nullptr);
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 128, 128, 255);
+}
+
+// The clip still clips. This is the case the implementation had to be careful
+// about: the pops that close each blend happen between the children, so one clip
+// around the whole lot would be what those pops closed. Each child gets its own
+// clip instead, and the picture has to be the same picture.
+TEST(gtk_paint_a_blended_child_is_still_clipped_by_overflow_hidden) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *parent = tree.colouredBox(root, 2, 10, 10, 80, 80, 1.0F, 0.0F, 0.0F);
+  rn_view_set_clips_children(parent, TRUE);
+  RnView *child = tree.colouredBox(parent, 3, 40, 40, 60, 60, 0.5F, 0.5F, 0.5F);
+  rn_view_set_blend_mode(child, "multiply");
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // Inside the parent, where the child is: blended.
+  EXPECT_PIXEL(pixels, 70, 70, 128, 0, 0, 255);
+  // Past the parent's edge, where the child would reach if nothing clipped it.
+  EXPECT_TRANSPARENT(pixels, 95, 95);
+}
+
+// zIndex decides the backdrop, because it decides what is painted beneath. The
+// blended child here paints first, so the blue sibling is above it rather than
+// under it, and the blend is against the parent alone.
+TEST(gtk_paint_z_index_decides_what_a_blend_blends_with) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *parent = tree.colouredBox(root, 2, 10, 10, 80, 80, 1.0F, 0.0F, 0.0F);
+  RnView *blended = tree.colouredBox(parent, 3, 20, 20, 40, 40, 0.5F, 0.5F, 0.5F);
+  rn_view_set_blend_mode(blended, "multiply");
+  RnView *above = tree.colouredBox(parent, 4, 20, 20, 20, 20, 0.0F, 0.0F, 1.0F);
+  // The blue one is second in the list already; this says so out loud and moves
+  // the blended one up instead, so the two orders are not the same order.
+  rn_view_set_z_index(above, 1);
+  rn_view_set_z_index(blended, 2);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // Where only the blended child is: half red, as ever.
+  EXPECT_PIXEL(pixels, 55, 55, 128, 0, 0, 255);
+  // Where both are, the blended one is now on top of the blue one, so the blue
+  // one is its backdrop: half blue.
+  EXPECT_PIXEL(pixels, 40, 40, 0, 0, 128, 255);
+}
+
+// `plus-lighter`, the one CSS mode GSK has no node for. The keyword is still
+// stored and still reported -- the dump says what the app asked for -- and the
+// view paints unblended rather than wrongly blended. Measured rather than
+// assumed, which is the point of asserting it.
+TEST(gtk_paint_plus_lighter_is_reported_and_not_blended) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *child = greyOnRed(tree, root, "plus-lighter");
+
+  EXPECT(g_strcmp0(rn_view_get_blend_mode(child), "plus-lighter") == 0);
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 128, 128, 255);
+
+  char *text = rn_view_describe_tree(child);
+  const std::string described(text);
+  g_free(text);
+  EXPECT(described.find("blend=plus-lighter") != std::string::npos);
+}
+
+// And the keyword is in the dump, spelled as the AppKit side spells it, which is
+// what lets one scenario check the wiring on both hosts.
+TEST(gtk_paint_a_blend_mode_is_reported_in_the_tree) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *child = greyOnRed(tree, root, nullptr);
+
+  char *text = rn_view_describe_tree(child);
+  const std::string none(text);
+  g_free(text);
+  EXPECT(none.find("blend=") == std::string::npos);
+
+  rn_view_set_blend_mode(child, "color-dodge");
+  text = rn_view_describe_tree(child);
+  const std::string dodging(text);
+  g_free(text);
+  EXPECT(dodging.find("blend=color-dodge") != std::string::npos);
+}
+
+// Two blended children, in an order zIndex reversed. Each blends with what is
+// beneath it where it lands, so the two orders give two different pixels -- and
+// the pushes have to be made in paint order rather than in the order the
+// children were inserted, which is what this is really asserting.
+TEST(gtk_paint_two_blends_nest_in_paint_order) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *parent = tree.colouredBox(root, 2, 10, 10, 80, 80, 1.0F, 0.0F, 0.0F);
+
+  RnView *grey = tree.colouredBox(parent, 3, 20, 20, 40, 40, 0.5F, 0.5F, 0.5F);
+  rn_view_set_blend_mode(grey, "multiply");
+  rn_view_set_z_index(grey, 2);
+  RnView *blue = tree.colouredBox(parent, 4, 20, 20, 40, 40, 0.0F, 0.0F, 1.0F);
+  rn_view_set_blend_mode(blue, "screen");
+  rn_view_set_z_index(blue, 1);
+
+  // Blue first: screen of red and blue is magenta. Then grey: multiply of
+  // magenta and half grey is half magenta. The other order ends in (128,0,255),
+  // so the blue channel is what says which happened.
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 0, 128, 255);
+}
+
+// A blended child with nothing beneath it, which is the case the blend node's
+// two children make worth asking about: the backdrop is empty, so there is
+// nothing for GSK to blend against.
+//
+// CSS answers this exactly -- the result is weighted by the backdrop's alpha, so
+// a transparent backdrop leaves the source colour untouched -- and the child has
+// to be drawn either way. A blend node built with a missing bottom child and
+// dropped on the floor would lose the child entirely, which is the failure this
+// is here to catch.
+TEST(gtk_paint_a_blend_over_nothing_still_draws_the_child) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *parent = tree.box(root, 2, 10, 10, 80, 80);
+  RnView *child = tree.colouredBox(parent, 3, 20, 20, 40, 40, 0.5F, 0.5F, 0.5F);
+  rn_view_set_blend_mode(child, "multiply");
+
+  // The child, unchanged: there was no backdrop to multiply with.
+  EXPECT_PIXEL(renderView(root, 100, 100), 50, 50, 128, 128, 128, 255);
+  // And nothing where the child is not.
+  EXPECT_TRANSPARENT(renderView(root, 100, 100), 20, 20);
+}

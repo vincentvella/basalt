@@ -582,6 +582,26 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // cursor itself is applied through `resetCursorRects`, as AppKit expects.
 @property(nonatomic, readonly, nullable) NSCursor *rnResolvedCursor;
 
+// `mixBlendMode`, as the CSS keyword, shared with the GTK host through
+// core/BlendModes.h: "multiply", "screen", "color-dodge" and the rest. Nil or
+// empty is `normal`, meaning ordinary source-over compositing.
+//
+// Core Animation does the whole feature in one property on macOS:
+// `CALayer.compositingFilter` takes a Core Image blend-mode filter and blends
+// the layer with what is already beneath it. The keyword maps onto one
+// `CI<Name>BlendMode` per CSS mode, including `plus-lighter`, which GSK has no
+// node for.
+- (void)setRnBlendModeName:(nullable NSString *)name;
+
+// The keyword that was set, or nil: what the app asked for.
+@property(nonatomic, readonly, nullable) NSString *rnBlendModeName;
+
+// The name of the Core Image filter that keyword resolved to, or nil. Public for
+// the tests, which assert the mapping and that Core Image has each filter: a
+// compositing filter cannot be seen in a snapshot, because `renderInContext:`
+// composites nothing.
+@property(nonatomic, readonly, nullable) NSString *rnBlendFilterName;
+
 // Set on the surface root. See RnAppKitInputHandler.
 @property(nonatomic, weak, nullable) id<RnAppKitInputHandler> rnInputHandler;
 

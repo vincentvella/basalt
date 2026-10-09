@@ -142,6 +142,36 @@ const styles = StyleSheet.create({
     outlineColor: '#e0484d',
     outlineStyle: 'dashed',
   },
+  // The older iOS shadow props, which no host read: every card and sheet
+  // written before boxShadow existed sets these four. The radius is a CALayer
+  // blur radius, so it arrives doubled as a CSS blur, and the opacity
+  // multiplies the colour's alpha -- both of which the dump shows.
+  legacyShadowed: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000000',
+    shadowOpacity: 0.5,
+    shadowOffset: {width: 2, height: 4},
+    shadowRadius: 3,
+  },
+  // mixBlendMode on a child, which is the one view prop whose observable is what
+  // it does to the pixels beneath it: multiply over the footer's background.
+  // The parent carries the backdrop, so the blended box is a child of its own
+  // wrapper rather than a sibling in the row.
+  blendParent: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#e0484d',
+  },
+  blended: {
+    width: 24,
+    height: 24,
+    marginTop: 8,
+    marginLeft: 8,
+    backgroundColor: '#808080',
+    mixBlendMode: 'multiply',
+  },
   draggable: {
     width: 40,
     height: 40,
@@ -171,6 +201,10 @@ function App() {
         <View style={styles.gradient} />
         <View style={styles.shadowed} />
         <View style={styles.outlined} />
+        <View style={styles.legacyShadowed} />
+        <View style={styles.blendParent}>
+          <View style={styles.blended} />
+        </View>
         <View style={styles.handy} />
         <View style={styles.draggable} />
         <View style={styles.dot} />

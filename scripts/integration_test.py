@@ -3894,10 +3894,13 @@ def test_box_shadow(bundle: Path) -> None:
             raise Failure("host wrote no widget tree")
         tree = dump.read_text()
 
-    carrying = [line for line in tree.splitlines() if "shadow=" in line]
+    # The view the CSS shadows are on, by its outer shadow: the app also has a
+    # view carrying the older iOS shadow props, which arrive as a shadow of
+    # their own -- see test_legacy_shadow.
+    carrying = [line for line in tree.splitlines() if "shadow=(0,4,8,0,#00000040)" in line]
     if len(carrying) != 1:
         raise Failure(
-            f"{len(carrying)} views report a shadow; the app sets two on one.\n{tree}"
+            f"{len(carrying)} views report this shadow; the app sets two on one.\n{tree}"
         )
     # The numbers in full. An offset read onto the wrong axis, or a blur read as a
     # spread, still draws a shadow -- so the assertion is the whole tuple.
@@ -4192,6 +4195,114 @@ def test_outline(bundle: Path) -> None:
             "the outline is not the one the app asked for. A missing offset "
             "reads (3,0,...), a dropped style has no trailing word, and a "
             f"colour that did not resolve is #00000000.\n{carrying[0]}"
+        )
+
+
+def test_legacy_shadow(bundle: Path) -> None:
+    """The four iOS shadow props arrive as the CSS shadow they describe.
+
+    `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius` are React
+    Native's older spelling of a drop shadow, and they are in every component
+    written before `boxShadow` existed. They are iOS-only -- Android's view
+    config does not carry them -- and these hosts honour them anyway, which
+    core/LegacyShadow.h is the decision and the reason for.
+
+    Two conversions are not identity, and this is what reads them back: the
+    radius doubles, a `CALayer` blur radius being a standard deviation where
+    CSS's is twice one, and the opacity multiplies the colour's alpha. So
+    e2e/views.tsx asking for radius 3 at opacity 0.5 in black has to arrive as a
+    blur of 6 at #00000080. A host that passed the radius through reports a 3,
+    and one that dropped the opacity reports #000000ff.
+
+    Windows draws no shadows at all yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws no box shadows yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "shadow=(2,4,6,0,#00000080)" in line]
+    if len(carrying) != 1:
+        shadowed = [line for line in tree.splitlines() if "shadow=" in line]
+        raise Failure(
+            "no view reports the shadow the legacy props ask for: 2 and 4 out, a "
+            "blur of 6 -- twice the radius -- in black at half alpha. The views "
+            "that do report a shadow are below.\n" + "\n".join(shadowed)
+        )
+
+
+def test_mix_blend_mode(bundle: Path) -> None:
+    """`mixBlendMode` reaches the view as the keyword both hosts take.
+
+    What the blend does to the pixels is asserted on GTK, where the render tree
+    is readable and a blended pixel can be compared against an unblended one.
+    macOS composites in the window server, and `renderInContext:` -- which is
+    what this project's snapshots use -- composites nothing, so there is no
+    picture to compare there. The dump is what both hosts can be asked, and it
+    carries the keyword rather than each host's own spelling: GTK maps it to a
+    `GskBlendMode` and macOS to a Core Image filter, and core/BlendModes.h is the
+    one place that says what the value is called.
+
+    e2e/views.tsx asks for `multiply` on a child of a red box, which is also the
+    arrangement the GTK pixel tests use.
+
+    Windows blends nothing yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D is given no blend mode yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "blend=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a blend mode; the app sets one.\n{tree}"
+        )
+    if "blend=multiply" not in carrying[0]:
+        raise Failure(
+            "the blend mode is not the one the app asked for. A host that mapped "
+            "the enum by position reports a neighbour's keyword, which is what "
+            f"core/BlendModes.h exists to make impossible.\n{carrying[0]}"
         )
 
 
@@ -5644,6 +5755,8 @@ SCENARIOS = [
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("a filter list reaches the view, composed", test_filter),
     ("the outline family reaches the view", test_outline),
+    ("the legacy iOS shadow props reach the view", test_legacy_shadow),
+    ("mixBlendMode reaches the view", test_mix_blend_mode),
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),

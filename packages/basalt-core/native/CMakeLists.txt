@@ -56,6 +56,8 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_label_registry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_live_regions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_filters.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blend_modes.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_legacy_shadow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_drag_and_drop.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quit_file.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_menu_entries.cpp

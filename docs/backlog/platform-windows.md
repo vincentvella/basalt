@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (14):**
+**Open (15):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -20,6 +20,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 13. `filter` is not applied
 14. `textTransform` is ignored, so an uppercase label is not uppercase
 15. The `outline` family is not drawn
+16. `mixBlendMode` blends nothing
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -291,3 +292,14 @@ and none of it is a missing half.
   `overflow: 'hidden'`, so it goes after the children and outside their clip.
   backlog/correctness.md has what the other two decided. The end-to-end scenario
   is skipped here by name.
+
+- **`mixBlendMode` blends nothing.** The keyword reaches this host's props and
+  nothing reads it. Direct2D has the arithmetic: `CLSID_D2D1Blend`'s
+  `D2D1_BLEND_PROP_MODE` is CSS's list of modes plus a few extras of its own, so
+  there is no matrix to write. What it needs is the backdrop as an input, the
+  effect taking two bitmaps -- so the parent has to paint what is beneath a
+  blended child into an intermediate `ID2D1BitmapRenderTarget` and feed that in,
+  which is the same look-ahead the GTK half does for `gtk_snapshot_push_blend`.
+  backlog/correctness.md has what the other two decided, including which
+  backdrop each of them blends with and why the two differ. The end-to-end
+  scenario is skipped here by name.

@@ -8,8 +8,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
 4. Five view style props that no host reads, and nothing said so (box shadows,
-   linear gradients, hitSlop, filters and the outline family are done on GTK and
-   AppKit)
+   linear gradients, hitSlop, filters, the outline family and mixBlendMode are
+   done on GTK and AppKit)
 5. ~~A type check used as a liveness check~~, fixed in four places; the ordering
    it depended on is now core's
 
@@ -115,10 +115,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   props the backlog thought were handled. These are the ones no host mentions
   anywhere, and which nothing in this backlog mentioned either:
 
-  - ~~`boxShadow`~~, **done on GTK and AppKit 2026-10-08**; the older
-    `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius` beside it
-    are still ignored, and are iOS's pre-CSS spelling of the same idea. What the
-    work turned out to be is at the end of this entry.
+  - ~~`boxShadow`~~, **done on GTK and AppKit 2026-10-08**, and with it the
+    older `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`,
+    which are iOS's pre-CSS spelling of the same idea and are now converted into
+    it. What the work turned out to be is at the end of this entry.
   - `backgroundImage`: **linear gradients are done on GTK and AppKit
     2026-10-08**, radial ones are not, and `backgroundSize`,
     `backgroundPosition` and `backgroundRepeat` are still ignored. What the work
@@ -128,7 +128,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
     **done on GTK and AppKit 2026-10-08**. What the work turned out to be is at
     the end of this entry.
-  - `mixBlendMode` and `isolation`.
+  - ~~`mixBlendMode`~~, **done on GTK and AppKit 2026-10-08**; `isolation`
+    beside it is deliberately not implemented, and both are at the end of this
+    entry.
   - ~~`hitSlop`~~, **done on GTK and AppKit 2026-10-08**. The one of the nine
     that is behaviour rather than decoration, so an app relying on it was wrong
     rather than plain. What the work turned out to be is at the end of this
@@ -354,6 +356,117 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `D2D1::StrokeStyleProperties` carrying `D2D1_DASH_STYLE_CUSTOM` and the same
   dash arrays the other two hosts use, drawn after the children for the clipping
   reason above. Its scenario skips by name.
+
+  **`mixBlendMode`, done on GTK and AppKit 2026-10-08.** Seventeen CSS blend
+  modes, of which `normal` is "do nothing". The keyword crosses the seam, as
+  `cursor` does and for the same reason: GSK's blend modes are CSS's, Core
+  Image's blend filters are CSS's, and `core/BlendModes.h` is the one place that
+  says what a value is called. Its test is a round trip through React Native's
+  own `blendModeFromString`, so nothing in the table agrees with itself by
+  construction.
+
+  **AppKit is one property, and it is public here.**
+  `CALayer.compositingFilter` takes a Core Image filter and blends the layer with
+  what is beneath it, so the implementation is a sixteen-entry table from keyword
+  to `CI<Name>BlendMode`. React Native's own iOS half sets the same property to a
+  bare string, which is undocumented there; this sets the `CIFilter` the property
+  is documented to take. Every one of the sixteen filters exists, which the test
+  measures with `filterWithName:` rather than trusting the list -- including
+  `CILinearDodgeBlendMode` for `plus-lighter`, clamped addition being what that
+  keyword means.
+
+  **GTK is the whole shape of the feature, because GSK's blend node takes its two
+  children after the push.** A blend needs the backdrop, and a view cannot see
+  its own backdrop: it is the parent that has to build the node. So the parent's
+  snapshot looks ahead at its children, pushes one blend per blended child before
+  it paints anything -- last child outermost, so the pushes nest the way the
+  blends do -- and pops each one as its child is reached. The first blended child
+  then has this view's own content as its backdrop, the second has that blend's
+  result plus whatever came between them, and so on.
+
+  Two things fall out of that and are asserted on their own. The pushes have to
+  be in paint order rather than insertion order, because zIndex can differ from
+  it, and a stable sort of the blended ones gives the same order as the sort of
+  the whole list. And `overflow: 'hidden'` can no longer be one clip around every
+  child, because the pops that close each blend happen between the children and
+  that clip is what they would close; each child gets its own clip instead, which
+  paints the same picture since clipping a group and clipping each of its members
+  to the same box are the same thing.
+
+  **The deviation, which is the one thing here that is not CSS.** CSS blends with
+  the backdrop of the nearest stacking context, which for a plain `<View>` reaches
+  past its parent. GTK's backdrop stops at the parent, because that is what the
+  parent's snapshot can see; AppKit's does not, because Core Animation composites
+  the whole layer tree. So a blended view over a *grandparent's* background is two
+  different pictures on the two hosts, and the e2e scenario is deliberately an
+  arrangement where they agree: a blended child over its own parent's opaque
+  background. The dump carries the keyword, which is what both hosts can be asked
+  about.
+
+  `plus-lighter` is the one mode GSK has no node for. The keyword is stored and
+  reported either way -- the dump says what the app asked for, which is the rule
+  `cursor` follows for a name no theme has -- and the view paints unblended rather
+  than wrongly blended, which a test measures rather than assumes.
+
+  Nine pixel tests on GTK, five layer tests on AppKit, three on the shared table,
+  and a scenario on both hosts. Sabotage: the keyword table, the blend itself, the
+  paint-order sort and each host's wiring all fail tests of their own.
+
+  **Windows** has `CLSID_D2D1Blend`, whose `D2D1_BLEND_PROP_MODE` is CSS's list
+  plus a few Direct2D extras, so the arithmetic is the platform's. What it needs
+  is the backdrop as an input: the effect takes two bitmaps, so the parent has to
+  render what is beneath the blended child into an intermediate
+  `ID2D1BitmapRenderTarget` rather than straight to the window, which is the same
+  look-ahead the GTK half does and the reason this is not a one-line port. Its
+  scenario skips by name.
+
+  **`isolation` is deliberately not implemented, on any host.** It asks for an
+  element to become a stacking context so that its descendants' blending stops
+  there. On GTK that is already true of every view, the backdrop stopping at the
+  parent, so `isolate` is satisfied and `auto` is the deviation above -- there is
+  nothing to write. On AppKit there is no public way to say "composite this
+  subtree as a group": the levers that happen to do it are `shouldRasterize`,
+  which fixes the subtree to one scale and costs quality, and a mask or filter
+  on the parent, which changes what it draws. React Native's own iOS half ignores
+  the prop too. Whatever is written here would be a second deviation rather than
+  the feature, so what is recorded is the reason.
+
+  **The four iOS shadow props, done on GTK and AppKit 2026-10-08**, by becoming
+  the CSS shadow they describe: `core/LegacyShadow.h` converts them and both
+  mounting managers hand the combined list to the box shadow path they already
+  had, so there is one shadow mechanism from the manager down.
+
+  **That these hosts honour them at all is a decision, not a detail.** The props
+  are iOS-only: Android's view config does not carry them, so on Android they do
+  nothing and `elevation` is used instead. They are honoured here for two
+  reasons. The AppKit host is macOS, where react-native-macos honours them for
+  the same reason its iOS parent does. And a cross-platform app that asks for a
+  shadow means the shadow, so dropping it on a desktop that can draw one would be
+  a deliberate difference from what the app's author saw. The alternative --
+  ignoring them, as Android does -- is a defensible reading of "iOS-only" and is
+  what to come back to if this turns out to surprise anybody.
+
+  **Two of the conversions are not identity, and they are the whole reason this
+  is shared code.** `shadowRadius` is a `CALayer` blur radius, which is a
+  gaussian standard deviation, and CSS's blur-radius is twice one -- so it
+  doubles. `shadowOpacity` multiplies the colour's own alpha, as
+  `CALayer.shadowOpacity` does on top of `shadowColor`. Each host doubling a
+  radius on its own is exactly the arithmetic that comes out half as soft on one
+  platform and goes unnoticed; so is each host deciding on its own what an
+  opacity of zero means. Both props keep React Native's defaults, offset (0, -3)
+  and radius 3, so a view setting only a colour and an opacity gets the shadow
+  iOS would give it.
+
+  Both mechanisms can be set at once, which iOS allows, and the legacy shadow
+  goes at the back of the list: adding a `boxShadow` to an old component then
+  cannot be hidden behind the shadow it already had. Six tests in core against
+  the conversions and the gates, and a scenario on both hosts reading
+  `shadow=(2,4,6,0,#00000080)` out of the dump -- a radius passed through
+  unchanged reports a 3, and a dropped opacity reports `#000000ff`.
+
+  **Windows** needs nothing new for these beyond `CLSID_D2D1Shadow`, which its
+  `boxShadow` entry already names: the conversion is shared, so the legacy props
+  arrive as ordinary shadows in the same list.
 
 - ~~**A type check used as a liveness check.**~~ Found and fixed 2026-10-08, by
   accident, which is the part worth writing down.

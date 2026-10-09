@@ -461,6 +461,9 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   std::vector<RnAppKitGradientRecord> _gradients;
   NSMutableArray<CALayer *> *_boxShadowLayers;
   NSString *_cursorName;
+  // `mixBlendMode`: the keyword asked for, and the Core Image filter it became.
+  NSString *_blendModeName;
+  NSString *_blendFilterName;
   // The last text this view announced as a live region. See -rnAnnounce:.
   NSString *_lastAnnouncement;
   // The tags of the views in this one's labelled-by relation, for the tree dump.
@@ -1753,6 +1756,63 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   return _cursor;
 }
 
+// `mixBlendMode`, which on macOS is one property: a Core Image blend-mode filter
+// on the layer, blending it with whatever is already beneath it.
+//
+// Public API here, as `CALayer.filters` is, and private on iOS -- React Native's
+// own iOS half sets `compositingFilter` to a bare string, which is undocumented
+// there. This sets the `CIFilter` the property is documented to take.
+//
+// The CSS names map one to one, `plus-lighter` included: it is linear dodge,
+// which is clamped addition, and that is what the keyword means.
+static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
+  static NSDictionary<NSString *, NSString *> *names = nil;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    names = @{
+      @"multiply" : @"CIMultiplyBlendMode",
+      @"screen" : @"CIScreenBlendMode",
+      @"overlay" : @"CIOverlayBlendMode",
+      @"darken" : @"CIDarkenBlendMode",
+      @"lighten" : @"CILightenBlendMode",
+      @"color-dodge" : @"CIColorDodgeBlendMode",
+      @"color-burn" : @"CIColorBurnBlendMode",
+      @"hard-light" : @"CIHardLightBlendMode",
+      @"soft-light" : @"CISoftLightBlendMode",
+      @"difference" : @"CIDifferenceBlendMode",
+      @"exclusion" : @"CIExclusionBlendMode",
+      @"hue" : @"CIHueBlendMode",
+      @"saturation" : @"CISaturationBlendMode",
+      @"color" : @"CIColorBlendMode",
+      @"luminosity" : @"CILuminosityBlendMode",
+      @"plus-lighter" : @"CILinearDodgeBlendMode",
+    };
+  });
+  return names[keyword];
+}
+
+- (void)setRnBlendModeName:(NSString *)name {
+  NSString *wanted = name.length > 0 ? name : nil;
+  if (_blendModeName == wanted || [_blendModeName isEqualToString:wanted]) {
+    return;
+  }
+  _blendModeName = [wanted copy];
+  _blendFilterName = wanted != nil ? RnAppKitBlendFilterNamed(wanted) : nil;
+  // A keyword Core Image has no filter for leaves the layer unblended rather
+  // than wrongly blended, and the keyword is still reported: the dump says what
+  // the app asked for, which is the rule the cursor name follows too.
+  self.layer.compositingFilter =
+      _blendFilterName != nil ? [CIFilter filterWithName:_blendFilterName] : nil;
+}
+
+- (NSString *)rnBlendModeName {
+  return _blendModeName;
+}
+
+- (NSString *)rnBlendFilterName {
+  return _blendFilterName;
+}
+
 // AppKit asks for the rects rather than being told, which is why the cursor is
 // held and applied here: one rect over the whole view, discarded and rebuilt
 // each time, as react-native-macos does it. A child with its own cursor adds its
@@ -2340,6 +2400,11 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   // say it arrived on both hosts.
   if (_cursorName != nil) {
     [out appendFormat:@" cursor=%@", _cursorName];
+  }
+  // The blend mode the app asked for, spelled as GTK spells it: the keyword,
+  // not the Core Image filter it became.
+  if (_blendModeName != nil) {
+    [out appendFormat:@" blend=%@", _blendModeName];
   }
   // The outline, which is invisible in every other line: it is not a border and
   // a view with one has the same frame and the same colours without it. Spelled

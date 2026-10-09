@@ -486,6 +486,20 @@ void rn_view_set_cursor(RnView *self, const char *name);
 // NULL when unset, never the empty string.
 const char *rn_view_get_cursor(RnView *self);
 
+// `mixBlendMode`, as the CSS keyword: "multiply", "screen", "color-dodge" and
+// the rest, which is what core/BlendModes.h hands over. NULL or "" is `normal`,
+// meaning ordinary source-over compositing.
+//
+// The view does not paint its own blend -- a blend needs the backdrop, which is
+// its parent's business -- so this is read by the parent's snapshot, and setting
+// it queues a redraw on the parent. GSK has a mode for every CSS mode bar
+// `plus-lighter`, which is stored and reported but paints unblended.
+void rn_view_set_blend_mode(RnView *self, const char *name);
+
+// The keyword that was set, or NULL. What the app asked for rather than what GSK
+// could do with it, which is the same rule the cursor name follows.
+const char *rn_view_get_blend_mode(RnView *self);
+
 // `accessibilityLabelledBy`, already resolved: the views whose text names this
 // one. Pass NULL or 0 to take the relation off again.
 //
