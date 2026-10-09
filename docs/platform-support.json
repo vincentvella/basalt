@@ -224,6 +224,38 @@
     "win-textinput": {
       "text": "the Win32 EDIT peer does not read it yet",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "sv-zoom": {
+      "text": "no host zooms, and a desktop has no obvious gesture for it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-bounce": {
+      "text": "a desktop scroll view has no rubber band, so there is nothing to turn off",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-ios": {
+      "text": "iOS's own, with no desktop equivalent",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-android": {
+      "text": "Android's own",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-keyboard": {
+      "text": "a soft keyboard, which a desktop does not have",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-axis": {
+      "text": "the axis is derived from the content's size, so the hint goes unread",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-deceleration": {
+      "text": "GTK's momentum reads it; AppKit takes the system's own deceleration and Windows has no momentum yet",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "sv-untouched": {
+      "text": "a desktop question nobody has answered; the entry lists the group",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
     }
   },
   "statuses": {
@@ -1772,6 +1804,262 @@
       "macos": "ignored",
       "windows": "ignored",
       "why": "ti-ios"
+    },
+    "BaseScrollViewProps.scrollEnabled": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->scrollEnabled",
+        "props.scrollEnabled"
+      ]
+    },
+    "BaseScrollViewProps.pagingEnabled": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "pagingEnabled"
+      ]
+    },
+    "BaseScrollViewProps.showsHorizontalScrollIndicator": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "showsHorizontalScrollIndicator"
+      ]
+    },
+    "BaseScrollViewProps.showsVerticalScrollIndicator": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "showsVerticalScrollIndicator"
+      ]
+    },
+    "BaseScrollViewProps.scrollEventThrottle": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "scrollEventThrottle"
+      ]
+    },
+    "BaseScrollViewProps.contentInset": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "props->contentInset",
+        "props.contentInset"
+      ]
+    },
+    "BaseScrollViewProps.scrollIndicatorInsets": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "scrollIndicatorInsets"
+      ]
+    },
+    "BaseScrollViewProps.snapToInterval": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "snapToInterval"
+      ]
+    },
+    "BaseScrollViewProps.snapToAlignment": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "snapToAlignment"
+      ]
+    },
+    "BaseScrollViewProps.snapToOffsets": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "snapToOffsets"
+      ]
+    },
+    "BaseScrollViewProps.decelerationRate": {
+      "linux": "yes",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-deceleration"
+    },
+    "BaseScrollViewProps.bouncesZoom": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-zoom"
+    },
+    "BaseScrollViewProps.maximumZoomScale": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-zoom"
+    },
+    "BaseScrollViewProps.minimumZoomScale": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-zoom"
+    },
+    "BaseScrollViewProps.pinchGestureEnabled": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-zoom"
+    },
+    "BaseScrollViewProps.zoomScale": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-zoom"
+    },
+    "BaseScrollViewProps.bounces": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-bounce"
+    },
+    "BaseScrollViewProps.alwaysBounceHorizontal": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-bounce"
+    },
+    "BaseScrollViewProps.alwaysBounceVertical": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-bounce"
+    },
+    "BaseScrollViewProps.canCancelContentTouches": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.scrollsToTop": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.automaticallyAdjustContentInsets": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.automaticallyAdjustsScrollIndicatorInsets": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.automaticallyAdjustKeyboardInsets": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.contentInsetAdjustmentBehavior": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.directionalLockEnabled": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.endDraggingSensitivityMultiplier": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.scrollToOverflowEnabled": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.isInvertedVirtualizedList": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-ios"
+    },
+    "BaseScrollViewProps.persistentScrollbar": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-android"
+    },
+    "BaseScrollViewProps.keyboardDismissMode": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-keyboard"
+    },
+    "BaseScrollViewProps.horizontal": {
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "sv-axis"
+    },
+    "BaseScrollViewProps.contentOffset": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
+    },
+    "BaseScrollViewProps.maintainVisibleContentPosition": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
+    },
+    "BaseScrollViewProps.snapToStart": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
+    },
+    "BaseScrollViewProps.snapToEnd": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
+    },
+    "BaseScrollViewProps.disableIntervalMomentum": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
+    },
+    "BaseScrollViewProps.centerContent": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
+    },
+    "BaseScrollViewProps.indicatorStyle": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "sv-untouched"
     }
   },
   "areas": [

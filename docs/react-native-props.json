@@ -518,6 +518,170 @@
       ]
     },
     {
+      "name": "BaseScrollViewProps",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/scrollview/BaseScrollViewProps.h",
+      "note": "What a <ScrollView> carries: which way it scrolls, what it bounces and snaps to, its indicators and its insets.",
+      "styleFrom": [],
+      "props": [
+        {
+          "name": "alwaysBounceHorizontal",
+          "kind": "internal"
+        },
+        {
+          "name": "alwaysBounceVertical",
+          "kind": "internal"
+        },
+        {
+          "name": "bounces",
+          "kind": "internal"
+        },
+        {
+          "name": "bouncesZoom",
+          "kind": "internal"
+        },
+        {
+          "name": "canCancelContentTouches",
+          "kind": "internal"
+        },
+        {
+          "name": "centerContent",
+          "kind": "internal"
+        },
+        {
+          "name": "automaticallyAdjustContentInsets",
+          "kind": "internal"
+        },
+        {
+          "name": "automaticallyAdjustsScrollIndicatorInsets",
+          "kind": "internal"
+        },
+        {
+          "name": "automaticallyAdjustKeyboardInsets",
+          "kind": "internal"
+        },
+        {
+          "name": "decelerationRate",
+          "kind": "internal"
+        },
+        {
+          "name": "endDraggingSensitivityMultiplier",
+          "kind": "internal"
+        },
+        {
+          "name": "directionalLockEnabled",
+          "kind": "internal"
+        },
+        {
+          "name": "indicatorStyle",
+          "kind": "internal"
+        },
+        {
+          "name": "keyboardDismissMode",
+          "kind": "internal"
+        },
+        {
+          "name": "maintainVisibleContentPosition",
+          "kind": "internal"
+        },
+        {
+          "name": "maximumZoomScale",
+          "kind": "internal"
+        },
+        {
+          "name": "minimumZoomScale",
+          "kind": "internal"
+        },
+        {
+          "name": "scrollEnabled",
+          "kind": "component"
+        },
+        {
+          "name": "pagingEnabled",
+          "kind": "internal"
+        },
+        {
+          "name": "pinchGestureEnabled",
+          "kind": "internal"
+        },
+        {
+          "name": "scrollsToTop",
+          "kind": "internal"
+        },
+        {
+          "name": "showsHorizontalScrollIndicator",
+          "kind": "internal"
+        },
+        {
+          "name": "showsVerticalScrollIndicator",
+          "kind": "internal"
+        },
+        {
+          "name": "persistentScrollbar",
+          "kind": "internal"
+        },
+        {
+          "name": "horizontal",
+          "kind": "internal"
+        },
+        {
+          "name": "scrollEventThrottle",
+          "kind": "internal"
+        },
+        {
+          "name": "zoomScale",
+          "kind": "internal"
+        },
+        {
+          "name": "contentInset",
+          "kind": "internal"
+        },
+        {
+          "name": "contentOffset",
+          "kind": "internal"
+        },
+        {
+          "name": "scrollIndicatorInsets",
+          "kind": "internal"
+        },
+        {
+          "name": "snapToInterval",
+          "kind": "internal"
+        },
+        {
+          "name": "snapToAlignment",
+          "kind": "internal"
+        },
+        {
+          "name": "disableIntervalMomentum",
+          "kind": "internal"
+        },
+        {
+          "name": "snapToOffsets",
+          "kind": "internal"
+        },
+        {
+          "name": "snapToStart",
+          "kind": "internal"
+        },
+        {
+          "name": "snapToEnd",
+          "kind": "internal"
+        },
+        {
+          "name": "contentInsetAdjustmentBehavior",
+          "kind": "internal"
+        },
+        {
+          "name": "scrollToOverflowEnabled",
+          "kind": "internal"
+        },
+        {
+          "name": "isInvertedVirtualizedList",
+          "kind": "internal"
+        }
+      ]
+    },
+    {
       "name": "BaseTextInputProps",
       "header": "packages/react-native/ReactCommon/react/renderer/components/textinput/BaseTextInputProps.h",
       "note": "What a <TextInput> carries on every platform: the text, the placeholder, the tint colours and what the field will accept.",

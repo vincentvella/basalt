@@ -32,10 +32,11 @@ makes this list complete rather than long: the layout props were missing from
 this page until somebody went looking for `padding`, and nothing could have
 said so.
 
-**What is not here yet**: the props of a `<ScrollView>`, which has a
-ReactCommon struct of its own that nothing scrapes. `backlog/scrollview.md`
-records it with the shape of the fix, which is the one the layout props,
-`<Image>` and `<TextInput>` have each already had.
+Every component this platform mounts now has its props scraped from the
+struct that declares them: a `<View>`, a `<Text>`, an `<Image>`, a
+`<TextInput>` and a `<ScrollView>`. What is not here is a component none of
+the three hosts mounts, which is the same thing as a component this platform
+does not have: `backlog/components.md` keeps that list.
 
 Each struct is split the way reactnative.dev splits a component page: the
 style props a `style={{...}}` takes, then the props written on the element
@@ -49,8 +50,8 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 163 of 240 | 162 of 240 | 135 of 240 |
-| | `██████████████░░░░░░` | `██████████████░░░░░░` | `███████████░░░░░░░░░` |
+| Done | 174 of 279 | 172 of 279 | 145 of 279 |
+| | `████████████░░░░░░░░` | `████████████░░░░░░░░` | `██████████░░░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
 Yoga does it for every host: a layout prop never reaches one of these
@@ -267,6 +268,63 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `shouldNotifyLoadEvents` | – | – | – | [every host emits load events unconditionally, as iOS does](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+
+## BaseScrollViewProps
+
+What a `<ScrollView>` carries: which way it scrolls, what it bounces and snaps to, its indicators and its insets. From `packages/react-native/ReactCommon/react/renderer/components/scrollview/BaseScrollViewProps.h`.
+
+### Component props
+
+Written on the element itself, as `<View onLayout={...} />`.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `scrollEnabled` | ✅ | ✅ | ✅ |  |
+
+### Neither
+
+Declared in ReactCommon and in no public prop type, so nothing an app writes reaches them: they are filled in by the renderer or are the innards of a component's own behaviour.
+
+| | Linux | macOS | Windows | Why |
+| --- | --- | --- | --- | --- |
+| `alwaysBounceHorizontal` | – | – | – | [a desktop scroll view has no rubber band, so there is nothing to turn off](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `alwaysBounceVertical` | – | – | – | [a desktop scroll view has no rubber band, so there is nothing to turn off](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `bounces` | – | – | – | [a desktop scroll view has no rubber band, so there is nothing to turn off](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `bouncesZoom` | – | – | – | [no host zooms, and a desktop has no obvious gesture for it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `canCancelContentTouches` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `centerContent` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `automaticallyAdjustContentInsets` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `automaticallyAdjustsScrollIndicatorInsets` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `automaticallyAdjustKeyboardInsets` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `decelerationRate` | ✅ | ✖ | ✖ | [GTK's momentum reads it; AppKit takes the system's own deceleration and Windows has no momentum yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `endDraggingSensitivityMultiplier` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `directionalLockEnabled` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `indicatorStyle` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `keyboardDismissMode` | – | – | – | [a soft keyboard, which a desktop does not have](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `maintainVisibleContentPosition` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `maximumZoomScale` | – | – | – | [no host zooms, and a desktop has no obvious gesture for it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `minimumZoomScale` | – | – | – | [no host zooms, and a desktop has no obvious gesture for it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `pagingEnabled` | ✅ | ✅ | ✅ |  |
+| `pinchGestureEnabled` | – | – | – | [no host zooms, and a desktop has no obvious gesture for it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `scrollsToTop` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `showsHorizontalScrollIndicator` | ✅ | ✅ | ✅ |  |
+| `showsVerticalScrollIndicator` | ✅ | ✅ | ✅ |  |
+| `persistentScrollbar` | – | – | – | [Android's own](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `horizontal` | – | – | – | [the axis is derived from the content's size, so the hint goes unread](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `scrollEventThrottle` | ✅ | ✅ | ✅ |  |
+| `zoomScale` | – | – | – | [no host zooms, and a desktop has no obvious gesture for it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `contentInset` | ✅ | ✅ | ✅ |  |
+| `contentOffset` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `scrollIndicatorInsets` | ✅ | ✅ | ✅ |  |
+| `snapToInterval` | ✅ | ✅ | ✅ |  |
+| `snapToAlignment` | ✅ | ✅ | ✅ |  |
+| `disableIntervalMomentum` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `snapToOffsets` | ✅ | ✅ | ✅ |  |
+| `snapToStart` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `snapToEnd` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `contentInsetAdjustmentBehavior` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `scrollToOverflowEnabled` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `isInvertedVirtualizedList` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 
 ## BaseTextInputProps
 

@@ -306,10 +306,11 @@ function render(inventory, data) {
   lines.push('this page until somebody went looking for `padding`, and nothing could have');
   lines.push('said so.');
   lines.push('');
-  lines.push('**What is not here yet**: the props of a `<ScrollView>`, which has a');
-  lines.push('ReactCommon struct of its own that nothing scrapes. `backlog/scrollview.md`');
-  lines.push('records it with the shape of the fix, which is the one the layout props,');
-  lines.push('`<Image>` and `<TextInput>` have each already had.');
+  lines.push('Every component this platform mounts now has its props scraped from the');
+  lines.push('struct that declares them: a `<View>`, a `<Text>`, an `<Image>`, a');
+  lines.push('`<TextInput>` and a `<ScrollView>`. What is not here is a component none of');
+  lines.push('the three hosts mounts, which is the same thing as a component this platform');
+  lines.push('does not have: `backlog/components.md` keeps that list.');
   lines.push('');
   lines.push('Each struct is split the way reactnative.dev splits a component page: the');
   lines.push('style props a `style={{...}}` takes, then the props written on the element');

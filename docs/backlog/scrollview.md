@@ -8,7 +8,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. contentBoundingRect
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
-5. `ScrollViewProps` has no rows on the support page
+5. ~~`ScrollViewProps` has no rows on the support page~~
+6. Seven `<ScrollView>` props are a desktop question nobody has answered
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -87,10 +88,29 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   container view at that origin.
 - `disableViewCulling` is never set, which will matter once AT-SPI lands.
 
-- **`ScrollViewProps` has no rows on the support page.** The last group of the
-  shape the layout props, `<Image>` and `<TextInput>` each had: a ReactCommon
-  struct nothing scrapes, so the props an app writes on a `<ScrollView>` are
-  neither implemented-and-ticked nor missing-and-recorded. They are absent.
+- ~~**`ScrollViewProps` has no rows on the support page.**~~ Done 2026-10-09:
+  thirty-nine rows from `BaseScrollViewProps`, which closes the last group of
+  this shape. Ten are read by every host, measured by grepping each one rather
+  than trusting this file: `scrollEnabled`, `pagingEnabled`, both indicator
+  flags, `scrollEventThrottle`, `contentInset`, `scrollIndicatorInsets` and the
+  three snapping props. `decelerationRate` is read on GTK alone, which is the
+  honest shape of the momentum work: AppKit takes the system's own deceleration
+  and Windows has none yet.
+
+  Of the twenty-eight nothing reads, twenty-one are somebody else's platform or
+  a gesture no desktop has, and are marked as deliberately not done: the zoom
+  family against entry 4, the bounce family because a desktop scroll view has no
+  rubber band to stretch, iOS's inset-adjustment and `scrollsToTop`, Android's
+  `persistentScrollbar`, and `keyboardDismissMode`, which wants a soft keyboard.
+  `horizontal` is read by nothing on purpose and that is worth knowing: the axis
+  is derived from the content's size against the viewport's, so a horizontal
+  list works without the hint.
+
+  The other seven are entry 6 below.
+
+  What the entry said when it was open: a ReactCommon struct nothing scrapes, so
+  the props an app writes on a `<ScrollView>` were neither
+  implemented-and-ticked nor missing-and-recorded. They were absent.
 
   `BaseScrollViewProps.h` has the same `#pragma mark - Props` shape the scraped
   structs have, so the scrape is one entry in `STRUCTS` in
@@ -102,3 +122,29 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Worth doing the same way the other three were: grep each host for the prop
   rather than trusting this file, which is how the `<TextInput>` rows found two
   stale claims in backlog/textinput.md on the day they were added.
+
+- **Seven `<ScrollView>` props are a desktop question nobody has answered.**
+  Surfaced on 2026-10-09 by giving every prop a row, which is the point of the
+  rows: each of these is a thing an app can write that no host reads, and none
+  of them is somebody else's platform.
+
+  `contentOffset` is the first one an app notices: it sets where a list starts,
+  and a chat view that opens at the bottom writes it. Every host keeps its
+  offset in its own state and reads it from the scroll state rather than the
+  props, so the initial value is dropped.
+
+  `maintainVisibleContentPosition` is the one that matters most for a chat
+  list, and the hardest: it keeps the visible content still while items are
+  prepended, which means comparing content sizes across a mount and adjusting
+  the offset before anything is drawn. The shape of it belongs in `core/`, since
+  the arithmetic is the same on all three.
+
+  `snapToStart`, `snapToEnd` and `disableIntervalMomentum` are modifiers of
+  snapping, which *is* implemented on all three: the first two decide whether
+  the first and last snap points are the content's edges, and the third stops a
+  fling from carrying past the next point. `core/ScrollSnap.h` is where they go,
+  and each is a line or two there rather than per host.
+
+  `centerContent` centres content smaller than the viewport, and
+  `indicatorStyle` asks for a light or dark indicator, which these hosts draw
+  themselves from `core/ScrollIndicator.h` and could colour from the prop.

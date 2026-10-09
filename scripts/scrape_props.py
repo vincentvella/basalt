@@ -149,6 +149,13 @@ STRUCTS = [
         "fills its box, and the Android and iOS extras.",
     ),
     (
+        "BaseScrollViewProps",
+        "packages/react-native/ReactCommon/react/renderer/components/scrollview/BaseScrollViewProps.h",
+        "Props",
+        "What a <ScrollView> carries: which way it scrolls, what it bounces and "
+        "snaps to, its indicators and its insets.",
+    ),
+    (
         "BaseTextInputProps",
         "packages/react-native/ReactCommon/react/renderer/components/textinput/BaseTextInputProps.h",
         "Props",
