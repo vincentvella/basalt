@@ -88,6 +88,7 @@ make compare                        # every app in e2e/, through every host
 node --test scripts/test_cli.js     # run-linux, run-macos and run-windows
 node scripts/check_includes.js      # a header used and not included, and a
                                     # spelling one toolchain lacks
+node scripts/check_backlog.js       # the backlog's counts against its entries
 ```
 
 The last two need nothing built, and run in both CI jobs. `check_includes.js`
@@ -108,6 +109,20 @@ Those spellings are all unused in the tree on purpose, which means nothing here
 would notice if the rules stopped matching. So the guard has its own tests,
 `node --test scripts/test_check_includes.js`, which feed text through the rules
 directly and run before it in both places.
+
+`check_backlog.js` is the same shape of guard pointed at prose. `docs/BACKLOG.md`
+is a table of areas and how much is open in each, every file repeats its own
+count in an `**Open (n):**` header, and both are maintained by hand in a
+repository where a commit routinely strikes one entry and adds another. Counting
+them for the first time on 2026-10-08 found `accessibility.md` claiming two with
+four open, wrong for an unknown number of commits, and the commit that found it
+had nearly shipped a wrong count of its own.
+
+The rule it applies is the one these files are written to: an entry is closed
+when its own text is struck, and a struck note *inside* an entry leaves the entry
+open. It also has its own tests, for the reason above and because the shapes that
+matter -- the wrapped entry, the struck note, the prose file with no list -- are
+easier to feed as text than to find.
 
 `integration_test.py` picks whichever host it finds and runs the same scenarios
 against it, because they are about React and Fabric rather than about a

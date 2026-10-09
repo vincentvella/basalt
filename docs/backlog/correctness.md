@@ -2,16 +2,18 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (3):**
 
 1. ~~borderStyles, dashed and dotted borders~~
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
-4. Five view style props that no host reads, and nothing said so (box shadows,
-   linear gradients, hitSlop, filters, the outline family and mixBlendMode are
-   done on GTK and AppKit)
+4. ~~Five view style props that no host reads, and nothing said so~~: seven of
+   the nine done on GTK and AppKit, two written down as deliberately ignored.
+   What is left is entry 6
 5. ~~A type check used as a liveness check~~, fixed in four places; the ordering
    it depended on is now core's
+6. backgroundSize, backgroundPosition and backgroundRepeat are ignored, and they
+   apply to the gradients that are implemented
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than
@@ -109,7 +111,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   tests having shown how to reach one. Hit testing is the wrong instrument and
   cannot answer it.
 
-- **Five view style props that no host reads, and nothing said so.** Counted
+- **Five view style props that no host reads, and nothing said so.** All five
+  are now either done or written down; what is left of them is the
+  `backgroundSize` entry below. Counted
   2026-10-08 by going through `BaseViewProps` field by field and grepping all
   three hosts for each, after `cursor` and `borderStyle` both turned out to be
   props the backlog thought were handled. These are the ones no host mentions
@@ -120,9 +124,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     which are iOS's pre-CSS spelling of the same idea and are now converted into
     it. What the work turned out to be is at the end of this entry.
   - `backgroundImage`: **gradients are done on GTK and AppKit 2026-10-08**,
-    linear and radial both; `backgroundSize`, `backgroundPosition` and
-    `backgroundRepeat` are still ignored. What the work turned out to be is at
-    the end of this entry.
+    linear and radial both. `backgroundSize`, `backgroundPosition` and
+    `backgroundRepeat` are still ignored, and that is now its own entry below
+    rather than a line here: they are not waiting on an image loader, which is
+    what this entry used to say.
+  - ~~`shouldRasterize` and `removeClippedSubviews`~~: **both deliberately not
+    implemented, written down 2026-10-08** with the measurements that decide it.
+    At the end of this entry.
   - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, all nine functions.
     What the work turned out to be is at the end of this entry.
   - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
@@ -135,9 +143,6 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     that is behaviour rather than decoration, so an app relying on it was wrong
     rather than plain. What the work turned out to be is at the end of this
     entry.
-  - `shouldRasterize` and `removeClippedSubviews`: performance hints, and the
-    only two of the nine where ignoring them is arguably correct.
-
   Not one list of work. Each is its own entry waiting to be written, and the
   count above treats them as one until somebody picks one up. What this entry is
   for is that none of them was written down at all, which is how `cursor` stayed
@@ -548,6 +553,99 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   drawn -- which is what this function is -- so it needs the effect graph its
   `filter` entry already names, with the shadow applied to the layer's output and
   composited beneath it. Its scenario skips by name.
+
+  **`shouldRasterize` and `removeClippedSubviews`: deliberately not implemented,
+  and the reasons are not the same one.** Both are performance hints, which is
+  where the resemblance stops.
+
+  **`shouldRasterize` cannot arrive at all, which took one grep to find and is
+  the whole answer.** The C++ prop is read from the raw prop
+  `shouldRasterizeIOS`, and only `BaseViewConfig.ios.js` declares that in
+  `validAttributes`. This platform's view config override takes *Android's*
+  config -- `packages/basalt-core/src/overrides/BaseViewConfig.ts`, for the
+  reasons that file gives -- and Android's declares `removeClippedSubviews` and
+  not `shouldRasterizeIOS`. So React never sends it, `BaseViewProps::shouldRasterize`
+  is false in every host for every view, and a host that read it would be reading
+  a constant. Re-checkable in seconds: grep the two config files for the two
+  names.
+
+  Making it arrive is one line in that override. Then AppKit is two more, and
+  they are React Native's own: `layer.shouldRasterize = prop` with
+  `layer.rasterizationScale` set to the backing scale when on and 1 when off,
+  which is exactly `RCTViewComponentView.mm`'s. GTK has no node for it -- the
+  node types in GTK 4.22's `gskenums.h` have no cache, measured by reading them
+  -- so the nearest thing is rendering the subtree with
+  `gsk_renderer_render_texture` and appending a texture node, which is a cache
+  with an invalidation problem: nothing would know when the subtree changed.
+
+  Not done, and the reason is the shape of the prop rather than the cost. A hint
+  that is wrong is slower and blurrier than no hint, so a half-cache on one host
+  is worse than the honest nothing both hosts do now. If it is ever wanted, the
+  one-line view config change is what makes it testable at all.
+
+  **`removeClippedSubviews` does arrive and is ignored.** Android declares it, so
+  it reaches both hosts' props and neither reads it. Ignoring it is correct here
+  for a reason that is upstream's own: React Native disables the prop entirely
+  when its view-culling feature flag is on -- `if
+  (!ReactNativeFeatureFlags::enableViewCulling())` guards the only place iOS
+  reads it -- so the direction of travel is culling in the renderer, which
+  decides what to mount for every view rather than per prop.
+
+  Honouring it means what iOS does: hold the React children in a side array,
+  attach only the ones inside a clip rect, and re-attach the rest when the prop
+  goes off. That is the same machinery culling needs, built per-view and worse,
+  and it has the failure iOS is known for -- a clipped child loses anything the
+  platform was holding for it, which on a desktop includes focus and a text
+  field's selection. `backlog/scrollview.md` carries the culling entry it
+  belongs with: `disableViewCulling` is never set, and that is the knob to reach
+  for first.
+
+  So neither is a gap to close. What they were, until this was written, is two
+  props nothing said anything about, which is the thing this entry exists to
+  stop.
+
+- **`backgroundSize`, `backgroundPosition` and `backgroundRepeat` are ignored,
+  and the previous note about them was wrong.** It said they "have nothing to act
+  on until an image can be a background, which is a loader question rather than a
+  drawing one". That is false twice over: CSS treats a gradient as an image, so
+  all three apply to the gradients both hosts now draw, and React Native's iOS
+  half already applies them to exactly those. Written down 2026-10-08 after
+  reading that implementation rather than the prop names.
+
+  **What iOS does**, in `RCTViewComponentView.mm`'s background-image block: it
+  takes the *padding* frame as the positioning area and the layer bounds as the
+  painting area -- `background-origin: padding-box` and `background-clip:
+  border-box`, which it says in a comment -- computes an image size from
+  `backgroundSize` and `backgroundRepeat` through
+  `RCTBackgroundImageUtils.calculateBackgroundImageSize`, renders the gradient at
+  *that* size rather than the view's, and then positions and tiles it. The three
+  lists are indexed with `imageIndex % list.size()`, which is CSS's rule for a
+  list shorter than the image list.
+
+  **What that changes here is not small.** Both hosts resolve a gradient against
+  the view's border box: `GtkMountingManager` and `AppKitMountingManager` pass
+  `layoutMetrics.frame.size` into `core/Gradients.h`, which is what decides the
+  gradient line and the ending shape. Honouring these three means resolving
+  against the background image's size instead, positioning that image in the
+  padding box, and repeating it -- so the shared resolution grows an input and
+  the two view layers grow a tile. A view with padding is already a visible
+  difference from iOS for the same stylesheet, which nothing has noticed because
+  nothing in `e2e/views.tsx` puts a gradient on a padded view.
+
+  **Both hosts have the pieces.** GTK has `gtk_snapshot_push_repeat`, which the
+  image tiling already uses, and `GSK_REPEATING_LINEAR_GRADIENT_NODE` and
+  `GSK_REPEATING_RADIAL_GRADIENT_NODE` for the cases where the repeat is along
+  the gradient itself. AppKit draws its gradients in `drawRect:`, so a sized
+  sub-rect and a loop is the whole of it, or a `CGPattern` for the tiling case.
+  Windows would need the same geometry with
+  `ID2D1BitmapBrush`'s extend modes.
+
+  The sizing is the specified part and belongs in `core/Gradients.h` beside the
+  rest: `cover` and `contain` against an intrinsic size a gradient does not have
+  (CSS says a gradient's intrinsic size is the positioning area, which is why
+  iOS passes the area in as `itemIntrinsicSize`), lengths and percentages, and
+  the four repeat keywords, of which `space` and `round` change the tile size
+  rather than only the step.
 
 - ~~**A type check used as a liveness check.**~~ Found and fixed 2026-10-08, by
   accident, which is the part worth writing down.

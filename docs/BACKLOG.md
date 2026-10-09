@@ -24,8 +24,8 @@ Counts are open entries. Nothing is lost; the prose moved, it did not shrink.
 | [Image](backlog/image.md) | 4 | Decorative props, and assets over the network: fetching, caching, progress. |
 | [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |
-| [Accessibility](backlog/accessibility.md) | 2 | Nothing has been tested against a real screen reader. |
-| [Correctness](backlog/correctness.md) | 4 | Things that work but not quite right. |
+| [Accessibility](backlog/accessibility.md) | 4 | Nothing has been tested against a real screen reader. |
+| [Correctness](backlog/correctness.md) | 3 | Things that work but not quite right. |
 
 ## Platforms and plumbing
 

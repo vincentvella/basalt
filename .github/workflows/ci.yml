@@ -457,6 +457,16 @@ jobs:
           node --test scripts/test_check_includes.js
           node scripts/check_includes.js
 
+      - name: The backlog's own counts
+        # docs/BACKLOG.md's table and each file's `**Open (n)**` header are
+        # maintained by hand, and a commit here routinely strikes one entry and
+        # adds another. Nothing read them until 2026-10-08, when counting found a
+        # file that had been wrong for an unknown number of commits. Its own
+        # tests first, for the reason the check above gives.
+        run: |
+          node --test scripts/test_check_backlog.js
+          node scripts/check_backlog.js
+
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src
 

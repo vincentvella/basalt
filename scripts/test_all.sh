@@ -151,6 +151,11 @@ if command -v node >/dev/null 2>&1; then
   # first, a guard that has stopped matching being worse than no guard.
   step "include hygiene tests" node --test scripts/test_check_includes.js
   step "include hygiene" node scripts/check_includes.js
+  # The backlog's own arithmetic: its table and each file's header are counts
+  # maintained by hand, and on 2026-10-08 one of them had been wrong for long
+  # enough that nobody could say since when. Same arrangement, tests first.
+  step "backlog count tests" node --test scripts/test_check_backlog.js
+  step "backlog counts" node scripts/check_backlog.js
 else
   skip "node suites" "node is not installed"
 fi

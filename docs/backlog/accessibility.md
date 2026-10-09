@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (2):**
+**Open (4):**
 
 1. Not tested against a real screen reader
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
