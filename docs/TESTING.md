@@ -611,6 +611,31 @@ on Windows that meant the quit timer stopping going through `WM_CLOSE`, because
 otherwise the app would have refused the harness too and the failure would have
 been a hang rather than a test.
 
+### A locked screen is not a broken host
+
+Leave the macOS suite running long enough for the Mac to lock itself and two
+scenarios fail, neither of them with a message about screens:
+
+    click a TextInput with a real mouse and see it focus
+        could not find the host window after 20 seconds
+    scrollTo({animated: true}) moves rather than jumps
+        no scroll offsets were reported at all
+
+A locked session realises no windows. The host still runs, still renders and
+still dumps a tree, but its accessibility window list is empty, so the point to
+click cannot be computed; and `CADisplayLink` does not fire, because there is
+nothing on a screen to be in step with, so an animated `scrollTo` arrives with
+no offsets in between. The second one is the dangerous shape: no offsets is
+exactly what a host that dropped the `animated` flag would report.
+
+Both scenarios now ask, and skip with the reason. `screen_is_locked()` reads
+`CGSSessionScreenIsLocked` out of `ioreg -n Root -d1`, and answers false
+anywhere it cannot be sure, a skip that fires wrongly being worse than a
+failure. CI is never locked, so nothing is lost there.
+
+What this cost before it was written down: two scenarios chased as regressions,
+including one that was blamed on a commit that had only touched text.
+
 ### The suite is a background app, and macOS treats those differently
 
 A host the harness launches does not get focus on a developer's Mac: the

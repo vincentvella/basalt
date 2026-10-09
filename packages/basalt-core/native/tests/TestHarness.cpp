@@ -6,8 +6,11 @@
 
 #include "TestHarness.h"
 
+#include "CrashHandler.h"
+
 #include <algorithm>
 #include <cctype>
+#include <iostream>
 #include <sstream>
 
 namespace basalt::testing {
@@ -47,6 +50,21 @@ std::string lowered(std::string text) {
 } // namespace
 
 int runAllTests(int argc, char **argv) {
+  // Unbuffered, and this is not a style choice. `basalt_appkit_tests`
+  // segfaulted on CI's Mac and the log said only "Segmentation fault: 11": not
+  // one test name, because stdout to a pipe is block-buffered and the buffer
+  // dies with the process. On a developer's machine it is a terminal and
+  // line-buffered, so the same crash would have named the test.
+  //
+  // A unit suite that cannot say where it died is a suite that costs a CI round
+  // trip per guess, which is what this cost.
+  std::cout << std::unitbuf;
+
+  // And the handler from core/CrashHandler.h, for the half a flush cannot give:
+  // which frame faulted. The hosts install it at startup and the suites did
+  // not, so a crash in a *test* said less than a crash in an app.
+  basalt::installCrashHandler();
+
   // Arguments are substrings of test names, and a test runs if it matches any
   // of them. There is a lot of the day in the difference between running one
   // test and running all of them, and this runner used to accept an argument

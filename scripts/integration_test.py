@@ -130,6 +130,35 @@ FOCUSED_BORDER = "borderc=(#4285f4ff,#4285f4ff,#4285f4ff,#4285f4ff)"
 INPUT_MODE = "injected"
 
 
+def screen_is_locked() -> bool:
+    """Whether the login session's screen is locked, on macOS.
+
+    A locked session has no *realised* windows: the window server has nothing on
+    screen, so a process's accessibility window list is empty and `CADisplayLink`
+    does not fire. Two scenarios depend on one or the other, and both failed with
+    messages that pointed somewhere else entirely -- "could not find the host
+    window after 20 seconds" and "no scroll offsets were reported at all" -- for
+    no better reason than a developer's Mac locking itself during a long run.
+
+    `CGSSessionScreenIsLocked` in the console session's dictionary is the answer,
+    and `ioreg` prints it without a framework binding. False on every other
+    platform, and false when the question cannot be answered: a skip that fires
+    when it should not would hide a real failure.
+    """
+    if PLATFORM != "macos":
+        return False
+    try:
+        session = subprocess.run(
+            ["ioreg", "-n", "Root", "-d1"], capture_output=True, text=True, timeout=20
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    for line in session.stdout.splitlines():
+        if "CGSSessionScreenIsLocked" in line:
+            return '"CGSSessionScreenIsLocked"=Yes' in line.replace(" ", "")
+    return False
+
+
 def real_input_available() -> bool:
     return bool(os.environ.get("DISPLAY")) and shutil.which("xdotool") is not None
 
@@ -318,17 +347,26 @@ def click_field_with_cgevent(surface_height: int, pid: int) -> None:
     # not a longer sleep.
     deadline = time.monotonic() + 20
     found = None
+    # The first failure as well as the last, because they are different failures
+    # and the last is the least informative: by then the host has usually exited
+    # on its own timer, so every attempt ends in "no host process" whatever went
+    # wrong at the start. The first attempt said "Can't get window 1 ... Invalid
+    # index", which is a window that was never realised and a different problem.
+    first = None
     while time.monotonic() < deadline:
         found = subprocess.run(
             ["osascript", "-e", script], capture_output=True, text=True
         )
         if found.returncode == 0 and found.stdout.count(",") == 3:
             break
+        if first is None:
+            first = found.stderr.strip()
         time.sleep(0.5)
     if found is None or found.returncode != 0 or found.stdout.count(",") != 3:
         raise Failure(
-            "could not find the host window after 20 seconds: "
-            f"{found.stderr.strip() if found is not None else 'never asked'}"
+            "could not find the host window after 20 seconds.\n"
+            f"  first attempt: {first or 'never asked'}\n"
+            f"  last attempt:  {found.stderr.strip() if found is not None else 'never asked'}"
         )
     # The raise has to reach the window server before the click is posted, or
     # the click arrives while the old window is still in front.
@@ -1732,6 +1770,12 @@ def test_click_focuses_a_field(bundle: Path) -> None:
         raise Skipped("SendInput moves the runner's real cursor")
     if PLATFORM == "linux" and not real_input_available():
         raise Skipped("needs a display and xdotool; a click has to be real")
+    if screen_is_locked():
+        # A locked session realises no windows, so the host's accessibility
+        # window list is empty and the point to click cannot be computed. What
+        # came out of that was "could not find the host window after 20
+        # seconds", which sounds like the host and is the screen.
+        raise Skipped("the screen is locked, so the host has no realised window")
 
     # The surface's height, so the click can be aimed without anything here
     # knowing what a title bar measures. One short run with no input, which is
@@ -3523,6 +3567,13 @@ def test_animated_scroll(bundle: Path) -> None:
     the app asked for. See core/ScrollAnimation.h for why that is evaluated
     rather than approached.
     """
+    if screen_is_locked():
+        # The curve is driven by a CADisplayLink, which does not fire while the
+        # session is locked: there is nothing on a screen to be in step with. So
+        # the app arrives at 530 with no offsets in between, which reads as the
+        # flag being dropped -- the exact failure this scenario is here to catch.
+        raise Skipped("the screen is locked, so no display link runs")
+
     app = bundle_app(bundle.parent, "scroll")
 
     env = dict(os.environ)
