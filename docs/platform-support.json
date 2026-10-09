@@ -45,10 +45,6 @@
       "text": "CLSID_D2D1Shadow",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
-    "win-filter": {
-      "text": "CLSID_D2D1ColorMatrix and friends",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "win-gradient": {
       "text": "the gradient brushes",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -366,7 +362,7 @@
     "BaseViewProps.filter": {
       "linux": "yes",
       "macos": "partial",
-      "windows": "no",
+      "windows": "yes",
       "why": "mac-dropshadow"
     },
     "BaseViewProps.backgroundImage": {

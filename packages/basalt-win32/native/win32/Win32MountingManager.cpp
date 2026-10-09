@@ -1,5 +1,7 @@
 #include "Win32MountingManager.h"
 
+#include "Filters.h"
+
 #include "DirectWriteLayout.h"
 #include "ImageBytes.h"
 #include "PlatformServices.h"
@@ -421,6 +423,41 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
     case facebook::react::PointerEventsMode::Auto:
       view->setPointerEvents(win32::RnWin32View::PointerEvents::Auto);
       break;
+  }
+
+  // `filter`. The arithmetic is `core/Filters.h`'s and is shared with the other
+  // two hosts: nine CSS functions collapse to one colour matrix, one blur, one
+  // opacity and the drop shadows in order, because seven of them are affine
+  // maps of colour and composing those is multiplying their matrices.
+  {
+    const basalt::ResolvedFilters resolved = basalt::resolveFilters(props->filter);
+    win32::RnWin32View::Filters filters;
+    if (!resolved.empty()) {
+      filters.hasMatrix = resolved.hasMatrix;
+      for (int i = 0; i < 16; i++) {
+        filters.matrix[i] = resolved.matrix.m[i];
+      }
+      for (int i = 0; i < 4; i++) {
+        filters.offset[i] = resolved.matrix.offset[i];
+      }
+      filters.blurRadius = resolved.blurRadius;
+      filters.opacity = resolved.opacity;
+      filters.shadows.reserve(resolved.dropShadows.size());
+      for (const auto &shadow : resolved.dropShadows) {
+        win32::RnWin32View::FilterShadow one;
+        one.dx = shadow.dx;
+        one.dy = shadow.dy;
+        // The standard deviation unchanged: `CLSID_D2D1Shadow` takes one, where
+        // GSK's shadow node takes CSS's radius and the GTK half doubles it.
+        one.standardDeviation = shadow.standardDeviation;
+        one.colour[0] = shadow.red;
+        one.colour[1] = shadow.green;
+        one.colour[2] = shadow.blue;
+        one.colour[3] = shadow.alpha;
+        filters.shadows.push_back(one);
+      }
+    }
+    view->setFilters(filters);
   }
 
   // The outline: CSS's, drawn outside the box and taking no layout space, so

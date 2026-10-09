@@ -749,3 +749,213 @@ TEST(win32_describe_prints_the_border_style_as_gtk_does) {
   box->setBorderStyle(RnWin32View::LineStyle::Dotted);
   EXPECT(root->describeTree().find("border-style=dotted") != std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// `filter`, which is an effect graph over the view's own picture.
+//
+// CSS applies a filter to an element and its descendants, so the assertions
+// below are about what reached the pixels after the subtree was drawn: a colour
+// matrix that recolours a child as well as its parent, a blur that spreads an
+// edge, an opacity that multiplies the view's own, and a drop shadow cast by
+// the result.
+//
+// The matrix test is deliberately asymmetric. Direct2D multiplies a row vector
+// by its matrix where core's rows are outputs, so the matrix goes in
+// transposed: a symmetric one would pass either way, and a channel rotation
+// comes out blue when it is right and green when it is not.
+// ---------------------------------------------------------------------------
+namespace {
+
+RnWin32View::Filters rotateChannels() {
+  // out_red = in_green, out_green = in_blue, out_blue = in_red.
+  RnWin32View::Filters filters;
+  filters.hasMatrix = true;
+  for (int i = 0; i < 16; i++) {
+    filters.matrix[i] = 0.0f;
+  }
+  filters.matrix[0 * 4 + 1] = 1.0f;
+  filters.matrix[1 * 4 + 2] = 1.0f;
+  filters.matrix[2 * 4 + 0] = 1.0f;
+  filters.matrix[3 * 4 + 3] = 1.0f;
+  return filters;
+}
+
+} // namespace
+
+TEST(win32_paint_applies_a_filters_colour_matrix) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *box = tree.colouredBox(2, 0, 0, 60, 60, 1.0f, 0.0f, 0.0f);
+  box->setFilters(rotateChannels());
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+  // Red in, blue out. Green out would mean the matrix went in untransposed,
+  // which is the one mistake this arrangement cannot hide.
+  EXPECT_PIXEL(pixels, 30, 30, 0, 0, 255, 255);
+}
+
+TEST(win32_paint_applies_a_filter_to_the_whole_subtree) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *parent = tree.box(2, 0, 0, 60, 60);
+  parent->setFilters(rotateChannels());
+  RnWin32View *child = tree.colouredBox(3, 10, 10, 40, 40, 1.0f, 0.0f, 0.0f);
+  parent->insertChild(child, 0);
+  root->insertChild(parent, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The child is red and is inside a filtered parent, so it comes out blue:
+  // that is what "and its descendants" means, and a host that filtered only
+  // its own background would leave this red.
+  EXPECT_PIXEL(pixels, 30, 30, 0, 0, 255, 255);
+}
+
+TEST(win32_paint_applies_a_filters_matrix_offset) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *box = tree.colouredBox(2, 0, 0, 60, 60, 0.0f, 0.0f, 0.0f);
+  RnWin32View::Filters filters;
+  filters.hasMatrix = true;
+  // Identity, plus all the green there is: `out = matrix * in + offset`, which
+  // is the fifth row of Direct2D's matrix rather than a fifth column.
+  filters.offset[1] = 1.0f;
+  box->setFilters(filters);
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT_PIXEL(pixels, 30, 30, 0, 255, 0, 255);
+}
+
+// The alpha mode, which is the other thing a colour matrix can get wrong.
+//
+// CSS defines its filters on unpremultiplied colour and Direct2D's default is
+// premultiplied, so a matrix over a half-transparent view is visibly wrong the
+// other way round: the red channel of a 50% red pixel is 0.5 premultiplied and
+// 1.0 straight.
+TEST(win32_paint_filters_in_straight_alpha) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *box = tree.box(2, 0, 0, 60, 60);
+  box->setBackgroundColor(1.0f, 0.0f, 0.0f, 0.5f, true);
+  RnWin32View::Filters filters;
+  filters.hasMatrix = true;
+  // Identity on colour, and alpha forced opaque: row three of the matrix is
+  // zeroed and the offset supplies the one.
+  for (int column = 0; column < 4; column++) {
+    filters.matrix[3 * 4 + column] = 0.0f;
+  }
+  filters.offset[3] = 1.0f;
+  box->setFilters(filters);
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Full red at full alpha. Premultiplied would give a dark red, about 128.
+  EXPECT_PIXEL(pixels, 30, 30, 255, 0, 0, 255);
+}
+
+TEST(win32_paint_applies_a_filters_blur) {
+  const auto edgeRamp = [](float radius) {
+    Tree tree;
+    RnWin32View *root = tree.box(1, 0, 0, 100, 40);
+    RnWin32View *parent = tree.box(2, 0, 0, 100, 40);
+    RnWin32View::Filters filters;
+    filters.blurRadius = radius;
+    parent->setFilters(filters);
+    // A hard edge down the middle: black on the left, nothing on the right.
+    RnWin32View *half = tree.colouredBox(3, 0, 0, 50, 40, 0.0f, 0.0f, 0.0f);
+    parent->insertChild(half, 0);
+    root->insertChild(parent, 0);
+
+    const RnPixels pixels = basalt::win32::renderToPixels(*root);
+    int mixed = 0;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      const int alpha = pixels.at(x, 20).alpha;
+      if (alpha > 24 && alpha < 232) {
+        mixed++;
+      }
+    }
+    return mixed;
+  };
+
+  const int sharp = edgeRamp(0.0f);
+  const int blurred = edgeRamp(10.0f);
+  EXPECT(sharp <= 4);
+  EXPECT(blurred > sharp + 5);
+}
+
+TEST(win32_paint_multiplies_the_views_opacity_by_the_filters) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *box = tree.colouredBox(2, 0, 0, 60, 60, 0.0f, 0.0f, 0.0f);
+  box->setOpacity(0.5f);
+  RnWin32View::Filters filters;
+  filters.opacity = 0.5f;
+  box->setFilters(filters);
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // CSS has two ways to ask for the same thing and an app can use both, so a
+  // quarter rather than a half.
+  EXPECT_NEAR(pixels.at(30, 30).alpha, 64, 6);
+}
+
+TEST(win32_paint_casts_a_filters_drop_shadow) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *box = tree.colouredBox(2, 20, 20, 40, 40, 1.0f, 1.0f, 1.0f);
+  RnWin32View::Filters filters;
+  RnWin32View::FilterShadow shadow;
+  shadow.dx = 12.0f;
+  shadow.dy = 12.0f;
+  shadow.standardDeviation = 0.0f;
+  shadow.colour[0] = 0.0f;
+  shadow.colour[1] = 0.0f;
+  shadow.colour[2] = 0.0f;
+  shadow.colour[3] = 1.0f;
+  filters.shadows.push_back(shadow);
+  box->setFilters(filters);
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Down and right of the box, where the shadow landed: black.
+  EXPECT_PIXEL(pixels, 65, 65, 0, 0, 0, 255);
+  // The box itself is still white, so the shadow is behind it rather than over
+  // it.
+  EXPECT_PIXEL(pixels, 30, 30, 255, 255, 255, 255);
+  // And up and left of the box there is nothing: a shadow with an offset does
+  // not surround its caster.
+  EXPECT_TRANSPARENT(pixels, 10, 10);
+}
+
+TEST(win32_describe_prints_a_filter_as_gtk_does) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *box = tree.box(2, 0, 0, 60, 60);
+  root->insertChild(box, 0);
+
+  EXPECT(root->describeTree().find("filter=") == std::string::npos);
+
+  // The probe is (1, 0.5, 0.25) and the matrix rotates the channels, so the
+  // answer is each channel's neighbour: green, blue, red.
+  box->setFilters(rotateChannels());
+  EXPECT(root->describeTree().find("filter=(probe=#8040ffff)") != std::string::npos);
+
+  RnWin32View::Filters pieces;
+  pieces.blurRadius = 8.0f;
+  pieces.opacity = 0.5f;
+  RnWin32View::FilterShadow shadow;
+  shadow.dx = 4.0f;
+  shadow.dy = 6.0f;
+  shadow.standardDeviation = 3.0f;
+  shadow.colour[3] = 0.5f;
+  pieces.shadows.push_back(shadow);
+  box->setFilters(pieces);
+  const std::string dump = root->describeTree();
+  EXPECT(dump.find("blur=8") != std::string::npos);
+  EXPECT(dump.find("opacity=0.5") != std::string::npos);
+  // The standard deviation React Native parsed, which is the number all three
+  // hosts are handed.
+  EXPECT(dump.find("shadow=(4,6,3,#00000080)") != std::string::npos);
+}

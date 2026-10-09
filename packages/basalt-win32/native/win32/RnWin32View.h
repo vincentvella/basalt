@@ -173,6 +173,43 @@ class RnWin32View {
   // decided the way GTK decides it.
   void setBorders(const float widths[4], const float colours[16]);
 
+  // One `dropShadow()` out of a `filter` list: a shadow of this subtree's
+  // *alpha* rather than of its box, which is the whole difference from
+  // `boxShadow`. The standard deviation React Native parsed, which is also what
+  // `CLSID_D2D1Shadow` takes, so nothing converts.
+  struct FilterShadow {
+    float dx = 0.0f;
+    float dy = 0.0f;
+    float standardDeviation = 0.0f;
+    float colour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  };
+
+  // `filter`, resolved by `core/Filters.h` into one colour matrix, one blur, one
+  // opacity and the drop shadows in the order they were written. The matrix is
+  // row by row with `out = matrix * in + offset`, which is core's shape; this
+  // host transposes it for Direct2D, whose matrix multiplies the other way
+  // round.
+  struct Filters {
+    bool hasMatrix = false;
+    float matrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    float offset[4] = {0, 0, 0, 0};
+    float blurRadius = 0.0f;
+    float opacity = 1.0f;
+    std::vector<FilterShadow> shadows;
+
+    bool empty() const {
+      return !hasMatrix && blurRadius <= 0.0f && opacity >= 1.0f && shadows.empty();
+    }
+    // Everything but the opacity, which is folded into the view's own rather
+    // than being an effect of its own.
+    bool needsEffects() const {
+      return hasMatrix || blurRadius > 0.0f || !shadows.empty();
+    }
+  };
+
+  void setFilters(const Filters &filters);
+  const Filters &filters() const { return filters_; }
+
   // How a border or an outline is drawn: filled, or stroked with a dash
   // pattern. One enum for both because it is one concept and the three values
   // are React Native's own for each of them.
@@ -472,6 +509,12 @@ class RnWin32View {
   void paintBorders(ID2D1RenderTarget *target) const;
   void paintStrokedBorder(ID2D1RenderTarget *target) const;
   void paintOutline(ID2D1RenderTarget *target) const;
+  // This view and everything inside it, with the target's transform already
+  // placing its origin at zero. Split out of `paint` so that a filtered view
+  // can draw the same thing into an offscreen bitmap and run an effect graph
+  // over it.
+  void paintContents(ID2D1RenderTarget *target) const;
+  void paintFiltered(ID2D1RenderTarget *target) const;
   void describeInto(std::string &out, int depth) const;
 
   int32_t tag_;
@@ -526,6 +569,7 @@ class RnWin32View {
   bool hasImageTint_ = false;
   float imageTint_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   float imageBlur_ = 0.0f;
+  Filters filters_;
   RnAccessibleInfo accessible_;
   bool hasTransform_ = false;
   // The 2D affine part, in the order Direct2D's Matrix3x2F stores it:

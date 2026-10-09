@@ -16,6 +16,8 @@
 #include <windows.h>
 
 #include <d2d1.h>
+#include <d2d1_1.h>
+#include <d2d1effects.h>
 #include <d2d1helper.h>
 #include <wrl/client.h>
 
@@ -462,10 +464,26 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
                                localValues[5]);
   target->SetTransform(local * parentTransform);
 
+  // `filter`, which applies to this view and everything inside it, as CSS says.
+  // That needs the subtree as a picture, so it goes through an offscreen bitmap
+  // and an effect graph; everything else draws straight onto the target.
+  if (filters_.needsEffects()) {
+    paintFiltered(target);
+  } else {
+    paintContents(target);
+  }
+
+  target->SetTransform(parentTransform);
+}
+
+void RnWin32View::paintContents(ID2D1RenderTarget *target) const {
   const D2D1_RECT_F bounds = D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height);
 
   {
-    const ScopedOpacity fade(target, opacity_);
+    // `filter`'s own `opacity()` multiplies the view's: CSS has two ways to ask
+    // for the same thing and an app can use both. Folded in here rather than
+    // being an effect of its own, which is what the GTK host does too.
+    const ScopedOpacity fade(target, opacity_ * filters_.opacity);
 
     // The background is always clipped to the rounded box, even when children
     // are not: `overflow: visible` lets a child escape the corner, but the
@@ -604,8 +622,6 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
       }
     }
   }
-
-  target->SetTransform(parentTransform);
 }
 
 // The border, as the ring between the view's rounded box and that box inset by
@@ -683,6 +699,127 @@ void RnWin32View::setOutline(float width,
 // elliptical radii need no special case. A stroke straddles its path, so the
 // path is the ring's centre line: offset plus half the width out from the
 // border edge, which is where the other two hosts put theirs.
+void RnWin32View::setFilters(const Filters &filters) {
+  filters_ = filters;
+}
+
+// `filter`, as an effect graph over this subtree's own picture.
+//
+// CSS applies a filter to an element *and its descendants*, so the subtree has
+// to exist as an image before anything can be done to it: the contents go into
+// a compatible bitmap, the effects run over that, and the result is drawn where
+// the view is. The other two hosts get the same shape from their compositors,
+// GSK by pushing nodes and Core Animation by holding filters on the layer.
+//
+// The order is the one `core/Filters.h` settled and backlog/correctness.md
+// records: the colour matrix and the blur commute, so either way round is the
+// same picture, and the drop shadows are outermost, cast by the blurred and
+// recoloured result rather than recoloured themselves. That is CSS's
+// `grayscale(1) drop-shadow(...)` and not the other order, which is the limit
+// that header names.
+//
+// **A child that overflows a filtered view is cropped to the view's box here**,
+// because the bitmap is the view's own size. GSK blurs the overflow because its
+// node tree carries the subtree's real extent, which nothing in this host
+// computes; backlog/platform-windows.md records it rather than leaving it to be
+// discovered.
+void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
+  ComPtr<ID2D1DeviceContext> context;
+  ComPtr<ID2D1BitmapRenderTarget> offscreen;
+  if (FAILED(target->QueryInterface(IID_PPV_ARGS(&context)))
+      || FAILED(target->CreateCompatibleRenderTarget(
+             D2D1::SizeF(frame_.width, frame_.height), offscreen.GetAddressOf()))
+      || !offscreen) {
+    // No device context, no effects: the unfiltered picture is the honest
+    // answer, since a filter that cannot be applied should not take the view
+    // with it.
+    paintContents(target);
+    return;
+  }
+
+  offscreen->BeginDraw();
+  offscreen->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+  paintContents(offscreen.Get());
+  if (FAILED(offscreen->EndDraw())) {
+    paintContents(target);
+    return;
+  }
+
+  ComPtr<ID2D1Bitmap> picture;
+  if (FAILED(offscreen->GetBitmap(picture.GetAddressOf())) || !picture) {
+    paintContents(target);
+    return;
+  }
+
+  // The chain, built from the bitmap outwards. `source` is whatever the last
+  // effect produced, or the bitmap when there is none.
+  ComPtr<ID2D1Effect> matrix;
+  ComPtr<ID2D1Effect> blur;
+  ComPtr<ID2D1Image> source;
+  picture->QueryInterface(IID_PPV_ARGS(&source));
+
+  if (filters_.hasMatrix
+      && SUCCEEDED(context->CreateEffect(CLSID_D2D1ColorMatrix, matrix.GetAddressOf()))
+      && matrix) {
+    // Direct2D multiplies a *row* vector by the matrix, so its m(i, j) is the
+    // weight of input channel i in output channel j -- the transpose of core's,
+    // whose rows are outputs. The fifth row is the offset.
+    D2D1_MATRIX_5X4_F wanted{};
+    float *const cells = &wanted._11;
+    for (int input = 0; input < 4; input++) {
+      for (int output = 0; output < 4; output++) {
+        cells[input * 4 + output] = filters_.matrix[output * 4 + input];
+      }
+    }
+    for (int output = 0; output < 4; output++) {
+      cells[16 + output] = filters_.offset[output];
+    }
+    matrix->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, wanted);
+    // Straight alpha, because CSS's filters are defined on unpremultiplied
+    // colour and Direct2D's default is premultiplied: a `grayscale(1)` over a
+    // half-transparent view is visibly wrong the other way. Clamped, which is
+    // what every browser does with a matrix that leaves the range.
+    matrix->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE,
+                     D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT);
+    matrix->SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, TRUE);
+    matrix->SetInput(0, source.Get());
+    source.Reset();
+    matrix->GetOutput(source.GetAddressOf());
+  }
+
+  if (filters_.blurRadius > 0.0f
+      && SUCCEEDED(context->CreateEffect(CLSID_D2D1GaussianBlur, blur.GetAddressOf()))
+      && blur) {
+    // Half the radius is the standard deviation, which is the conversion both
+    // other hosts make and `core/Filters.h` documents.
+    blur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, filters_.blurRadius / 2.0f);
+    blur->SetInput(0, source.Get());
+    source.Reset();
+    blur->GetOutput(source.GetAddressOf());
+  }
+
+  // The shadows first, so they are behind the picture, and in the order they
+  // were written: the first is the one nearest the content, which is the order
+  // `core/Filters.h` keeps them in.
+  for (const FilterShadow &shadow : filters_.shadows) {
+    if (shadow.colour[3] <= 0.0f) {
+      continue;
+    }
+    ComPtr<ID2D1Effect> cast;
+    if (FAILED(context->CreateEffect(CLSID_D2D1Shadow, cast.GetAddressOf())) || !cast) {
+      continue;
+    }
+    cast->SetInput(0, source.Get());
+    cast->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, shadow.standardDeviation);
+    const D2D1_VECTOR_4F tint{
+        shadow.colour[0], shadow.colour[1], shadow.colour[2], shadow.colour[3]};
+    cast->SetValue(D2D1_SHADOW_PROP_COLOR, tint);
+    context->DrawImage(cast.Get(), D2D1::Point2F(shadow.dx, shadow.dy));
+  }
+
+  context->DrawImage(source.Get(), D2D1::Point2F(0.0f, 0.0f));
+}
+
 void RnWin32View::paintOutline(ID2D1RenderTarget *target) const {
   if (outlineWidth_ <= 0.0f || outlineColour_[3] <= 0.0f) {
     return;
@@ -1503,6 +1640,69 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
                  static_cast<unsigned>(outlineColour_[3] * 255.0f + 0.5f));
     if (outlineStyle_ != LineStyle::Solid) {
       appendFormat(out, ",%s", outlineStyle_ == LineStyle::Dotted ? "dotted" : "dashed");
+    }
+    out += ")";
+  }
+
+  // `filter`, as the pieces it came to plus what its matrix makes of one probe
+  // colour, which is the format the other two hosts print and the end-to-end
+  // run reads. Sixteen numbers would drown the line; one colour is eight
+  // characters and still fails when a matrix is wrong. The probe is
+  // (1, 0.5, 0.25) so that no two channels can be swapped without the answer
+  // changing.
+  if (!filters_.empty()) {
+    out += " filter=(";
+    bool first = true;
+    if (filters_.hasMatrix) {
+      const float probe[4] = {1.0f, 0.5f, 0.25f, 1.0f};
+      float result[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+      for (int row = 0; row < 4; row++) {
+        result[row] = filters_.offset[row];
+        for (int column = 0; column < 4; column++) {
+          result[row] += filters_.matrix[row * 4 + column] * probe[column];
+        }
+      }
+      const auto byte = [](float value) {
+        const float clamped = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+        return static_cast<unsigned>(clamped * 255.0f + 0.5f);
+      };
+      appendFormat(out,
+                   "probe=#%02x%02x%02x%02x",
+                   byte(result[0]),
+                   byte(result[1]),
+                   byte(result[2]),
+                   byte(result[3]));
+      first = false;
+    }
+    if (filters_.blurRadius > 0.0f) {
+      appendFormat(out,
+                   "%sblur=%g",
+                   first ? "" : ",",
+                   static_cast<double>(filters_.blurRadius));
+      first = false;
+    }
+    if (filters_.opacity < 1.0f) {
+      appendFormat(out,
+                   "%sopacity=%g",
+                   first ? "" : ",",
+                   static_cast<double>(filters_.opacity));
+      first = false;
+    }
+    // Each drop shadow, with the standard deviation React Native parsed: that
+    // is the number all three hosts are handed, so it is the one a cross-host
+    // diff should compare.
+    for (const FilterShadow &shadow : filters_.shadows) {
+      appendFormat(out,
+                   "%sshadow=(%g,%g,%g,#%02x%02x%02x%02x)",
+                   first ? "" : ",",
+                   static_cast<double>(shadow.dx),
+                   static_cast<double>(shadow.dy),
+                   static_cast<double>(shadow.standardDeviation),
+                   static_cast<unsigned>(shadow.colour[0] * 255.0f + 0.5f),
+                   static_cast<unsigned>(shadow.colour[1] * 255.0f + 0.5f),
+                   static_cast<unsigned>(shadow.colour[2] * 255.0f + 0.5f),
+                   static_cast<unsigned>(shadow.colour[3] * 255.0f + 0.5f));
+      first = false;
     }
     out += ")";
   }

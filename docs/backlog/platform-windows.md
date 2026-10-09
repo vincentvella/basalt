@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (14):**
+**Open (13):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -17,7 +17,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 10. `accessibilityLabelledBy` sets no relation
 11. ~~`hitSlop` is not part of the hit test~~
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
-13. `filter` is not applied
+13. ~~`filter` is not applied~~
 14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
 15. ~~The `outline` family is not drawn~~
 16. `mixBlendMode` blends nothing
@@ -299,17 +299,41 @@ and none of it is a missing half.
   collect a region's text, which the other two do by walking the subtree for
   paragraphs. The end-to-end scenario is skipped here by name.
 
-- **`filter` is not applied.** The arithmetic is done and shared:
-  `core/Filters.h` turns a CSS filter list into one colour matrix, one blur
-  radius, one opacity and the drop shadows, with the Filter Effects spec's own
-  numbers and fifteen tests against them. Direct2D has the pieces to spend them on --
-  `CLSID_D2D1ColorMatrix` takes a 5x4 matrix in exactly this shape,
-  `CLSID_D2D1GaussianBlur` the blur, and `CLSID_D2D1Shadow` the `dropShadow()`,
-  which takes a blurred alpha mask of what is drawn and is therefore exactly
-  this function -- so this host needs an effect graph over the view's layer
-  rather than any new maths. backlog/correctness.md records what the other two
-  did with the standard deviation, which is the one number that differs by
-  platform. The end-to-end scenario is skipped here by name.
+- ~~**`filter` is not applied.**~~ Done 2026-10-09, as the entry predicted: an
+  effect graph over the view's own picture and no new arithmetic.
+  `core/Filters.h` collapses the nine CSS functions to one colour matrix, one
+  blur, one opacity and the drop shadows in order, and this host spends them on
+  `CLSID_D2D1ColorMatrix`, `CLSID_D2D1GaussianBlur` and `CLSID_D2D1Shadow`.
+  Nothing converted: Direct2D's shadow takes a standard deviation, as the
+  AppKit one does, where GSK takes CSS's radius and the GTK half doubles it.
+
+  **CSS applies a filter to an element and its descendants**, so `paint` is now
+  split: `paintContents` draws this view and everything inside it with the
+  target's transform already placing its origin at zero, and a filtered view
+  draws that into a compatible bitmap and runs the graph over it. The split is
+  worth having beyond this entry, since `mixBlendMode` needs the same picture.
+
+  Two details that a test would otherwise have found later. Direct2D multiplies
+  a *row* vector by its matrix where core's rows are outputs, so the matrix goes
+  in transposed, which is why the unit test rotates the channels rather than
+  swapping two: a symmetric matrix passes either way round, and a rotation comes
+  out blue when it is right and green when it is not. And the matrix needs
+  `D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT`, because CSS defines its filters on
+  unpremultiplied colour while Direct2D defaults to premultiplied: the red
+  channel of a half-transparent red pixel is 0.5 one way and 1.0 the other, and
+  the test that pins it forces the alpha opaque and asks what the red came out
+  as.
+
+  **A child that overflows a filtered view is cropped to the view's box here**,
+  because the offscreen bitmap is the view's own size. GSK blurs the overflow,
+  its node tree carrying the subtree's real extent, which nothing in this host
+  computes. Recorded rather than left to be discovered; closing it means asking
+  the mounting manager for a subtree's union of frames, which nothing needs yet.
+
+  Eight tests, and the two end-to-end scenarios now run on all three hosts: the
+  one that reads `filter=(probe=#b4b4b4ff)` out of the tree, where a transposed
+  matrix reports three different channels, and the one that reads the drop
+  shadow's standard deviation back.
 
 - ~~**`textTransform` is ignored, so an uppercase label is not uppercase.**~~
   Done, 2026-10-09, in `DirectWriteLayout.cpp` where the runs are built, which

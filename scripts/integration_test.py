@@ -4643,13 +4643,9 @@ def test_filter(bundle: Path) -> None:
     used the older luminance weights reports #a4a4a4, and one that transposed the
     matrix reports three different channels.
 
-    Both hosts resolve the list through the same shared code, so the two trees
-    agreeing on this line is what says neither did its own arithmetic.
-
-    Windows draws no filters yet, so it is skipped by name.
+    All three hosts resolve the list through the same shared code, so the trees
+    agreeing on this line is what says none of them did its own arithmetic.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D is given no filter list yet")
 
     app = bundle_app(bundle.parent, "views")
 
@@ -4766,10 +4762,9 @@ def test_drop_shadow_filter(bundle: Path) -> None:
 
     e2e/views.tsx asks for `drop-shadow(4px 6px 3px rgba(0, 0, 0, 0.5))`.
 
-    Windows draws no filters yet, so it is skipped by name.
+    All three hosts now: `CLSID_D2D1Shadow` takes a standard deviation too, so
+    the Win32 half converts nothing either.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D is given no filter list yet")
 
     app = bundle_app(bundle.parent, "views")
 
