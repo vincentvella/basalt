@@ -3951,10 +3951,14 @@ def test_linear_gradient(bundle: Path) -> None:
             raise Failure("host wrote no widget tree")
         tree = dump.read_text()
 
-    carrying = [line for line in tree.splitlines() if "gradient=" in line]
+    # The linear ones, by their shape: the app also has a view with a radial
+    # gradient, which the same line reports differently -- see
+    # test_radial_gradient.
+    carrying = [line for line in tree.splitlines()
+                if "gradient=(" in line and "gradient=(radial" not in line]
     if len(carrying) != 1:
         raise Failure(
-            f"{len(carrying)} views report a gradient; the app sets one.\n{tree}"
+            f"{len(carrying)} views report a linear gradient; the app sets one.\n{tree}"
         )
     if "gradient=((10,-10)-(70,50),2 stops)" not in carrying[0]:
         raise Failure(
@@ -4195,6 +4199,63 @@ def test_outline(bundle: Path) -> None:
             "the outline is not the one the app asked for. A missing offset "
             "reads (3,0,...), a dropped style has no trailing word, and a "
             f"colour that did not resolve is #00000000.\n{carrying[0]}"
+        )
+
+
+def test_radial_gradient(bundle: Path) -> None:
+    """`backgroundImage: 'radial-gradient(...)'` reaches the view, resolved.
+
+    The ending shape is the specified half and the one worth comparing across
+    hosts: CSS gives six ways to size it and four corners to measure to, and
+    every wrong answer still draws a radial gradient. Both hosts resolve it
+    through core/Gradients.h, so the two dumps agreeing is what says neither did
+    its own arithmetic.
+
+    e2e/views.tsx asks for `circle at 30% 30%` on a 60x40 box with no size, which
+    is CSS's default of `farthest-corner`: from (18, 12) the farthest corner is
+    the bottom right, 42 across and 28 down, so the radius is hypot(42, 28),
+    which is 50.4777. A host that took the closest corner reports 21.6, one that
+    took the farthest side reports 42, and one that defaulted the centre reports
+    a radius of 36 at (30, 20).
+
+    Windows draws no gradients yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws no gradients from backgroundImage yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "gradient=(radial" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report a radial gradient; the app sets one.\n{tree}"
+        )
+    if "gradient=(radial (18,12) 50.4777x50.4777,2 stops)" not in carrying[0]:
+        raise Failure(
+            "the ending shape is not the one CSS asks for: a circle through the "
+            "farthest corner from (18,12), which is hypot(42,28). The closest "
+            "corner is 21.6, the farthest side is 42, and a defaulted centre is "
+            f"36 at (30,20).\n{carrying[0]}"
         )
 
 
@@ -5755,6 +5816,7 @@ SCENARIOS = [
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("a filter list reaches the view, composed", test_filter),
     ("the outline family reaches the view", test_outline),
+    ("a radial gradient reaches the view, resolved", test_radial_gradient),
     ("the legacy iOS shadow props reach the view", test_legacy_shadow),
     ("mixBlendMode reaches the view", test_mix_blend_mode),
     ("textTransform changes what the engine lays out", test_text_transform),

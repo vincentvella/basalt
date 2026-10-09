@@ -142,6 +142,16 @@ const styles = StyleSheet.create({
     outlineColor: '#e0484d',
     outlineStyle: 'dashed',
   },
+  // A radial gradient, whose ending shape is the half that is specified and
+  // easy to get wrong: `circle at 30% 30%` on a 60x40 box is a circle through
+  // the farthest corner from there, which is 42 x 28 away, so its radius is
+  // hypot(42, 28). Both hosts resolve it through the same shared code, so the
+  // two dumps agreeing is what says neither did its own arithmetic.
+  radial: {
+    width: 60,
+    height: 40,
+    backgroundImage: 'radial-gradient(circle at 30% 30%, #4d8cf2 0%, #1f2129 100%)',
+  },
   // The older iOS shadow props, which no host read: every card and sheet
   // written before boxShadow existed sets these four. The radius is a CALayer
   // blur radius, so it arrives doubled as a CSS blur, and the opacity
@@ -201,6 +211,7 @@ function App() {
         <View style={styles.gradient} />
         <View style={styles.shadowed} />
         <View style={styles.outlined} />
+        <View style={styles.radial} />
         <View style={styles.legacyShadowed} />
         <View style={styles.blendParent}>
           <View style={styles.blended} />

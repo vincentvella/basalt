@@ -119,10 +119,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     older `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`,
     which are iOS's pre-CSS spelling of the same idea and are now converted into
     it. What the work turned out to be is at the end of this entry.
-  - `backgroundImage`: **linear gradients are done on GTK and AppKit
-    2026-10-08**, radial ones are not, and `backgroundSize`,
-    `backgroundPosition` and `backgroundRepeat` are still ignored. What the work
-    turned out to be is at the end of this entry.
+  - `backgroundImage`: **gradients are done on GTK and AppKit 2026-10-08**,
+    linear and radial both; `backgroundSize`, `backgroundPosition` and
+    `backgroundRepeat` are still ignored. What the work turned out to be is at
+    the end of this entry.
   - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, bar `dropShadow()`.
     What the work turned out to be is at the end of this entry.
   - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
@@ -229,12 +229,50 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   asserts the resolved line on both. Sabotages checked: the two points swapped,
   the list drawn front to back, and the rounded clip taken away.
 
-  **What is left of the prop.** A radial gradient parses in React Native and is
-  dropped here, which needs the size keywords -- `closest-side`,
-  `farthest-corner` -- and the position syntax resolved first; GSK and Core
-  Graphics both have the node for it. `backgroundSize`, `backgroundPosition` and
+  **Radial gradients, done on GTK and AppKit 2026-10-08.** The ending shape is
+  the whole of it: CSS gives six ways to size one and four corners to measure to,
+  and every wrong answer still draws a radial gradient. So the geometry is ported
+  rather than written, from React Native's own `RCTRadialGradient.mm`, and shared
+  in `core/Gradients.h` beside the linear construction -- `closest-side` and
+  `farthest-side` per axis, a circle taking the smaller or larger of the two, and
+  the two corner keywords sized to meet the corner with the aspect ratio of the
+  matching side shape. That last rule is the one a reimplementation gets wrong:
+  the naive answer, the corner's own dx and dy as the radii, is smaller and looks
+  like a gradient. Both hosts assert the corner lies on the ellipse.
+
+  Stops resolve against the longer radius, which is React Native's choice rather
+  than one made here, so a stop at 10pt is the same distance on all three
+  platforms.
+
+  **One list, not two.** `background-image` is a single list that can hold both
+  kinds and paints the first on top, so the view layers took a tagged record --
+  `RnGradient` on GTK, `RnAppKitGradient` on AppKit -- rather than a second
+  setter, and a test on each host puts a radial and a linear one in one list and
+  asserts the order between them. Two lists would have lost it.
+
+  GTK is a direct mapping: `gtk_snapshot_append_radial_gradient` takes a centre
+  and two radii, so an ellipse needs no special case. AppKit is not, and that is
+  the one piece of real work on that side: `CGContextDrawRadialGradient` draws
+  between two *circles*, so an ellipse is a scaled coordinate system, scaled
+  about the centre so the centre does not move. Scaling about the origin instead
+  draws an ellipse of the right shape in the wrong place, which is exactly what
+  the first attempt did and what the test that assumes each radius acts on its own
+  axis caught.
+
+  Eight tests in core against the spec's numbers, four on GTK's render tree and
+  three on its pixels, four on AppKit's pixels, and a scenario on both hosts
+  reading the resolved shape out of the dump: `circle at 30% 30%` on a 60x40 box
+  is a radius of hypot(42, 28), and the failure message says what the closest
+  corner, the farthest side and a defaulted centre would each report instead.
+
+  **What is left of the prop.** `backgroundSize`, `backgroundPosition` and
   `backgroundRepeat` have nothing to act on until an image can be a background,
   which is a loader question rather than a drawing one.
+
+  **Windows** has `ID2D1RenderTarget::CreateRadialGradientBrush`, whose
+  `D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES` carries a centre and two radii
+  directly, so the ellipse needs no transform there and the shared geometry hands
+  it the numbers. Its scenario skips by name with the linear one.
 
   **`hitSlop`, done on GTK and AppKit 2026-10-08.** Four insets that grow what a
   press can land on without moving a pixel, and each host already had one place

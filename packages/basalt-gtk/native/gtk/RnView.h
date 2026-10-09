@@ -87,32 +87,48 @@ typedef struct {
   GdkRGBA color;
 } RnGradientStop;
 
-// One `backgroundImage` gradient, already resolved: the end points of its
-// gradient line in this view's own pixels, and its stops in order.
+// Which kind of gradient a record is. CSS's `background-image` is one list that
+// can hold both, and the first in it is the one on top, so they cannot be two
+// lists here without losing the order between them.
+typedef enum {
+  RN_GRADIENT_LINEAR,
+  RN_GRADIENT_RADIAL,
+} RnGradientKind;
+
+// One `backgroundImage` gradient, already resolved against this view's size: a
+// linear one's two end points, or a radial one's centre and two radii, in this
+// view's own pixels.
 //
 // Resolved rather than described, because the resolution is CSS's and is shared
-// with the AppKit host in core/Gradients.h -- the angle, the box size and the
-// stop fixup all go into the two points and the offsets. This layer draws what it
-// is given, which is also why it does not need to know an angle from a keyword.
+// with the AppKit host in core/Gradients.h -- the angle or the ending shape, the
+// box size and the stop fixup all go into these numbers and the offsets. This
+// layer draws what it is given, which is also why it does not need to know an
+// angle from a keyword or a corner from a side.
 //
 // The stops are borrowed for the duration of the call.
 typedef struct {
+  RnGradientKind kind;
+  // Linear only: the ends of the gradient line.
   graphene_point_t start;
   graphene_point_t end;
+  // Radial only: the centre of the ending shape and its two radii. A circle is
+  // an ellipse whose radii are equal, which is what CSS makes of one.
+  graphene_point_t center;
+  float radius_x;
+  float radius_y;
   const RnGradientStop *stops;
   int stop_count;
-} RnLinearGradient;
+} RnGradient;
 
-// `backgroundImage`, as linear gradients. Replaces whatever was there; pass NULL
-// or 0 for none.
+// `backgroundImage`. Replaces whatever was there; pass NULL or 0 for none.
 //
 // Painted above the background colour and below the content, which is where CSS
 // puts a background image, and clipped to the view's rounded box as the
 // background colour is. First in the list is on top, so they are painted back to
 // front.
-void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradients, int count);
+void rn_view_set_gradients(RnView *self, const RnGradient *gradients, int count);
 // How many are set, for the tests and the tree dump.
-int rn_view_get_linear_gradient_count(RnView *self);
+int rn_view_get_gradient_count(RnView *self);
 
 // `boxShadow`. Replaces whatever was there; pass NULL or 0 for none.
 //

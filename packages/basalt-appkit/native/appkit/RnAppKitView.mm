@@ -164,8 +164,13 @@ static CGPathRef RnAppKitCreateRoundedPath(CGRect rect, const CGFloat radii[8]) 
 // transition hint turns three stops into eleven, so the lists are different
 // lengths for no reason the caller controls, and each gradient owns its own.
 struct RnAppKitGradientRecord {
+  RnAppKitGradientKind kind;
+  // Linear: the ends of the gradient line. Radial: the centre and the radii.
   CGPoint start;
   CGPoint end;
+  CGPoint center;
+  CGFloat radiusX;
+  CGFloat radiusY;
   std::vector<RnAppKitGradientStop> stops;
 };
 
@@ -1824,12 +1829,18 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   }
 }
 
-- (void)setRnLinearGradients:(const RnAppKitLinearGradient *)gradients count:(NSInteger)count {
+- (void)setRnGradients:(const RnAppKitGradient *)gradients count:(NSInteger)count {
   std::vector<RnAppKitGradientRecord> wanted;
   if (gradients != nullptr && count > 0) {
     wanted.reserve((size_t)count);
     for (NSInteger i = 0; i < count; i++) {
-      RnAppKitGradientRecord record{gradients[i].start, gradients[i].end, {}};
+      RnAppKitGradientRecord record{gradients[i].kind,
+                                    gradients[i].start,
+                                    gradients[i].end,
+                                    gradients[i].center,
+                                    gradients[i].radiusX,
+                                    gradients[i].radiusY,
+                                    {}};
       if (gradients[i].stops != nullptr && gradients[i].stopCount > 0) {
         record.stops.assign(gradients[i].stops, gradients[i].stops + gradients[i].stopCount);
       }
@@ -1843,8 +1854,12 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (wanted.size() == _gradients.size()) {
     bool same = true;
     for (size_t i = 0; i < wanted.size() && same; i++) {
-      same = CGPointEqualToPoint(wanted[i].start, _gradients[i].start) &&
+      same = wanted[i].kind == _gradients[i].kind &&
+             CGPointEqualToPoint(wanted[i].start, _gradients[i].start) &&
              CGPointEqualToPoint(wanted[i].end, _gradients[i].end) &&
+             CGPointEqualToPoint(wanted[i].center, _gradients[i].center) &&
+             wanted[i].radiusX == _gradients[i].radiusX &&
+             wanted[i].radiusY == _gradients[i].radiusY &&
              wanted[i].stops.size() == _gradients[i].stops.size() &&
              (wanted[i].stops.empty() ||
               memcmp(wanted[i].stops.data(),
@@ -1859,7 +1874,7 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   self.needsDisplay = YES;
 }
 
-- (NSInteger)rnLinearGradientCount {
+- (NSInteger)rnGradientCount {
   return (NSInteger)_gradients.size();
 }
 
@@ -1906,12 +1921,43 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
       CGContextClip(context);
       CGPathRelease(path);
     }
-    CGContextDrawLinearGradient(context,
-                                ramp,
-                                gradient->start,
-                                gradient->end,
-                                kCGGradientDrawsBeforeStartLocation |
-                                    kCGGradientDrawsAfterEndLocation);
+    if (gradient->kind == RnAppKitGradientKindRadial) {
+      // Core Graphics draws radial gradients between two *circles*, so an
+      // ellipse is a scaled coordinate system rather than a different call:
+      // squash the y axis around the centre by the ratio of the radii and draw a
+      // circle of the horizontal radius. A host that drew a circle of one radius
+      // would be drawing a plausible gradient of the wrong shape.
+      const CGFloat radiusX = gradient->radiusX;
+      const CGFloat radiusY = gradient->radiusY;
+      if (radiusX <= 0 || radiusY <= 0) {
+        CGContextRestoreGState(context);
+        CGGradientRelease(ramp);
+        continue;
+      }
+      // Scaled *about the centre*, so the centre itself does not move and the
+      // circle of the horizontal radius comes out as an ellipse with the
+      // vertical one. Scaling about the origin instead would need the centre
+      // divided by the same ratio, which is the mistake this comment exists to
+      // stop: it draws an ellipse of the right shape in the wrong place.
+      CGContextTranslateCTM(context, gradient->center.x, gradient->center.y);
+      CGContextScaleCTM(context, 1.0, radiusY / radiusX);
+      CGContextTranslateCTM(context, -gradient->center.x, -gradient->center.y);
+      CGContextDrawRadialGradient(context,
+                                  ramp,
+                                  gradient->center,
+                                  0.0,
+                                  gradient->center,
+                                  radiusX,
+                                  kCGGradientDrawsBeforeStartLocation |
+                                      kCGGradientDrawsAfterEndLocation);
+    } else {
+      CGContextDrawLinearGradient(context,
+                                  ramp,
+                                  gradient->start,
+                                  gradient->end,
+                                  kCGGradientDrawsBeforeStartLocation |
+                                      kCGGradientDrawsAfterEndLocation);
+    }
     CGContextRestoreGState(context);
     CGGradientRelease(ramp);
   }
@@ -2331,12 +2377,21 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   // of: what a cross-host diff needs is that the same gradient arrived with the
   // same geometry, and the stop fixup is asserted in core's own tests.
   for (const RnAppKitGradientRecord &gradient : _gradients) {
-    [out appendFormat:@" gradient=((%g,%g)-(%g,%g),%lu stops)",
-                      (double)gradient.start.x,
-                      (double)gradient.start.y,
-                      (double)gradient.end.x,
-                      (double)gradient.end.y,
-                      (unsigned long)gradient.stops.size()];
+    if (gradient.kind == RnAppKitGradientKindRadial) {
+      [out appendFormat:@" gradient=(radial (%g,%g) %gx%g,%lu stops)",
+                        (double)gradient.center.x,
+                        (double)gradient.center.y,
+                        (double)gradient.radiusX,
+                        (double)gradient.radiusY,
+                        (unsigned long)gradient.stops.size()];
+    } else {
+      [out appendFormat:@" gradient=((%g,%g)-(%g,%g),%lu stops)",
+                        (double)gradient.start.x,
+                        (double)gradient.start.y,
+                        (double)gradient.end.x,
+                        (double)gradient.end.y,
+                        (unsigned long)gradient.stops.size()];
+    }
   }
 
   // Box shadows, each in full and spelled as GTK spells them. Nothing else in

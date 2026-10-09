@@ -616,3 +616,89 @@ TEST(gtk_paint_a_blend_over_nothing_still_draws_the_child) {
   // And nothing where the child is not.
   EXPECT_TRANSPARENT(renderView(root, 100, 100), 20, 20);
 }
+
+// A radial gradient, in pixels. The render tree says which GSK node it became
+// and with what numbers, which tests/test_viewprops.cpp asserts; what it cannot
+// say is which way round the two radii went, or what is painted past the ending
+// shape. Both are visible here.
+namespace {
+
+// A box filling the root, painted with one radial gradient from red at the
+// centre to blue at the ending shape.
+RnView *radialBox(Tree &tree, RnView *root, float centerX, float centerY, float rx, float ry) {
+  RnView *view = tree.box(root, 2, 0, 0, 100, 100);
+  static const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
+      {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
+  };
+  RnGradient gradient{};
+  gradient.kind = RN_GRADIENT_RADIAL;
+  gradient.center = graphene_point_t{centerX, centerY};
+  gradient.radius_x = rx;
+  gradient.radius_y = ry;
+  gradient.stops = stops;
+  gradient.stop_count = 2;
+  rn_view_set_gradients(view, &gradient, 1);
+  return view;
+}
+
+} // namespace
+
+TEST(gtk_paint_a_radial_gradient_runs_from_its_centre) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  radialBox(tree, root, 50.0F, 50.0F, 25.0F, 25.0F);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The first stop at the centre, near enough: a pixel there covers a small
+  // range of the ramp rather than the single point at offset zero, and the GL
+  // renderer samples it, so the red comes back a few units short of 255.
+  const RnPixel centre = pixels.at(50, 50);
+  EXPECT(centre.red > 240);
+  EXPECT(centre.blue < 20);
+  EXPECT_NEAR(centre.alpha, 255, kTolerance);
+  // Past the ending shape, where CSS and GSK both keep painting the last stop:
+  // a gradient that stopped at its radius would leave this transparent, which
+  // is the failure worth catching.
+  EXPECT_PIXEL(pixels, 50, 10, 0, 0, 255, 255);
+  // And somewhere along the way it is neither, which is what says it is a
+  // gradient rather than two discs.
+  const RnPixel middle = pixels.at(50, 37);
+  EXPECT(middle.red > 40 && middle.red < 215);
+  EXPECT(middle.blue > 40 && middle.blue < 215);
+}
+
+// The two radii, each on its own axis. One point is inside the ellipse and one
+// is outside it at the same distance from the centre, so a circle of either
+// radius gets both wrong.
+TEST(gtk_paint_a_radial_gradient_uses_each_radius_on_its_own_axis) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  radialBox(tree, root, 50.0F, 50.0F, 40.0F, 20.0F);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // 35 to the left, of a 40 radius: still inside, so still short of the last
+  // stop.
+  const RnPixel sideways = pixels.at(15, 50);
+  EXPECT(sideways.blue < 250);
+  EXPECT(sideways.red > 5);
+  // 35 above, of a 20 radius: outside, so the last stop.
+  EXPECT_PIXEL(pixels, 50, 15, 0, 0, 255, 255);
+}
+
+// Off centre, which is the other thing a picture can say and a node name cannot.
+TEST(gtk_paint_a_radial_gradient_is_centred_where_it_was_told) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  radialBox(tree, root, 20.0F, 20.0F, 15.0F, 15.0F);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  const RnPixel centre = pixels.at(20, 20);
+  EXPECT(centre.red > 240);
+  EXPECT(centre.blue < 20);
+  // The middle of the box is well outside a 15pt shape at (20,20).
+  EXPECT_PIXEL(pixels, 50, 50, 0, 0, 255, 255);
+  // And the middle is not where the gradient started, which a centre ignored
+  // and defaulted to the box's middle would make it.
+  EXPECT(pixels.at(50, 50).red < 20);
+}

@@ -275,8 +275,13 @@ struct _RnView {
 // a transition hint turns three stops into eleven and the lists are different
 // lengths for no reason the caller controls.
 struct RnGradientRecord {
+  RnGradientKind kind;
+  // Linear: the ends of the gradient line. Radial: the centre and the radii.
   graphene_point_t start;
   graphene_point_t end;
+  graphene_point_t center;
+  float radius_x;
+  float radius_y;
   GArray *stops;
 };
 
@@ -468,13 +473,30 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       }
       // RnGradientStop has GskColorStop's layout, so the array is handed over as
       // it stands rather than copied a field at a time.
-      gtk_snapshot_append_linear_gradient(
-          snapshot,
-          &bounds,
-          &gradient.start,
-          &gradient.end,
-          reinterpret_cast<const GskColorStop *>(gradient.stops->data),
-          gradient.stops->len);
+      if (gradient.kind == RN_GRADIENT_RADIAL) {
+        // 0 and 1 are where the gradient starts and ends along the radius, as a
+        // fraction of it: the ending shape is the radius, which is what CSS
+        // means by one. GSK fills the rest of the bounds with the last stop,
+        // which is also what CSS does past the ending shape.
+        gtk_snapshot_append_radial_gradient(
+            snapshot,
+            &bounds,
+            &gradient.center,
+            gradient.radius_x,
+            gradient.radius_y,
+            0.0f,
+            1.0f,
+            reinterpret_cast<const GskColorStop *>(gradient.stops->data),
+            gradient.stops->len);
+      } else {
+        gtk_snapshot_append_linear_gradient(
+            snapshot,
+            &bounds,
+            &gradient.start,
+            &gradient.end,
+            reinterpret_cast<const GskColorStop *>(gradient.stops->data),
+            gradient.stops->len);
+      }
       if (self->has_border_radii) {
         gtk_snapshot_pop(snapshot);
       }
@@ -1738,7 +1760,7 @@ void rn_view_set_border_radii(RnView *self, const graphene_size_t radii[4]) {
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
-void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradients, int count) {
+void rn_view_set_gradients(RnView *self, const RnGradient *gradients, int count) {
   g_return_if_fail(RN_IS_VIEW(self));
 
   const guint wanted = gradients != nullptr && count > 0 ? static_cast<guint>(count) : 0;
@@ -1754,9 +1776,11 @@ void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradient
     gboolean same = TRUE;
     for (guint i = 0; i < wanted && same; i++) {
       const RnGradientRecord &have = g_array_index(self->gradients, RnGradientRecord, i);
-      const RnLinearGradient &want = gradients[i];
-      same = graphene_point_equal(&have.start, &want.start) &&
+      const RnGradient &want = gradients[i];
+      same = have.kind == want.kind && graphene_point_equal(&have.start, &want.start) &&
              graphene_point_equal(&have.end, &want.end) &&
+             graphene_point_equal(&have.center, &want.center) &&
+             have.radius_x == want.radius_x && have.radius_y == want.radius_y &&
              have.stops->len == static_cast<guint>(want.stop_count) &&
              memcmp(have.stops->data,
                     want.stops,
@@ -1780,8 +1804,14 @@ void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradient
     g_array_set_size(self->gradients, 0);
   }
   for (guint i = 0; i < wanted; i++) {
-    const RnLinearGradient &gradient = gradients[i];
-    RnGradientRecord record{gradient.start, gradient.end, nullptr};
+    const RnGradient &gradient = gradients[i];
+    RnGradientRecord record{gradient.kind,
+                            gradient.start,
+                            gradient.end,
+                            gradient.center,
+                            gradient.radius_x,
+                            gradient.radius_y,
+                            nullptr};
     const guint stops = gradient.stop_count > 0 ? static_cast<guint>(gradient.stop_count) : 0;
     record.stops = g_array_sized_new(FALSE, FALSE, sizeof(RnGradientStop), MAX(stops, 1));
     if (stops > 0) {
@@ -1792,7 +1822,7 @@ void rn_view_set_linear_gradients(RnView *self, const RnLinearGradient *gradient
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
-int rn_view_get_linear_gradient_count(RnView *self) {
+int rn_view_get_gradient_count(RnView *self) {
   g_return_val_if_fail(RN_IS_VIEW(self), 0);
   return self->gradients != nullptr ? static_cast<int>(self->gradients->len) : 0;
 }
@@ -2181,13 +2211,23 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   if (self->gradients != nullptr) {
     for (guint i = 0; i < self->gradients->len; i++) {
       const RnGradientRecord &gradient = g_array_index(self->gradients, RnGradientRecord, i);
-      g_string_append_printf(out,
-                             " gradient=((%g,%g)-(%g,%g),%u stops)",
-                             static_cast<double>(gradient.start.x),
-                             static_cast<double>(gradient.start.y),
-                             static_cast<double>(gradient.end.x),
-                             static_cast<double>(gradient.end.y),
-                             gradient.stops != nullptr ? gradient.stops->len : 0);
+      if (gradient.kind == RN_GRADIENT_RADIAL) {
+        g_string_append_printf(out,
+                               " gradient=(radial (%g,%g) %gx%g,%u stops)",
+                               static_cast<double>(gradient.center.x),
+                               static_cast<double>(gradient.center.y),
+                               static_cast<double>(gradient.radius_x),
+                               static_cast<double>(gradient.radius_y),
+                               gradient.stops != nullptr ? gradient.stops->len : 0);
+      } else {
+        g_string_append_printf(out,
+                               " gradient=((%g,%g)-(%g,%g),%u stops)",
+                               static_cast<double>(gradient.start.x),
+                               static_cast<double>(gradient.start.y),
+                               static_cast<double>(gradient.end.x),
+                               static_cast<double>(gradient.end.y),
+                               gradient.stops != nullptr ? gradient.stops->len : 0);
+      }
     }
   }
 

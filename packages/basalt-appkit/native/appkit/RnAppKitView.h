@@ -305,32 +305,46 @@ typedef struct {
   CGFloat color[4];
 } RnAppKitGradientStop;
 
-// One `backgroundImage` gradient, already resolved: the end points of its
-// gradient line in this view's own coordinates, and its stops in order.
+// Which kind of gradient a record is. CSS's `background-image` is one list that
+// can hold both, and the first in it is the one on top, so they cannot be two
+// lists here without losing the order between them.
+typedef NS_ENUM(NSInteger, RnAppKitGradientKind) {
+  RnAppKitGradientKindLinear,
+  RnAppKitGradientKindRadial,
+};
+
+// One `backgroundImage` gradient, already resolved against this view's size: a
+// linear one's two end points, or a radial one's centre and two radii, in this
+// view's own coordinates.
 //
 // Resolved rather than described, because the resolution is CSS's and is shared
-// with the GTK host in core/Gradients.h -- the angle, the box size and the stop
-// fixup all go into the two points and the offsets. This layer draws what it is
-// given. The stops are borrowed for the duration of the call.
+// with the GTK host in core/Gradients.h -- the angle or the ending shape, the box
+// size and the stop fixup all go into these numbers and the offsets. This layer
+// draws what it is given. The stops are borrowed for the duration of the call.
 typedef struct {
+  RnAppKitGradientKind kind;
+  // Linear only: the ends of the gradient line.
   CGPoint start;
   CGPoint end;
+  // Radial only: the centre of the ending shape and its two radii. A circle is
+  // an ellipse whose radii are equal, which is what CSS makes of one.
+  CGPoint center;
+  CGFloat radiusX;
+  CGFloat radiusY;
   const RnAppKitGradientStop *stops;
   NSInteger stopCount;
-} RnAppKitLinearGradient;
+} RnAppKitGradient;
 
-// `backgroundImage`, as linear gradients. Replaces whatever was there; pass NULL
-// or 0 for none.
+// `backgroundImage`. Replaces whatever was there; pass NULL or 0 for none.
 //
 // Drawn above the background colour, which is a layer property and therefore
 // below anything `drawRect:` paints, and below the image and the text, which is
 // where CSS puts a background image. First in the list is on top, so they are
 // drawn back to front.
-- (void)setRnLinearGradients:(nullable const RnAppKitLinearGradient *)gradients
-                       count:(NSInteger)count;
+- (void)setRnGradients:(nullable const RnAppKitGradient *)gradients count:(NSInteger)count;
 
 // How many are set, for the tests and the tree dump.
-@property(nonatomic, readonly) NSInteger rnLinearGradientCount;
+@property(nonatomic, readonly) NSInteger rnGradientCount;
 
 // One CSS box shadow, in React Native's own terms: `BoxShadow` carries exactly
 // these fields. The colour is RGBA components in that order, as the border

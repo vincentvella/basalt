@@ -1182,53 +1182,71 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
       break;
   }
 
-  // backgroundImage, as far as linear gradients. The angle, the box size and
-  // CSS's colour-stop fixup are resolved here through core/Gradients.h, shared
-  // with the AppKit host, and the widget is handed two points and a list of
-  // stops: the resolution is the specified part and belongs in one place, and
-  // the drawing is the toolkit's.
+  // backgroundImage: linear and radial gradients. The angle or the ending shape,
+  // the box size and CSS's colour-stop fixup are resolved here through
+  // core/Gradients.h, shared with the AppKit host, and the widget is handed
+  // points and radii and a list of stops: the resolution is the specified part
+  // and belongs in one place, and the drawing is the toolkit's.
+  //
+  // One list rather than two, because `background-image` is one list and the
+  // first in it is the one on top: two lists would lose the order between a
+  // radial gradient and a linear one.
   //
   // Against this mutation's own frame, and applyProps runs on every update, so a
   // resized view gets a resized gradient without the widget knowing anything
-  // about angles.
-  //
-  // A radial gradient is parsed by React Native and dropped here; see
-  // backlog/correctness.md.
+  // about angles or corners.
   {
     const auto &size = shadowView.layoutMetrics.frame.size;
-    std::vector<RnLinearGradient> gradients;
+    const auto width = static_cast<float>(size.width);
+    const auto height = static_cast<float>(size.height);
+    std::vector<RnGradient> gradients;
     std::vector<std::vector<RnGradientStop>> stops;
     gradients.reserve(props->backgroundImage.size());
     stops.reserve(props->backgroundImage.size());
     for (const auto &image : props->backgroundImage) {
-      if (!std::holds_alternative<facebook::react::LinearGradient>(image)) {
-        continue;
+      RnGradient converted{};
+      const std::vector<facebook::react::ColorStop> *colorStops = nullptr;
+      float rayLength = 0.0F;
+
+      if (std::holds_alternative<facebook::react::LinearGradient>(image)) {
+        const auto &gradient = std::get<facebook::react::LinearGradient>(image);
+        const basalt::GradientLine line = basalt::linearGradientLine(gradient, width, height);
+        converted.kind = RN_GRADIENT_LINEAR;
+        converted.start = graphene_point_t{line.startX, line.startY};
+        converted.end = graphene_point_t{line.endX, line.endY};
+        colorStops = &gradient.colorStops;
+        rayLength = line.length();
+      } else {
+        const auto &gradient = std::get<facebook::react::RadialGradient>(image);
+        const basalt::GradientEllipse shape =
+            basalt::radialGradientEllipse(gradient, width, height);
+        converted.kind = RN_GRADIENT_RADIAL;
+        converted.center = graphene_point_t{shape.centerX, shape.centerY};
+        converted.radius_x = shape.radiusX;
+        converted.radius_y = shape.radiusY;
+        colorStops = &gradient.colorStops;
+        rayLength = shape.rayLength();
       }
-      const auto &gradient = std::get<facebook::react::LinearGradient>(image);
-      const basalt::GradientLine line = basalt::linearGradientLine(
-          gradient, static_cast<float>(size.width), static_cast<float>(size.height));
-      const auto resolved = basalt::resolveGradientStops(gradient.colorStops, line.length());
+
+      const auto resolved = basalt::resolveGradientStops(*colorStops, rayLength);
       if (resolved.empty()) {
         continue;
       }
-      std::vector<RnGradientStop> converted;
-      converted.reserve(resolved.size());
+      std::vector<RnGradientStop> stopList;
+      stopList.reserve(resolved.size());
       for (const auto &stop : resolved) {
-        converted.push_back(RnGradientStop{
+        stopList.push_back(RnGradientStop{
             stop.offset, GdkRGBA{stop.red, stop.green, stop.blue, stop.alpha}});
       }
       // Reserved above, so pushing cannot reallocate and the pointer handed to
       // the widget below stays good for the length of this block. The widget
       // copies the stops it is given.
-      stops.push_back(std::move(converted));
-      gradients.push_back(RnLinearGradient{
-          graphene_point_t{line.startX, line.startY},
-          graphene_point_t{line.endX, line.endY},
-          stops.back().data(),
-          static_cast<int>(stops.back().size()),
-      });
+      stops.push_back(std::move(stopList));
+      converted.stops = stops.back().data();
+      converted.stop_count = static_cast<int>(stops.back().size());
+      gradients.push_back(converted);
     }
-    rn_view_set_linear_gradients(view, gradients.data(), static_cast<int>(gradients.size()));
+    rn_view_set_gradients(view, gradients.data(), static_cast<int>(gradients.size()));
   }
 
   // boxShadow. React Native's BoxShadow carries the six CSS fields and GSK's

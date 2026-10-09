@@ -884,35 +884,57 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       break;
   }
 
-  // backgroundImage, as far as linear gradients. The angle, the box size and
-  // CSS's colour-stop fixup are resolved here through core/Gradients.h, shared
-  // with the GTK host, and the view is handed two points and a list of stops.
+  // backgroundImage: linear and radial gradients. The angle or the ending shape,
+  // the box size and CSS's colour-stop fixup are resolved here through
+  // core/Gradients.h, shared with the GTK host, and the view is handed points
+  // and radii and a list of stops.
+  //
+  // One list rather than two, because `background-image` is one list and the
+  // first in it is the one on top: two lists would lose the order between a
+  // radial gradient and a linear one.
   //
   // Against this mutation's own frame, and applyProps runs on every update, so a
   // resized view gets a resized gradient without the view layer knowing anything
-  // about angles.
-  //
-  // A radial gradient is parsed by React Native and dropped here; see
-  // backlog/correctness.md.
+  // about angles or corners.
   {
     const auto &frameSize = shadowView.layoutMetrics.frame.size;
-    std::vector<RnAppKitLinearGradient> gradients;
+    const auto width = (float)frameSize.width;
+    const auto height = (float)frameSize.height;
+    std::vector<RnAppKitGradient> gradients;
     std::vector<std::vector<RnAppKitGradientStop>> stops;
     gradients.reserve(props->backgroundImage.size());
     stops.reserve(props->backgroundImage.size());
     for (const auto &image : props->backgroundImage) {
-      if (!std::holds_alternative<facebook::react::LinearGradient>(image)) {
-        continue;
+      RnAppKitGradient converted{};
+      const std::vector<facebook::react::ColorStop> *colorStops = nullptr;
+      float rayLength = 0.0F;
+
+      if (std::holds_alternative<facebook::react::LinearGradient>(image)) {
+        const auto &gradient = std::get<facebook::react::LinearGradient>(image);
+        const basalt::GradientLine line = basalt::linearGradientLine(gradient, width, height);
+        converted.kind = RnAppKitGradientKindLinear;
+        converted.start = CGPointMake(line.startX, line.startY);
+        converted.end = CGPointMake(line.endX, line.endY);
+        colorStops = &gradient.colorStops;
+        rayLength = line.length();
+      } else {
+        const auto &gradient = std::get<facebook::react::RadialGradient>(image);
+        const basalt::GradientEllipse shape =
+            basalt::radialGradientEllipse(gradient, width, height);
+        converted.kind = RnAppKitGradientKindRadial;
+        converted.center = CGPointMake(shape.centerX, shape.centerY);
+        converted.radiusX = shape.radiusX;
+        converted.radiusY = shape.radiusY;
+        colorStops = &gradient.colorStops;
+        rayLength = shape.rayLength();
       }
-      const auto &gradient = std::get<facebook::react::LinearGradient>(image);
-      const basalt::GradientLine line = basalt::linearGradientLine(
-          gradient, (float)frameSize.width, (float)frameSize.height);
-      const auto resolved = basalt::resolveGradientStops(gradient.colorStops, line.length());
+
+      const auto resolved = basalt::resolveGradientStops(*colorStops, rayLength);
       if (resolved.empty()) {
         continue;
       }
-      std::vector<RnAppKitGradientStop> converted;
-      converted.reserve(resolved.size());
+      std::vector<RnAppKitGradientStop> stopList;
+      stopList.reserve(resolved.size());
       for (const auto &stop : resolved) {
         RnAppKitGradientStop one{};
         one.offset = stop.offset;
@@ -920,19 +942,16 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
         one.color[1] = stop.green;
         one.color[2] = stop.blue;
         one.color[3] = stop.alpha;
-        converted.push_back(one);
+        stopList.push_back(one);
       }
       // Reserved above, so pushing cannot reallocate and the pointer handed over
       // below stays good for this block. The view copies what it is given.
-      stops.push_back(std::move(converted));
-      gradients.push_back(RnAppKitLinearGradient{
-          CGPointMake(line.startX, line.startY),
-          CGPointMake(line.endX, line.endY),
-          stops.back().data(),
-          (NSInteger)stops.back().size(),
-      });
+      stops.push_back(std::move(stopList));
+      converted.stops = stops.back().data();
+      converted.stopCount = (NSInteger)stops.back().size();
+      gradients.push_back(converted);
     }
-    [view setRnLinearGradients:gradients.data() count:(NSInteger)gradients.size()];
+    [view setRnGradients:gradients.data() count:(NSInteger)gradients.size()];
   }
 
   // boxShadow. React Native's BoxShadow carries the six CSS fields and the view

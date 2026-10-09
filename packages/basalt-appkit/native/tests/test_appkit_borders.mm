@@ -467,10 +467,40 @@ Pixel pixelAt(RnAppKitView *view, CGSize size, int x, int y) {
   return pixel;
 }
 
-RnAppKitView *gradientView(const RnAppKitLinearGradient *gradients, NSInteger count, CGSize size) {
+// A `backgroundImage` entry of each kind, since the struct the view takes
+// carries both and only some of its fields mean anything to either.
+RnAppKitGradient linearGradient(CGPoint start,
+                                CGPoint end,
+                                const RnAppKitGradientStop *stops,
+                                NSInteger count) {
+  RnAppKitGradient gradient{};
+  gradient.kind = RnAppKitGradientKindLinear;
+  gradient.start = start;
+  gradient.end = end;
+  gradient.stops = stops;
+  gradient.stopCount = count;
+  return gradient;
+}
+
+RnAppKitGradient radialGradient(CGPoint center,
+                                CGFloat radiusX,
+                                CGFloat radiusY,
+                                const RnAppKitGradientStop *stops,
+                                NSInteger count) {
+  RnAppKitGradient gradient{};
+  gradient.kind = RnAppKitGradientKindRadial;
+  gradient.center = center;
+  gradient.radiusX = radiusX;
+  gradient.radiusY = radiusY;
+  gradient.stops = stops;
+  gradient.stopCount = count;
+  return gradient;
+}
+
+RnAppKitView *gradientView(const RnAppKitGradient *gradients, NSInteger count, CGSize size) {
   RnAppKitView *view = [RnAppKitView viewWithTag:1];
   [view setRnFrameX:0 y:0 width:size.width height:size.height];
-  [view setRnLinearGradients:gradients count:count];
+  [view setRnGradients:gradients count:count];
   return view;
 }
 
@@ -480,10 +510,10 @@ TEST(gradient_a_left_to_right_ramp_is_drawn_across_the_box) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitLinearGradient gradient{CGPointMake(0, 0), CGPointMake(100, 0), stops, 2};
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2);
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
-    EXPECT_EQ((long)view.rnLinearGradientCount, 1L);
+    EXPECT_EQ((long)view.rnGradientCount, 1L);
     const Pixel left = pixelAt(view, size, 2, 20);
     const Pixel middle = pixelAt(view, size, 50, 20);
     const Pixel right = pixelAt(view, size, 97, 20);
@@ -505,7 +535,7 @@ TEST(gradient_extends_beyond_the_ends_of_its_line) {
     const CGSize size = CGSizeMake(100, 40);
     // A line covering only the middle fifth of the box.
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitLinearGradient gradient{CGPointMake(40, 0), CGPointMake(60, 0), stops, 2};
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(40, 0), CGPointMake(60, 0), stops, 2);
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     const Pixel left = pixelAt(view, size, 2, 20);
@@ -523,13 +553,10 @@ TEST(gradient_the_first_in_the_list_is_on_top) {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop top[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 1, 0, 0)};
     const RnAppKitGradientStop bottom[2] = {gradientStop(0, 0, 1, 0), gradientStop(1, 0, 1, 0)};
-    const RnAppKitLinearGradient gradients[2] = {
-        {CGPointMake(0, 0), CGPointMake(100, 0), top, 2},
-        {CGPointMake(0, 0), CGPointMake(100, 0), bottom, 2},
-    };
+    const RnAppKitGradient gradients[2] = {linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), top, 2), linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), bottom, 2)};
     RnAppKitView *view = gradientView(gradients, 2, size);
 
-    EXPECT_EQ((long)view.rnLinearGradientCount, 2L);
+    EXPECT_EQ((long)view.rnGradientCount, 2L);
     const Pixel middle = pixelAt(view, size, 50, 20);
     EXPECT(middle.red > 200);
     EXPECT(middle.green < 60);
@@ -540,11 +567,11 @@ TEST(gradient_can_be_taken_away_again) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitLinearGradient gradient{CGPointMake(0, 0), CGPointMake(100, 0), stops, 2};
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2);
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
-    [view setRnLinearGradients:nullptr count:0];
-    EXPECT_EQ((long)view.rnLinearGradientCount, 0L);
+    [view setRnGradients:nullptr count:0];
+    EXPECT_EQ((long)view.rnGradientCount, 0L);
     // White, which is what the bitmap was filled with: nothing was drawn.
     const Pixel middle = pixelAt(view, size, 50, 20);
     EXPECT(middle.red > 250 && middle.green > 250 && middle.blue > 250);
@@ -556,7 +583,7 @@ TEST(gradient_is_clipped_to_the_rounded_box) {
   @autoreleasepool {
     const CGSize size = CGSizeMake(100, 40);
     const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitLinearGradient gradient{CGPointMake(0, 0), CGPointMake(100, 0), stops, 2};
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), stops, 2);
     RnAppKitView *view = gradientView(&gradient, 1, size);
     [view setRnCornerRadius:20];
 
@@ -569,6 +596,93 @@ TEST(gradient_is_clipped_to_the_rounded_box) {
   }
 }
 
+// A radial gradient, in pixels. The two radii are the part worth asserting:
+// Core Graphics draws radial gradients between two circles, so an ellipse is a
+// scaled coordinate system here, and a scale on the wrong axis still draws a
+// plausible radial gradient.
+TEST(gradient_a_radial_ramp_runs_from_its_centre) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitGradient gradient = radialGradient(CGPointMake(50, 50), 25, 25, stops, 2);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    EXPECT_EQ((long)view.rnGradientCount, 1L);
+    const Pixel centre = pixelAt(view, size, 50, 50);
+    const Pixel outside = pixelAt(view, size, 50, 10);
+    const Pixel between = pixelAt(view, size, 50, 37);
+
+    EXPECT(centre.red > 200 && centre.blue < 60);
+    // Past the ending shape, where CSS keeps painting the last stop rather than
+    // leaving the rest of the box unpainted.
+    EXPECT(outside.blue > 200 && outside.red < 60);
+    EXPECT(between.red > 40 && between.red < 215);
+    EXPECT(between.blue > 40 && between.blue < 215);
+  }
+}
+
+// Each radius on its own axis. One point is inside the ellipse and one is
+// outside it at the same distance from the centre, so a circle of either radius
+// gets one of the two wrong.
+TEST(gradient_a_radial_ramp_uses_each_radius_on_its_own_axis) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitGradient gradient = radialGradient(CGPointMake(50, 50), 40, 20, stops, 2);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    // 35 to the left, of a 40 radius: inside, so short of the last stop.
+    const Pixel sideways = pixelAt(view, size, 15, 50);
+    EXPECT(sideways.blue < 250);
+    EXPECT(sideways.red > 5);
+    // 35 above, of a 20 radius: outside, so the last stop.
+    const Pixel above = pixelAt(view, size, 50, 15);
+    EXPECT(above.blue > 200 && above.red < 60);
+  }
+}
+
+// Off centre, which is the other thing a picture can say and a stored number
+// cannot: a centre ignored and defaulted to the middle of the box paints the
+// middle red rather than blue.
+TEST(gradient_a_radial_ramp_is_centred_where_it_was_told) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const RnAppKitGradientStop stops[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 0, 0, 1)};
+    const RnAppKitGradient gradient = radialGradient(CGPointMake(20, 20), 15, 15, stops, 2);
+    RnAppKitView *view = gradientView(&gradient, 1, size);
+
+    const Pixel centre = pixelAt(view, size, 20, 20);
+    const Pixel middle = pixelAt(view, size, 50, 50);
+    EXPECT(centre.red > 200 && centre.blue < 60);
+    EXPECT(middle.blue > 200 && middle.red < 60);
+  }
+}
+
+// Both kinds in one list, in the order the stylesheet wrote them: the first is
+// on top, so the radial one here covers the linear one underneath.
+TEST(gradient_a_radial_and_a_linear_one_keep_their_order) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(100, 100);
+    const RnAppKitGradientStop red[2] = {gradientStop(0, 1, 0, 0), gradientStop(1, 1, 0, 0)};
+    const RnAppKitGradientStop green[2] = {gradientStop(0, 0, 1, 0), gradientStop(1, 0, 1, 0)};
+    const RnAppKitGradient gradients[2] = {
+        radialGradient(CGPointMake(50, 50), 40, 40, red, 2),
+        linearGradient(CGPointMake(0, 0), CGPointMake(100, 0), green, 2),
+    };
+    RnAppKitView *view = gradientView(gradients, 2, size);
+
+    EXPECT_EQ((long)view.rnGradientCount, 2L);
+    // Inside the radial one, which is on top: red.
+    const Pixel inside = pixelAt(view, size, 50, 50);
+    EXPECT(inside.red > 200 && inside.green < 60);
+    // The radial one's last stop is red too and it extends past its shape, so
+    // the whole box is red: what this asserts is that the linear one did not
+    // win, which it would if the list were drawn front to back.
+    const Pixel corner = pixelAt(view, size, 3, 3);
+    EXPECT(corner.red > 200 && corner.green < 60);
+  }
+}
+
 // And the gradients are in the tree dump, spelled as GTK spells them, which is
 // what makes the wiring testable: the angle and the stops are resolved in
 // AppKitMountingManager and the tests above hand the view the answer.
@@ -577,7 +691,7 @@ TEST(gradients_are_reported_in_the_tree) {
     const CGSize size = CGSizeMake(100, 60);
     const RnAppKitGradientStop stops[3] = {
         gradientStop(0, 1, 0, 0), gradientStop(0.5, 0, 1, 0), gradientStop(1, 0, 0, 1)};
-    const RnAppKitLinearGradient gradient{CGPointMake(0, 60), CGPointMake(0, 0), stops, 3};
+    const RnAppKitGradient gradient = linearGradient(CGPointMake(0, 60), CGPointMake(0, 0), stops, 3);
     RnAppKitView *view = gradientView(&gradient, 1, size);
 
     const std::string described = [view describeTree].UTF8String;

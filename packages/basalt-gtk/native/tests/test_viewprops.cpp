@@ -97,6 +97,36 @@ int blurNodesIn(GskRenderNode *node) {
   }
 }
 
+// A `backgroundImage` entry of each kind, since the struct the widget takes
+// carries both and only some of its fields mean anything to either.
+RnGradient linearGradient(graphene_point_t start,
+                          graphene_point_t end,
+                          const RnGradientStop *stops,
+                          int count) {
+  RnGradient gradient{};
+  gradient.kind = RN_GRADIENT_LINEAR;
+  gradient.start = start;
+  gradient.end = end;
+  gradient.stops = stops;
+  gradient.stop_count = count;
+  return gradient;
+}
+
+RnGradient radialGradient(graphene_point_t center,
+                          float radiusX,
+                          float radiusY,
+                          const RnGradientStop *stops,
+                          int count) {
+  RnGradient gradient{};
+  gradient.kind = RN_GRADIENT_RADIAL;
+  gradient.center = center;
+  gradient.radius_x = radiusX;
+  gradient.radius_y = radiusY;
+  gradient.stops = stops;
+  gradient.stop_count = count;
+  return gradient;
+}
+
 // The first linear-gradient node in the tree, and how many there are: a
 // `backgroundImage` is a GSK node of its own, so both are readable.
 int gradientNodesIn(GskRenderNode *node) {
@@ -123,6 +153,69 @@ int gradientNodesIn(GskRenderNode *node) {
       return gradientNodesIn(gsk_opacity_node_get_child(node));
     default:
       return 0;
+  }
+}
+
+// The gradient nodes in paint order, as one letter each: "LR" is a linear node
+// painted before a radial one. Which is how the order between the two kinds is
+// asserted, there being no index to compare otherwise.
+std::string gradientOrderIn(GskRenderNode *node) {
+  if (node == nullptr) {
+    return "";
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_LINEAR_GRADIENT_NODE:
+      return "L";
+    case GSK_RADIAL_GRADIENT_NODE:
+      return "R";
+    case GSK_CONTAINER_NODE: {
+      std::string found;
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        found += gradientOrderIn(gsk_container_node_get_child(node, i));
+      }
+      return found;
+    }
+    case GSK_CLIP_NODE:
+      return gradientOrderIn(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return gradientOrderIn(gsk_rounded_clip_node_get_child(node));
+    case GSK_TRANSFORM_NODE:
+      return gradientOrderIn(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return gradientOrderIn(gsk_opacity_node_get_child(node));
+    default:
+      return "";
+  }
+}
+
+// The same walk for radial nodes, which are a different GSK node type: a test
+// that counted both together could not tell a radial gradient painted as a
+// linear one from the real thing.
+GskRenderNode *firstRadialGradient(GskRenderNode *node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  switch (gsk_render_node_get_node_type(node)) {
+    case GSK_RADIAL_GRADIENT_NODE:
+      return node;
+    case GSK_CONTAINER_NODE:
+      for (guint i = 0; i < gsk_container_node_get_n_children(node); i++) {
+        GskRenderNode *found = firstRadialGradient(gsk_container_node_get_child(node, i));
+        if (found != nullptr) {
+          return found;
+        }
+      }
+      return nullptr;
+    case GSK_CLIP_NODE:
+      return firstRadialGradient(gsk_clip_node_get_child(node));
+    case GSK_ROUNDED_CLIP_NODE:
+      return firstRadialGradient(gsk_rounded_clip_node_get_child(node));
+    case GSK_TRANSFORM_NODE:
+      return firstRadialGradient(gsk_transform_node_get_child(node));
+    case GSK_OPACITY_NODE:
+      return firstRadialGradient(gsk_opacity_node_get_child(node));
+    default:
+      return nullptr;
   }
 }
 
@@ -1098,10 +1191,9 @@ TEST(a_linear_gradient_is_a_gradient_node_along_the_line_it_was_given) {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}},
       {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
   };
-  const RnLinearGradient gradient{
-      graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 2};
-  rn_view_set_linear_gradients(view, &gradient, 1);
-  EXPECT_EQ(rn_view_get_linear_gradient_count(view), 1);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
+  EXPECT_EQ(rn_view_get_gradient_count(view), 1);
 
   GskRenderNode *painted = paintedNode(view);
   EXPECT_EQ(gradientNodesIn(painted), 1);
@@ -1138,11 +1230,11 @@ TEST(every_linear_gradient_in_the_list_is_painted) {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
   const RnGradientStop second[2] = {
       {0.0F, GdkRGBA{1.0F, 1.0F, 1.0F, 0.5F}}, {1.0F, GdkRGBA{1.0F, 1.0F, 1.0F, 0.0F}}};
-  const RnLinearGradient gradients[2] = {
-      {graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, first, 2},
-      {graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, second, 2},
+  const RnGradient gradients[2] = {
+      linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, first, 2),
+      linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, second, 2),
   };
-  rn_view_set_linear_gradients(view, gradients, 2);
+  rn_view_set_gradients(view, gradients, 2);
 
   GskRenderNode *painted = paintedNode(view);
   EXPECT_EQ(gradientNodesIn(painted), 2);
@@ -1169,9 +1261,8 @@ TEST(a_linear_gradient_paints_over_the_background_colour) {
   rn_view_set_background_color(view, TRUE, &green);
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
-  const RnLinearGradient gradient{
-      graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2};
-  rn_view_set_linear_gradients(view, &gradient, 1);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
 
   GskRenderNode *painted = paintedNode(view);
   EXPECT(painted != nullptr);
@@ -1212,9 +1303,8 @@ TEST(a_linear_gradient_is_clipped_to_the_rounded_box) {
   rn_view_set_border_radii(view, radii);
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
-  const RnLinearGradient gradient{
-      graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2};
-  rn_view_set_linear_gradients(view, &gradient, 1);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
 
   GskRenderNode *painted = paintedNode(view);
   GskRenderNode *node = firstGradient(painted);
@@ -1237,11 +1327,10 @@ TEST(a_linear_gradient_can_be_taken_away_again) {
 
   const RnGradientStop stops[2] = {
       {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
-  const RnLinearGradient gradient{
-      graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2};
-  rn_view_set_linear_gradients(view, &gradient, 1);
-  rn_view_set_linear_gradients(view, nullptr, 0);
-  EXPECT_EQ(rn_view_get_linear_gradient_count(view), 0);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
+  rn_view_set_gradients(view, nullptr, 0);
+  EXPECT_EQ(rn_view_get_gradient_count(view), 0);
 
   GskRenderNode *painted = paintedNode(view);
   EXPECT_EQ(gradientNodesIn(painted), 0);
@@ -1249,6 +1338,126 @@ TEST(a_linear_gradient_can_be_taken_away_again) {
   if (painted != nullptr) {
     gsk_render_node_unref(painted);
   }
+  g_object_unref(view);
+}
+
+// A radial gradient is a different GSK node, which is the point of these: a
+// radial gradient painted as a linear one would still be a gradient, and the
+// tree is what tells the two apart.
+TEST(a_radial_gradient_is_a_radial_gradient_node_with_its_own_centre_and_radii) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 100.0F);
+  layout(view, 200, 100);
+
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnGradient gradient =
+      radialGradient(graphene_point_t{60.0F, 30.0F}, 80.0F, 40.0F, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
+  EXPECT_EQ(rn_view_get_gradient_count(view), 1);
+
+  GskRenderNode *painted = paintedNode(view);
+  GskRenderNode *node = firstRadialGradient(painted);
+  EXPECT(node != nullptr);
+  // No linear node, which is the half that says the kind was read rather than
+  // ignored.
+  EXPECT_EQ(gradientNodesIn(painted), 0);
+
+  if (node != nullptr) {
+    const graphene_point_t *center = gsk_radial_gradient_node_get_center(node);
+    EXPECT_EQ((double)center->x, 60.0);
+    EXPECT_EQ((double)center->y, 30.0);
+    // The two radii, which a circle-only implementation would have collapsed.
+    EXPECT_EQ((double)gsk_radial_gradient_node_get_hradius(node), 80.0);
+    EXPECT_EQ((double)gsk_radial_gradient_node_get_vradius(node), 40.0);
+    // The ending shape is the radius, so the gradient runs from 0 to 1 of it.
+    EXPECT_EQ((double)gsk_radial_gradient_node_get_start(node), 0.0);
+    EXPECT_EQ((double)gsk_radial_gradient_node_get_end(node), 1.0);
+    // And the stops reached GSK as they were given.
+    EXPECT_EQ((int)gsk_radial_gradient_node_get_n_color_stops(node), 2);
+  }
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// Both kinds in one list, in the order the stylesheet wrote them. CSS paints the
+// first on top, so they are painted back to front, and a list that dropped the
+// radial one or reordered the two is what this catches.
+TEST(a_radial_and_a_linear_gradient_keep_their_order) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnGradient gradients[2] = {
+      radialGradient(graphene_point_t{50.0F, 30.0F}, 50.0F, 30.0F, stops, 2),
+      linearGradient(graphene_point_t{0.0F, 0.0F}, graphene_point_t{100.0F, 0.0F}, stops, 2),
+  };
+  rn_view_set_gradients(view, gradients, 2);
+  EXPECT_EQ(rn_view_get_gradient_count(view), 2);
+
+  GskRenderNode *painted = paintedNode(view);
+  // One of each, so neither kind swallowed the other.
+  EXPECT_EQ(gradientNodesIn(painted), 1);
+  EXPECT(firstRadialGradient(painted) != nullptr);
+
+  // The radial one is first in the list, so it is painted last and is the one
+  // found last in the tree: the linear node comes first.
+  EXPECT(gradientOrderIn(painted) == "LR");
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+TEST(a_radial_gradient_can_be_taken_away_again) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 100.0F, 60.0F);
+  layout(view, 100, 60);
+
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnGradient gradient =
+      radialGradient(graphene_point_t{50.0F, 30.0F}, 50.0F, 30.0F, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
+  rn_view_set_gradients(view, nullptr, 0);
+  EXPECT_EQ(rn_view_get_gradient_count(view), 0);
+
+  GskRenderNode *painted = paintedNode(view);
+  EXPECT(firstRadialGradient(painted) == nullptr);
+
+  if (painted != nullptr) {
+    gsk_render_node_unref(painted);
+  }
+  g_object_unref(view);
+}
+
+// A radial gradient in the dump, spelled as the AppKit side spells it so one
+// scenario can read both hosts.
+TEST(radial_gradients_are_reported_in_the_tree) {
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 100.0F);
+
+  const RnGradientStop stops[2] = {
+      {0.0F, GdkRGBA{1.0F, 0.0F, 0.0F, 1.0F}}, {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}}};
+  const RnGradient gradient =
+      radialGradient(graphene_point_t{60.0F, 30.0F}, 80.0F, 40.0F, stops, 2);
+  rn_view_set_gradients(view, &gradient, 1);
+
+  char *text = rn_view_describe_tree(view);
+  const std::string dumped(text);
+  g_free(text);
+  EXPECT(dumped.find("gradient=(radial (60,30) 80x40,2 stops)") != std::string::npos);
+
   g_object_unref(view);
 }
 
@@ -1270,9 +1479,8 @@ TEST(linear_gradients_are_reported_in_the_tree) {
       {0.5F, GdkRGBA{0.0F, 1.0F, 0.0F, 1.0F}},
       {1.0F, GdkRGBA{0.0F, 0.0F, 1.0F, 1.0F}},
   };
-  const RnLinearGradient gradient{
-      graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 3};
-  rn_view_set_linear_gradients(view, &gradient, 1);
+  const RnGradient gradient = linearGradient(graphene_point_t{0.0F, 60.0F}, graphene_point_t{0.0F, 0.0F}, stops, 3);
+  rn_view_set_gradients(view, &gradient, 1);
 
   text = rn_view_describe_tree(view);
   const std::string dumped(text);

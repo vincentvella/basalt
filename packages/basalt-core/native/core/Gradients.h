@@ -30,6 +30,7 @@
 
 #include <react/renderer/graphics/Color.h>
 #include <react/renderer/graphics/LinearGradient.h>
+#include <react/renderer/graphics/RadialGradient.h>
 #include <react/renderer/graphics/ValueUnit.h>
 
 #include <algorithm>
@@ -164,6 +165,168 @@ inline GradientLine linearGradientLine(const facebook::react::LinearGradient &gr
   }
   const auto keyword = std::get<facebook::react::GradientKeyword>(gradient.direction);
   return linearGradientLineForAngle(gradientAngleForKeyword(keyword, width, height), width, height);
+}
+
+// CSS's radial gradient, resolved against the box: where its centre is and how
+// big its ending shape is.
+//
+// The geometry is all specified and none of it is obvious, which is why this is
+// a port rather than an implementation: `RadiusToSide`, `EllipseRadius` and
+// `RadiusToCorner` below are React Native's own
+// `React/Fabric/Utils/RCTRadialGradient.mm`, which follows css-images-3. A host
+// that worked out its own ending shape would be plausible and different, and the
+// same stylesheet would be three pictures.
+struct GradientEllipse {
+  float centerX;
+  float centerY;
+  float radiusX;
+  float radiusY;
+
+  // What a stop's length is resolved against. CSS calls it the gradient ray, and
+  // for an ellipse React Native's iOS half uses the longer radius, so this does
+  // too: a stop at 10pt means the same distance on all three platforms.
+  float rayLength() const { return std::max(radiusX, radiusY); }
+};
+
+namespace detail {
+
+// The ending shape that meets the nearest or the farthest side. A circle takes
+// the smaller or larger of the two, which is what makes `closest-side` on a wide
+// box a circle that touches the top and bottom rather than the left and right.
+inline GradientEllipse radiusToSide(float centerX,
+                                    float centerY,
+                                    float width,
+                                    float height,
+                                    bool isCircle,
+                                    facebook::react::RadialGradientSize::SizeKeyword size) {
+  using SizeKeyword = facebook::react::RadialGradientSize::SizeKeyword;
+  const float fromLeft = centerX;
+  const float fromTop = centerY;
+  const float fromRight = width - centerX;
+  const float fromBottom = height - centerY;
+
+  float radiusX = 0.0F;
+  float radiusY = 0.0F;
+  if (size == SizeKeyword::ClosestSide) {
+    radiusX = std::min(fromLeft, fromRight);
+    radiusY = std::min(fromTop, fromBottom);
+  } else {
+    radiusX = std::max(fromLeft, fromRight);
+    radiusY = std::max(fromTop, fromBottom);
+  }
+
+  if (isCircle) {
+    const float radius =
+        size == SizeKeyword::ClosestSide ? std::min(radiusX, radiusY) : std::max(radiusX, radiusY);
+    return GradientEllipse{centerX, centerY, radius, radius};
+  }
+  return GradientEllipse{centerX, centerY, radiusX, radiusY};
+}
+
+// The ellipse of a given aspect ratio that passes through one point:
+// (x/a)^2 + (y/b)^2 = 1 with b = a / ratio.
+inline GradientEllipse ellipseThrough(
+    float centerX, float centerY, float offsetX, float offsetY, float aspectRatio) {
+  if (aspectRatio == 0.0F || std::isinf(aspectRatio) || std::isnan(aspectRatio)) {
+    return GradientEllipse{centerX, centerY, 0.0F, 0.0F};
+  }
+  const float a = std::sqrt(offsetX * offsetX + offsetY * offsetY * aspectRatio * aspectRatio);
+  return GradientEllipse{centerX, centerY, a, a / aspectRatio};
+}
+
+// The ending shape that meets the nearest or the farthest corner. A circle just
+// reaches it; an ellipse reaches it with the aspect ratio of the matching side
+// shape, which is the spec's rule and the part a reimplementation gets wrong.
+inline GradientEllipse radiusToCorner(float centerX,
+                                      float centerY,
+                                      float width,
+                                      float height,
+                                      bool isCircle,
+                                      facebook::react::RadialGradientSize::SizeKeyword keyword) {
+  using SizeKeyword = facebook::react::RadialGradientSize::SizeKeyword;
+  const float cornerX[4] = {0.0F, width, width, 0.0F};
+  const float cornerY[4] = {0.0F, 0.0F, height, height};
+
+  const bool closest = keyword == SizeKeyword::ClosestCorner;
+  int chosen = 0;
+  float distance = std::hypot(centerX - cornerX[0], centerY - cornerY[0]);
+  for (int i = 1; i < 4; i++) {
+    const float candidate = std::hypot(centerX - cornerX[i], centerY - cornerY[i]);
+    if (closest ? candidate < distance : candidate > distance) {
+      distance = candidate;
+      chosen = i;
+    }
+  }
+
+  if (isCircle) {
+    return GradientEllipse{centerX, centerY, distance, distance};
+  }
+
+  const GradientEllipse side = radiusToSide(
+      centerX,
+      centerY,
+      width,
+      height,
+      false,
+      closest ? SizeKeyword::ClosestSide : SizeKeyword::FarthestSide);
+  return ellipseThrough(centerX,
+                        centerY,
+                        cornerX[chosen] - centerX,
+                        cornerY[chosen] - centerY,
+                        side.radiusY == 0.0F ? 0.0F : side.radiusX / side.radiusY);
+}
+
+} // namespace detail
+
+// The whole ending shape: the centre from the position, the radii from the size.
+//
+// The centre defaults to the middle of the box, and a position names at most one
+// of each axis -- `left` or `right`, `top` or `bottom` -- so the other is
+// measured from the opposite edge. The size defaults to `farthest-corner`, which
+// is CSS's default and also what an unparsed size falls back to.
+inline GradientEllipse radialGradientEllipse(const facebook::react::RadialGradient &gradient,
+                                             float width,
+                                             float height) {
+  using SizeKeyword = facebook::react::RadialGradientSize::SizeKeyword;
+  float centerX = width / 2.0F;
+  float centerY = height / 2.0F;
+  if (gradient.position.left) {
+    centerX = gradient.position.left->resolve(width);
+  } else if (gradient.position.right) {
+    centerX = width - gradient.position.right->resolve(width);
+  }
+  if (gradient.position.top) {
+    centerY = gradient.position.top->resolve(height);
+  } else if (gradient.position.bottom) {
+    centerY = height - gradient.position.bottom->resolve(height);
+  }
+
+  const bool isCircle = gradient.shape == facebook::react::RadialGradientShape::Circle;
+
+  if (std::holds_alternative<facebook::react::RadialGradientSize::Dimensions>(
+          gradient.size.value)) {
+    const auto &dimensions =
+        std::get<facebook::react::RadialGradientSize::Dimensions>(gradient.size.value);
+    const float radiusX = dimensions.x.resolve(width);
+    const float radiusY = dimensions.y.resolve(height);
+    if (isCircle) {
+      // The larger of the two, which is what React Native's iOS half does with
+      // a circle given two explicit radii. CSS says a circle takes one length,
+      // so this is a case the parser should not produce.
+      const float radius = std::max(radiusX, radiusY);
+      return GradientEllipse{centerX, centerY, radius, radius};
+    }
+    return GradientEllipse{centerX, centerY, radiusX, radiusY};
+  }
+
+  SizeKeyword keyword = SizeKeyword::FarthestCorner;
+  if (std::holds_alternative<SizeKeyword>(gradient.size.value)) {
+    keyword = std::get<SizeKeyword>(gradient.size.value);
+  }
+  if (keyword == SizeKeyword::ClosestSide || keyword == SizeKeyword::FarthestSide) {
+    return detail::radiusToSide(centerX, centerY, width, height, isCircle, keyword);
+  }
+  return detail::radiusToCorner(centerX, centerY, width, height, isCircle, keyword);
 }
 
 namespace detail {

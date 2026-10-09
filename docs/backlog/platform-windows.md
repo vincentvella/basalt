@@ -218,10 +218,15 @@ and none of it is a missing half.
     `CLSID_D2D1Shadow`, which takes a blurred alpha mask of what is drawn, so the
     work is the geometry rather than the blur. backlog/correctness.md has what the
     other two decided, including that a negative blur radius has to be clamped.
-  - `backgroundImage`, as far as linear gradients. The hard half is done and is
-    shared: `core/Gradients.h` resolves the angle and the colour stops and hands
-    back two points and a ramp, so this host needs
-    `ID2D1LinearGradientBrush` over the same numbers and nothing else.
+  - `backgroundImage`, linear and radial gradients both. The hard half is done
+    and is shared: `core/Gradients.h` resolves the angle or the ending shape and
+    the colour stops, and hands back either two points or a centre and two
+    radii, plus a ramp. So this host needs `ID2D1LinearGradientBrush` over the
+    first and `CreateRadialGradientBrush` over the second, whose
+    `D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES` takes a centre and two radii
+    directly -- no coordinate scaling, which is what the AppKit half needed.
+    One list rather than two, `background-image` being one list that paints the
+    first on top.
   - The `cursor` style property. This is the one that differs in shape: Win32 has
     no per-view cursor, so `WM_SETCURSOR` has to be answered by the window with
     whatever view is under the pointer, which means a hit test on every cursor
