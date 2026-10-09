@@ -185,10 +185,16 @@ of this work mostly writes, and rebuilt a byte-identical site twice over.
 
 Two fixes, both path-aware rather than clever:
 
-- `website/vercel.json` sets `git.deploymentEnabled.main` to `false`, so a push
+- `website/vercel.json` sets `git.deploymentEnabled` to `false`, so a push
   deploys nothing. The site ships with `npx vercel --prod` from `website/`, which
   is written down in `website/README.md`. The custom domains keep serving the
   last production deployment in the meantime, so nothing goes dark.
+
+  Every branch rather than only `main`, which is the second half of the same
+  measurement: a preview deployment is a build like any other, and this is the
+  one part of the pipeline that is paid for per build. The `ci` branch and any
+  pull request would otherwise each cost one. A CLI deploy still works, the
+  setting governing the git integration and not the account.
 - `.github/workflows/docs.yml` filters its paths with the same exclusions, so the
   build check runs when something it would catch has changed. A commit that
   touches an excluded file *and* a rendered one still matches: GitHub takes the

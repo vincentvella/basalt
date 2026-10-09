@@ -29,12 +29,16 @@ This command generates static content into the `build` directory and can be serv
 ## Deployment
 
 The site is a Vercel project (`basalt`, root directory `website`), serving
-basaltjs.dev. **A push to `main` does not deploy it.** `vercel.json` turns the
-git integration's production deploys off for that branch:
+basaltjs.dev. **A push does not deploy it, on any branch.** `vercel.json` turns
+the git integration off:
 
 ```json
-{"git": {"deploymentEnabled": {"main": false}}}
+{"git": {"deploymentEnabled": false}}
 ```
+
+Every branch, not just `main`, because a preview deployment is a build like any
+other: pushing the `ci` branch or opening a pull request would otherwise cost
+one. Deploying from the CLI is unaffected, that not being the git integration.
 
 Why: the site renders `website/**` and `../docs`, and `docusaurus.config.ts`
 excludes `BACKLOG.md`, `backlog/**` and `ci-performance.md` from the latter.
