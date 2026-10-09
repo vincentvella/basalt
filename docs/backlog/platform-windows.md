@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (13):**
+**Open (14):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -19,6 +19,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
 13. `filter` is not applied
 14. `textTransform` is ignored, so an uppercase label is not uppercase
+15. The `outline` family is not drawn
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -277,3 +278,16 @@ and none of it is a missing half.
   with `LCMAP_UPPERCASE` is the Unicode-aware one, where `_wcsupr` is not.
   backlog/text.md has the rule for `capitalize` and the two non-ASCII cases both
   other suites assert. The end-to-end scenario is skipped here by name.
+
+- **The `outline` family is not drawn.** `outlineWidth`, `outlineColor`,
+  `outlineOffset` and `outlineStyle` reach this host's props and nothing reads
+  them. The other two draw one ring outside the box, offset plus half the stroke
+  width out, with each non-zero radius grown by the same amount so the ring stays
+  concentric; `ID2D1RenderTarget::DrawRoundedRectangle` takes exactly that, and
+  an `ID2D1StrokeStyle` built from `D2D1::StrokeStyleProperties` with
+  `D2D1_DASH_STYLE_CUSTOM` takes the same dash arrays, so dotted and dashed are
+  the stroke style rather than a second mechanism. The one thing to get right is
+  where it is drawn: CSS does not clip an element's own outline for
+  `overflow: 'hidden'`, so it goes after the children and outside their clip.
+  backlog/correctness.md has what the other two decided. The end-to-end scenario
+  is skipped here by name.

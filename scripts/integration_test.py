@@ -4138,6 +4138,63 @@ def test_filter(bundle: Path) -> None:
         )
 
 
+def test_outline(bundle: Path) -> None:
+    """The `outline` family reaches the view with all four of its numbers.
+
+    CSS's outline is not a border: it is drawn outside the box, takes no layout
+    space and has one width, colour, offset and style for the whole ring. So the
+    frame says nothing about whether it arrived, and neither does a snapshot on
+    macOS -- the ring is a CAShapeLayer stroke, which Core Animation draws during
+    compositing and `renderInContext:` does not draw at all. The dump is the
+    observable, and the two hosts spell it the same way, so this one assertion
+    covers both.
+
+    All four numbers, because each is a thing a host can lose while still drawing
+    a plausible ring: an offset ignored leaves the ring against the box, a style
+    dropped makes it solid, and a colour read through the border's four-sided
+    cascade comes out transparent. e2e/views.tsx asks for a 3pt dashed #e0484d
+    ring 2pt out.
+
+    Windows draws no outline yet, so it is skipped by name.
+    """
+    if PLATFORM == "windows":
+        raise Skipped("Direct2D draws no outline yet")
+
+    app = bundle_app(bundle.parent, "views")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltViews"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text()
+
+    carrying = [line for line in tree.splitlines() if "outline=" in line]
+    if len(carrying) != 1:
+        raise Failure(
+            f"{len(carrying)} views report an outline; the app sets one.\n{tree}"
+        )
+    if "outline=(3,2,#e0484dff,dashed)" not in carrying[0]:
+        raise Failure(
+            "the outline is not the one the app asked for. A missing offset "
+            "reads (3,0,...), a dropped style has no trailing word, and a "
+            f"colour that did not resolve is #00000000.\n{carrying[0]}"
+        )
+
+
 def test_text_transform(bundle: Path) -> None:
     """`textTransform` changes the string the engine lays out.
 
@@ -5586,6 +5643,7 @@ SCENARIOS = [
     ("boxShadow reaches the view, inset and all", test_box_shadow),
     ("a linear-gradient backgroundImage reaches the view", test_linear_gradient),
     ("a filter list reaches the view, composed", test_filter),
+    ("the outline family reaches the view", test_outline),
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),

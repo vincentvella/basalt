@@ -584,3 +584,147 @@ TEST(gradients_are_reported_in_the_tree) {
     EXPECT(described.find("gradient=((0,60)-(0,0),3 stops)") != std::string::npos);
   }
 }
+
+// `outlineWidth`, `outlineColor`, `outlineOffset` and `outlineStyle`.
+//
+// CSS's outline is not a border: it is drawn outside the box, it takes no layout
+// space, and it is one ring rather than four edges. So the things worth asserting
+// are the geometry of the ring -- which is the box grown by the offset plus half
+// the stroke width, since a stroke straddles its path -- and where the layer that
+// carries it lives, for the same reason the box shadows care: a view that clips
+// itself must not clip its own outline away.
+//
+// No pixels, for the reason given above the box shadow tests: a CAShapeLayer's
+// stroke is drawn by Core Animation, and `renderInContext:` does not draw it.
+namespace {
+
+RnAppKitView *outlined(CGFloat width, CGFloat offset, RnAppKitBorderStyle style, CGRect frame) {
+  RnAppKitView *parent = [RnAppKitView viewWithTag:1];
+  [parent setRnFrameX:0 y:0 width:200 height:200];
+  RnAppKitView *view = [RnAppKitView viewWithTag:2];
+  [parent insertRnChild:view atIndex:0];
+  [view setRnFrameX:frame.origin.x y:frame.origin.y
+              width:frame.size.width height:frame.size.height];
+  const CGFloat black[4] = {0, 0, 0, 1};
+  [view setRnOutlineWidth:width offset:offset color:black style:style];
+  return view;
+}
+
+} // namespace
+
+TEST(outline_becomes_a_stroked_layer_outside_the_box) {
+  @autoreleasepool {
+    RnAppKitView *view = outlined(4, 0, RnAppKitBorderStyleSolid, CGRectMake(50, 50, 100, 60));
+    CAShapeLayer *layer = view.rnOutlineLayer;
+    EXPECT(layer != nil);
+
+    // Stroked, not filled: a filled shape would cover the view.
+    EXPECT(layer.fillColor == nil);
+    EXPECT(layer.strokeColor != nil);
+    EXPECT_EQ((int)layer.lineWidth, 4);
+
+    // Half a width outside the box, so the inner edge of the ring touches it.
+    const CGRect box = CGPathGetBoundingBox(layer.path);
+    EXPECT_EQ((int)box.origin.x, -2);
+    EXPECT_EQ((int)box.origin.y, -2);
+    EXPECT_EQ((int)box.size.width, 104);
+    EXPECT_EQ((int)box.size.height, 64);
+
+    // Solid means no dashes, which is what distinguishes it from the two below.
+    EXPECT(layer.lineDashPattern == nil);
+  }
+}
+
+// The offset, which is the whole point of an outline over a border: it leaves a
+// gap. A width read as an offset, or an offset ignored, both still draw a ring,
+// so the bounding box is what catches it.
+TEST(outline_an_offset_pushes_the_ring_further_out) {
+  @autoreleasepool {
+    RnAppKitView *view = outlined(4, 6, RnAppKitBorderStyleSolid, CGRectMake(50, 50, 100, 60));
+    const CGRect box = CGPathGetBoundingBox(view.rnOutlineLayer.path);
+    EXPECT_EQ((int)box.origin.x, -8);  // -(offset + width / 2)
+    EXPECT_EQ((int)box.origin.y, -8);
+    EXPECT_EQ((int)box.size.width, 116);
+    EXPECT_EQ((int)box.size.height, 76);
+  }
+}
+
+TEST(outline_dotted_and_dashed_become_dash_patterns) {
+  @autoreleasepool {
+    RnAppKitView *dotted = outlined(4, 0, RnAppKitBorderStyleDotted, CGRectMake(0, 0, 100, 60));
+    EXPECT_EQ((long)dotted.rnOutlineLayer.lineDashPattern.count, 2L);
+    // A zero-length segment with a round cap is a dot, and the gap is what makes
+    // it read as dotted rather than as a solid line of dots.
+    EXPECT_EQ(dotted.rnOutlineLayer.lineDashPattern.firstObject.intValue, 0);
+    EXPECT([dotted.rnOutlineLayer.lineCap isEqualToString:kCALineCapRound]);
+
+    RnAppKitView *dashed = outlined(4, 0, RnAppKitBorderStyleDashed, CGRectMake(0, 0, 100, 60));
+    EXPECT_EQ((long)dashed.rnOutlineLayer.lineDashPattern.count, 2L);
+    EXPECT(dashed.rnOutlineLayer.lineDashPattern.firstObject.intValue > 0);
+  }
+}
+
+// No width is no outline, and neither is a transparent colour. The default props
+// carry a zero width, so every view in every app goes through this path.
+TEST(outline_nothing_is_drawn_without_a_width_or_a_colour) {
+  @autoreleasepool {
+    RnAppKitView *none = outlined(0, 0, RnAppKitBorderStyleSolid, CGRectMake(0, 0, 100, 60));
+    EXPECT(none.rnOutlineLayer == nil);
+
+    RnAppKitView *view = outlined(4, 0, RnAppKitBorderStyleSolid, CGRectMake(0, 0, 100, 60));
+    EXPECT(view.rnOutlineLayer != nil);
+    const CGFloat clear[4] = {0, 0, 0, 0};
+    [view setRnOutlineWidth:4 offset:0 color:clear style:RnAppKitBorderStyleSolid];
+    EXPECT(view.rnOutlineLayer == nil);
+  }
+}
+
+// Where the layer lives, which decides whether `overflow: 'hidden'` eats the
+// outline. Same rule as the box shadows, and the same failure if it is wrong.
+TEST(outline_a_clipping_view_puts_its_outline_in_the_parent) {
+  @autoreleasepool {
+    RnAppKitView *view = outlined(4, 0, RnAppKitBorderStyleSolid, CGRectMake(50, 50, 100, 60));
+    EXPECT(view.rnOutlineLayer.superlayer == view.layer);
+
+    [view setRnClipsChildren:YES];
+    CAShapeLayer *layer = view.rnOutlineLayer;
+    EXPECT(layer.superlayer == view.superview.layer);
+    // In the parent's coordinates, so the ring is still around the view.
+    EXPECT_EQ((int)layer.frame.origin.x, 50);
+    EXPECT_EQ((int)layer.frame.origin.y, 50);
+
+    [view setRnClipsChildren:NO];
+    EXPECT(view.rnOutlineLayer.superlayer == view.layer);
+  }
+}
+
+// The ring is concentric with the box, so a rounded box gets a rounded ring with
+// the radius grown by the same amount the ring moved out. A square ring around a
+// rounded box is the wrong answer that looks almost right, so the corner itself
+// is what gets asserted: inside a square path, outside a rounded one.
+TEST(outline_follows_the_corner_radius) {
+  @autoreleasepool {
+    RnAppKitView *square = outlined(4, 0, RnAppKitBorderStyleSolid, CGRectMake(50, 50, 100, 60));
+    const CGRect box = CGPathGetBoundingBox(square.rnOutlineLayer.path);
+    const CGPoint corner = CGPointMake(box.origin.x + 1, box.origin.y + 1);
+    EXPECT(CGPathContainsPoint(square.rnOutlineLayer.path, NULL, corner, false));
+
+    RnAppKitView *rounded = outlined(4, 0, RnAppKitBorderStyleSolid, CGRectMake(50, 50, 100, 60));
+    [rounded setRnCornerRadius:20];
+    EXPECT(!CGPathContainsPoint(rounded.rnOutlineLayer.path, NULL, corner, false));
+    // And still only as big as the square one, because the radius grew rather
+    // than the ring.
+    const CGRect roundedBox = CGPathGetBoundingBox(rounded.rnOutlineLayer.path);
+    EXPECT_EQ((int)roundedBox.size.width, (int)box.size.width);
+  }
+}
+
+// And in the tree dump, spelled as GTK spells it, which is what lets one e2e
+// scenario check the wiring on both hosts.
+TEST(outline_is_reported_in_the_tree) {
+  @autoreleasepool {
+    RnAppKitView *view = outlined(3, 2, RnAppKitBorderStyleDashed, CGRectMake(0, 0, 100, 60));
+    const std::string described = [view describeTree].UTF8String;
+    EXPECT(described.find("outline=(3,2,#000000ff,dashed)") != std::string::npos);
+  }
+}

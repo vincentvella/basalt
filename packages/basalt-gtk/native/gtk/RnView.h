@@ -182,6 +182,21 @@ typedef enum {
 // first style set wins, and the backlog records that.
 void rn_view_set_border_style(RnView *self, RnBorderStyle style);
 
+// `outlineWidth`, `outlineColor`, `outlineOffset` and `outlineStyle`.
+//
+// CSS's outline, which is not a border: it is drawn *outside* the box, takes no
+// layout space, and sits `offset` away from the border edge. A focus ring is what
+// it is for, and web-ported code sets it expecting exactly that.
+//
+// The radii follow the view's own, grown by the width and the offset so the ring
+// stays concentric with a rounded card. A zero width is no outline; the style is
+// the same three values a border has.
+void rn_view_set_outline(RnView *self,
+                         float width,
+                         float offset,
+                         const GdkRGBA *color,
+                         RnBorderStyle style);
+
 // BaseViewProps::transform, already resolved by React Native.
 //
 // Applied in the layout manager rather than at paint time, so that GTK's own

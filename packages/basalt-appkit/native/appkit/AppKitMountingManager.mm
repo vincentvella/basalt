@@ -958,6 +958,35 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
     [view setRnBoxShadows:shadows.data() count:(NSInteger)shadows.size()];
   }
 
+  // The outline: CSS's, drawn outside the box and taking no layout space, so
+  // nothing about it touches the frame. One width, one colour, one offset and one
+  // style for the whole ring, unlike the border's four of each.
+  {
+    CGFloat colour[4] = {0, 0, 0, 0};
+    if (props->outlineColor) {
+      const ColorComponents components = colorComponentsFromColor(props->outlineColor);
+      colour[0] = components.red;
+      colour[1] = components.green;
+      colour[2] = components.blue;
+      colour[3] = components.alpha;
+    }
+    RnAppKitBorderStyle style = RnAppKitBorderStyleSolid;
+    switch (props->outlineStyle) {
+      case facebook::react::OutlineStyle::Dotted:
+        style = RnAppKitBorderStyleDotted;
+        break;
+      case facebook::react::OutlineStyle::Dashed:
+        style = RnAppKitBorderStyleDashed;
+        break;
+      case facebook::react::OutlineStyle::Solid:
+        break;
+    }
+    [view setRnOutlineWidth:(CGFloat)props->outlineWidth
+                     offset:(CGFloat)props->outlineOffset
+                      color:colour
+                      style:style];
+  }
+
   // filter. The arithmetic is core/Filters.h's and is shared with the GTK host:
   // the list of CSS functions comes to one colour matrix, one blur and one
   // opacity, and the view layer turns the first two into Core Image filters.

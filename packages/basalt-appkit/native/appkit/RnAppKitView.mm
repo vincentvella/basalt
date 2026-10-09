@@ -444,6 +444,12 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // Four RGBA quadruples, in the same edge order.
   CGFloat _borderColors[16];
   BOOL _hasBorders;
+  // CSS's outline, and the layer it became. Zero width is none.
+  CGFloat _outlineWidth;
+  CGFloat _outlineOffset;
+  CGFloat _outlineColor[4];
+  RnAppKitBorderStyle _outlineStyle;
+  CAShapeLayer *_outlineLayer;
   // The resolved `filter`, as the Core Image filters it became, or nil.
   NSArray<CIFilter *> *_filters;
   // `hitSlop`, top, right, bottom, left. Read only by the hit test.
@@ -487,6 +493,9 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   for (CALayer *layer in _boxShadowLayers) {
     [layer removeFromSuperlayer];
   }
+  // The outline can be in the parent's layer for the same reason, so it has to
+  // come out too.
+  [_outlineLayer removeFromSuperlayer];
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -525,9 +534,12 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   }
   // And a box shadow's path is in the view's own coordinates, so every one of
   // them has to be rebuilt: a card that grew would otherwise keep the shadow of
-  // the size it used to be.
+  // the size it used to be. The outline is in the same position.
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+  }
+  if (_outlineWidth > 0) {
+    [self rnRebuildOutlineLayer];
   }
 }
 
@@ -1416,9 +1428,13 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
 - (void)setRnClipsChildren:(BOOL)clips {
   _clipsChildren = clips;
   self.layer.masksToBounds = clips;
-  // Which decides where an outset shadow lives, so the shadows move with it.
+  // Which decides where an outset shadow and an outline live, so both move with
+  // it.
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+  }
+  if (_outlineWidth > 0) {
+    [self rnRebuildOutlineLayer];
   }
 }
 
@@ -1564,9 +1580,13 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   }
   // The border is drawn along these radii.
   self.needsDisplay = YES;
-  // And so is every shadow: a shadow follows the box it is cast by.
+  // And so is every shadow: a shadow follows the box it is cast by, and so does
+  // the outline.
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+  }
+  if (_outlineWidth > 0) {
+    [self rnRebuildOutlineLayer];
   }
 }
 
@@ -1962,6 +1982,98 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
   }
+  if (_outlineWidth > 0) {
+    [self rnRebuildOutlineLayer];
+  }
+}
+
+- (void)setRnOutlineWidth:(CGFloat)width
+                   offset:(CGFloat)offset
+                    color:(const CGFloat *)color
+                    style:(RnAppKitBorderStyle)style {
+  const CGFloat wanted = width > 0 ? width : 0;
+  CGFloat components[4] = {0, 0, 0, 0};
+  for (int i = 0; i < 4; i++) {
+    components[i] = color != nullptr ? color[i] : 0;
+  }
+  if (_outlineWidth == wanted && _outlineOffset == offset && _outlineStyle == style &&
+      memcmp(_outlineColor, components, sizeof(components)) == 0) {
+    return;
+  }
+  _outlineWidth = wanted;
+  _outlineOffset = offset;
+  memcpy(_outlineColor, components, sizeof(components));
+  _outlineStyle = style;
+  [self rnRebuildOutlineLayer];
+}
+
+- (CAShapeLayer *)rnOutlineLayer {
+  return _outlineLayer;
+}
+
+// The outline, as a stroked shape outside the box.
+//
+// Stroked rather than a layer border, which is what React Native's iOS half uses
+// for the solid case: a stroke takes a dash pattern, so dotted and dashed need no
+// second mechanism, and it takes an arbitrary path, so elliptical radii need no
+// special case either. The path sits half a width outside the offset, a stroke
+// straddling its path.
+//
+// Placed by the same rule the box shadows use -- inside the view, or in the
+// parent when the view clips its own layer -- so an outline on a card with
+// `overflow: 'hidden'` is not quietly clipped away.
+- (void)rnRebuildOutlineLayer {
+  [_outlineLayer removeFromSuperlayer];
+  _outlineLayer = nil;
+  if (_outlineWidth <= 0 || _outlineColor[3] <= 0) {
+    return;
+  }
+  const NSRect bounds = self.bounds;
+  if (bounds.size.width <= 0 || bounds.size.height <= 0) {
+    return;
+  }
+
+  const CGFloat grow = _outlineOffset + _outlineWidth / 2;
+  CGFloat radii[8];
+  for (int i = 0; i < 8; i++) {
+    // Each non-zero radius grows with the ring so it stays concentric; a corner
+    // that was square stays square, as it does on the GTK side.
+    radii[i] = _hasBorderRadii ? (_borderRadii[i] > 0 ? _borderRadii[i] + grow : 0)
+                               : (_cornerRadius > 0 ? _cornerRadius + grow : 0);
+  }
+  CGPathRef path =
+      RnAppKitCreateRoundedPath(CGRectInset(bounds, -grow, -grow), radii);
+
+  CAShapeLayer *layer = [CAShapeLayer layer];
+  layer.path = path;
+  layer.fillColor = nil;
+  layer.lineWidth = _outlineWidth;
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGColorRef colour = CGColorCreate(space, _outlineColor);
+  layer.strokeColor = colour;
+  CGColorRelease(colour);
+  CGColorSpaceRelease(space);
+
+  if (_outlineStyle == RnAppKitBorderStyleDotted) {
+    layer.lineCap = kCALineCapRound;
+    layer.lineDashPattern = @[ @0, @(_outlineWidth * 2) ];
+  } else if (_outlineStyle == RnAppKitBorderStyleDashed) {
+    layer.lineDashPattern = @[ @(_outlineWidth * 3), @(_outlineWidth * 2) ];
+  }
+
+  if ([self rnClipsItsOwnLayer]) {
+    CALayer *parent = self.superview.layer;
+    if (parent != nil) {
+      layer.frame = self.frame;
+      [parent insertSublayer:layer below:self.layer];
+      _outlineLayer = layer;
+    }
+  } else {
+    layer.frame = bounds;
+    [self.layer addSublayer:layer];
+    _outlineLayer = layer;
+  }
+  CGPathRelease(path);
 }
 
 - (void)setRnFilters:(const RnAppKitFilters *)filters {
@@ -2229,6 +2341,24 @@ static NSCursor *RnAppKitCursorNamed(NSString *name) {
   if (_cursorName != nil) {
     [out appendFormat:@" cursor=%@", _cursorName];
   }
+  // The outline, which is invisible in every other line: it is not a border and
+  // a view with one has the same frame and the same colours without it. Spelled
+  // as GTK spells it.
+  if (_outlineWidth > 0) {
+    [out appendFormat:@" outline=(%g,%g,#%02x%02x%02x%02x",
+                      (double)_outlineWidth,
+                      (double)_outlineOffset,
+                      (unsigned)(_outlineColor[0] * 255.0 + 0.5),
+                      (unsigned)(_outlineColor[1] * 255.0 + 0.5),
+                      (unsigned)(_outlineColor[2] * 255.0 + 0.5),
+                      (unsigned)(_outlineColor[3] * 255.0 + 0.5)];
+    if (_outlineStyle != RnAppKitBorderStyleSolid) {
+      [out appendFormat:@",%s",
+                        _outlineStyle == RnAppKitBorderStyleDotted ? "dotted" : "dashed"];
+    }
+    [out appendString:@")"];
+  }
+
   // `filter`, as the pieces it came to plus what its matrix makes of one probe
   // colour, spelled exactly as GTK spells it: sixteen numbers would drown the
   // line, and one colour still fails when a matrix is wrong. The probe is

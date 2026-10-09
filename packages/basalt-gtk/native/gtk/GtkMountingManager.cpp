@@ -1251,6 +1251,32 @@ void GtkMountingManager::applyProps(RnView *view, const ShadowView &shadowView) 
     rn_view_set_box_shadows(view, shadows.data(), static_cast<int>(shadows.size()));
   }
 
+  // The outline: CSS's, which is drawn outside the box and takes no layout
+  // space, so nothing about it touches the frame. React Native carries one
+  // width, one colour, one offset and one style for the whole ring, unlike the
+  // border's four of each.
+  {
+    const GdkRGBA colour = props->outlineColor
+        ? toRgba(colorComponentsFromColor(props->outlineColor))
+        : GdkRGBA{0.0F, 0.0F, 0.0F, 0.0F};
+    RnBorderStyle style = RN_BORDER_SOLID;
+    switch (props->outlineStyle) {
+      case facebook::react::OutlineStyle::Dotted:
+        style = RN_BORDER_DOTTED;
+        break;
+      case facebook::react::OutlineStyle::Dashed:
+        style = RN_BORDER_DASHED;
+        break;
+      case facebook::react::OutlineStyle::Solid:
+        break;
+    }
+    rn_view_set_outline(view,
+                        static_cast<float>(props->outlineWidth),
+                        static_cast<float>(props->outlineOffset),
+                        &colour,
+                        style);
+  }
+
   // filter. The arithmetic is core/Filters.h's and is shared with the AppKit
   // host: the list of CSS functions comes to one colour matrix, one blur and one
   // opacity, and the widget layer pushes a node for each.

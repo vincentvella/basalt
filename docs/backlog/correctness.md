@@ -8,7 +8,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. pointScaleFactor, fractional scaling under Wayland
 3. 3D transforms have no perspective: gsk_transform_perspective exists, and Trans
 4. Five view style props that no host reads, and nothing said so (box shadows,
-   linear gradients, hitSlop and filters are done on GTK and AppKit)
+   linear gradients, hitSlop, filters and the outline family are done on GTK and
+   AppKit)
 5. ~~A type check used as a liveness check~~, fixed in four places; the ordering
    it depended on is now core's
 
@@ -124,9 +125,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     turned out to be is at the end of this entry.
   - ~~`filter`~~, **done on GTK and AppKit 2026-10-08**, bar `dropShadow()`.
     What the work turned out to be is at the end of this entry.
-  - `outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`. CSS's
-    outline, which unlike a border takes no layout space and is drawn outside the
-    box. The focus ring each host draws is the same idea and is hard-coded.
+  - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
+    **done on GTK and AppKit 2026-10-08**. What the work turned out to be is at
+    the end of this entry.
   - `mixBlendMode` and `isolation`.
   - ~~`hitSlop`~~, **done on GTK and AppKit 2026-10-08**. The one of the nine
     that is behaviour rather than decoration, so an app relying on it was wrong
@@ -307,6 +308,52 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   mean. The AppKit test for taking a filter away found a real bug on the way: a
   list of nothing but `opacity()` leaves no Core Image filter behind, so the
   early return left the view at a quarter of its opacity for good.
+
+  **The `outline` family, done on GTK and AppKit 2026-10-08.** Four props and one
+  ring: CSS gives an outline one width, one colour, one offset and one style for
+  the whole box, where a border has four of each. It is drawn outside the box and
+  takes no layout space, so nothing about it touches the frame, which is also why
+  it is invisible to every assertion this project already had about a view.
+
+  **Nothing clips it, and that is the decision in both implementations.** CSS
+  does not clip an element's own outline for `overflow: 'hidden'`, so a ring
+  drawn as a child of the view it belongs to would vanish on exactly the views
+  that most often carry one. GTK gets this for free: the outline is appended to
+  the snapshot after the children's clip has been popped. AppKit does not, so the
+  ring follows the box shadows' rule and moves into the parent's layer when the
+  view clips its own layer, which happens both for `overflow: 'hidden'` and for
+  radii too elliptical for `cornerRadius`.
+
+  **Stroked rather than bordered, on both hosts, for the same reason.** A stroke
+  takes a dash pattern, so dotted and dashed need no second mechanism, and it
+  takes an arbitrary path, so elliptical radii need no special case. GTK keeps
+  `gtk_snapshot_append_border` for the solid case, which is cheaper, and strokes
+  the other two; AppKit strokes a `CAShapeLayer` throughout. A stroke straddles
+  its path, so the path is offset plus half the width out, where the border node
+  sits inside a rect grown by offset plus width. The two spellings put the ring
+  in the same place, which is what the two hosts' tests assert in their own
+  terms.
+
+  The radii grow with the ring so it stays concentric: each non-zero radius gains
+  what the ring moved out, and a corner that was square stays square, which is
+  what React Native's iOS half does. A square ring around a rounded card is the
+  wrong answer that looks almost right, so both hosts have a test that asserts
+  the corner specifically -- a pixel outside the rounded ring on GTK, and
+  `CGPathContainsPoint` at the corner on AppKit.
+
+  Five pixel tests on GTK, seven layer tests on AppKit, and one scenario reading
+  all four numbers out of the dump on both hosts: `outline=(3,2,#e0484dff,dashed)`
+  from a 3pt dashed ring 2pt out, with the failure message saying what a dropped
+  offset, a dropped style and an unresolved colour each look like. Sabotage: the
+  ring's growth, its placement and its radii each fail their own tests, and the
+  scenario fails on both hosts when the mounting manager stops passing the
+  offset.
+
+  **Windows** needs `ID2D1RenderTarget::DrawRoundedRectangle` on a rect grown by
+  the offset plus half the width, with an `ID2D1StrokeStyle` built from
+  `D2D1::StrokeStyleProperties` carrying `D2D1_DASH_STYLE_CUSTOM` and the same
+  dash arrays the other two hosts use, drawn after the children for the clipping
+  reason above. Its scenario skips by name.
 
 - ~~**A type check used as a liveness check.**~~ Found and fixed 2026-10-08, by
   accident, which is the part worth writing down.

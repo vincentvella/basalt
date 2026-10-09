@@ -130,6 +130,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 #ffffff',
   },
+  // outline: CSS's, which is not a border. Offset away from the edge and dashed,
+  // because an offset ignored and a style dropped both still draw a ring: the
+  // dump carries all four numbers so one scenario can compare them across hosts.
+  outlined: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#ffffff',
+    outlineWidth: 3,
+    outlineOffset: 2,
+    outlineColor: '#e0484d',
+    outlineStyle: 'dashed',
+  },
   draggable: {
     width: 40,
     height: 40,
@@ -158,6 +170,7 @@ function App() {
         <View style={styles.filtered} />
         <View style={styles.gradient} />
         <View style={styles.shadowed} />
+        <View style={styles.outlined} />
         <View style={styles.handy} />
         <View style={styles.draggable} />
         <View style={styles.dot} />

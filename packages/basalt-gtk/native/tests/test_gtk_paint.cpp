@@ -300,3 +300,123 @@ TEST(gtk_paint_a_plain_view_paints_nothing) {
   EXPECT_TRANSPARENT(pixels, 20, 20);
   EXPECT_TRANSPARENT(pixels, 50, 50);
 }
+
+// CSS's outline: `outlineWidth`, `outlineColor`, `outlineOffset` and
+// `outlineStyle`.
+//
+// Not a border, which is the whole of what makes it worth asserting in pixels: it
+// is drawn *outside* the box and takes no layout space, so what proves it is ink
+// beyond the view's own frame with the frame unchanged. Web-ported code sets it
+// for a focus ring and expects exactly that.
+TEST(gtk_paint_draws_an_outline_outside_the_box) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *view = tree.colouredBox(root, 2, 30, 30, 40, 40, 1.0F, 1.0F, 1.0F);
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_outline(view, 4.0F, 0.0F, &red, RN_BORDER_SOLID);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // Two points outside the box's left edge: inside a four point outline.
+  EXPECT_PIXEL(pixels, 28, 50, 255, 0, 0, 255);
+  // And on every other side, so a ring rather than one edge.
+  EXPECT_PIXEL(pixels, 72, 50, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 28, 255, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 72, 255, 0, 0, 255);
+
+  // The box itself is untouched: an outline that ate into the view would be a
+  // border, and the two are different props.
+  EXPECT_PIXEL(pixels, 50, 50, 255, 255, 255, 255);
+  EXPECT_PIXEL(pixels, 32, 50, 255, 255, 255, 255);
+  // Past the outline, nothing.
+  EXPECT_TRANSPARENT(pixels, 20, 50);
+}
+
+// `outlineOffset` is the gap between the box and the ring, which is what makes a
+// focus ring look deliberate rather than like a second border.
+TEST(gtk_paint_an_outline_offset_leaves_a_gap) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *view = tree.colouredBox(root, 2, 30, 30, 40, 40, 1.0F, 1.0F, 1.0F);
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_outline(view, 4.0F, 6.0F, &red, RN_BORDER_SOLID);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The gap: three points out from the edge, between the box and the ring.
+  EXPECT_TRANSPARENT(pixels, 27, 50);
+  // The ring itself, eight points out.
+  EXPECT_PIXEL(pixels, 22, 50, 255, 0, 0, 255);
+  // And past it again.
+  EXPECT_TRANSPARENT(pixels, 16, 50);
+}
+
+// A dashed outline leaves gaps along the ring, the way a dashed border does.
+TEST(gtk_paint_a_dashed_outline_is_not_solid) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *view = tree.colouredBox(root, 2, 20, 20, 60, 60, 1.0F, 1.0F, 1.0F);
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+
+  rn_view_set_outline(view, 4.0F, 0.0F, &red, RN_BORDER_SOLID);
+  const RnPixels solid = renderView(root, 100, 100);
+  int solidInk = 0;
+  for (int x = 0; x < 100; x++) {
+    if (solid.at(x, 18).alpha > 40) {
+      solidInk++;
+    }
+  }
+
+  rn_view_set_outline(view, 4.0F, 0.0F, &red, RN_BORDER_DASHED);
+  const RnPixels dashed = renderView(root, 100, 100);
+  int dashedInk = 0;
+  for (int x = 0; x < 100; x++) {
+    if (dashed.at(x, 18).alpha > 40) {
+      dashedInk++;
+    }
+  }
+
+  // Ink either way, and less of it when it is dashed.
+  EXPECT(solidInk > 50);
+  EXPECT(dashedInk > 0);
+  EXPECT(dashedInk < solidInk);
+}
+
+TEST(gtk_paint_no_outline_width_is_no_outline) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *view = tree.colouredBox(root, 2, 30, 30, 40, 40, 1.0F, 1.0F, 1.0F);
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+
+  rn_view_set_outline(view, 4.0F, 0.0F, &red, RN_BORDER_SOLID);
+  EXPECT_PIXEL(renderView(root, 100, 100), 28, 50, 255, 0, 0, 255);
+
+  // Taken away again, which is what losing focus does.
+  rn_view_set_outline(view, 0.0F, 0.0F, &red, RN_BORDER_SOLID);
+  EXPECT_TRANSPARENT(renderView(root, 100, 100), 28, 50);
+
+  // And a width with no colour paints nothing: React Native's default outline
+  // colour is undefined, which arrives as a transparent one.
+  const GdkRGBA invisible{0.0F, 0.0F, 0.0F, 0.0F};
+  rn_view_set_outline(view, 4.0F, 0.0F, &invisible, RN_BORDER_SOLID);
+  EXPECT_TRANSPARENT(renderView(root, 100, 100), 28, 50);
+}
+
+// The ring follows the view's corners, grown by the width and the offset so it
+// stays concentric: a square ring around a rounded card is the giveaway that the
+// radii were not carried over.
+TEST(gtk_paint_an_outline_follows_the_corner_radius) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  RnView *view = tree.colouredBox(root, 2, 20, 20, 60, 60, 1.0F, 1.0F, 1.0F);
+  const graphene_size_t radii[4] = {
+      {20.0F, 20.0F}, {20.0F, 20.0F}, {20.0F, 20.0F}, {20.0F, 20.0F}};
+  rn_view_set_border_radii(view, radii);
+  const GdkRGBA red{1.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_outline(view, 4.0F, 0.0F, &red, RN_BORDER_SOLID);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  // The middle of an edge is on the ring.
+  EXPECT_PIXEL(pixels, 18, 50, 255, 0, 0, 255);
+  // The corner of the bounding box is outside a 24 point radius, so it is
+  // empty -- where a square ring would paint it.
+  EXPECT_TRANSPARENT(pixels, 17, 17);
+}

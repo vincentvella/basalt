@@ -434,6 +434,27 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // something other than solid decides the outline, and the backlog records that.
 - (void)setRnBorderStyle:(RnAppKitBorderStyle)style;
 
+// `outlineWidth`, `outlineColor`, `outlineOffset` and `outlineStyle`.
+//
+// CSS's outline, which is not a border: drawn *outside* the box, no layout space,
+// and `offset` away from the border edge. A focus ring is what it is for.
+//
+// A layer rather than a `drawRect:`, for the reason an outset box shadow is one:
+// `drawRect:` is clipped to the bounds and this is outside them. It follows the
+// same placement rule as the shadows -- inside the view, or in the parent when
+// the view clips its own layer -- so the two props behave alike.
+//
+// The colour is RGBA components, as the border colours arrive. A zero width is no
+// outline.
+- (void)setRnOutlineWidth:(CGFloat)width
+                   offset:(CGFloat)offset
+                    color:(nullable const CGFloat *)color
+                    style:(RnAppKitBorderStyle)style;
+
+// The layer that outline became, for the tests: a stroked shape outside the box,
+// which `renderInContext:` will not draw and a `drawRect:` bitmap cannot see.
+@property(nonatomic, readonly, nullable) CAShapeLayer *rnOutlineLayer;
+
 // Fabric's Insert and Remove carry an index into the parent's child list, so
 // that list has to stay in mutation order.
 - (void)insertRnChild:(RnAppKitView *)child atIndex:(NSInteger)index;

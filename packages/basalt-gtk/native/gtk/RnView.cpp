@@ -195,6 +195,11 @@ struct _RnView {
   graphene_size_t border_radii[4];
   gboolean has_border_radii;
   float border_widths[4];
+  // CSS's outline: drawn outside the box, no layout space. Zero width is none.
+  float outline_width;
+  float outline_offset;
+  GdkRGBA outline_color;
+  RnBorderStyle outline_style;
   // The resolved `filter`, and whether there is one at all.
   RnFilters filters;
   gboolean has_filters;
@@ -733,6 +738,63 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     }
   }
 
+  // CSS's outline, outside the box and over everything: it is not a border, it
+  // takes no layout space, and it sits `offset` away from the border edge.
+  //
+  // Nothing clips it, which is the point -- a ring inside the box would be a
+  // border. The rounded rect it follows is the view's own grown by the offset
+  // plus the width, with each non-zero radius grown to match so the ring stays
+  // concentric with a rounded card. A corner that was square stays square,
+  // which is what React Native's iOS half does too.
+  if (self->outline_width > 0.0f && self->outline_color.alpha > 0.0f) {
+    const float grow = self->outline_width + self->outline_offset;
+    GskRoundedRect ring = box;
+    graphene_rect_inset(&ring.bounds, -grow, -grow);
+    for (int corner = 0; corner < 4; corner++) {
+      if (ring.corner[corner].width > 0.0f) {
+        ring.corner[corner].width += grow;
+      }
+      if (ring.corner[corner].height > 0.0f) {
+        ring.corner[corner].height += grow;
+      }
+    }
+
+    if (self->outline_style == RN_BORDER_SOLID) {
+      const float widths[4] = {self->outline_width,
+                               self->outline_width,
+                               self->outline_width,
+                               self->outline_width};
+      const GdkRGBA colors[4] = {self->outline_color,
+                                 self->outline_color,
+                                 self->outline_color,
+                                 self->outline_color};
+      gtk_snapshot_append_border(snapshot, &ring, widths, colors);
+    } else {
+      // Dotted and dashed, stroked for the reason a dashed border is: GTK's
+      // border node paints solid only. Inset by half the width, a stroke
+      // straddling its path where a border node sits inside the box.
+      GskRoundedRect centred = ring;
+      graphene_rect_inset(&centred.bounds, self->outline_width / 2.0f, self->outline_width / 2.0f);
+
+      GskPathBuilder *builder = gsk_path_builder_new();
+      gsk_path_builder_add_rounded_rect(builder, &centred);
+      GskPath *path = gsk_path_builder_free_to_path(builder);
+
+      GskStroke *stroke = gsk_stroke_new(self->outline_width);
+      if (self->outline_style == RN_BORDER_DOTTED) {
+        const float dots[2] = {0.0f, self->outline_width * 2.0f};
+        gsk_stroke_set_line_cap(stroke, GSK_LINE_CAP_ROUND);
+        gsk_stroke_set_dash(stroke, dots, 2);
+      } else {
+        const float dashes[2] = {self->outline_width * 3.0f, self->outline_width * 2.0f};
+        gsk_stroke_set_dash(stroke, dashes, 2);
+      }
+      gtk_snapshot_append_stroke(snapshot, path, stroke, &self->outline_color);
+      gsk_stroke_free(stroke);
+      gsk_path_unref(path);
+    }
+  }
+
   // The focus ring, over everything including the border, because it is the
   // answer to "where am I" and must not be hidden by what it is drawn on.
   //
@@ -863,6 +925,10 @@ static void rn_view_init(RnView *self) {
   }
   self->has_border_radii = FALSE;
   self->has_borders = FALSE;
+  self->outline_width = 0.0f;
+  self->outline_offset = 0.0f;
+  self->outline_color = GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
+  self->outline_style = RN_BORDER_SOLID;
   self->has_filters = FALSE;
   self->has_hit_slop = FALSE;
   for (int edge = 0; edge < 4; edge++) {
@@ -1593,6 +1659,26 @@ int rn_view_get_box_shadow_count(RnView *self) {
   return self->box_shadows != nullptr ? static_cast<int>(self->box_shadows->len) : 0;
 }
 
+void rn_view_set_outline(RnView *self,
+                         float width,
+                         float offset,
+                         const GdkRGBA *color,
+                         RnBorderStyle style) {
+  g_return_if_fail(RN_IS_VIEW(self));
+
+  const float wanted = width > 0.0f ? width : 0.0f;
+  const GdkRGBA wantedColor = color != nullptr ? *color : GdkRGBA{0.0f, 0.0f, 0.0f, 0.0f};
+  if (self->outline_width == wanted && self->outline_offset == offset &&
+      self->outline_style == style && gdk_rgba_equal(&self->outline_color, &wantedColor)) {
+    return;
+  }
+  self->outline_width = wanted;
+  self->outline_offset = offset;
+  self->outline_color = wantedColor;
+  self->outline_style = style;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
 void rn_view_set_filters(RnView *self, const RnFilters *filters) {
   g_return_if_fail(RN_IS_VIEW(self));
 
@@ -1994,6 +2080,24 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   if (self->cursor_name != nullptr) {
     g_string_append_printf(out, " cursor=%s", self->cursor_name);
   }
+  // The outline, which is invisible in every other line: it is not a border and
+  // a view with one has the same frame and the same colours without it.
+  if (self->outline_width > 0.0f) {
+    g_string_append_printf(out,
+                           " outline=(%g,%g,#%02x%02x%02x%02x",
+                           static_cast<double>(self->outline_width),
+                           static_cast<double>(self->outline_offset),
+                           static_cast<unsigned>(self->outline_color.red * 255.0 + 0.5),
+                           static_cast<unsigned>(self->outline_color.green * 255.0 + 0.5),
+                           static_cast<unsigned>(self->outline_color.blue * 255.0 + 0.5),
+                           static_cast<unsigned>(self->outline_color.alpha * 255.0 + 0.5));
+    if (self->outline_style != RN_BORDER_SOLID) {
+      g_string_append_printf(
+          out, ",%s", self->outline_style == RN_BORDER_DOTTED ? "dotted" : "dashed");
+    }
+    g_string_append(out, ")");
+  }
+
   // `filter`, as the pieces it came to plus what its matrix makes of one probe
   // colour. Sixteen numbers would drown the line; one colour is eight characters
   // and still fails when a matrix is wrong, which is what the cross-host diff
