@@ -69,10 +69,6 @@
       "text": "WM_SETCURSOR needs a hit test",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
-    "win-hitslop": {
-      "text": "one line against the insets it already has",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "win-text": {
       "text": "DirectWrite is given it",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -358,8 +354,7 @@
     "BaseViewProps.hitSlop": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-hitslop"
+      "windows": "yes"
     },
     "BaseViewProps.onLayout": {
       "linux": "upstream",

@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using basalt::win32::hitTest;
@@ -407,4 +408,115 @@ TEST(page_to_local_refuses_a_chain_with_no_inverse) {
   EXPECT(!flat->pageToLocal(root, 10.0f, 10.0f, x, y));
   // Untouched, so the caller's fallback is what is used.
   EXPECT_NEAR(x, -1.0f, 0.001f);
+}
+
+// ---------------------------------------------------------------------------
+// `hitSlop`: how far outside its own box a view answers a press.
+//
+// The same four questions tests/test_hittest.cpp asks of GTK, in the same
+// order, and asserted the same way: through the hit test every press goes
+// through rather than against the stored insets, because a view that remembered
+// its slop and did not widen the test would leave every target the size it was.
+// ---------------------------------------------------------------------------
+
+TEST(hit_slop_grows_the_target_outside_the_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *icon = tree.box(60, 100, 100, 20, 20);
+  root->insertChild(icon, 0);
+  const float insets[4] = {12.0f, 12.0f, 12.0f, 12.0f};
+  icon->setHitSlop(insets);
+
+  // Inside the box, as before.
+  EXPECT_EQ(tagAt(root, 110, 110), 60);
+  // Ten points outside it on each side, which is inside the slop.
+  EXPECT_EQ(tagAt(root, 92, 110), 60);
+  EXPECT_EQ(tagAt(root, 128, 110), 60);
+  EXPECT_EQ(tagAt(root, 110, 92), 60);
+  EXPECT_EQ(tagAt(root, 110, 128), 60);
+  // And past it, which is the root again.
+  EXPECT_EQ(tagAt(root, 80, 110), 1);
+}
+
+// Each edge on its own, because four numbers in one struct is four chances to
+// read one into the wrong side: a slop that grew the top when the app asked for
+// the bottom would pass any symmetric test.
+TEST(hit_slop_applies_each_edge_where_it_was_asked_for) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *view = tree.box(61, 100, 100, 20, 20);
+  root->insertChild(view, 0);
+
+  const float top[4] = {15.0f, 0.0f, 0.0f, 0.0f};
+  view->setHitSlop(top);
+  EXPECT_EQ(tagAt(root, 110, 90), 61);
+  // Not the other three.
+  EXPECT_EQ(tagAt(root, 110, 130), 1);
+  EXPECT_EQ(tagAt(root, 90, 110), 1);
+  EXPECT_EQ(tagAt(root, 130, 110), 1);
+
+  // And the opposite edge, through the same view: the prop can change.
+  const float bottom[4] = {0.0f, 0.0f, 15.0f, 0.0f};
+  view->setHitSlop(bottom);
+  EXPECT_EQ(tagAt(root, 110, 130), 61);
+  EXPECT_EQ(tagAt(root, 110, 90), 1);
+}
+
+// Taken away again. A slop left behind is a view that swallows presses meant for
+// its neighbour, which is harder to notice than a target that is too small.
+TEST(hit_slop_can_be_taken_away_again) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *view = tree.box(62, 100, 100, 20, 20);
+  root->insertChild(view, 0);
+
+  const float insets[4] = {12.0f, 12.0f, 12.0f, 12.0f};
+  view->setHitSlop(insets);
+  EXPECT_EQ(tagAt(root, 92, 110), 62);
+
+  view->setHitSlop(nullptr);
+  EXPECT_EQ(tagAt(root, 92, 110), 1);
+  EXPECT_EQ(tagAt(root, 110, 110), 62);
+}
+
+// A slop that overlaps a sibling does not win over it: the sibling is drawn on
+// top, and a target that reached under something visible would take presses
+// meant for it.
+TEST(hit_slop_does_not_beat_a_view_drawn_over_it) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *first = tree.box(63, 100, 100, 20, 20);
+  root->insertChild(first, 0);
+  const float insets[4] = {0.0f, 40.0f, 0.0f, 0.0f};
+  first->setHitSlop(insets);
+
+  RnWin32View *second = tree.box(64, 130, 100, 20, 20);
+  root->insertChild(second, 1);
+
+  // Inside the slop and outside the sibling: the slop answers.
+  EXPECT_EQ(tagAt(root, 125, 110), 63);
+  // Inside both: the sibling, which is on top.
+  EXPECT_EQ(tagAt(root, 140, 110), 64);
+}
+
+// And it is in the tree dump, which is the only way to see it: a view with a
+// bigger target is drawn exactly like one without. Spelled as the other two
+// hosts spell it, because the dump is diffed across the three.
+TEST(hit_slop_is_reported_in_the_tree) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *view = tree.box(65, 100, 100, 20, 20);
+  root->insertChild(view, 0);
+
+  EXPECT(root->describeTree().find("hit-slop=") == std::string::npos);
+
+  const float insets[4] = {16.0f, 8.0f, 4.0f, 2.0f};
+  view->setHitSlop(insets);
+  EXPECT(root->describeTree().find("hit-slop=(16,8,4,2)") != std::string::npos);
+
+  // Zeroes are not a slop, so nothing is printed for a view that asked for
+  // none: the other two hosts print nothing there either.
+  const float none[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  view->setHitSlop(none);
+  EXPECT(root->describeTree().find("hit-slop=") == std::string::npos);
 }

@@ -997,6 +997,17 @@ const char *pointerEventsName(RnWin32View::PointerEvents mode) {
 
 } // namespace
 
+void RnWin32View::setHitSlop(const float insets[4]) {
+  bool any = false;
+  for (int edge = 0; edge < 4; edge++) {
+    hitSlop_[edge] = insets != nullptr ? insets[edge] : 0.0f;
+    if (hitSlop_[edge] != 0.0f) {
+      any = true;
+    }
+  }
+  hasHitSlop_ = any;
+}
+
 RnWin32View *hitTest(RnWin32View *root, float x, float y) {
   // `pointerEvents: none` takes the view and everything inside it out of hit
   // testing entirely, so the caller's loop carries on to whatever is behind.
@@ -1006,7 +1017,20 @@ RnWin32View *hitTest(RnWin32View *root, float x, float y) {
   }
 
   const RnRect &frame = root->frame();
-  if (x < 0.0f || y < 0.0f || x >= frame.width || y >= frame.height) {
+  // `hitSlop` widens this test and only this test, so a press just outside the
+  // box still lands on it. The slop is in this view's own coordinates, which is
+  // where the point already is: a transform was inverted on the way down.
+  //
+  // The parent's answer is unchanged, so a slop reaching outside the parent is
+  // only reachable where the parent is -- the same bound the other two hosts
+  // have, and the same one iOS has, because each of them widens one view's test
+  // rather than the walk that got here.
+  const float *const slop = root->hitSlop();
+  const float left = root->hasHitSlop() ? -slop[3] : 0.0f;
+  const float top = root->hasHitSlop() ? -slop[0] : 0.0f;
+  const float right = frame.width + (root->hasHitSlop() ? slop[1] : 0.0f);
+  const float bottom = frame.height + (root->hasHitSlop() ? slop[2] : 0.0f);
+  if (x < left || y < top || x >= right || y >= bottom) {
     return nullptr;
   }
 
@@ -1263,6 +1287,19 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
   // describing the same switch in three ways is a diff on every line.
   if (!controlDescription_.empty()) {
     appendFormat(out, " control=%s", controlDescription_.c_str());
+  }
+
+  // `hitSlop`, which is invisible in every other line of this dump: a view with
+  // a bigger target is drawn exactly like one without. Before `role=` because
+  // that is where the other two hosts print it, and this dump is diffed line by
+  // line.
+  if (hasHitSlop_) {
+    appendFormat(out,
+                 " hit-slop=(%g,%g,%g,%g)",
+                 static_cast<double>(hitSlop_[0]),
+                 static_cast<double>(hitSlop_[1]),
+                 static_cast<double>(hitSlop_[2]),
+                 static_cast<double>(hitSlop_[3]));
   }
 
   // React Native's role name, not UIA's. This dump is compared line by line

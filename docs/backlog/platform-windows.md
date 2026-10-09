@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (17):**
+**Open (16):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -15,7 +15,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 8. An inline `<View>` inside a `<Text>` is not positioned
 9. Five style props the other two hosts draw and this one ignores
 10. `accessibilityLabelledBy` sets no relation
-11. `hitSlop` is not part of the hit test
+11. ~~`hitSlop` is not part of the hit test~~
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
 13. `filter` is not applied
 14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
@@ -257,15 +257,17 @@ and none of it is a missing half.
   resolved view's provider; GTK sets an AT-SPI relation and macOS an
   `accessibilityTitleUIElement`. The end-to-end scenario is skipped here by name.
 
-- **`hitSlop` is not part of the hit test.** The other two hosts grow the box
-  their picking accepts -- GTK by widening `contains`, AppKit by widening the
-  rect at the top of its own walk -- so a 24pt target can answer for 56pt.
-  `RnWin32View`'s `hitTest` walks `childrenInPaintOrder` comparing against each
-  child's frame, which is the same shape, so this is the same one-line change
-  against the insets the props already carry. The end-to-end scenario taps twice
-  in one run and is skipped here by name; when it is unskipped it will say which
-  half is missing, because it reads `hit-slop=` out of the tree before it taps
-  anything.
+- ~~**`hitSlop` is not part of the hit test.**~~ Done, 2026-10-09, and it was
+  the one-line change this entry predicted: `hitTest`'s bounds check takes the
+  insets, and nothing else reads them. Each host widens one view's own test
+  rather than the walk that reached it, which is what keeps a slop that reaches
+  outside its parent unreachable there, the same bound iOS has.
+
+  Five tests, the same four questions tests/test_hittest.cpp asks of GTK plus
+  the dump: a slop that grows the target, each edge applied where it was asked
+  for rather than symmetrically, a slop taken away again, and a slop that does
+  not win over a sibling drawn on top of it. The end-to-end scenario, which taps
+  twice in one run, now runs on all three.
 
 - **No accessibility announcements, so `accessibilityLiveRegion` is silent.** The
   change detection is done and shared -- `core/LiveRegions.h` decides what counts

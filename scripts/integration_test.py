@@ -3816,11 +3816,11 @@ def test_hit_slop(bundle: Path) -> None:
     Through BASALT_TEST_TAP, so the press goes through the host's own hit test
     and React Native's responder rather than past them.
 
-    Windows does not read the prop yet, so it is skipped by name: a known gap on
-    one host is not a red tick on every commit.
+    All three hosts now. Each widens one view's own test rather than the walk
+    that reached it, which is what keeps a slop reaching outside its parent
+    unreachable there: GTK by widening `contains`, AppKit by widening the rect
+    at the top of its walk, Win32 by widening the bounds check in `hitTest`.
     """
-    if PLATFORM == "windows":
-        raise Skipped("the Win32 hit test does not read hitSlop yet")
 
     app = bundle_app(bundle.parent, "press")
 

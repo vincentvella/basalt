@@ -190,6 +190,18 @@ class RnWin32View {
   void setPointerEvents(PointerEvents mode) { pointerEvents_ = mode; }
   PointerEvents pointerEvents() const { return pointerEvents_; }
 
+  // `hitSlop`, which grows the box a press can land on without moving a pixel:
+  // a 24pt target can answer for 56pt, which is how a small control is made
+  // reachable. Top, right, bottom, left, the order CSS names them and the one
+  // the other two hosts store.
+  //
+  // Read by `hitTest` and by nothing else, and on the view for the reason
+  // `pointerEvents` is: hit testing is a pure function of the view tree and has
+  // nowhere to look a prop up.
+  void setHitSlop(const float insets[4]);
+  bool hasHitSlop() const { return hasHitSlop_; }
+  const float *hitSlop() const { return hitSlop_; }
+
   // Whether this view takes keyboard focus, and therefore whether Tab stops on
   // it.
   //
@@ -453,6 +465,8 @@ class RnWin32View {
   std::string nativeId_;
   int zIndex_ = 0;
   PointerEvents pointerEvents_ = PointerEvents::Auto;
+  float hitSlop_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  bool hasHitSlop_ = false;
   bool focusable_ = false;
   bool showsFocusRing_ = false;
   float scrollX_ = 0.0f;

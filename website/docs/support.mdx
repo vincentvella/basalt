@@ -28,8 +28,8 @@ is the one in the row and ReactCommon's is under it.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 64 of 96 | 66 of 96 | 40 of 96 |
-| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `████████░░░░░░░░░░░░` |
+| Done | 64 of 96 | 66 of 96 | 41 of 96 |
+| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `█████████░░░░░░░░░░░` |
 
 Counting a row as done when the host implements it or ReactCommon does.
 
@@ -93,7 +93,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `shouldRasterizeIOS` <sub>`shouldRasterize`</sub> | – | – | – | [performance hints, and one cannot arrive](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
-| `hitSlop` | ✅ | ✅ | ✖ | [one line against the insets it already has](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `hitSlop` | ✅ | ✅ | ✅ |  |
 | `onLayout` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `collapsable` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `collapsableChildren` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |

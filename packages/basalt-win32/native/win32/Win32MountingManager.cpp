@@ -393,6 +393,17 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
       view->setPointerEvents(win32::RnWin32View::PointerEvents::Auto);
       break;
   }
+
+  // `hitSlop`, which grows what a press can land on without moving a pixel.
+  // Top, right, bottom, left, the order the other two hosts store it in and
+  // the order CSS names the edges.
+  const float insets[4] = {
+      static_cast<float>(props->hitSlop.top),
+      static_cast<float>(props->hitSlop.right),
+      static_cast<float>(props->hitSlop.bottom),
+      static_cast<float>(props->hitSlop.left),
+  };
+  view->setHitSlop(insets);
 }
 
 // A <Paragraph> carries its text in state, not props: ParagraphShadowNode
