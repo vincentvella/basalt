@@ -346,8 +346,12 @@ TEST(accessibility_labelled_by_answers_with_the_labelling_element) {
   auto field = std::make_unique<RnWin32View>(1);
   auto caption = std::make_unique<RnWin32View>(2);
 
+  // A field with no label of its own, which is the whole point of the relation:
+  // its name is the caption's. `role` has to be something, though -- "none" is
+  // presentational and has no provider at all, which is the right behaviour and
+  // what the first version of this test tripped over.
   RnAccessibleInfo fieldInfo;
-  fieldInfo.role = "none";
+  fieldInfo.role = "textbox";
   fieldInfo.testId = "field";
   field->setAccessibleInfo(fieldInfo);
 
