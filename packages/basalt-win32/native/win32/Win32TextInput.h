@@ -207,6 +207,11 @@ class Win32TextInputManager {
 
     bool secure{false};
 
+    // Which kind of EDIT this is. `ES_MULTILINE` is read when the window is
+    // created and cannot be added afterwards, so this is what a change in the
+    // prop is compared against: a field that switches has its peer rebuilt.
+    bool multiline{false};
+
     // Yoga resolves border and padding into contentInsets, so the same twelve
     // points mean the same thing in a field as in a <View>. Applied by placing
     // the control inside them rather than by any EDIT message: EM_SETRECT is

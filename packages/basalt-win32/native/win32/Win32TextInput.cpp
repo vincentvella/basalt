@@ -149,6 +149,25 @@ void Win32TextInputManager::update(RnWin32View *view, const ShadowView &shadowVi
 
   const auto props = std::dynamic_pointer_cast<const TextInputProps>(shadowView.props);
 
+  // `multiline` decides which kind of EDIT this is, and that is a creation-time
+  // decision: `ES_MULTILINE` cannot be added to a live control -- the style bit
+  // is read when the window is made, and setting it afterwards leaves a control
+  // that still behaves as one line. So a field that changes the prop has its
+  // peer rebuilt, which is rare enough to be worth the simplicity: React Native
+  // apps choose multiline per field rather than toggling it.
+  const bool multiline = props != nullptr && props->multiline;
+  if (entry.control != nullptr && multiline != entry.multiline) {
+    const bool hadFocus = GetFocus() == entry.control;
+    destroyPeer(entry);
+    entry.view = view;
+    entry.sawProps = false;
+    entry.sawInputScope = false;
+    if (hadFocus) {
+      // Rebuilt under the user's hands, so the keyboard goes back where it was.
+      pendingAutoFocus_.push_back(tag);
+    }
+  }
+
   if (entry.control == nullptr && host_ != nullptr) {
     // ES_AUTOHSCROLL so the caret can leave the visible box rather than the
     // control refusing further input; WS_CLIPSIBLINGS so two adjacent fields do
@@ -156,10 +175,20 @@ void Win32TextInputManager::update(RnWin32View *view, const ShadowView &shadowVi
     // RnWin32View behind it draws the background, the border and the corner
     // radius, because those are React Native style props and the control knows
     // nothing about them.
+    //
+    // A multiline field takes `ES_MULTILINE` and `ES_AUTOVSCROLL` instead of
+    // the horizontal one: text wraps rather than scrolling sideways, which is
+    // what a multiline <TextInput> does on every platform, and the vertical
+    // scroll is what lets the caret leave the bottom of the box. No `WS_VSCROLL`
+    // on purpose -- a scrollbar inside a styled field is a Win32 scrollbar
+    // drawn over a React Native background, and neither other host shows one.
+    entry.multiline = multiline;
+    const DWORD style = WS_CHILD | WS_CLIPSIBLINGS | ES_LEFT
+        | (multiline ? (ES_MULTILINE | ES_AUTOVSCROLL) : ES_AUTOHSCROLL);
     entry.control = CreateWindowEx(0,
                                    L"EDIT",
                                    L"",
-                                   WS_CHILD | WS_CLIPSIBLINGS | ES_LEFT | ES_AUTOHSCROLL,
+                                   style,
                                    0,
                                    0,
                                    0,
@@ -553,8 +582,15 @@ void Win32TextInputManager::syncBounds(RnWin32View *root) {
     // it paints the rounded background; a full-height rectangular child window
     // would paint square corners straight over them, and a strip at the middle
     // never reaches the part a radius cuts away.
+    //
+    // A multiline field is the exception and fills the box: its text starts at
+    // the top, which is where a paragraph belongs, and a strip one line tall
+    // would hide every line after the first. The corners are the cost -- a
+    // full-height child window paints square over a rounded background -- and
+    // that is recorded rather than worked around, because the alternative is
+    // drawing the field ourselves.
     const LONG available = rect.bottom - rect.top;
-    if (entry.lineHeight > 0 && entry.lineHeight < available) {
+    if (!entry.multiline && entry.lineHeight > 0 && entry.lineHeight < available) {
       rect.top += (available - entry.lineHeight) / 2;
       rect.bottom = rect.top + entry.lineHeight;
     }
@@ -799,10 +835,18 @@ LRESULT CALLBACK Win32TextInputManager::editProc(
     // nothing on this platform implements a tab order for the second to reach.
     const auto character = typed;
     if (character == L'\r' || character == L'\n') {
-      if (const auto emitter = entry->owner->emitterFor(entry->tag)) {
-        emitter->onSubmitEditing(entry->owner->metricsFor(*entry));
+      // A multiline field takes the newline instead, which is React Native's
+      // default `submitBehavior` for one -- 'newline' there, 'blurAndSubmit'
+      // for a single line -- and is why the beep below does not apply: a
+      // multiline EDIT has somewhere to put it. The key press was already
+      // reported above, so an app watching `onKeyPress` sees the Enter either
+      // way; what it does not get is a submit, which is the prop's contract.
+      if (!entry->multiline) {
+        if (const auto emitter = entry->owner->emitterFor(entry->tag)) {
+          emitter->onSubmitEditing(entry->owner->metricsFor(*entry));
+        }
+        return 0;
       }
-      return 0;
     }
     if (character == L'\x1b' || character == L'\t') {
       return 0;

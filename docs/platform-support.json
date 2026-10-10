@@ -209,10 +209,6 @@
       "text": "carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
-    "win-textinput": {
-      "text": "the Win32 EDIT peer does not read it yet",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "sv-zoom": {
       "text": "no host zooms, and a desktop has no obvious gesture for it",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
@@ -1587,8 +1583,7 @@
     "BaseTextInputProps.multiline": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textinput"
+      "windows": "yes"
     },
     "BaseTextInputProps.disableKeyboardShortcuts": {
       "linux": "ignored",

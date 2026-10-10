@@ -118,10 +118,31 @@ and none of it is a missing half.
   notch moves the same distance on all three.
 - ~~**No `<TextInput>` on Windows.**~~ Phase 46, over a real `EDIT` control.
   Windows now mounts all five components the other two desktops do. What it
-  does not have is multiline, `onKeyPress`, `onSelectionChange`, a tab order, or
-  the colours the cue banner and the selection take from the system, and a
-  field with no `backgroundColor` paints the system window colour, because a
-  child window cannot see through itself to what Direct2D drew behind it.
+  does not have is `onSelectionChange` as an event, a tab order, or the colours
+  the cue banner and the selection take from the system, and a field with no
+  `backgroundColor` paints the system window colour, because a child window
+  cannot see through itself to what Direct2D drew behind it.
+
+  **`multiline` works as of 2026-10-10**, and it is a creation-time decision
+  there: `ES_MULTILINE` is read when the window is made and cannot be added to
+  a live control, so a field that changes the prop has its peer rebuilt -- rare
+  enough to be worth the simplicity, and the GTK host rebuilds for the same
+  reason, a `GtkTextView` being a different widget from a `GtkText`. Enter
+  inserts a newline rather than submitting, which is React Native's
+  `submitBehavior: 'newline'` default for a multiline field, and the control
+  fills its content box rather than being the one-line strip a single-line field
+  gets. `ES_AUTOVSCROLL` without `WS_VSCROLL`, on purpose: a Win32 scrollbar
+  drawn inside a styled field would be a Win32 scrollbar over a React Native
+  background, and neither other host shows one. The square corners of a
+  full-height child window over a rounded background are the cost, and are the
+  same cost `BASALT_SNAPSHOT` pays below.
+
+  A *controlled* selection also works -- `EM_SETSEL` with `EM_SCROLLCARET`,
+  under the same staleness rule the text is under. What is still missing is the
+  event going the other way: a plain `EDIT` has no notification for the caret
+  moving, `EN_SELCHANGE` belonging to RichEdit, so the selection is read after
+  anything that could have moved it and compared with what was last reported.
+  See `reportSelectionIfChanged`.
 
   A *controlled* selection does work as of 2026-10-10 -- `EM_SETSEL` with
   `EM_SCROLLCARET`, under the same staleness rule the text is under -- which is

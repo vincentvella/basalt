@@ -144,6 +144,7 @@ struct FieldOptions {
   // thing from sending (0, 0).
   int selectionStart{-1};
   int selectionEnd{-1};
+  bool multiline{false};
 };
 
 ShadowView makeField(Tag tag,
@@ -157,7 +158,7 @@ ShadowView makeField(Tag tag,
 
   folly::dynamic raw = folly::dynamic::object("text", options.text)(
       "mostRecentEventCount", options.mostRecentEventCount)("editable", options.editable)(
-      "secureTextEntry", options.secure);
+      "secureTextEntry", options.secure)("multiline", options.multiline);
   if (!options.placeholder.empty()) {
     raw["placeholder"] = options.placeholder;
   }
@@ -699,6 +700,116 @@ TEST(win32_a_stale_selection_prop_is_dropped) {
   // rather than applied, so the caret did not go home.
   EXPECT_EQ(static_cast<int>(start), 2);
   EXPECT_EQ(static_cast<int>(end), 2);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// A multiline field is a different kind of EDIT, which is a creation-time
+// decision: `ES_MULTILINE` is read when the window is made.
+TEST(win32_a_multiline_field_is_a_multiline_control) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 120, {.text = "", .multiline = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  const LONG_PTR style = GetWindowLongPtr(control, GWL_STYLE);
+  EXPECT((style & ES_MULTILINE) != 0);
+  // And not the horizontal scroll a single line gets: a paragraph wraps.
+  EXPECT((style & ES_AUTOHSCROLL) == 0);
+  EXPECT((style & ES_AUTOVSCROLL) != 0);
+
+  // Enter inserts a newline rather than being swallowed, which is React
+  // Native's `submitBehavior: 'newline'` -- the default for a multiline field.
+  type(control, L"a\rb");
+  EXPECT_EQ(textOf(control), std::string("a\r\nb"));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// A single-line field still swallows Enter, which is the other half of the same
+// rule and the test that was here before this prop existed.
+TEST(win32_a_single_line_field_is_not_multiline) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  EXPECT((GetWindowLongPtr(control, GWL_STYLE) & ES_MULTILINE) == 0);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// A field that changes the prop has its peer rebuilt, because the style cannot
+// be added to a live control. The text goes with it -- which is correct for a
+// controlled field, where the next render re-sends it -- and what this asserts
+// is that the control is the right kind afterwards and still works.
+TEST(win32_changing_multiline_rebuilds_the_peer) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  const ShadowView single = makeField(10, 20, 30, 200, 44);
+  mount(*manager, kSurfaceId, single);
+  manager->syncTextInputBounds(root);
+
+  HWND before = peerOf(manager->viewForTag(10));
+  EXPECT(before != nullptr);
+  EXPECT((GetWindowLongPtr(before, GWL_STYLE) & ES_MULTILINE) == 0);
+
+  update(*manager,
+         single,
+         makeField(10, 20, 30, 200, 120, {.text = "wrapped", .multiline = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND after = peerOf(manager->viewForTag(10));
+  EXPECT(after != nullptr);
+  if (after == nullptr) {
+    return;
+  }
+  EXPECT(after != before);
+  EXPECT((GetWindowLongPtr(after, GWL_STYLE) & ES_MULTILINE) != 0);
+  // The new control has the props applied to it, text included: a rebuild that
+  // left the field empty would be a field that cleared itself on a prop change.
+  EXPECT_EQ(textOf(after), std::string("wrapped"));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// And it fills its content box rather than being a strip one line tall, which
+// is what a single-line field gets and what would hide every line after the
+// first.
+TEST(win32_a_multiline_peer_fills_its_content_box) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 120, {.text = "", .multiline = true, .padding = 8}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  // The field is at y=30, 120 tall, with 8 points of padding -- so the content
+  // box starts at 38 and is 104 tall, and the control is all of it.
+  const RECT placed = rectOf(control);
+  EXPECT_EQ(static_cast<long>(placed.top), 38L);
+  EXPECT_EQ(static_cast<long>(placed.bottom - placed.top), 104L);
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

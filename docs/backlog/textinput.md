@@ -73,8 +73,14 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   EDIT says nothing, so the caret is read after any message that could have
   moved it and compared with the last reported value.
 
-  Still missing on Windows: **multiline**, which wants an `ES_MULTILINE` EDIT
-  as the peer.
+  **`multiline` and the `selection` prop followed on 2026-10-10**, so all three
+  hosts now have every one of these. The Windows peer is rebuilt when the prop
+  changes, `ES_MULTILINE` being read at creation and not settable afterwards --
+  which is the same reason the GTK host swaps a `GtkText` for a `GtkTextView`
+  -- and Enter in one inserts a newline rather than submitting, React Native's
+  default `submitBehavior` for a multiline field. backlog/platform-windows.md
+  has what that cost: a full-height child window paints square corners over a
+  rounded background.
 
 - **The synthetic typing instruments cannot observe either event on GTK**, and
   that is worth knowing before anyone tries to test them. `BASALT_TEST_TYPE`
