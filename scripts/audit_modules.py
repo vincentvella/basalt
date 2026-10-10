@@ -193,6 +193,14 @@ def headers(root: Path) -> list[Path]:
     return [path for path in root.rglob("*.h")]
 
 
+# The generated specs, which are where most module names live: a class in a
+# host's provider chain usually keeps its name on the `NativeFooCxxSpec` it
+# derives from. They are built rather than committed, so an audit run on a clean
+# tree would otherwise report every one of those classes as unresolvable and
+# leave a reader guessing why.
+CODEGEN = REPO / "third_party/codegen"
+
+
 def audit(rn_dir: Path) -> dict:
     react_native = rn_dir / "packages/react-native"
 
@@ -280,6 +288,14 @@ def answerer(name: str, result: dict) -> str:
 
 
 def main() -> int:
+    if not any(CODEGEN.glob("**/*.h")):
+        raise SystemExit(
+            "no generated specs in third_party/codegen: configure the build once "
+            "(`make configure`, or cmake -B build) and run this again. Most "
+            "module names live on the generated spec a provider class derives "
+            "from, so without them this would report working modules as missing."
+        )
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check", action="store_true", help="fail if docs/platform-modules.json is stale"
