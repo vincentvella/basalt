@@ -1115,12 +1115,12 @@ void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
   context->DrawImage(shadow.Get(), D2D1::Point2F(shadowDx_, shadowDy_));
 }
 
-void RnWin32TextLayout::setSelection(UINT32 start, UINT32 length) {
+void RnWin32TextLayout::setSelection(unsigned start, unsigned length) {
   selectionStart_ = start;
   selectionLength_ = length;
 }
 
-UINT32 RnWin32TextLayout::indexAtPoint(float x, float y, float width, float height) const {
+unsigned RnWin32TextLayout::indexAtPoint(float x, float y, float width, float height) const {
   ComPtr<IDWriteTextLayout> layout;
   layout.Attach(buildLayout(width, height));
   if (!layout) {

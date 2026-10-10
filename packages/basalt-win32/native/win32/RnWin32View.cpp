@@ -349,8 +349,8 @@ void RnWin32View::setTextSelection(int start, int length) {
   if (textLayout_ == nullptr) {
     return;
   }
-  const UINT32 from = static_cast<UINT32>(std::max(0, start));
-  const UINT32 count = static_cast<UINT32>(std::max(0, length));
+  const unsigned from = static_cast<unsigned>(std::max(0, start));
+  const unsigned count = static_cast<unsigned>(std::max(0, length));
   if (textLayout_->selectionStart() == from && textLayout_->selectionLength() == count) {
     return;
   }
