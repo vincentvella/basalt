@@ -102,6 +102,12 @@ module.exports = withDesktopPlatforms(mergeConfig(getDefaultConfig(__dirname), {
   watchFolders: [
     rnDir,
     path.resolve(__dirname, '..', 'packages'),
+    // `docs/`, for one file: e2e/turbomodules.tsx imports
+    // docs/platform-modules.json and asks the running host for every module in
+    // it. Metro refuses to read a file outside the project root and its watch
+    // folders, and the alternative was a second copy of seventy module names in
+    // an app -- which is the thing that file exists to stop.
+    path.resolve(__dirname, '..', 'docs'),
     ...(expoApp != null && expoApp !== '' ? [expoApp] : []),
   ],
   watcher: {

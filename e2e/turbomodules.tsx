@@ -10,6 +10,13 @@ import React from 'react';
 import {AppRegistry, StyleSheet, Text, View} from 'react-native';
 import {messageOf} from './errors';
 
+// The audit's own table, imported rather than copied: `scripts/audit_modules.py`
+// reads the provider chains and writes down who answers what, and this is the
+// half of the claim that reads it back off a *running* host. A chain is code
+// rather than a note about code and still not the same thing as a runtime
+// answering, which is what the entry in docs/backlog/modules.md asked for.
+import triage from '../docs/platform-modules.json';
+
 const proxy = global.__turboModuleProxy;
 console.log(`turbo proxy: ${typeof proxy}`);
 if (typeof proxy === 'function') {
@@ -28,6 +35,50 @@ if (typeof proxy === 'function') {
     unknown = `threw: ${messageOf(error)}`;
   }
   console.log(`turbo proxy unknown name: ${unknown}`);
+
+  // Every module the audit triaged, against what the host actually answers.
+  //
+  // `nobody` has to come back null and anything else has to come back found.
+  //
+  // The modules carrying a `conditional` are skipped, and the three of those
+  // that belong to React Native rather than to this platform are why this check
+  // exists: a provider chain says *that* a module is offered and not *when*.
+  // `DevLoadingView` wants a dev UI delegate, `NativeViewTransitionCxx` a
+  // feature flag that is off, and `ReactDevToolsRuntimeSettingsModule` a debug
+  // macro -- all three of which the static audit reported as answered, and a
+  // plain run does not answer. The file names each condition.
+  let agreed = 0;
+  let disagreed = 0;
+  // The shape of one entry, which the JSON import gives as `unknown`: the file
+  // is data rather than a module with a type, and asserting the two fields this
+  // reads is honest about which ones it depends on.
+  const modules = triage.modules as {
+    [name: string]: {answeredBy: string; conditional?: string};
+  };
+  for (const [name, entry] of Object.entries(modules)) {
+    if (entry.conditional != null) {
+      continue;
+    }
+    const wanted = entry.answeredBy !== 'nobody';
+    let found = false;
+    try {
+      found = proxy(name) != null;
+    } catch (error) {
+      console.log(`module ${name}: threw: ${messageOf(error)}`);
+      disagreed++;
+      continue;
+    }
+    if (found === wanted) {
+      agreed++;
+    } else {
+      disagreed++;
+      console.log(
+        `module ${name}: the audit says ${entry.answeredBy} and the host ` +
+          `${found ? 'answered' : 'did not answer'}`,
+      );
+    }
+  }
+  console.log(`modules: ${agreed} agreed, ${disagreed} disagreed`);
 }
 
 function App() {

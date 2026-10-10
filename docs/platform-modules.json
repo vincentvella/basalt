@@ -4,7 +4,8 @@
     "`asked` is how React Native's own JavaScript asks for it: `get` answers null and `getEnforcing` throws.",
     "`answeredBy` is who provides it here: `basalt` for this repository, `react-native` for ReactCxxPlatform or the shared defaults, `nobody` for the rest.",
     "`effect` is what an app sees when nobody answers, which is the whole reason this file exists.",
-    "`hostSpecific` marks a module each desktop implements itself, so the three provider chains are allowed to differ about it."
+    "`hostSpecific` marks a module each desktop implements itself, so the three provider chains are allowed to differ about it.",
+    "`conditional` says when a module is answered rather than whether, and names the condition: a host offers Skia, Reanimated and worklets only when the build was pointed at an app that has the library, and React Native offers three of its own behind a feature flag, a debug macro or a dev UI delegate. The running-host check in e2e/turbomodules.tsx skips them, because a build without the condition answers null and is right to -- and the three upstream ones are the reason that check exists at all: the provider chains do not say when."
   ],
   "modules": {
     "AccessibilityInfo": {
@@ -47,7 +48,8 @@
     },
     "DevLoadingView": {
       "asked": "get",
-      "answeredBy": "react-native"
+      "answeredBy": "react-native",
+      "conditional": "only when the host supplies a dev UI delegate, which it does with a dev server and not in a plain run"
     },
     "DevMenu": {
       "asked": "getEnforcing",
@@ -185,7 +187,8 @@
     },
     "NativeViewTransitionCxx": {
       "asked": "get",
-      "answeredBy": "react-native"
+      "answeredBy": "react-native",
+      "conditional": "only when ReactNativeFeatureFlags::viewTransitionEnabled(), which is off by default"
     },
     "Networking": {
       "asked": "getEnforcing",
@@ -207,7 +210,8 @@
     },
     "ReactDevToolsRuntimeSettingsModule": {
       "asked": "get",
-      "answeredBy": "react-native"
+      "answeredBy": "react-native",
+      "conditional": "only in a build with REACT_NATIVE_DEBUGGER_ENABLED_DEVONLY defined"
     },
     "ReactDevToolsSettingsManager": {
       "asked": "get",
@@ -318,17 +322,20 @@
       "asked": "nothing upstream",
       "answeredBy": "basalt",
       "what": "react-native-skia's module, which installs Skia's whole JavaScript API. Host-specific: each desktop has its own canvas.",
-      "hostSpecific": true
+      "hostSpecific": true,
+      "conditional": "only when the build was pointed at an app with @shopify/react-native-skia, behind BASALT_HAS_SKIA"
     },
     "ReanimatedModule": {
       "asked": "nothing upstream",
       "answeredBy": "basalt",
-      "what": "react-native-reanimated's module, when the build was pointed at an app that has it. See core/ReanimatedModule.h."
+      "what": "react-native-reanimated's module, when the build was pointed at an app that has it. See core/ReanimatedModule.h.",
+      "conditional": "only when the build was pointed at an app with react-native-reanimated, behind BASALT_HAS_REANIMATED"
     },
     "WorkletsModule": {
       "asked": "nothing upstream",
       "answeredBy": "basalt",
-      "what": "react-native-worklets' module, which Reanimated is built on. See core/WorkletsModule.h."
+      "what": "react-native-worklets' module, which Reanimated is built on. See core/WorkletsModule.h.",
+      "conditional": "only when the build was pointed at an app with react-native-worklets, behind BASALT_HAS_WORKLETS"
     }
   }
 }

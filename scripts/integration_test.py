@@ -6162,7 +6162,7 @@ def test_view_key_events(bundle: Path) -> None:
             f"the app did not see it.\n{tree[-1200:]}")
 
 
-def test_turbomodule_proxy(bundle: Path) -> None:
+def test_turbomodule_proxy(bundle: Path) -> str:
     """That `globalThis.__turboModuleProxy` exists and answers for both sides.
 
     A bridgeless runtime does not get one: `TurboModuleBinding::install` gives
@@ -6185,6 +6185,19 @@ def test_turbomodule_proxy(bundle: Path) -> None:
     And an unknown name must come back empty rather than throw, because
     `TurboModuleRegistry.get` is allowed to return null and callers rely on it --
     every optional module is found that way.
+
+    **The second half of this scenario is the module audit, read back off a
+    running host.** `scripts/audit_modules.py` reads the provider chains and
+    writes `docs/platform-modules.json`, which says who answers each module
+    React Native asks for and what an app sees when nobody does. That is the
+    code rather than a note about the code, and still not the same thing as a
+    runtime answering: the first run of this check found three modules the
+    chains offer and a plain run does not, each behind a condition the chain does
+    not state -- a dev UI delegate, a feature flag that is off by default, and a
+    debug macro. They carry their condition in the file now.
+
+    The app walks that file rather than a copy of it, so the two cannot disagree
+    about which modules exist, only about what the host answers.
     """
     app = bundle_app(bundle.parent, "turbomodules")
 
@@ -6218,6 +6231,40 @@ def test_turbomodule_proxy(bundle: Path) -> None:
     ):
         if needle not in logged:
             raise Failure(f"{why}.\nexpected {needle!r} in:\n{tail_text(logged)}")
+
+    # And the audit, read back off the running host.
+    #
+    # `scripts/audit_modules.py` reads the provider chains and writes
+    # docs/platform-modules.json: who answers each module React Native asks
+    # for, and what an app sees when nobody does. A chain is the code rather
+    # than a note about the code and still not the same thing as a runtime
+    # answering -- which is not a quibble, because the first run of this check
+    # found three modules the chains offer and a plain run does not: a dev UI
+    # delegate, a feature flag that is off, and a debug macro. Those carry their
+    # condition in the file now and this skips them.
+    #
+    # The app walks that file rather than a copy of it, so the two cannot
+    # disagree about which modules exist, only about what answers.
+    agreement = re.search(r"modules: (\d+) agreed, (\d+) disagreed", logged)
+    if agreement is None:
+        raise Failure(
+            "the app did not report what the host answered for the modules in "
+            "docs/platform-modules.json, so the audit is still only a reading "
+            f"of the provider chains.\n{tail_text(logged)}"
+        )
+    disagreed = int(agreement.group(2))
+    if disagreed > 0:
+        lines = [line for line in logged.splitlines() if "] module " in line]
+        raise Failure(
+            f"{disagreed} modules answered differently from what "
+            "docs/platform-modules.json says. Either the host stopped providing "
+            "one, or the file is stale, or the module is offered behind a "
+            "condition the file does not name.\n"
+            + "\n".join(f"        {line.strip()}" for line in lines[:8])
+        )
+
+    return (f"{agreement.group(1)} modules answered as docs/platform-modules.json "
+            "says they would")
 
 
 def test_crash_handler(bundle: Path) -> None:

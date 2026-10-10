@@ -15,6 +15,11 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "esModuleInterop": true,
+    // One app imports one JSON file: e2e/turbomodules.tsx reads
+    // docs/platform-modules.json and asks the running host for every module in
+    // it, rather than keeping a second copy of seventy names. Metro bundles a
+    // JSON import without being asked; the type checker needs telling.
+    "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },

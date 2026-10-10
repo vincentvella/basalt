@@ -2,12 +2,11 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (2):**
+**Open (1):**
 
 1. Four modules an app can reach that throw here, each with no desktop
    equivalent written
-2. Nothing runs the audit against a *running* host, which is the only way to
-   see what the provider chain actually answers
+2. ~~Nothing runs the audit against a *running* host~~
 
 - **The audit, and why there is one.** The support page answers "does this prop
   work" one row per attribute, and that page caught claims nothing implemented.
@@ -96,14 +95,25 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     passes null for the module off iOS, so listeners are registered and never
     fire. A desktop has no soft keyboard to report.
 
-- **Nothing runs the audit against a running host.** It reads the provider
-  chains, which is the code rather than a note about the code, and still not the
-  same thing as asking a live runtime what `TurboModuleRegistry.get` answers. A
-  module offered behind an `#ifdef` -- Skia, Reanimated, worklets -- is counted
-  as answered here whether or not the build that ran had it.
+- ~~**Nothing runs the audit against a running host.**~~ Done the same day, and
+  it earned its keep immediately.
 
-  What would close it is one end-to-end scenario: a bundle that walks the names
-  from `docs/platform-modules.json`, asks for each, and prints what came back,
-  with the integration suite comparing that against the file. That is the same
-  move the tree dump makes for views, and it would also catch the `#ifdef`
-  cases, which nothing else can.
+  `e2e/turbomodules.tsx` -- the app that already asked the proxy about three
+  names -- now walks `docs/platform-modules.json` itself and asks the running
+  host for every module in it, and the scenario fails on any disagreement. The
+  app imports that file rather than carrying a copy of the names, which is what
+  keeps the two from disagreeing about which modules exist; `e2e/metro.config.js`
+  gained `docs/` as a watch folder for that one import.
+
+  **The first run found three modules the provider chains offer and a plain run
+  does not**, which is the whole argument for checking a runtime rather than
+  trusting a chain: `DevLoadingView` wants a dev UI delegate,
+  `NativeViewTransitionCxx` wants a feature flag that is off by default, and
+  `ReactDevToolsRuntimeSettingsModule` wants `REACT_NATIVE_DEBUGGER_ENABLED_DEVONLY`.
+  A chain says *that* a module is offered, never *when*. Each of the three now
+  carries its condition in the file, beside this project's own three -- Skia,
+  Reanimated and worklets, which a host offers only when the build was pointed
+  at an app that has the library -- and the check skips anything with a
+  condition rather than pretending to know.
+
+  Sixty-five modules agree on GTK and on AppKit; Windows is CI's to confirm.
