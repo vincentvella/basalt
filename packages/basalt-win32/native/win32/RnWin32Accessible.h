@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
 struct IRawElementProviderSimple;
@@ -69,6 +70,18 @@ struct RnAccessibleInfo {
   RnAccessibleState state;
   // accessible={false} and accessibilityElementsHidden.
   bool hidden = false;
+  // `accessibilityLabelledBy`, resolved: the view whose text names this one.
+  //
+  // A snapshot rather than a pointer, for the reason the provider itself copies
+  // its info: UIA asks its questions from another thread and after the tree has
+  // moved on. Taken when the provider is made, which is when a client asks, so
+  // it is as current as the answer is.
+  //
+  // One rather than the list React Native allows, because `UIA_LabeledByPropertyId`
+  // is a single element where GTK's AT-SPI relation holds many. The first that
+  // resolved is the one, which is also what AppKit's `accessibilityTitleUIElement`
+  // can carry.
+  std::shared_ptr<const RnAccessibleInfo> labelledBy;
 };
 
 // The UIA control type for a React Native role name, or

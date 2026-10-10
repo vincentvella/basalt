@@ -209,6 +209,21 @@ class AccessibleProvider final : public IRawElementProviderSimple {
         }
         return S_OK;
 
+      case UIA_LabeledByPropertyId:
+        // `accessibilityLabelledBy`: a relation rather than a copied string, so
+        // a caption that changes its text does not leave a stale name behind.
+        // The element is a provider over the labelling view's own info, which
+        // is what a client follows to read it.
+        if (info_.labelledBy != nullptr) {
+          if (IRawElementProviderSimple *label = createAccessibleProvider(*info_.labelledBy)) {
+            value->vt = VT_UNKNOWN;
+            // The VARIANT owns the reference: `VariantClear` releases it, and
+            // every UIA client clears what it is handed.
+            value->punkVal = label;
+          }
+        }
+        return S_OK;
+
       case UIA_IsOffscreenPropertyId:
         value->vt = VT_BOOL;
         value->boolVal = info_.hidden ? VARIANT_TRUE : VARIANT_FALSE;

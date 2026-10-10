@@ -4338,15 +4338,10 @@ def test_accessibility_labelled_by(bundle: Path) -> None:
     puts the field before its caption, which is the ordinary way round, and Fabric
     mounts in tree order -- so the field is mounted while the id it names does not
     exist yet. A resolution done as the props arrived finds nothing and stays
-    wrong, and that is what the unit tests on both hosts fail on when the
+    wrong, and that is what the unit tests on every host fail on when the
     resolution is moved. This asserts the end of it: the relation is on the view
     after the app has rendered.
-
-    Windows has no labelled-by yet, so it is skipped by name.
     """
-    if PLATFORM == "windows":
-        raise Skipped("the Win32 host does not set accessible relations yet")
-
     app = bundle_app(bundle.parent, "a11y")
 
     env = dict(os.environ)
@@ -4561,21 +4556,21 @@ def test_accessibility_order(bundle: Path) -> None:
 def test_accessibility_live_region(bundle: Path) -> None:
     """`accessibilityLiveRegion` reads a status message out when it changes.
 
-    Neither desktop models this as a property of a view: GTK announces at a
-    moment through `gtk_accessible_announce`, macOS posts an
-    `NSAccessibilityAnnouncementRequested` notification. So honouring the prop is
+    No desktop models this as a property of a view: GTK announces at a moment
+    through `gtk_accessible_announce`, macOS posts an
+    `NSAccessibilityAnnouncementRequested` notification, and Windows raises a
+    `UiaRaiseNotificationEvent`, which is the only call in UI Automation that
+    speaks a string. So honouring the prop is
     change detection, and the two rules worth asserting end to end are that the
     *first* text says nothing -- a screen appearing is not news, and a host that
     got this wrong would have every screen with a status line read itself out --
     and that a change says the new text once.
 
     e2e/a11y.tsx has a status line that goes from "Saving" to "Saved" a second
-    after mount. Nothing in an automated run is connected to AT-SPI or running
-    VoiceOver, so each host logs what it announced, which is what this reads.
+    after mount. Nothing in an automated run is connected to AT-SPI, or running
+    VoiceOver or Narrator, so each host logs what it announced, which is what
+    this reads.
     """
-    if PLATFORM == "windows":
-        raise Skipped("the Win32 host posts no accessibility announcements yet")
-
     app = bundle_app(bundle.parent, "a11y")
 
     env = dict(os.environ)

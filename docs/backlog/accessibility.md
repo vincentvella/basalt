@@ -8,7 +8,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
 3. accessibilityRole cannot change after mount on GTK; see docs/DECISIONS.md
 4. accessibilityActions is ignored (~~accessibilityLabelledBy~~ and
-   ~~accessibilityLiveRegion~~ are done on GTK and AppKit)
+   ~~accessibilityLiveRegion~~ are done on all three hosts)
 5. Eleven more AccessibilityProps fields that no host reads, counted rather
    than guessed
 
@@ -103,6 +103,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   below that the text is still recorded, so an older GTK reports what it would have
   said rather than looking as though the prop did nothing.
 
+  **Windows, 2026-10-10, and the call is not the one the entry predicted.** UIA
+  has no "say this" among its properties and events but one:
+  `UiaRaiseNotificationEvent` carries a string, where `UIA_SystemAlertEventId`
+  says only that something happened and `UIA_LiveSettingPropertyId` describes an
+  element rather than announcing anything. The kind is
+  `NotificationKind_ActionCompleted` and the processing hint is where the two
+  politeness levels land -- `ImportantAll` against `All` -- with the view's tag
+  as the activity id so two regions do not cancel each other out. The text is
+  collected by the same subtree walk, and logged as well as raised for the same
+  reason the other two log it.
+
   **`accessibilityLabelledBy` is done on GTK and AppKit, 2026-10-08**, and the
   reason it was open was wrong: the entry said nothing here can resolve a
   `nativeID` to a view, which was true, and treated that as the obstacle. The
@@ -128,6 +139,14 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   the first is used and the dump still reports every tag that resolved, which
   keeps the two hosts' trees identical and the difference in what each platform
   does with the answer.
+
+  **Windows, 2026-10-10**, takes one for the same reason:
+  `UIA_LabeledByPropertyId` is a single element. What is particular to that host
+  is *when* the element is made. Its provider copies a view's info rather than
+  pointing at the view -- UIA asks from another thread and after the tree has
+  moved on -- so the relation is held as views and the snapshot is taken when a
+  provider is made, which is when a client asks. The answer is therefore as
+  current as the question.
 
   Ten tests in core for the ordering, five on GTK through real transactions using
   GTK's own relation assertions, four on AppKit, and a scenario that reads the
@@ -187,8 +206,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     place of the view hierarchy. GTK has no equivalent override, its accessible
     tree following the widget tree, which is why the two are not the same call.
 
-  Windows is recorded rather than done: UIA has no reading-order property at
-  all, the tree order being the order, so there is nothing to set.
+  Windows is recorded rather than done, and the support page says `ignored`
+  rather than `not yet`: UIA has no reading-order property at all, the tree order
+  being the order, so there is nothing to set. Reordering the view tree itself
+  would move what is painted.
 
   **`accessibilityLanguage` was written here as "one attribute on each
   platform", and that is wrong.** Checked against the three SDKs on 2026-10-09:

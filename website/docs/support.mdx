@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 174 of 279 | 172 of 279 | 158 of 279 |
+| Done | 174 of 279 | 172 of 279 | 160 of 279 |
 | | `████████████░░░░░░░░` | `████████████░░░░░░░░` | `███████████░░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -144,9 +144,9 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `accessible` | ✅ | ✅ | ✅ |  |
 | `accessibilityState` | ✅ | ✅ | ✅ |  |
 | `accessibilityLabel` | ✅ | ✅ | ✅ |  |
-| `experimental_accessibilityOrder` <sub>`accessibilityOrder`</sub> | ✅ | ✅ | ✖ | [UIA has no reading-order property: the tree order is the order](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `accessibilityLabelledBy` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `accessibilityLiveRegion` | ✅ | ✅ | ✖ | [the UIA provider](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `experimental_accessibilityOrder` <sub>`accessibilityOrder`</sub> | ✅ | ✅ | – | [UIA has no reading-order property: the tree order is the order](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityLabelledBy` | ✅ | ✅ | ✅ |  |
+| `accessibilityLiveRegion` | ✅ | ✅ | ✅ |  |
 | `accessibilityRole` | ✅ | ✅ | ✅ |  |
 | `accessibilityHint` | ✅ | ✅ | ✅ |  |
 | `accessibilityLanguage` | ✖ | ✖ | ✖ | [GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |

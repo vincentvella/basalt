@@ -24,10 +24,14 @@
 #include <react/renderer/graphics/Color.h>
 #include <react/renderer/uimanager/UIManager.h>
 
+#include <glog/logging.h>
+
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace basalt {
 
@@ -130,6 +134,16 @@ void Win32MountingManager::applyTransaction(SurfaceId surfaceId,
   // Refuses a surface the UIManager no longer has, which is what a reload's
   // teardown leaves behind. See core/UIManagerAccess.h.
   reportMountedSurface(surfaceId);
+
+  // After the mutations, because a view can be labelled by one that mounts
+  // after it: Fabric mounts in tree order, and the label of a field often
+  // follows it.
+  applyLabelRelations();
+
+  // And after those, because an announcement is the last word on a
+  // transaction: the text a live region says now is what every mutation in
+  // this batch has left it saying.
+  announceLiveRegions();
 
   // And ask the host to repaint, because on Windows nothing does that on its
   // own. See setOnDidMount. This also positions and shows the peers through
@@ -249,11 +263,72 @@ void Win32MountingManager::removeChild(RnWin32View *parent, RnWin32View *child) 
   parent->removeChild(child);
 }
 
+void Win32MountingManager::applyLabelRelations() {
+  if (labels_.empty()) {
+    return;
+  }
+  for (const auto &change : labels_.changes()) {
+    RnWin32View *view = viewForTag(change.tag);
+    if (view == nullptr) {
+      continue;
+    }
+    std::vector<RnWin32View *> resolved;
+    resolved.reserve(change.labels.size());
+    for (const Tag tag : change.labels) {
+      if (RnWin32View *label = viewForTag(tag); label != nullptr) {
+        resolved.push_back(label);
+      }
+    }
+    view->setLabelledBy(std::move(resolved));
+  }
+
+  // `experimental_accessibilityOrder` comes out of the same registry and is
+  // deliberately not applied here. UIA has no reading-order property: a client
+  // walks the fragment tree, and the order is the order the tree is in. The
+  // other two hosts have `aria-flowto` and `accessibilityChildren` to point at;
+  // reordering the view tree itself to fake it would move what is painted.
+  // Recorded in backlog/platform-windows.md, and the scenario skips here by
+  // name with that reason.
+}
+
+void Win32MountingManager::announceLiveRegions() {
+  if (liveRegions_.empty()) {
+    return;
+  }
+  for (const Tag tag : liveRegions_.tags()) {
+    RnWin32View *view = viewForTag(tag);
+    if (view == nullptr) {
+      continue;
+    }
+    // A label stands in for the text when the app set one: an icon-only status
+    // has no paragraph of its own, and the label is what would be read. Both
+    // other hosts make the same choice in the same order.
+    const auto label = liveRegionLabels_.find(tag);
+    std::string text = label != liveRegionLabels_.end() ? label->second : std::string();
+    if (text.empty()) {
+      text = view->collectText();
+    }
+    const auto politeness = liveRegions_.noticed(tag, text);
+    if (!politeness.has_value()) {
+      continue;
+    }
+    const bool assertive = *politeness == basalt::LiveRegionPoliteness::Assertive;
+    view->announce(text, assertive);
+    // Logged as well as announced: nothing in an automated run has a screen
+    // reader attached, so this line is how an end-to-end test sees that it
+    // happened. The same line the GTK host writes, read by the same scenario.
+    LOG(INFO) << "announced" << (assertive ? " (assertive): " : ": ") << text;
+  }
+}
+
 void Win32MountingManager::forgetTag(Tag tag) {
   scrollViews_.remove(tag);
   textInputs_.remove(tag);
   imageUris_.erase(tag);
   switchValues_.erase(tag);
+  labels_.forget(tag);
+  liveRegions_.forget(tag);
+  liveRegionLabels_.erase(tag);
 #ifdef BASALT_HAS_SKIA
   // Unregisters the canvas. This is the one moment a view is known to be
   // finished with, and a canvas left registered is a surface the package will
@@ -413,6 +488,32 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
   // Only a hidden title bar reads this, to find the drag regions an app marked
   // with <TitleBar.DragRegion>.
   view->setNativeId(props->nativeId);
+
+  // And the same id in the registry, so that another view's
+  // `accessibilityLabelledBy` can look one up. See `core/LabelRegistry.h`.
+  labels_.setNativeId(shadowView.tag, props->nativeId);
+  // `accessibilityLabelledBy`: other views, named by their nativeID, whose text
+  // names this one. Only recorded here -- resolving needs every view in the
+  // transaction to have been seen, so it happens once at the end of the mount.
+  labels_.setLabelledBy(shadowView.tag, props->accessibilityLabelledBy.value);
+  // `experimental_accessibilityOrder` is deliberately not recorded here, and the
+  // support page says so rather than this host quietly holding a resolution
+  // nothing reads: UIA has no reading-order property. A client walks the
+  // fragment tree and the order is the order the tree is in, where GTK has
+  // `aria-flowto` and AppKit can replace `accessibilityChildren`. Reordering the
+  // view tree to fake it would move what is painted. See applyLabelRelations.
+
+  // `accessibilityLiveRegion`: a status message to read out when it changes.
+  // Recorded here and acted on after the transaction, the text being whatever
+  // the region says once every mutation in the batch has landed.
+  liveRegions_.setPoliteness(shadowView.tag, props->accessibilityLiveRegion);
+  // The label, if the app set one, which stands in for the text: an icon-only
+  // status has no paragraph of its own.
+  if (props->accessibilityLiveRegion == facebook::react::AccessibilityLiveRegion::None) {
+    liveRegionLabels_.erase(shadowView.tag);
+  } else {
+    liveRegionLabels_[shadowView.tag] = props->accessibilityLabel;
+  }
 
   // Hit testing only. `hitTest` reads it; nothing about painting does.
   switch (props->pointerEvents) {

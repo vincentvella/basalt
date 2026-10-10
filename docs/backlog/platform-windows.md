@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (9):**
+**Open (7):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -14,9 +14,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 7. Nothing makes a red build hard to ignore
 8. ~~An inline `<View>` inside a `<Text>` is not positioned~~
 9. ~~Five style props the other two hosts draw and this one ignores~~
-10. `accessibilityLabelledBy` sets no relation
+10. ~~`accessibilityLabelledBy` sets no relation~~
 11. ~~`hitSlop` is not part of the hit test~~
-12. No accessibility announcements, so `accessibilityLiveRegion` is silent
+12. ~~No accessibility announcements, so `accessibilityLiveRegion` is silent~~
 13. ~~`filter` is not applied~~
 14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
 15. ~~The `outline` family is not drawn~~
@@ -352,13 +352,37 @@ and none of it is a missing half.
   differences, because they were, and all five lines now agree across the three
   hosts.
 
-- **`accessibilityLabelledBy` sets no relation.** The hard half is done and is
-  shared: `core/LabelRegistry.h` resolves a `nativeID` to a tag and says when,
-  which is the part that is easy to get wrong -- a field is mounted before the
-  caption that names it. What is left here is one call. UI Automation has
-  `UIA_LabeledByPropertyId`, so the Win32 host's provider answers it with the
-  resolved view's provider; GTK sets an AT-SPI relation and macOS an
-  `accessibilityTitleUIElement`. The end-to-end scenario is skipped here by name.
+- ~~**`accessibilityLabelledBy` sets no relation.**~~ Done 2026-10-10, and it
+  was the one call this entry named: the provider answers
+  `UIA_LabeledByPropertyId` with a provider over the labelling view's own info,
+  where GTK sets an AT-SPI relation and macOS an `accessibilityTitleUIElement`.
+  The hard half was already shared -- `core/LabelRegistry.h` resolves a
+  `nativeID` to a tag and says *when*, which is the part that is easy to get
+  wrong, because a field is mounted before the caption that names it.
+
+  **Where the snapshot is taken is the Windows-specific decision.** The provider
+  copies a view's info rather than pointing at the view, for the reason
+  RnWin32Accessible.h gives at the top: UIA asks from another thread and after
+  the tree has moved on. So the relation is held as views and resolved at the
+  moment a provider is made -- which is the moment a client asks, so what it is
+  told is as current as the answer is.
+
+  One element rather than the list React Native allows, because
+  `UIA_LabeledByPropertyId` is a single element where AT-SPI's relation holds
+  many; the first that resolved is the one, which is also all
+  `accessibilityTitleUIElement` can carry. The dump prints every resolved tag,
+  as the other two do.
+
+  **`experimental_accessibilityOrder` is deliberately not done here**, and the
+  support page says `ignored` rather than `not yet`: UIA has no reading-order
+  property at all. A client walks the fragment tree and the order is the order
+  the tree is in, where GTK has `aria-flowto` and AppKit can replace
+  `accessibilityChildren`. Reordering the view tree to fake it would move what is
+  painted. Its scenario skips here by name with that reason.
+
+  Three tests: the element a client follows and the name it reads off it, the
+  relation taken away again, and the dump line. The end-to-end scenario, which
+  exists because of *when* the resolution happens, now runs on all three hosts.
 
 - ~~**`hitSlop` is not part of the hit test.**~~ Done, 2026-10-09, and it was
   the one-line change this entry predicted: `hitTest`'s bounds check takes the
@@ -372,15 +396,36 @@ and none of it is a missing half.
   not win over a sibling drawn on top of it. The end-to-end scenario, which taps
   twice in one run, now runs on all three.
 
-- **No accessibility announcements, so `accessibilityLiveRegion` is silent.** The
-  change detection is done and shared -- `core/LiveRegions.h` decides what counts
-  as news, and the only two rules that matter are already written down there --
-  so what is left here is the announcement itself. UI Automation raises it as a
-  `UIA_SystemAlertEventId` on the provider, or as a live-region property change
-  with `UIA_LiveSettingPropertyId` set; GTK calls `gtk_accessible_announce` and
-  macOS posts `NSAccessibilityAnnouncementRequested`. The host would also need to
-  collect a region's text, which the other two do by walking the subtree for
-  paragraphs. The end-to-end scenario is skipped here by name.
+- ~~**No accessibility announcements, so `accessibilityLiveRegion` is silent.**~~
+  Done 2026-10-10. The change detection was already shared --
+  `core/LiveRegions.h` decides what counts as news, and the two rules that
+  matter are written down there -- so this was the announcement itself and the
+  text to put in it.
+
+  **`UiaRaiseNotificationEvent` rather than the two calls this entry named.**
+  `UIA_SystemAlertEventId` says "something happened" and carries no string, and
+  `UIA_LiveSettingPropertyId` describes an element rather than announcing
+  anything; the notification event is the only call in UI Automation that speaks
+  a string. `NotificationKind_ActionCompleted` is the kind for "something
+  finished, here is the result", which is what a status line saying `Saved` is,
+  and the processing hint is where ARIA's two politeness levels land:
+  `ImportantAll` for assertive and `All` for polite, both of which say "read
+  every one of these". The activity id is the view's tag, so two regions do not
+  cancel each other out.
+
+  The text is `collectText`, which walks the subtree joining paragraphs with
+  spaces, exactly as the other two hosts collect it -- a status line is a
+  `<View>` with a `<Text>` inside it and the view itself carries no string. An
+  `accessibilityLabel` stands in when the app set one, since an icon-only status
+  has no paragraph at all, which is the same order of preference the other two
+  use. And the announcement is logged as well as raised, because nothing in an
+  automated run has Narrator attached; the end-to-end scenario reads that line
+  and now runs on all three hosts.
+
+  Two tests, plus core's own for the detection: the text collected in paint
+  order with no stray space for an empty view, and that an announcement is
+  remembered while an empty one is not made -- a region whose text went empty
+  must not read out silence.
 
 - ~~**`filter` is not applied.**~~ Done 2026-10-09, as the entry predicted: an
   effect graph over the view's own picture and no new arithmetic.

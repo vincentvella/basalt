@@ -474,7 +474,7 @@
     "AccessibilityProps.accessibilityOrder": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
+      "windows": "ignored",
       "why": "win-reading-order",
       "reads": [
         "setAccessibilityOrder",
@@ -484,14 +484,12 @@
     "AccessibilityProps.accessibilityLabelledBy": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-a11y"
+      "windows": "yes"
     },
     "AccessibilityProps.accessibilityLiveRegion": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-a11y"
+      "windows": "yes"
     },
     "AccessibilityProps.accessibilityTraits": {
       "linux": "no",

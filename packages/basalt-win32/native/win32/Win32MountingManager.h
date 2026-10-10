@@ -25,6 +25,8 @@
 #include "Win32ScrollView.h"
 #include "Win32TextInput.h"
 
+#include "LabelRegistry.h"
+#include "LiveRegions.h"
 #include "MountingWalk.h"
 
 #include <react/renderer/uimanager/IMountingManager.h>
@@ -198,6 +200,31 @@ class Win32MountingManager final : public facebook::react::IMountingManager,
   // a `weak_ptr<IImageLoader>`, and this is the loader it gets.
   std::shared_ptr<win32::Win32ImageLoader> imageLoader_ =
       std::make_shared<win32::Win32ImageLoader>();
+
+  // --- Accessibility, after the mutations ------------------------------------
+  //
+  // Both of these need the whole transaction to have landed: a view can be
+  // labelled by one that mounts after it, and what a live region says is what
+  // every mutation in the batch left it saying. Called from `applyTransaction`
+  // in that order, which is the order the GTK host settled on for the same two
+  // reasons.
+  void applyLabelRelations();
+  void announceLiveRegions();
+
+  // `accessibilityLabelledBy` and `experimental_accessibilityOrder`: which view
+  // a `nativeID` names, and which views are waiting on one. Shared with the
+  // other two hosts; `core/LabelRegistry.h` has why the resolution cannot
+  // happen as the props arrive.
+  basalt::LabelRegistry labels_;
+
+  // `accessibilityLiveRegion`: which views are status messages and what each
+  // one last said, so that only a change is announced. Shared for the same
+  // reason -- the two rules that matter are in `core/LiveRegions.h`.
+  basalt::LiveRegionRegistry liveRegions_;
+  // The label of a live region, which stands in for its text: an icon-only
+  // status has no paragraph of its own. Kept here rather than read back off the
+  // view, as the GTK host keeps it for the same reason.
+  std::unordered_map<facebook::react::Tag, std::string> liveRegionLabels_;
 
   // A <Switch> is a controlled component: the drawing is not allowed to decide
   // its own state, so the value React last sent is kept here and the view is

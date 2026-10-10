@@ -27,6 +27,11 @@
 #include <d2d1helper.h>
 #include <wrl/client.h>
 
+// `UiaRaiseNotificationEvent`, which is the only call in UI Automation that
+// speaks a string, and the provider interface it raises the event on.
+// `uiautomation.h` is the umbrella header the accessible half already uses.
+#include <uiautomation.h>
+
 #include <algorithm>
 #include <chrono>
 #include <optional>
@@ -418,7 +423,86 @@ void RnWin32View::setAccessibleInfo(const RnAccessibleInfo &info) {
 }
 
 IRawElementProviderSimple *RnWin32View::createAccessibleProvider() const {
+  // The relation is resolved here rather than stored resolved, because the
+  // provider holds a snapshot and this is the moment it is taken: the view it
+  // points at is alive now, and whatever its label says now is what a client
+  // asking now should be told.
+  if (!labelledBy_.empty() && labelledBy_.front() != nullptr) {
+    RnAccessibleInfo info = accessible_;
+    info.labelledBy =
+        std::make_shared<const RnAccessibleInfo>(labelledBy_.front()->accessibleInfo());
+    return basalt::win32::createAccessibleProvider(info);
+  }
   return basalt::win32::createAccessibleProvider(accessible_);
+}
+
+void RnWin32View::setLabelledBy(std::vector<RnWin32View *> labels) {
+  labelledBy_ = std::move(labels);
+}
+
+void RnWin32View::collectTextInto(std::string &out) const {
+  if (textLayout_ != nullptr) {
+    const std::string &text = textLayout_->text();
+    if (!text.empty()) {
+      if (!out.empty()) {
+        out += ' ';
+      }
+      out += text;
+    }
+  }
+  for (const RnWin32View *child : children_) {
+    if (child != nullptr) {
+      child->collectTextInto(out);
+    }
+  }
+}
+
+std::string RnWin32View::collectText() const {
+  std::string out;
+  collectTextInto(out);
+  return out;
+}
+
+void RnWin32View::announce(const std::string &text, bool assertive) {
+  if (text.empty()) {
+    return;
+  }
+  lastAnnouncement_ = text;
+
+  // A provider to raise it on, which is also the one thing UIA needs that the
+  // other two hosts do not: there is no view object a client knows about, only
+  // what a provider says. Released straight after -- the event carries the
+  // string, and nothing keeps the element.
+  ComPtr<IRawElementProviderSimple> provider;
+  provider.Attach(createAccessibleProvider());
+  if (!provider) {
+    return;
+  }
+
+  // Real BSTRs rather than a cast wide pointer: a BSTR carries its length ahead
+  // of its characters, and UIA reads that length. A `wchar_t *` cast to BSTR
+  // works until something asks how long it is.
+  const BSTR spoken = SysAllocString(widen(text).c_str());
+  const BSTR activity = SysAllocString(std::to_wstring(tag_).c_str());
+  if (spoken != nullptr && activity != nullptr) {
+    // `NotificationProcessing_ImportantAll` for an assertive region and
+    // `NotificationProcessing_All` for a polite one, which is as close as UIA's
+    // four processing hints come to ARIA's two politeness levels: both say
+    // "read every one of these", and the important variant jumps the queue.
+    //
+    // `NotificationKind_ActionCompleted` is the kind for "something finished
+    // and here is the result", which is what a status line saying `Saved` is.
+    // The activity id groups notifications from one source; this host uses the
+    // view's tag, so two regions do not cancel each other out.
+    UiaRaiseNotificationEvent(
+        provider.Get(),
+        NotificationKind_ActionCompleted,
+        assertive ? NotificationProcessing_ImportantAll : NotificationProcessing_All,
+        spoken,
+        activity);
+  }
+  SysFreeString(spoken);
+  SysFreeString(activity);
 }
 
 // --- Geometry, resolved -----------------------------------------------------
@@ -2553,6 +2637,21 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
                  static_cast<double>(hitSlop_[1]),
                  static_cast<double>(hitSlop_[2]),
                  static_cast<double>(hitSlop_[3]));
+  }
+
+  // The resolved LABELLED_BY relation, by tag. The ids the app wrote are in its
+  // own source; what is worth reporting is that they were resolved, and the
+  // tags are Fabric's, so the three hosts print the same ones.
+  if (!labelledBy_.empty()) {
+    out += " labelled-by=";
+    bool first = true;
+    for (const RnWin32View *label : labelledBy_) {
+      if (label == nullptr) {
+        continue;
+      }
+      appendFormat(out, "%s%d", first ? "" : ",", label->tag());
+      first = false;
+    }
   }
 
   // React Native's role name, not UIA's. This dump is compared line by line

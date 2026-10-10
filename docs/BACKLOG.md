@@ -38,7 +38,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 
 | Area | Open | What is left there |
 | --- | --- | --- |
-| [Windows, the platform](backlog/platform-windows.md) | 9 | A peer since phase 47, and as of 2026-10-10 it draws every style prop the other two do and positions an inline <View> like them. What is left is named: two accessibility relations, the TextInput gaps and the build's own chores. |
+| [Windows, the platform](backlog/platform-windows.md) | 7 | A peer since phase 47, and as of 2026-10-10 it draws every style prop the other two do, positions an inline <View> like them and answers the same accessibility relations. What is left is named: the TextInput gaps, the text scale, and the build's own chores. |
 | [macOS](backlog/platform-macos.md) | 2 | A screen reader nobody has run, and the `dropShadow` difference that stays recorded. |
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |

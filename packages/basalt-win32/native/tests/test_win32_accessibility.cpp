@@ -14,6 +14,7 @@
 #include "TestHarness.h"
 
 #include "RnWin32Accessible.h"
+#include "RnWin32TextLayout.h"
 #include "RnWin32View.h"
 // For narrow(): UIA answers in BSTRs and these assertions are written in UTF-8,
 // like the rest of the project.
@@ -36,6 +37,8 @@
 using Microsoft::WRL::ComPtr;
 using basalt::win32::RnAccessibleFlag;
 using basalt::win32::RnAccessibleInfo;
+using basalt::win32::RnTextStyle;
+using basalt::win32::RnWin32TextLayout;
 using basalt::win32::RnWin32View;
 
 namespace {
@@ -325,4 +328,149 @@ TEST(accessibility_a_plain_view_claims_no_dialog) {
   auto provider = providerFor(withRole("button"));
   EXPECT(provider != nullptr);
   EXPECT_EQ(propertyType(provider, UIA_IsDialogPropertyId), VT_EMPTY);
+}
+
+// ---------------------------------------------------------------------------
+// `accessibilityLabelledBy`, which is the one accessibility prop that is a
+// relation between two views rather than a value on one.
+//
+// A relation rather than a copied string: the field's name lives on the caption
+// beside it, so a caption that changes its text does not leave a stale copy
+// behind. GTK sets an AT-SPI LABELLED_BY relation, macOS an
+// `accessibilityTitleUIElement`, and UIA answers `UIA_LabeledByPropertyId` with
+// an element -- which is why these go through a view rather than through a bare
+// `RnAccessibleInfo`: the view is what knows the other view.
+// ---------------------------------------------------------------------------
+
+TEST(accessibility_labelled_by_answers_with_the_labelling_element) {
+  auto field = std::make_unique<RnWin32View>(1);
+  auto caption = std::make_unique<RnWin32View>(2);
+
+  RnAccessibleInfo fieldInfo;
+  fieldInfo.role = "none";
+  fieldInfo.testId = "field";
+  field->setAccessibleInfo(fieldInfo);
+
+  RnAccessibleInfo captionInfo;
+  captionInfo.role = "text";
+  captionInfo.label = "Save the document";
+  caption->setAccessibleInfo(captionInfo);
+
+  // Nothing yet: a view with no relation answers with no element rather than
+  // with itself.
+  ComPtr<IRawElementProviderSimple> before;
+  before.Attach(field->createAccessibleProvider());
+  EXPECT(before != nullptr);
+  if (before) {
+    EXPECT_EQ(propertyType(before, UIA_LabeledByPropertyId), VT_EMPTY);
+  }
+
+  field->setLabelledBy({caption.get()});
+
+  ComPtr<IRawElementProviderSimple> provider;
+  provider.Attach(field->createAccessibleProvider());
+  EXPECT(provider != nullptr);
+  if (!provider) {
+    return;
+  }
+
+  VARIANT value;
+  VariantInit(&value);
+  EXPECT(SUCCEEDED(provider->GetPropertyValue(UIA_LabeledByPropertyId, &value)));
+  EXPECT_EQ(value.vt, VT_UNKNOWN);
+  if (value.vt == VT_UNKNOWN && value.punkVal != nullptr) {
+    // The element is a provider, and what it is for is reading the caption's
+    // name: a relation pointing at the wrong view is the failure that matters.
+    ComPtr<IRawElementProviderSimple> label;
+    EXPECT(SUCCEEDED(value.punkVal->QueryInterface(IID_PPV_ARGS(label.GetAddressOf()))));
+    EXPECT_EQ(stringProperty(label, UIA_NamePropertyId), std::string("Save the document"));
+  }
+  VariantClear(&value);
+}
+
+// The relation comes apart again, which is what a caption being unmounted means
+// and what a stale element would get wrong.
+TEST(accessibility_labelled_by_can_be_taken_away) {
+  auto field = std::make_unique<RnWin32View>(1);
+  auto caption = std::make_unique<RnWin32View>(2);
+  RnAccessibleInfo info;
+  info.label = "Name";
+  field->setAccessibleInfo(info);
+  caption->setAccessibleInfo(info);
+
+  field->setLabelledBy({caption.get()});
+  field->setLabelledBy({});
+
+  ComPtr<IRawElementProviderSimple> provider;
+  provider.Attach(field->createAccessibleProvider());
+  EXPECT(provider != nullptr);
+  if (provider) {
+    EXPECT_EQ(propertyType(provider, UIA_LabeledByPropertyId), VT_EMPTY);
+  }
+}
+
+// The resolved relation in the dump, by tag, which is what the end-to-end
+// scenario reads on all three hosts.
+TEST(accessibility_labelled_by_is_reported_in_the_tree) {
+  auto field = std::make_unique<RnWin32View>(7);
+  auto caption = std::make_unique<RnWin32View>(9);
+  EXPECT(field->describeTree().find("labelled-by=") == std::string::npos);
+
+  field->setLabelledBy({caption.get()});
+  EXPECT(field->describeTree().find("labelled-by=9") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// `accessibilityLiveRegion`: the text a status message says, and saying it.
+//
+// The change detection is `core/LiveRegions.h`'s and has its own tests there;
+// what is this host's is collecting the text and raising the announcement. UIA
+// has no "say this" except `UiaRaiseNotificationEvent`, and nothing in a test
+// run is listening to it, so what is asserted here is the text -- which is the
+// half that was wrong on both other hosts first.
+// ---------------------------------------------------------------------------
+
+TEST(accessibility_a_live_region_collects_the_text_of_its_subtree) {
+  auto region = std::make_unique<RnWin32View>(1);
+  auto first = std::make_unique<RnWin32View>(2);
+  auto second = std::make_unique<RnWin32View>(3);
+  RnTextStyle style;
+  first->setTextLayout(RnWin32TextLayout::create("Saving", style, 0));
+  second->setTextLayout(RnWin32TextLayout::create("one of three", style, 0));
+  region->insertChild(first.get(), 0);
+  region->insertChild(second.get(), 1);
+
+  // In paint order, joined with a space: a status line is a <View> with text
+  // inside it, and the view itself carries no string at all. Both other hosts
+  // collect it the same way.
+  EXPECT_EQ(region->collectText(), std::string("Saving one of three"));
+
+  // A view with nothing in it says nothing, rather than a stray space.
+  auto empty = std::make_unique<RnWin32View>(4);
+  EXPECT(empty->collectText().empty());
+
+  region->removeChild(first.get());
+  region->removeChild(second.get());
+}
+
+TEST(accessibility_an_announcement_is_remembered_and_an_empty_one_is_not_made) {
+  auto view = std::make_unique<RnWin32View>(1);
+  RnAccessibleInfo info;
+  info.role = "text";
+  info.label = "Saved";
+  view->setAccessibleInfo(info);
+
+  EXPECT(view->lastAnnouncement().empty());
+
+  view->announce("Saved", false);
+  EXPECT_EQ(view->lastAnnouncement(), std::string("Saved"));
+
+  // Nothing to say is not an announcement: a region whose text went empty must
+  // not read out silence, and `UiaRaiseNotificationEvent` with an empty string
+  // is a notification a screen reader still reports as one.
+  view->announce("", true);
+  EXPECT_EQ(view->lastAnnouncement(), std::string("Saved"));
+
+  view->announce("Saved twice", true);
+  EXPECT_EQ(view->lastAnnouncement(), std::string("Saved twice"));
 }

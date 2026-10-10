@@ -539,6 +539,33 @@ class RnWin32View {
   void setAccessibleInfo(const RnAccessibleInfo &info);
   const RnAccessibleInfo &accessibleInfo() const { return accessible_; }
 
+  // `accessibilityLabelledBy`, resolved to views by `core/LabelRegistry.h`:
+  // other views whose text names this one.
+  //
+  // Held as pointers because the relation is between views and the tree outlives
+  // any one transaction; the *provider* takes a snapshot, which is where the
+  // thread-safety rule at the top of RnWin32Accessible.h is answered.
+  void setLabelledBy(std::vector<RnWin32View *> labels);
+  const std::vector<RnWin32View *> &labelledBy() const { return labelledBy_; }
+
+  // Every bit of text in this subtree, in paint order, joined with spaces.
+  //
+  // What a live region says: `accessibilityLiveRegion` reads a status message
+  // out when it changes, and the message is whatever the region contains. Both
+  // other hosts collect it the same way and for the same reason -- a status line
+  // is a <View> with a <Text> inside it, and the view itself carries no string.
+  std::string collectText() const;
+
+  // Reads `text` out through UI Automation, assertively or politely.
+  //
+  // `UiaRaiseNotificationEvent` is the call that speaks a string: UIA otherwise
+  // has no "say this" at all, only properties a client may notice changing.
+  // Recorded as well as raised, because nothing in an automated run has a
+  // screen reader attached -- the same arrangement GTK uses, where the text is
+  // kept even on versions with no `gtk_accessible_announce`.
+  void announce(const std::string &text, bool assertive);
+  const std::string &lastAnnouncement() const { return lastAnnouncement_; }
+
   // A UIA provider over this view, or null when the view is not an
   // accessibility element. The caller owns a reference and must Release it.
   IRawElementProviderSimple *createAccessibleProvider() const;
@@ -622,6 +649,7 @@ class RnWin32View {
   // Recomputes whether the back face is showing, and hides or shows the view.
   void updateBackFace();
   void applyVisibility();
+  void collectTextInto(std::string &out) const;
   void paintBorders(ID2D1RenderTarget *target) const;
   void paintStrokedBorder(ID2D1RenderTarget *target) const;
   void paintOutline(ID2D1RenderTarget *target) const;
@@ -722,6 +750,8 @@ class RnWin32View {
   std::string blendMode_;
   bool blends_ = false;
   RnAccessibleInfo accessible_;
+  std::vector<RnWin32View *> labelledBy_;
+  std::string lastAnnouncement_;
   bool hasTransform_ = false;
   // The 2D affine part, in the order Direct2D's Matrix3x2F stores it:
   // _11, _12, _21, _22, _31, _32 -- which is also the order CSS writes a
