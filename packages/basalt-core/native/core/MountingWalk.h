@@ -86,6 +86,13 @@ class MountingWalk {
   // types, and because a view can sit detached between a Remove and its Delete
   // while still needing to deliver a cancel.
   facebook::react::EventEmitter::Shared eventEmitterForTag(Tag tag) const {
+    // Nothing, once an instance teardown has been announced: every emitter in
+    // the map points into a Scheduler that is going away, and handing one out
+    // is a call into freed memory. The map itself is emptied on this thread --
+    // see `invalidatePendingMounts`.
+    if (emittersInvalid_.load(std::memory_order_acquire)) {
+      return nullptr;
+    }
     const auto it = eventEmitters_.find(tag);
     return it == eventEmitters_.end() ? nullptr : it->second;
   }
@@ -244,6 +251,11 @@ class MountingWalk {
     // core/TestSettle.h.
     noteMountApplied();
 
+    // Before anything is walked: an instance teardown may have announced itself
+    // from another thread while this transaction sat on the queue, and the
+    // emitters it left behind point into a Scheduler that is gone.
+    dropInvalidatedEmitters();
+
     for (const auto &mutation : mutations) {
       switch (mutation.type) {
         case facebook::react::ShadowViewMutation::Create:
@@ -307,15 +319,51 @@ class MountingWalk {
     // and the next transaction replaces what is under them. An event arriving in
     // the gap now finds no emitter and does nothing, which is the right answer
     // and was previously a call into freed memory.
-    eventEmitters_.clear();
+    //
+    // **A flag rather than the clear itself, and that is the whole of a crash
+    // this project chased twice.** This function runs on whatever thread
+    // `destroyReactInstance` is on, which is not the main one, while a mount
+    // queued earlier may be draining on the main thread -- and `eventEmitters_`
+    // is a `std::unordered_map`. Clearing it from under `destroy()`'s own
+    // `erase` is a plain data race, and what it produces is a wild pointer
+    // inside the hash table's `find`: `host exited -11` on CI's Mac, twice,
+    // with `MountingWalk::destroy` and an `unordered_map::erase` in the stack.
+    // backlog/testing.md carries both occurrences.
+    //
+    // So the flag goes up atomically, nothing hands an emitter out from this
+    // moment on -- which is what the clear was for -- and the map is emptied by
+    // the main thread the next time it walks a transaction or releases its
+    // views.
+    emittersInvalid_.store(true, std::memory_order_release);
+  }
+
+  // How many emitters are still remembered, whatever the flag above says.
+  //
+  // Only the suite asks, and it asks because the thing worth asserting about
+  // the teardown is *which thread* empties the map: an announcement that
+  // cleared it itself would be the data race this project chased twice, and
+  // `eventEmitterForTag` cannot tell the two apart -- it answers nothing either
+  // way. See `a_teardown_leaves_the_clearing_to_the_main_thread`.
+  std::size_t rememberedEmitterCount() const {
+    return eventEmitters_.size();
   }
 
  protected:
   // Not virtual and not public: this is a mixin, never a base pointer.
   ~MountingWalk() = default;
 
+  // Empties the emitter map if a teardown asked for it, on the thread that owns
+  // it. The one place the map is cleared, and the reason it is not cleared where
+  // the asking happens: see `invalidatePendingMounts`.
+  void dropInvalidatedEmitters() {
+    if (emittersInvalid_.exchange(false, std::memory_order_acq_rel)) {
+      eventEmitters_.clear();
+    }
+  }
+
   // Platforms call this from their own destructor. See the note at the top.
   void releaseAllViews() {
+    dropInvalidatedEmitters();
     // Same ordering as a Delete, and for the same reason: a side table holding a
     // view has to be told before the view goes, not after. This path is a host's
     // own destructor, so getting it wrong is a crash on the way out -- the kind
@@ -567,6 +615,10 @@ class MountingWalk {
   // reason: a delayed callback outlives whatever scheduled it.
   std::uint64_t overlayGeneration_{0};
   std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
+
+  // Set when the React instance is torn down and cleared by the main thread;
+  // see invalidatePendingMounts and dropInvalidatedEmitters.
+  std::atomic<bool> emittersInvalid_{false};
 
   // Bumped when the React instance is torn down; see invalidatePendingMounts.
   //

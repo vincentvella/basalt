@@ -757,6 +757,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   is slower and the gap therefore wider. All ten passed, which is the same
   answer this bug has given every time it has been asked locally.
 
+  **It failed a third time on 2026-10-10, at 8d2da93, and this one named the
+  bug.** The longer stack the fix above arranged for is what did it:
+
+      _ZNSt3__112__hash_table<...EventEmitter...>::find<int>  + 168
+        <- __erase_unique<int> <- unordered_map::erase
+          <- MountingWalk<AppKitMountingManager>::destroy(int) + 320
+            <- applyMutations <- applyTransaction
+              <- applyPendingMount <- _dispatch_main_queue_drain
+
+  A wild pointer *inside the hash table* -- `SIGSEGV at 0x1ba70d90bc68` -- which
+  is not a dangling emitter at all. It is the map being written by two threads.
+  `MountingWalk::invalidatePendingMounts` called `eventEmitters_.clear()`, and a
+  host calls it from `setSchedulerTaskExecutor(nullptr)`, which
+  `destroyReactInstance` runs on its own thread; the Delete above was erasing
+  from the same `std::unordered_map` on the main thread at the same moment. Two
+  threads rehashing one table is exactly a garbage bucket pointer, and it
+  explains the intermittency without any reference to upstream's dangling mount
+  hook -- which is a real bug and a different one.
+
+  **Fixed, 2026-10-10.** The announcement sets an atomic flag instead of
+  clearing: `eventEmitterForTag` answers nothing from that moment, which is what
+  the clear was for, and the map is emptied by the main thread the next time it
+  walks a transaction or releases its views. Nothing off the main thread touches
+  the container any more.
+
+  Two tests in the GTK mounting suite, which is where `MountingWalk` is
+  exercised with a real emitter. The assertion that distinguishes the fix from
+  the bug is not that no emitter is handed out -- the old code managed that too
+  -- but that the map is *still populated* immediately after an announcement
+  made on another thread, and empty after the next transaction. That needed one
+  test-only accessor, `rememberedEmitterCount`, and the sabotage check is the
+  one line this entry is about: putting `clear()` back fails the first test and
+  leaves the second passing.
+
   **What is not checked, and should be said rather than implied:** nothing in
   the suite asserts that a mount hook ever ran. The call exists for Reanimated,
   the only animation scenario is `scrollTo({animated: true})` which does not go

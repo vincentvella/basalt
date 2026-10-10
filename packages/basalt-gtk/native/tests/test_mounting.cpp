@@ -5,11 +5,13 @@
 // Native's own code, everything below is GTK's, and the mutation walk is where
 // this project can be wrong on its own.
 
+#include "EventRecorder.h"
 #include "TestHarness.h"
 #include "TreeDump.h"
 
 #include "GtkMountingManager.h"
 
+#include <thread>
 #include <string>
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/graphics/Color.h>
@@ -412,4 +414,81 @@ TEST(no_transform_origin_anchors_the_centre) {
   EXPECT_EQ(matrix[5], 0.0);
 
   manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// --- A teardown announced from another thread --------------------------------
+//
+// `destroyReactInstance` hands a mounting manager a null scheduler task
+// executor, and does it on its own thread while a transaction queued earlier
+// may still be draining on this one. What that announcement may *not* do is
+// touch anything the main thread owns: `eventEmitters_` is a
+// `std::unordered_map`, and clearing it from under a `destroy()` in progress is
+// a data race whose symptom is a wild pointer inside the hash table's `find`.
+//
+// It was one: `host exited -11` on CI's Mac, twice, with
+// `MountingWalk::destroy` and an `unordered_map::erase` in the stack.
+// backlog/testing.md carries both occurrences. So the announcement sets a flag
+// and the map is emptied by the main thread, which is what these assert.
+TEST(a_teardown_stops_handing_out_emitters_at_once) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+  const basalt::testing::EventRecorder recorder;
+
+  ShadowView view = makeView(10, 0, 0, 100, 50);
+  view.eventEmitter = recorder.emitter<facebook::react::ViewEventEmitter>();
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(view));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, view, 0));
+  apply(manager, std::move(mutations));
+  EXPECT(manager.eventEmitterForTag(10) != nullptr);
+
+  // On another thread, which is where `destroyReactInstance` does it.
+  std::thread announce([&manager] { manager.setSchedulerTaskExecutor({}); });
+  announce.join();
+
+  // Immediately: every emitter in the map points into a Scheduler that is going
+  // away, so none of them may be handed out, and that cannot wait for the main
+  // thread to notice.
+  EXPECT(manager.eventEmitterForTag(10) == nullptr);
+
+  // **And the map itself is untouched**, which is the assertion that tells the
+  // fix from the bug: `eventEmitterForTag` answers nothing either way, so the
+  // only observable difference between a flag and a clear is who did the
+  // clearing. One emitter is still remembered, by a thread that had no business
+  // writing to this map.
+  EXPECT_EQ((int)manager.rememberedEmitterCount(), 1);
+}
+
+TEST(a_teardown_leaves_the_clearing_to_the_main_thread) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+  const basalt::testing::EventRecorder recorder;
+
+  ShadowView view = makeView(10, 0, 0, 100, 50);
+  view.eventEmitter = recorder.emitter<facebook::react::ViewEventEmitter>();
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(view));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, view, 0));
+  apply(manager, std::move(mutations));
+
+  std::thread announce([&manager] { manager.setSchedulerTaskExecutor({}); });
+  announce.join();
+
+  // A transaction that arrives after the announcement -- which is exactly the
+  // queued mount this is all about -- walks a Delete for the same tag. The
+  // emitter map is emptied at the top of it, by this thread, and the Delete
+  // then erases from a map nobody else is touching.
+  ShadowViewMutationList late;
+  late.push_back(ShadowViewMutation::RemoveMutation(kSurfaceId, view, 0));
+  late.push_back(ShadowViewMutation::DeleteMutation(view));
+  apply(manager, std::move(late));
+
+  EXPECT(manager.eventEmitterForTag(10) == nullptr);
+  EXPECT(manager.viewForTag(10) == nullptr);
+  // Emptied, and by this thread: the count is what distinguishes "the main
+  // thread cleared it" from "the announcing thread did", which is the whole
+  // change.
+  EXPECT_EQ((int)manager.rememberedEmitterCount(), 0);
 }
