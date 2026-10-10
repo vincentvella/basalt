@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "ActionSheet.h"
 #include "PlatformServices.h"
 #include "SettingsStore.h"
 
@@ -182,6 +183,39 @@ class DesktopSettingsManagerModule
 
  private:
   SettingsStore store_;
+};
+
+// `ActionSheetIOS`, which is a popup menu here. See core/ActionSheet.h for why
+// a menu rather than a dialog, and for what a desktop cannot do with one.
+//
+// The third module with a share sheet in it, and they are not duplicates: iOS
+// splits sharing between `Share.share()` -- a promise, Android-shaped, which is
+// `ShareModule` above -- and `ActionSheetIOS.showShareActionSheetWithOptions`,
+// a callback pair on this module. Both end up in `shareContent`, so the picker
+// an app sees is the same one either way.
+//
+// No JavaScript override, unlike `Settings`, `Share` and `Alert`:
+// `ActionSheetIOS.js` has no `Platform.OS` branch and calls the module
+// directly, so the module alone is enough. An iOS-named API is not
+// automatically one whose JavaScript refuses to run off iOS, and the only way
+// to know which kind it is, is to read it.
+class DesktopActionSheetModule
+    : public facebook::react::NativeActionSheetManagerCxxSpec<DesktopActionSheetModule> {
+ public:
+  explicit DesktopActionSheetModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
+      : NativeActionSheetManagerCxxSpec(std::move(jsInvoker)) {}
+
+  static constexpr const char *kModuleName = "ActionSheetManager";
+
+  facebook::jsi::Object getConstants(facebook::jsi::Runtime &rt);
+  void showActionSheetWithOptions(facebook::jsi::Runtime &rt,
+                                  facebook::jsi::Object options,
+                                  facebook::jsi::Function callback);
+  void showShareActionSheetWithOptions(facebook::jsi::Runtime &rt,
+                                       facebook::jsi::Object options,
+                                       facebook::jsi::Function failureCallback,
+                                       facebook::jsi::Function successCallback);
+  void dismissActionSheet(facebook::jsi::Runtime &rt);
 };
 
 // Right-to-left layout. Portable in full: Yoga already does the work, and this

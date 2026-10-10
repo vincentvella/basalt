@@ -573,6 +573,10 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         if (name == basalt::DesktopSettingsManagerModule::kModuleName) {
           return std::make_shared<basalt::DesktopSettingsManagerModule>(jsInvoker);
         }
+        // `ActionSheetIOS`, which is a popup menu here; see core/ActionSheet.h.
+        if (name == basalt::DesktopActionSheetModule::kModuleName) {
+          return std::make_shared<basalt::DesktopActionSheetModule>(jsInvoker);
+        }
         // The native file dialogs, which React Native has no API for and which
         // are the first thing a desktop app reaches for. See core/DialogModule.h.
         if (name == basalt::DesktopDialogModule::kModuleName) {

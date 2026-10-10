@@ -2,9 +2,11 @@
 
 #include "ShareFallback.h"
 #include "TestDialog.h"
+#include "UIManagerAccess.h"
 
 #include <jsi/JSIDynamic.h>
 #include <react/bridging/Promise.h>
+#include <react/renderer/core/LayoutableShadowNode.h>
 
 #include <glog/logging.h>
 
@@ -625,6 +627,209 @@ void DesktopSettingsManagerModule::deleteValues(Runtime &rt, Array values) {
     }
   }
   store_.erase(keys);
+}
+
+// ---------------------------------------------------------------------------
+// Action sheets
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// `anchor`, which iOS uses to hang the popover off a view and a desktop uses to
+// put the menu under the control that opened it. A react tag, resolved through
+// the shadow tree, so all three hosts answer it with no code of their own.
+//
+// Nothing when there is no UIManager, when the tag names no view, or when that
+// view has no layout yet -- and the caller then shows the menu at the pointer,
+// which is where a menu with no anchor goes.
+std::optional<std::pair<double, double>> anchorPoint(int tag) {
+  const std::shared_ptr<facebook::react::UIManager> uiManager = sharedUIManager();
+  if (uiManager == nullptr) {
+    return std::nullopt;
+  }
+  // Deprecated upstream and the only way to get from a tag to a node: every
+  // other entry point takes a shadow node, and what JavaScript has is a tag.
+  const std::shared_ptr<const facebook::react::ShadowNode> node =
+      uiManager->findShadowNodeByTag_DEPRECATED(tag);
+  if (node == nullptr) {
+    return std::nullopt;
+  }
+
+  // Relative to the root, which is the window's own coordinates -- the same
+  // space `showContextMenu` is passed from JavaScript.
+  const facebook::react::LayoutableShadowNode::LayoutInspectingPolicy policy;
+  const facebook::react::LayoutMetrics metrics =
+      uiManager->getRelativeLayoutMetrics(*node, nullptr, policy);
+  if (metrics == facebook::react::EmptyLayoutMetrics) {
+    return std::nullopt;
+  }
+
+  // Under the anchor rather than over it, which is where a desktop puts the
+  // menu a button opens. iOS points a popover at the view from whichever side
+  // has room, which is an iPad's problem and not one a window has.
+  return std::make_pair(static_cast<double>(metrics.frame.origin.x),
+                        static_cast<double>(metrics.frame.origin.y + metrics.frame.size.height));
+}
+
+std::vector<int> indexList(Runtime &rt, const Object &options, const char *key) {
+  std::vector<int> indices;
+  const Value value = options.getProperty(rt, key);
+  if (!value.isObject() || !value.asObject(rt).isArray(rt)) {
+    return indices;
+  }
+  Array list = value.asObject(rt).asArray(rt);
+  const size_t count = list.size(rt);
+  for (size_t index = 0; index < count; ++index) {
+    const Value element = list.getValueAtIndex(rt, index);
+    if (element.isNumber()) {
+      indices.push_back(static_cast<int>(element.asNumber()));
+    }
+  }
+  return indices;
+}
+
+} // namespace
+
+Object DesktopActionSheetModule::getConstants(Runtime &rt) {
+  return Object(rt);
+}
+
+void DesktopActionSheetModule::showActionSheetWithOptions(Runtime &rt,
+                                                          Object options,
+                                                          Function callback) {
+  ActionSheetRequest request;
+  request.title = optionalString(rt, options, "title");
+  request.message = optionalString(rt, options, "message");
+
+  const Value titles = options.getProperty(rt, "options");
+  if (titles.isObject() && titles.asObject(rt).isArray(rt)) {
+    Array list = titles.asObject(rt).asArray(rt);
+    const size_t count = list.size(rt);
+    for (size_t index = 0; index < count; ++index) {
+      const Value element = list.getValueAtIndex(rt, index);
+      if (element.isString()) {
+        request.options.push_back(element.getString(rt).utf8(rt));
+      }
+    }
+  }
+  if (request.options.empty()) {
+    // `options` is required and React Native does not check it. Nothing to show
+    // and no index to report, so the callback is not called -- which is what
+    // iOS does with a sheet nobody pressed anything on.
+    LOG(WARNING) << "ActionSheetIOS.showActionSheetWithOptions was given no options";
+    return;
+  }
+
+  request.disabledIndices = indexList(rt, options, "disabledButtonIndices");
+  const Value cancel = options.getProperty(rt, "cancelButtonIndex");
+  if (cancel.isNumber()) {
+    request.cancelIndex = static_cast<int>(cancel.asNumber());
+  }
+
+  const Value anchor = options.getProperty(rt, "anchor");
+  if (anchor.isNumber()) {
+    const std::optional<std::pair<double, double>> point =
+        anchorPoint(static_cast<int>(anchor.asNumber()));
+    if (point.has_value()) {
+      request.x = point->first;
+      request.y = point->second;
+    }
+  }
+
+  const ActionSheetMenu menu = actionSheetMenu(request);
+  // What it is about to show, because the presentation is the one part an
+  // automated run skips: with BASALT_TEST_MENU set no menu appears, and this
+  // line is where the anchor having been resolved is visible at all.
+  LOG(INFO) << "action sheet: " << request.options.size() << " options at (" << menu.menu.x << ", "
+            << menu.menu.y << ")";
+
+  // The callback has to outlive the menu, which is up until somebody chooses.
+  auto shared = std::make_shared<Function>(std::move(callback));
+  auto invoker = jsInvoker_;
+
+  presentMenu(menu.menu, [shared, invoker, request, menu](int chosen) {
+    const std::optional<int> option = actionSheetChoice(request, menu, chosen);
+    if (!option.has_value() || invoker == nullptr) {
+      return;
+    }
+    // Back onto the JavaScript thread: a menu answers from the thread that drew
+    // it, and a jsi::Function may only be called on the runtime's.
+    invoker->invokeAsync(
+        [shared, index = *option](Runtime &runtime) { shared->call(runtime, Value(index)); });
+  });
+}
+
+void DesktopActionSheetModule::showShareActionSheetWithOptions(Runtime &rt,
+                                                               Object options,
+                                                               Function failureCallback,
+                                                               Function successCallback) {
+  ShareRequest request;
+  request.message = optionalString(rt, options, "message");
+  request.url = optionalString(rt, options, "url");
+  request.title = optionalString(rt, options, "subject");
+
+  if (request.message.empty() && request.url.empty()) {
+    // What iOS does: an error in the log and neither callback called. Worth
+    // keeping rather than improving, because an app that handled "no url or
+    // message" by waiting forever is already written that way.
+    LOG(ERROR) << "ActionSheetIOS.showShareActionSheetWithOptions had no `url` or `message`";
+    return;
+  }
+
+  auto failure = std::make_shared<Function>(std::move(failureCallback));
+  auto success = std::make_shared<Function>(std::move(successCallback));
+  auto invoker = jsInvoker_;
+
+  shareContent(request, [failure, success, invoker](ShareOutcome outcome,
+                                                    const std::string &message) {
+    if (invoker == nullptr) {
+      return;
+    }
+    if (outcome == ShareOutcome::Failed) {
+      invoker->invokeAsync([failure, message](Runtime &runtime) {
+        // The shape `ShareActionSheetError` declares, which is what
+        // RCTJSErrorFromNSError produces on iOS: a domain, a code and a
+        // message. There is no NSError here, so the domain says where it came
+        // from and the code says what happened.
+        Object error(runtime);
+        error.setProperty(runtime, "domain", String::createFromUtf8(runtime, "basalt.share"));
+        error.setProperty(runtime, "code", String::createFromUtf8(runtime, "share-failed"));
+        error.setProperty(
+            runtime,
+            "message",
+            String::createFromUtf8(runtime, message.empty() ? "sharing failed" : message));
+        failure->call(runtime, error);
+      });
+      return;
+    }
+    // `(completed, method)`. iOS reports the activity type as the method and
+    // null when the sheet was dismissed; a desktop picker has no activity type
+    // to report, which is the same null `Share.share()` resolves with here.
+    const bool completed = outcome == ShareOutcome::Shared;
+    invoker->invokeAsync([success, completed](Runtime &runtime) {
+      success->call(runtime, Value(completed), Value::null());
+    });
+  });
+}
+
+void DesktopActionSheetModule::dismissActionSheet(Runtime &rt) {
+  (void)rt;
+  // Nothing to dismiss, and not for want of trying. A popup menu on these three
+  // runs its own tracking loop -- `TrackPopupMenu` on Win32 and
+  // `popUpMenuPositioningItem` on AppKit both block the thread that opened it
+  // until the menu goes away -- so this call, which arrives on the JavaScript
+  // thread, cannot reach the menu while it is up: the UI thread is inside the
+  // menu and the work this would post runs after it has closed. Taking it down
+  // needs each toolkit's cancel called from inside its own loop
+  // (`[NSMenu cancelTracking]`, `EndMenu()`, `gtk_popover_popdown`), which is a
+  // per-host piece of work; see docs/backlog/modules.md.
+  //
+  // React Native's own JavaScript guards this one -- `typeof
+  // RCTActionSheetManager.dismissActionSheet === 'function'` -- so iOS treats it
+  // as optional too. It is here because the generated spec declares it, and it
+  // says what it did rather than pretending.
+  LOG(WARNING) << "ActionSheetIOS.dismissActionSheet: a popup menu here closes on Escape or on a "
+                  "choice and cannot be taken down from JavaScript";
 }
 
 } // namespace basalt

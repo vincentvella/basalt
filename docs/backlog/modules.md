@@ -4,10 +4,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 **Open (1):**
 
-1. Three modules an app can reach that answer nothing here, each with no
-   desktop equivalent written
+1. Two modules an app can reach that answer nothing here, each with no desktop
+   equivalent written
 2. ~~Nothing runs the audit against a *running* host~~
 3. ~~`Settings` is a module nobody answers~~
+4. ~~`ActionSheetIOS` has no module, and dies on the first call~~
 
 - **The audit, and why there is one.** The support page answers "does this prop
   work" one row per attribute, and that page caught claims nothing implemented.
@@ -51,33 +52,31 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   is, per module, rather than only whether it is answered.
 
   As of 2026-10-10: React Native asks for **60**. This repository answers
-  **16** of them, React Native's own two providers answer **19**, and **25** are
+  **17** of them, React Native's own two providers answer **19**, and **24** are
   answered by nobody. The hosts answer eleven *further* modules that React
   Native never asks for -- this project's own, and the libraries whose modules
-  the hosts offer unconditionally -- which is why the chains hold 27 names each
-  and only 16 of those appear in React Native's own JavaScript.
+  the hosts offer unconditionally -- which is why the chains hold 28 names each
+  and only 17 of those appear in React Native's own JavaScript.
 
-- **Three modules an app can reach answer nothing**, and each is a desktop
+- **Two modules an app can reach answer nothing**, and each is a desktop
   equivalent nobody has written. They are the whole of the first open entry:
 
   | Module | What an app reaches it with | What would answer it |
   | --- | --- | --- |
-  | `ActionSheetManager` | `ActionSheetIOS.showActionSheetWithOptions` | A menu or a dialog, both of which `basalt-core` has |
   | `ImageEditingManager` | `react-native/Libraries/Image/NativeImageEditor` | A Skia or Core Graphics crop; the hosts all have an image pipeline already |
   | `ImageStoreManager` | `react-native/Libraries/Image/NativeImageStoreIOS` | Deprecated upstream; probably not worth writing |
 
-  `ActionSheetManager` is a `get`, so its module is null and the *first call*
-  reaches a method on nothing. The other two are `getEnforcing`, which throws at
-  import -- but only for an app that imports the spec file by path, because
-  React Native stopped exporting `ImageEditor` and `ImageStore` from its index
-  and nothing in its own JavaScript imports either spec. **Measured on `main`,
-  which is not the pin**: the shape of the claim is the same on v0.87.1 and the
-  exact answer there has not been checked, so what the table names is the import
-  that reaches the module rather than an API call.
+  Both are `getEnforcing`, which throws at import -- but only for an app that
+  imports the spec file by path, because React Native stopped exporting
+  `ImageEditor` and `ImageStore` from its index and nothing in its own
+  JavaScript imports either spec. **Measured on `main`, which is not the pin**:
+  the shape of the claim is the same on v0.87.1 and the exact answer there has
+  not been checked, so what the table names is the import that reaches the
+  module rather than an API call.
 
-  None of the three is reached by React Native's own code, only by an app that
-  goes looking, which is why nothing here has noticed. `PushNotificationIOS` is
-  a fourth of the same shape and has a package instead; see
+  Neither is reached by React Native's own code, only by an app that goes
+  looking, which is why nothing here has noticed. `PushNotificationIOS` is a
+  third of the same shape and has a package instead; see
   `packages/basalt-notifications`.
 
 - ~~**`Settings` is a module nobody answers.**~~ Done on all three on
@@ -128,6 +127,58 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     snapshot and `-setPersistentDomain:forName:` for the write would change
     that, for one host, at the cost of the three agreeing about what a settings
     value can be.
+
+- ~~**`ActionSheetIOS` has no module, and dies on the first call.**~~ Done on
+  all three on 2026-10-10, and it is the shape the other three were not:
+  `ActionSheetIOS.js` has no `Platform.OS` branch anywhere in it, so the module
+  alone was the whole gap. An iOS-named API is not automatically one whose
+  JavaScript refuses to run off iOS, and the only way to know which kind it is,
+  is to read it.
+
+  What an app saw: `invariant(RCTActionSheetManager, "ActionSheetManager doesn't
+  exist")`, thrown from inside React Native at the first call, since the module
+  is a `get` and came back null. Measured by taking the module back out, which
+  is what the end-to-end scenario's second sabotage does.
+
+  **A popup menu rather than a dialog**, which `core/ActionSheet.h` argues:
+  a dialog can show the sheet's `title` and `message` and cannot show eight
+  choices without looking like a mistake, cannot grey one out, and cannot be
+  dismissed with Escape. So the title and the message go in as disabled entries
+  above a separator, and the options follow -- which is why the module carries
+  an offset between a menu index and the index the app passed. Every index is a
+  valid index, so that arithmetic is the quietest bug available here and it has
+  its own tests on both sides.
+
+  Three things fell out of it:
+
+  - **`anchor` works, on all three, with no per-host code.** It is a react tag,
+    and `UIManager::findShadowNodeByTag_DEPRECATED` plus
+    `getRelativeLayoutMetrics` turn it into the view's frame in the window's own
+    coordinates -- so the menu opens under the control that asked for it, which
+    is what a desktop does and what iOS uses the anchor for on an iPad. The
+    scenario asserts the resolved point rather than trusting it.
+  - **A dismissal reports the app's `cancelButtonIndex`**, which iOS does not
+    do: `UIAlertController` invokes the callback from a button's handler, so a
+    popover tapped away calls nothing. Escape closing a menu is ordinary where
+    that is not, and an app that named a cancel choice has already said what to
+    do with it. With no cancel choice, nothing is reported, which is iOS's
+    answer.
+  - **`BASALT_TEST_MENU` could answer with a disabled entry**, and now cannot.
+    The instrument already refused a separator, a submenu's parent and an entry
+    naming a role this desktop lacks, on the principle that what a script can
+    answer is what a person could have clicked; a greyed entry belongs in that
+    list and was missing until an action sheet put its title into the menu as
+    one. The guard is `scriptedMenuIndex` now, which is a function rather than
+    part of `presentMenu` so that it can be asserted.
+
+  What is left is `dismissActionSheet`, recorded rather than written: a popup
+  menu on these three runs its own tracking loop -- `TrackPopupMenu` and
+  `popUpMenuPositioningItem` both block the thread that opened it -- so a call
+  arriving on the JavaScript thread cannot reach the menu while it is up. Taking
+  it down needs each toolkit's own cancel called from inside that loop:
+  `[NSMenu cancelTracking]`, `EndMenu()`, `gtk_popover_popdown`. React Native's
+  own JavaScript guards the method with a `typeof` check, so iOS treats it as
+  optional too; it logs what it could not do rather than pretending.
 
 - **The twenty-one others nobody answers are not gaps**, and the audit says so
   per module rather than leaving a reader to wonder. Android's halves of

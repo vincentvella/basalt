@@ -72,6 +72,21 @@ void presentAlert(const AlertRequest &request, AlertCallback onButton);
 // stops the process where it stands.
 std::optional<int> scriptedMenuChoice();
 
+// Which entry a script naming `scripted` actually lands on, or -1 for a
+// dismissal.
+//
+// What a script can answer is what a real menu can, which is the whole point of
+// the instrument and is four separate refusals: an index past the end of the
+// tree, a separator, a submenu's parent -- which opens rather than chooses --
+// and an entry that is drawn greyed or not drawn at all. Each of those is
+// something a person could not have clicked, so a script that names one is
+// answered the way closing the menu is.
+//
+// Separate from presentMenu so that it can be asserted. The variable is read
+// once and cached for the life of the process, so a test cannot set it, and the
+// arithmetic is the part worth testing anyway.
+int scriptedMenuIndex(const std::vector<MenuEntry> &entries, int scripted);
+
 // `showMenu`, or the scripted answer when there is one. Everything that would
 // put a popup menu on screen goes through here rather than calling the platform
 // directly, for the same reason `presentAlert` exists.

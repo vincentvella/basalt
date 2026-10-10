@@ -18,8 +18,7 @@
     },
     "ActionSheetManager": {
       "asked": "get",
-      "answeredBy": "nobody",
-      "effect": "ActionSheetIOS throws when called: its module is nil and the first call reaches a method on it. A desktop app wants a menu or a dialog instead, which basalt-core has."
+      "answeredBy": "basalt"
     },
     "AlertManager": {
       "asked": "get",

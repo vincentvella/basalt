@@ -6374,6 +6374,108 @@ def test_settings(bundle: Path) -> str:
     return "a setting survived to the next run, and null and deleteValues both forgot one"
 
 
+def test_action_sheet(bundle: Path) -> str:
+    """`ActionSheetIOS`, which is a popup menu here.
+
+    The module was null until 2026-10-10, so the first call died inside React
+    Native's own JavaScript on `invariant(RCTActionSheetManager, ...)`. Unlike
+    `Settings`, `Share` and `Alert` there was nothing to replace: no
+    `Platform.OS` branch in `ActionSheetIOS.js`, so the module alone was the
+    gap -- which is worth knowing, because an iOS-named API is not automatically
+    one whose JavaScript refuses to run anywhere else.
+
+    Two runs, because a sheet has two answers:
+
+      chosen      BASALT_TEST_MENU names the first option, and the app must be
+                  told `0` -- its own index, not the menu's. The menu holds the
+                  title and a separator above the options, so an off-by-the-offset
+                  bug reports `Discard` where the person chose `Save`, which is
+                  the quietest possible failure: every index is a valid index.
+      dismissed   `dismiss` closes the menu without a choice, and the app is told
+                  its `cancelButtonIndex`. iOS calls nothing at all there, which
+                  is right for a popover tapped away and wrong for Escape on a
+                  desktop; see core/ActionSheet.h for the argument.
+
+    Both runs also assert the anchor and the share half. `anchor` is a react tag
+    and the module resolves it through the shadow tree, so the menu opens under
+    the control that asked for it; the host logs the point it resolved, which is
+    the only way to see it with the presentation skipped. `x` is asserted exactly
+    and `y` only as "below the anchor's top", because a host may inset its
+    content under a title bar and this scenario is not about that.
+
+    `showShareActionSheetWithOptions` is iOS's other share API -- a callback pair
+    rather than `Share.share()`'s promise -- and it reaches the same picker,
+    which BASALT_TEST_DIALOG answers.
+    """
+    app = bundle_app(bundle.parent, "actionsheet")
+
+    def run(menu: str, dialog: str) -> str:
+        env = dict(os.environ)
+        env["BASALT_QUIT_AFTER_MS"] = "8000"
+        env["BASALT_TEST_MENU"] = menu
+        env["BASALT_TEST_DIALOG"] = dialog
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                     "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
+            env.pop(name, None)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltActionSheet"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        return result.stdout + result.stderr
+
+    def expect(logged: str, needle: str, why: str) -> None:
+        if needle not in logged:
+            raise Failure(f"{why}.\nexpected {needle!r} in:\n{tail_text(logged)}")
+
+    # The second entry of the menu: a title and its separator sit above the
+    # options, so this is `Save`, which the app passed as index 0.
+    chosen = run("2", "0")
+    expect(chosen, "action sheet anchor tag: found",
+           "the app had no tag to anchor with, so what the module resolved below "
+           "proves nothing about `anchor`")
+    expect(chosen, "action sheet chose: 0 (Save)",
+           "the index the app was told is not the index it passed. The menu holds "
+           "the title and a separator above the options, so this is the offset "
+           "between a menu index and an option index")
+    expect(chosen, "share sheet: completed=true",
+           "showShareActionSheetWithOptions did not report a completed share, "
+           "which is the other half of this module and the one that shares")
+
+    # Where the module put the menu. e2e/actionsheet.tsx anchors to a view at
+    # left: 40, top: 60, height: 30, so the point is the anchor's bottom-left.
+    where = re.search(r"action sheet: 3 options at \((-?[\d.]+), (-?[\d.]+)\)", chosen)
+    if where is None:
+        raise Failure(
+            "the host never said where it was putting the sheet, so the anchor is "
+            f"unverifiable:\n{tail_text(chosen)}"
+        )
+    x, y = float(where.group(1)), float(where.group(2))
+    if x < 0 or y < 0:
+        raise Failure(
+            f"the anchor resolved to ({x}, {y}), which is the pointer rather than a "
+            "view: findShadowNodeByTag_DEPRECATED answered nothing, or the view had "
+            "no layout when the sheet was asked for"
+        )
+    if abs(x - 40.0) > 0.5 or y < 89.5:
+        raise Failure(
+            f"the sheet was placed at ({x}, {y}) and the anchor is at (40, 60) with "
+            "a height of 30, so the menu should open at its bottom-left -- x of 40 "
+            "and y of at least 90"
+        )
+
+    dismissed = run("dismiss", "dismiss")
+    expect(dismissed, "action sheet chose: 2 (Cancel)",
+           "a dismissed menu did not report the app's cancelButtonIndex. Escape "
+           "closing a menu is the desktop's way out of a sheet, and an app that "
+           "named a cancel choice has already said what to do with it")
+    expect(dismissed, "share sheet: completed=false",
+           "a dismissed share picker did not report an incomplete share")
+
+    return f"an option, a dismissal, and a sheet anchored at ({x:g}, {y:g})"
+
+
 def test_crash_handler(bundle: Path) -> None:
     """What the host says when it dies.
 
@@ -7116,6 +7218,8 @@ SCENARIOS = [
     ("__turboModuleProxy answers for this platform and for React Native",
      test_turbomodule_proxy),
     ("a setting written by one run is there for the next", test_settings),
+    ("an action sheet is a popup menu, anchored where it was asked for",
+     test_action_sheet),
     ("an inline view inside a Text is given a box and told where it is",
      test_inline_views),
     ("the clipboard round-trips, and the host still exits afterwards",

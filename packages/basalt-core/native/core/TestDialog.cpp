@@ -72,13 +72,7 @@ std::optional<int> scriptedMenuChoice() {
   return choice;
 }
 
-void presentMenu(const MenuRequest &request, MenuCallback onChosen) {
-  const std::optional<int> scripted = scriptedMenuChoice();
-  if (!scripted.has_value()) {
-    showMenu(request, std::move(onChosen));
-    return;
-  }
-
+int scriptedMenuIndex(const std::vector<MenuEntry> &entries, int scripted) {
   // Out of range answers as a dismissal rather than being clamped, which is the
   // opposite of what presentAlert does with a button. A menu's entries are not
   // interchangeable -- picking the nearest one would run something the script
@@ -87,20 +81,33 @@ void presentMenu(const MenuRequest &request, MenuCallback onChosen) {
   // `menuEntryCount` and not `entries.size()`: an index counts every level now,
   // so the valid range is the whole tree and a script naming a submenu's item
   // would otherwise be refused for being past the end of the top level.
-  const int count = menuEntryCount(request.entries);
-  int index = (*scripted < 0 || *scripted >= count) ? -1 : *scripted;
-
-  // And a dismissal for anything a person could not have chosen either, so that
-  // what a script can answer is what a real menu can: a parent opens rather than
-  // chooses, a separator is a line, and an entry naming a role this desktop
-  // cannot perform is not in the menu at all.
-  if (index >= 0) {
-    const MenuEntry *entry = menuEntryAt(request.entries, index);
-    if (entry == nullptr || entry->isParent() || entry->isSeparator() ||
-        !menuEntryShown(*entry)) {
-      index = -1;
-    }
+  const int count = menuEntryCount(entries);
+  if (scripted < 0 || scripted >= count) {
+    return -1;
   }
+
+  // And a dismissal for anything a person could not have chosen either: a
+  // parent opens rather than chooses, a separator is a line, an entry naming a
+  // role this desktop cannot perform is not in the menu at all, and a disabled
+  // entry is drawn and refuses the click. The last of those was missing until
+  // an action sheet put its title in the menu as a disabled entry, which a
+  // script could then "choose".
+  const MenuEntry *entry = menuEntryAt(entries, scripted);
+  if (entry == nullptr || entry->isParent() || entry->isSeparator() || !menuEntryShown(*entry) ||
+      !entry->enabled) {
+    return -1;
+  }
+  return scripted;
+}
+
+void presentMenu(const MenuRequest &request, MenuCallback onChosen) {
+  const std::optional<int> scripted = scriptedMenuChoice();
+  if (!scripted.has_value()) {
+    showMenu(request, std::move(onChosen));
+    return;
+  }
+
+  const int index = scriptedMenuIndex(request.entries, *scripted);
 
   // The platform's half of a role still happens: this seam exists to skip the
   // window a person would have clicked, not to skip what choosing the item does.

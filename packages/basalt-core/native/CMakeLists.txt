@@ -90,6 +90,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_momentum.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_share.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_store.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_action_sheet.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sourcecode.cpp
     CACHE INTERNAL "core's own tests")
 
@@ -233,6 +234,8 @@ if(DEFINED RN_DIR)
     core/ColorScheme.cpp
     # Clipboard, Vibration, Alert, Linking, I18nManager, AccessibilityInfo --
     # the core modules ReactCxxPlatform does not provide.
+    # `ActionSheetIOS`, which is a popup menu here; see the header.
+    core/ActionSheet.cpp
     core/CoreModules.cpp
     # <ActivityIndicator>, <Switch>, <RefreshControl> and <Modal>: the props
     # three view layers have to read identically, plus the two shadow-node

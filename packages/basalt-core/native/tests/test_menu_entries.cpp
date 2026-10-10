@@ -16,6 +16,7 @@
 #include "TestHarness.h"
 
 #include "PlatformServices.h"
+#include "TestDialog.h"
 
 #include <sstream>
 #include <string>
@@ -154,4 +155,38 @@ TEST(a_mark_does_not_change_whether_an_entry_is_drawn_or_counted) {
     EXPECT(!entry.isParent());
   }
   EXPECT_EQ(basalt::menuEntryCount(entries), 3);
+}
+
+// --- What a script may answer ------------------------------------------------
+//
+// `BASALT_TEST_MENU` skips the presentation and nothing else, so the index it
+// names has to be one a person could have clicked. Four things are not: an
+// index past the end of the tree, a separator, a submenu's parent, and an entry
+// that is drawn greyed. The last was missing until an action sheet put its title
+// into the menu as a disabled entry; see core/ActionSheet.h.
+
+TEST(a_script_may_only_answer_what_a_person_could_have_clicked) {
+  const std::vector<MenuEntry> entries = {item("first"), MenuEntry::separator(),
+                                          parent("more", {item("nested")}), item("last")};
+
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 0), 0);
+  // The separator, which is a line.
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 1), -1);
+  // The parent, which opens rather than chooses -- and its child, which is a
+  // real choice at index 3 of the pre-order walk.
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 2), -1);
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 3), 3);
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 4), 4);
+  // Past the end, and a dismissal, which is already one.
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 5), -1);
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, -1), -1);
+}
+
+TEST(a_script_cannot_choose_a_disabled_entry) {
+  MenuEntry greyed = item("not now");
+  greyed.enabled = false;
+  const std::vector<MenuEntry> entries = {greyed, item("go")};
+
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 0), -1);
+  EXPECT_EQ(basalt::scriptedMenuIndex(entries, 1), 1);
 }

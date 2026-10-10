@@ -71,6 +71,10 @@ so anything importing them dies at startup.
   reached; each needed a file in `src/overrides` as well. **The test for this is
   cheap and nobody ran it for years: read the JavaScript of the API before
   implementing the module under it.**
+
+  And read it rather than guessing from the name: `ActionSheetIOS.js` is as
+  iOS-named as a file gets and has no branch at all, so the module alone was
+  enough for it. The two shapes are not told apart by anything but the file.
 - **Notifications on macOS need a person.** The implementation is real:
   `UNUserNotificationCenter`, behind the bundle check that keeps an unbundled
   host from raising `bundleProxyForCurrentProcess is nil`, and the first send
