@@ -1222,3 +1222,232 @@ TEST(win32_describe_prints_a_blend_mode) {
   EXPECT(root->describeTree().find("blend=") == std::string::npos);
   EXPECT(!child->blends());
 }
+
+// ---------------------------------------------------------------------------
+// `boxShadow`.
+//
+// **This host is the only one of the three that can be asked in pixels**, which
+// is why these tests are here rather than being the same tests as the others'.
+// GSK's shadows are render nodes its unit tests walk; macOS composites a
+// CALayer's shadow in the window server, and `renderInContext:` -- which is
+// what this project's snapshots use -- draws none of it, measured on a bare
+// layer. Direct2D draws into the same bitmap as everything else, so a shadow is
+// just pixels.
+//
+// A black shadow on a white view in a transparent root: the three answers are
+// far apart, and alpha says which of "shadow", "view" and "nothing" a pixel is.
+// ---------------------------------------------------------------------------
+namespace {
+
+// A white view at (30,30), 40 by 40, inside a 100 by 100 root, with one shadow.
+// The view is returned so a test can change it.
+RnWin32View *shadowedBox(Tree &tree,
+                         RnWin32View *root,
+                         const RnWin32View::BoxShadow &shadow) {
+  RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
+  view->setBoxShadows({shadow});
+  root->insertChild(view, 0);
+  return view;
+}
+
+RnWin32View::BoxShadow blackShadow(float dx, float dy, float blur, float spread) {
+  RnWin32View::BoxShadow shadow;
+  shadow.dx = dx;
+  shadow.dy = dy;
+  shadow.blur = blur;
+  shadow.spread = spread;
+  shadow.colour[3] = 1.0f;
+  return shadow;
+}
+
+} // namespace
+
+TEST(win32_paint_an_outset_shadow_lands_at_its_offset) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  shadowedBox(tree, root, blackShadow(10.0f, 10.0f, 0.0f, 0.0f));
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The shadow's own box is (40,40) to (80,80): below and right of the view,
+  // which is what dx and dy mean and the thing most easily put on the wrong
+  // axis.
+  EXPECT_PIXEL(pixels, 75, 75, 0, 0, 0, 255);
+  // The view itself, untouched, and the corner the shadow moved away from.
+  EXPECT_PIXEL(pixels, 35, 35, 255, 255, 255, 255);
+  // Above and left of the view: nothing at all, where a shadow with its offset
+  // negated would be.
+  EXPECT_PIXEL(pixels, 25, 25, 0, 0, 0, 0);
+}
+
+TEST(win32_paint_a_shadows_spread_grows_its_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  shadowedBox(tree, root, blackShadow(0.0f, 0.0f, 0.0f, 6.0f));
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Four points out from the view's edge, inside the spread. With no spread
+  // this is nothing, and a spread read as an offset would put it on one side
+  // only.
+  EXPECT_PIXEL(pixels, 26, 50, 0, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 74, 50, 0, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 26, 0, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 74, 0, 0, 0, 255);
+  // And eight out, past it.
+  EXPECT_PIXEL(pixels, 22, 50, 0, 0, 0, 0);
+}
+
+TEST(win32_paint_a_shadows_blur_softens_its_edge) {
+  const auto alphaAt = [](float blur, float spread, unsigned x, unsigned y) {
+    Tree tree;
+    RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+    shadowedBox(tree, root, blackShadow(0.0f, 0.0f, blur, spread));
+    return static_cast<int>(basalt::win32::renderToPixels(*root).at(x, y).alpha);
+  };
+
+  // Two points out past the hard edge of a six point spread, which is at 24:
+  // nothing without a blur, and something with one.
+  EXPECT_EQ(alphaAt(0.0f, 6.0f, 50, 22), 0);
+  EXPECT(alphaAt(12.0f, 6.0f, 50, 22) > 20);
+
+  // And a blur is not simply a wider spread: well inside the shape it is still
+  // opaque. Twelve points inside the edge of a twenty-four point spread, which
+  // is two standard deviations of a twelve point blur -- and outside the view's
+  // own box, since that is the only place an outset shadow shows at all.
+  EXPECT(alphaAt(12.0f, 24.0f, 50, 18) > 200);
+}
+
+// The shadow is not painted under the view that casts it, which a translucent
+// background is the only way to see -- and is the reason the clip is a shape
+// rather than a rectangle.
+TEST(win32_paint_an_outset_shadow_is_not_painted_under_its_own_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = shadowedBox(tree, root, blackShadow(0.0f, 0.0f, 0.0f, 10.0f));
+  // Half-transparent white: a shadow underneath would show through it as grey.
+  view->setBackgroundColor(1.0f, 1.0f, 1.0f, 0.5f, true);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Inside the view: the background over nothing, so white at half alpha.
+  EXPECT_PIXEL(pixels, 50, 50, 255, 255, 255, 128);
+  // Outside it, where the spread reaches: the shadow.
+  EXPECT_PIXEL(pixels, 25, 50, 0, 0, 0, 255);
+}
+
+TEST(win32_paint_an_inset_shadow_stays_inside_the_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View::BoxShadow shadow = blackShadow(0.0f, 0.0f, 0.0f, 6.0f);
+  shadow.inset = true;
+  shadowedBox(tree, root, shadow);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // A ring just inside the edge, where an outset shadow would be just outside
+  // it: at (32,50) the shadow, at (26,50) nothing.
+  EXPECT_PIXEL(pixels, 32, 50, 0, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 26, 50, 0, 0, 0, 0);
+  // And the middle is the view's own white: an inset shadow with no offset is a
+  // ring, not a fill.
+  EXPECT_PIXEL(pixels, 50, 50, 255, 255, 255, 255);
+}
+
+// An inset shadow with an offset is a crescent, which is what says the hole is
+// moved rather than the shape.
+TEST(win32_paint_an_inset_shadow_with_an_offset_is_a_crescent) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View::BoxShadow shadow = blackShadow(0.0f, 8.0f, 0.0f, 0.0f);
+  shadow.inset = true;
+  shadowedBox(tree, root, shadow);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The hole moved down by eight, so the top eight points inside the box are
+  // shadow and the bottom edge is the view's own colour.
+  EXPECT_PIXEL(pixels, 50, 34, 0, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 50, 65, 255, 255, 255, 255);
+}
+
+// The first shadow in the list is the one on top, which CSS says and both other
+// hosts implement by painting the list backwards.
+TEST(win32_paint_the_first_shadow_in_the_list_is_on_top) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View::BoxShadow red = blackShadow(10.0f, 10.0f, 0.0f, 0.0f);
+  red.colour[0] = 1.0f;
+  RnWin32View::BoxShadow blue = blackShadow(10.0f, 10.0f, 0.0f, 0.0f);
+  blue.colour[2] = 1.0f;
+  RnWin32View *view = tree.colouredBox(2, 30, 30, 40, 40, 1.0f, 1.0f, 1.0f);
+  view->setBoxShadows({red, blue});
+  root->insertChild(view, 0);
+
+  // Both shadows are in the same place, so what shows is whichever is on top.
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 75, 75, 255, 0, 0, 255);
+}
+
+TEST(win32_paint_a_shadow_with_no_colour_is_not_drawn) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  // Alpha zero is what a shadow React Native could not parse arrives as, and
+  // painting it black -- which is what the colour's other three components say
+  // -- is the failure mode all three hosts had to avoid.
+  RnWin32View::BoxShadow nothing;
+  nothing.dx = 10.0f;
+  nothing.dy = 10.0f;
+  nothing.spread = 10.0f;
+  shadowedBox(tree, root, nothing);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT_PIXEL(pixels, 75, 75, 0, 0, 0, 0);
+  // And the view itself is still there: skipping the shadow must not skip the
+  // view with it.
+  EXPECT_PIXEL(pixels, 50, 50, 255, 255, 255, 255);
+}
+
+// A negative blur radius, which CSS forbids and React Native parses anyway. GSK
+// asserts on one, so the GTK half clamps it; this host has to do the same, and
+// the spread beside it has to stay signed.
+TEST(win32_paint_a_negative_blur_is_clamped_and_a_negative_spread_is_not) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View::BoxShadow shadow = blackShadow(0.0f, 0.0f, -8.0f, 6.0f);
+  shadowedBox(tree, root, shadow);
+
+  // A clamped blur is no blur, so the spread's edge is hard and in the same
+  // place it is without one.
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT_PIXEL(pixels, 26, 50, 0, 0, 0, 255);
+  EXPECT_PIXEL(pixels, 22, 50, 0, 0, 0, 0);
+
+  // And a negative spread shrinks the shadow rather than growing it: with an
+  // offset of twelve and a spread of minus six, the shadow's box is (46,46) to
+  // (76,76), so the far corner is inside it and the near one is not.
+  Tree shrunk;
+  RnWin32View *root2 = shrunk.box(1, 0, 0, 100, 100);
+  shadowedBox(shrunk, root2, blackShadow(12.0f, 12.0f, 0.0f, -6.0f));
+  const RnPixels narrow = basalt::win32::renderToPixels(*root2);
+  EXPECT_PIXEL(narrow, 74, 74, 0, 0, 0, 255);
+  EXPECT_PIXEL(narrow, 79, 79, 0, 0, 0, 0);
+}
+
+TEST(win32_describe_prints_a_box_shadow_as_the_other_hosts_do) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 30, 30, 40, 40);
+  root->insertChild(view, 0);
+
+  EXPECT(root->describeTree().find("shadow=") == std::string::npos);
+
+  RnWin32View::BoxShadow outset = blackShadow(0.0f, 4.0f, 8.0f, 0.0f);
+  outset.colour[3] = 0.25f;
+  RnWin32View::BoxShadow inset = blackShadow(0.0f, 1.0f, 0.0f, 0.0f);
+  inset.colour[0] = 1.0f;
+  inset.colour[1] = 1.0f;
+  inset.colour[2] = 1.0f;
+  inset.inset = true;
+  view->setBoxShadows({outset, inset});
+
+  // The same two the end-to-end scenario reads, spelled the same way: the
+  // scenario greps for these strings on all three hosts.
+  const std::string dump = root->describeTree();
+  EXPECT(dump.find("shadow=(0,4,8,0,#00000040)") != std::string::npos);
+  EXPECT(dump.find("shadow=(inset 0,1,0,0,#ffffffff)") != std::string::npos);
+}

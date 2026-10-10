@@ -10,8 +10,10 @@
 #include "Win32Offscreen.h"
 #include "Win32Strings.h"
 
-// Which frame an animated image is showing, shared with the other two hosts.
+// Which frame an animated image is showing, and the curve a box shadow's corner
+// grows by. Both shared with the other two hosts.
 #include "ImageAnimation.h"
+#include "ShadowShape.h"
 
 // Before d2d1.h, which wants the base Windows types and does not pull them in
 // itself. NOMINMAX and WIN32_LEAN_AND_MEAN come from the package's CMakeLists;
@@ -586,6 +588,11 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target,
     const ScopedOpacity fade(target,
                              blendLayer != nullptr ? 1.0f : opacity_ * filters_.opacity);
 
+    // The outset shadows, behind everything this view draws: CSS puts them
+    // under the background, which is also the only place they can go without
+    // showing through a translucent one.
+    paintBoxShadows(target, false);
+
     // The background is always clipped to the rounded box, even when children
     // are not: `overflow: visible` lets a child escape the corner, but the
     // view's own fill still has to respect its border radius.
@@ -612,6 +619,11 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target,
         }
       }
     }
+
+    // The inset shadows, over the background and under the content, which is
+    // where CSS puts them. (AppKit gets this one wrong and says so: a sublayer
+    // is above the view's own text.)
+    paintBoxShadows(target, true);
 
     // Then the image, then the text, then the children -- the order
     // `rn_view_snapshot` uses on GTK. Nothing in React Native puts two of these
@@ -932,6 +944,171 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
   }
 
   context->DrawImage(source.Get(), D2D1::Point2F(0.0f, 0.0f));
+}
+
+void RnWin32View::setBoxShadows(std::vector<BoxShadow> shadows) {
+  boxShadows_ = std::move(shadows);
+}
+
+void RnWin32View::paintBoxShadows(ID2D1RenderTarget *target, bool inset) const {
+  if (boxShadows_.empty()) {
+    return;
+  }
+  // Back to front: CSS's first shadow is the one on top, so the list is walked
+  // in reverse and the first one ends up painted last. Both other hosts do the
+  // same with the same list.
+  for (size_t index = boxShadows_.size(); index > 0; index--) {
+    const BoxShadow &shadow = boxShadows_[index - 1];
+    if (shadow.inset != inset) {
+      continue;
+    }
+    // A shadow with no colour at all is one React Native could not parse, and
+    // painting it black is worse than painting nothing. The other two hosts
+    // skip it for the same reason.
+    if (shadow.colour[3] <= 0.0f) {
+      continue;
+    }
+    paintBoxShadow(target, shadow);
+  }
+}
+
+// One box shadow: a shape, a blur of that shape's alpha, and a clip.
+//
+// GSK has a shadow node per kind whose arguments are CSS's, and AppKit has
+// CALayer's shadow properties with a path; Direct2D has `CLSID_D2D1Shadow`,
+// which takes what is drawn and hands back its alpha blurred and coloured. So
+// the blur is the platform's and the work here is the geometry, which is the
+// same geometry the AppKit half builds as a CGPath -- and the corner radii grow
+// through `core/ShadowShape.h`'s curve on both, because a spread is not an
+// addition.
+//
+// **An outset shadow never paints inside the box that casts it and an inset one
+// never outside it**, which is CSS and is also what keeps a translucent
+// background from showing the shadow underneath it. That is the clip, and for
+// the outset case it is a shape no rectangle can express: everything around a
+// rounded box. See `geometryWithHole`.
+void RnWin32View::paintBoxShadow(ID2D1RenderTarget *target, const BoxShadow &shadow) const {
+  ComPtr<ID2D1Factory> factory;
+  target->GetFactory(factory.GetAddressOf());
+  if (!factory) {
+    return;
+  }
+
+  // CSS does not allow a negative blur radius and React Native parses one
+  // anyway, so it is clamped here. The spread may be negative and is not: GSK
+  // asserts the same pair, and a sabotage run that swapped the two took that
+  // host's suite down with it.
+  const float blur = shadow.blur > 0.0f ? shadow.blur : 0.0f;
+  // Room around the box for everything the shadow can reach. A gaussian is
+  // truncated at about three standard deviations, which is one and a half
+  // radii; twice the radius is the usual slack and is what the room below is.
+  const float room = std::abs(shadow.dx) + std::abs(shadow.dy)
+      + std::abs(shadow.spread) + 2.0f * blur + 2.0f;
+  const D2D1_RECT_F box = D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height);
+  const D2D1_RECT_F around =
+      D2D1::RectF(-room, -room, frame_.width + room, frame_.height + room);
+  const float square[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+  // The shape that casts the shadow, and the clip that keeps it where CSS puts
+  // it.
+  ComPtr<ID2D1Geometry> caster;
+  ComPtr<ID2D1Geometry> mask;
+  float radii[8];
+  if (!shadow.inset) {
+    for (int corner = 0; corner < 8; corner++) {
+      radii[corner] =
+          static_cast<float>(basalt::spreadRadius(cornerRadii_[corner], shadow.spread));
+    }
+    const D2D1_RECT_F grown = D2D1::RectF(box.left - shadow.spread + shadow.dx,
+                                          box.top - shadow.spread + shadow.dy,
+                                          box.right + shadow.spread + shadow.dx,
+                                          box.bottom + shadow.spread + shadow.dy);
+    caster = roundedBoxGeometry(factory.Get(), grown, radii);
+    mask = geometryWithHole(factory.Get(),
+                            roundedBoxGeometry(factory.Get(), around, square).Get(),
+                            roundedBoxGeometry(factory.Get(), box, cornerRadii_).Get());
+  } else {
+    // The hole the shadow spills in from: the box moved by the offset and
+    // shrunk by the spread. An inset shadow with no offset is a ring and one
+    // with an offset is a crescent, which falls out of this rather than being
+    // arranged.
+    for (int corner = 0; corner < 8; corner++) {
+      radii[corner] =
+          static_cast<float>(basalt::spreadRadius(cornerRadii_[corner], -shadow.spread));
+    }
+    D2D1_RECT_F hole = D2D1::RectF(box.left + shadow.spread + shadow.dx,
+                                   box.top + shadow.spread + shadow.dy,
+                                   box.right - shadow.spread + shadow.dx,
+                                   box.bottom - shadow.spread + shadow.dy);
+    // A spread wider than the box turns the hole inside out, which would draw
+    // the shape rather than the hole.
+    if (hole.right < hole.left) {
+      hole.right = hole.left;
+    }
+    if (hole.bottom < hole.top) {
+      hole.bottom = hole.top;
+    }
+    caster = geometryWithHole(factory.Get(),
+                              roundedBoxGeometry(factory.Get(), around, square).Get(),
+                              roundedBoxGeometry(factory.Get(), hole, radii).Get());
+    mask = roundedBoxGeometry(factory.Get(), box, cornerRadii_);
+  }
+  if (!caster) {
+    return;
+  }
+
+  const ScopedGeometryClip clip(mask ? target : nullptr, mask.Get());
+
+  // The blur, which is an effect and so needs a device context and a bitmap to
+  // run over: the shape goes into an offscreen the size of the box plus the
+  // room, and `CLSID_D2D1Shadow` blurs that bitmap's alpha and colours it. The
+  // shape is drawn in opaque black because only its alpha is read.
+  ComPtr<ID2D1DeviceContext> context;
+  if (blur > 0.0f && SUCCEEDED(target->QueryInterface(IID_PPV_ARGS(&context)))) {
+    const ComPtr<ID2D1BitmapRenderTarget> offscreen =
+        createOffscreen(target, frame_.width + 2.0f * room, frame_.height + 2.0f * room);
+    ComPtr<ID2D1SolidColorBrush> ink;
+    if (offscreen
+        && SUCCEEDED(offscreen->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f),
+                                                      ink.GetAddressOf()))) {
+      offscreen->BeginDraw();
+      offscreen->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+      offscreen->SetTransform(D2D1::Matrix3x2F::Translation(room, room));
+      offscreen->FillGeometry(caster.Get(), ink.Get());
+      offscreen->SetTransform(D2D1::Matrix3x2F::Identity());
+      ComPtr<ID2D1Bitmap> drawn;
+      ComPtr<ID2D1Effect> effect;
+      if (SUCCEEDED(offscreen->EndDraw())
+          && SUCCEEDED(offscreen->GetBitmap(drawn.GetAddressOf())) && drawn
+          && SUCCEEDED(context->CreateEffect(CLSID_D2D1Shadow, effect.GetAddressOf()))
+          && effect) {
+        effect->SetInput(0, drawn.Get());
+        // Half the radius is the standard deviation, which is the conversion
+        // every blur in this host makes and the one React Native's iOS half
+        // settled on.
+        effect->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, blur / 2.0f);
+        const D2D1_VECTOR_4F tint{
+            shadow.colour[0], shadow.colour[1], shadow.colour[2], shadow.colour[3]};
+        effect->SetValue(D2D1_SHADOW_PROP_COLOR, tint);
+        // Back where the shape was: it was drawn `room` in from the bitmap's
+        // own origin so the blur had somewhere to go.
+        context->DrawImage(effect.Get(), D2D1::Point2F(-room, -room));
+        return;
+      }
+    }
+  }
+
+  // No blur asked for, or no effect to be had: the shape filled in the
+  // shadow's colour. For a blur of zero that is the whole picture, and
+  // otherwise it is the same fallback the text shadow takes -- a hard shadow
+  // rather than none, since a prop that cannot be honoured should not take the
+  // view with it.
+  ComPtr<ID2D1SolidColorBrush> brush;
+  const D2D1_COLOR_F colour =
+      D2D1::ColorF(shadow.colour[0], shadow.colour[1], shadow.colour[2], shadow.colour[3]);
+  if (SUCCEEDED(target->CreateSolidColorBrush(colour, brush.GetAddressOf()))) {
+    target->FillGeometry(caster.Get(), brush.Get());
+  }
 }
 
 // CSS's outline, outside the box and over everything.
@@ -1886,6 +2063,26 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     }
     out += ")";
   }
+  // Box shadows, each in full and in the order the app wrote them. Nothing else
+  // in this dump can say a shadow is there, and the numbers are the whole
+  // feature: an offset that went to the wrong axis or a spread read as a blur
+  // still draws a plausible shadow. Spelled exactly as the other two hosts
+  // spell it, `inset ` included, because this line is read by one end-to-end
+  // scenario on all three.
+  for (const BoxShadow &shadow : boxShadows_) {
+    appendFormat(out,
+                 " shadow=(%s%g,%g,%g,%g,#%02x%02x%02x%02x)",
+                 shadow.inset ? "inset " : "",
+                 static_cast<double>(shadow.dx),
+                 static_cast<double>(shadow.dy),
+                 static_cast<double>(shadow.blur),
+                 static_cast<double>(shadow.spread),
+                 toByte(shadow.colour[0]),
+                 toByte(shadow.colour[1]),
+                 toByte(shadow.colour[2]),
+                 toByte(shadow.colour[3]));
+  }
+
   if (hasTransform_) {
     // The 2D affine part, in the order CSS writes a matrix(): a, b, c, d, tx,
     // ty. The other two platforms print the same six from their own matrix

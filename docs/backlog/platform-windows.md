@@ -239,11 +239,37 @@ and none of it is a missing half.
     converted into multiples of the stroke width in one place. Three tests: ink
     along the top with gaps, dots gapping more than dashes, nothing painted
     outside the frame, and the dump.
-  - `boxShadow`, outset and inset, any number of them. GSK has a shadow node per
-    kind and macOS has CALayer's shadow properties; Direct2D has
-    `CLSID_D2D1Shadow`, which takes a blurred alpha mask of what is drawn, so the
-    work is the geometry rather than the blur. backlog/correctness.md has what the
-    other two decided, including that a negative blur radius has to be clamped.
+  - ~~`boxShadow`, outset and inset, any number of them.~~ Done 2026-10-10, and
+    the entry had it right: `CLSID_D2D1Shadow` takes what is drawn and hands
+    back its alpha blurred and coloured, so the blur is the platform's and the
+    work is the geometry.
+
+    **The geometry is the same geometry the AppKit half builds**, and the curve
+    a corner grows by moved to `core/ShadowShape.h` so that it is written once:
+    a spread is not an addition, the CSS spec gives a cubic, and a second
+    hand-rolled copy of it is exactly what ends up subtly different on one
+    platform. AppKit now calls it too. An outset shadow is the box grown by the
+    spread and moved by the offset; an inset one is a wide rectangle with the
+    hole the shadow spills in from punched out of it, so a shadow with no offset
+    is a ring and one with an offset is a crescent without either being
+    arranged.
+
+    **An outset shadow never paints inside the box that casts it and an inset
+    one never outside**, which is CSS and is also what stops a translucent
+    background showing the shadow underneath it. For the outset case that is a
+    clip no rectangle can express -- everything around a rounded box -- so
+    `Win32Clip.h` grew `geometryWithHole`, an even-odd geometry group, which is
+    both that clip and the shape an inset shadow is cast by.
+
+    Eleven tests, and **this is the only one of the three hosts that can be
+    asked in pixels**: GSK's shadows are render nodes its tests walk, and
+    `renderInContext:` on macOS draws no layer shadow at all. So these assert
+    the picture rather than the arrangement -- the offset's axis, the spread's
+    four sides, that a blur softens an edge a spread leaves hard, that the view
+    itself is untouched, the ring and the crescent, the list's order, a shadow
+    with no colour, and a negative blur clamped while a negative spread stays
+    signed. The two end-to-end scenarios, the CSS one and the legacy one, now
+    run on all three hosts.
   - `backgroundImage`, linear and radial gradients both, with
     `backgroundSize`, `backgroundPosition` and `backgroundRepeat`. The hard half
     is done and is shared: `core/Gradients.h` resolves the angle or the ending
@@ -266,8 +292,8 @@ and none of it is a missing half.
   Each has a unit test per host to copy the assertions from, and an end-to-end
   scenario that is skipped on Windows by name. One consequence worth knowing
   before running it: `scripts/compare_hosts.sh` against Windows will now report
-  the `blur=`, `border-style=`, `cursor=`, `shadow=` and `gradient=` lines as a
-  tree difference, because they are one. That is the script doing its job, and it goes away as each lands.
+  the `cursor=` and `gradient=` lines as a tree difference, because they are
+  one. That is the script doing its job, and it goes away as each lands.
 
 - **`accessibilityLabelledBy` sets no relation.** The hard half is done and is
   shared: `core/LabelRegistry.h` resolves a `nativeID` to a tag and says when,

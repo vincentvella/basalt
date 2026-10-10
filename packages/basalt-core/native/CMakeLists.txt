@@ -58,6 +58,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_filters.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blend_modes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_legacy_shadow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_shadow_shape.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_background_layers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_shadows.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_font_scaling.cpp

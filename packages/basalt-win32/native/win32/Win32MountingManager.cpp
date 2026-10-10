@@ -2,6 +2,7 @@
 
 #include "BlendModes.h"
 #include "Filters.h"
+#include "LegacyShadow.h"
 
 #include "DirectWriteLayout.h"
 #include "ImageBytes.h"
@@ -424,6 +425,37 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
     case facebook::react::PointerEventsMode::Auto:
       view->setPointerEvents(win32::RnWin32View::PointerEvents::Auto);
       break;
+  }
+
+  // `boxShadow`, as React Native's own six fields: GSK's shadow nodes take the
+  // same six and CALayer's properties are built from them, so nothing converts
+  // here either and each view layer decides what a shadow is made of.
+  //
+  // The list also carries the older iOS shadow props, converted in
+  // `core/LegacyShadow.h`: one mechanism from here down, so a view with
+  // `shadowOpacity` and a view with `boxShadow` take the same path, and a
+  // legacy shadow goes behind every CSS one.
+  {
+    const std::vector<facebook::react::BoxShadow> all = basalt::allShadows(*props);
+    std::vector<win32::RnWin32View::BoxShadow> shadows;
+    shadows.reserve(all.size());
+    for (const auto &shadow : all) {
+      win32::RnWin32View::BoxShadow one;
+      one.dx = static_cast<float>(shadow.offsetX);
+      one.dy = static_cast<float>(shadow.offsetY);
+      one.blur = static_cast<float>(shadow.blurRadius);
+      one.spread = static_cast<float>(shadow.spreadDistance);
+      if (shadow.color) {
+        const auto components = facebook::react::colorComponentsFromColor(shadow.color);
+        one.colour[0] = components.red;
+        one.colour[1] = components.green;
+        one.colour[2] = components.blue;
+        one.colour[3] = components.alpha;
+      }
+      one.inset = shadow.inset;
+      shadows.push_back(one);
+    }
+    view->setBoxShadows(std::move(shadows));
   }
 
   // `mixBlendMode`, as a CSS keyword, shared with the other two hosts for the

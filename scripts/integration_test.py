@@ -4220,22 +4220,18 @@ def test_border_style(bundle: Path) -> None:
 def test_box_shadow(bundle: Path) -> None:
     """`boxShadow` reaches the view, the list and the inset flag with it.
 
-    A shadow is the one prop here that neither host can be asked about in pixels.
+    A shadow is a prop two of the three hosts cannot be asked about in pixels.
     GTK's is a GSK node, which its unit tests walk; macOS composites it in Core
     Animation, and `renderInContext:` -- which is what this project's own
-    snapshots use -- draws no shadow at all, measured on a bare layer. So the
-    tree dump is what says a shadow arrived, and this reads it.
+    snapshots use -- draws no shadow at all, measured on a bare layer. Windows
+    draws it into the same bitmap as everything else, so its own suite does ask
+    in pixels. The tree dump is what all three can be asked, and this reads it.
 
     Two shadows on one view, one of them inset, because a host can drop the
     second of a list or lose the inset flag and still draw something plausible:
     e2e/views.tsx writes them as one CSS shorthand, so this also covers React
     Native's own parse of it.
-
-    Windows draws no shadows yet, so it is skipped by name.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws no box shadows yet")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)
@@ -5030,11 +5026,7 @@ def test_legacy_shadow(bundle: Path) -> None:
     blur of 6 at #00000080. A host that passed the radius through reports a 3,
     and one that dropped the opacity reports #000000ff.
 
-    Windows draws no shadows at all yet, so it is skipped by name.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws no box shadows yet")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)

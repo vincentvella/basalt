@@ -41,10 +41,6 @@
     }
   ],
   "whys": {
-    "win-shadow": {
-      "text": "CLSID_D2D1Shadow",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "win-gradient": {
       "text": "the gradient brushes",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -311,8 +307,7 @@
     "BaseViewProps.shadowColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-shadow",
+      "windows": "yes",
       "reads": [
         "allShadows"
       ]
@@ -320,8 +315,7 @@
     "BaseViewProps.shadowOffset": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-shadow",
+      "windows": "yes",
       "reads": [
         "allShadows"
       ]
@@ -329,8 +323,7 @@
     "BaseViewProps.shadowOpacity": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-shadow",
+      "windows": "yes",
       "reads": [
         "allShadows"
       ]
@@ -338,8 +331,7 @@
     "BaseViewProps.shadowRadius": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-shadow",
+      "windows": "yes",
       "reads": [
         "allShadows"
       ]
@@ -353,8 +345,7 @@
     "BaseViewProps.boxShadow": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-shadow",
+      "windows": "yes",
       "reads": [
         "allShadows"
       ]

@@ -165,11 +165,13 @@ add_library(basalt_win32_view STATIC
   win32/Win32TitleBarLayout.cpp)
 target_compile_options(basalt_win32_view PRIVATE ${BASALT_WIN32_WARNINGS})
 target_include_directories(basalt_win32_view PUBLIC win32)
-# core/FocusRing.h and core/Backface.h, and nothing else from there. Both are
-# header-only and have no React Native in them, so taking them does not make
-# this target depend on the half that does -- and the alternative is a focus
-# ring that is a different blue on each desktop, and three toolkits each with
-# their own idea of which way a rotated card is facing.
+# The header-only part of core, and only that: FocusRing.h, Backface.h,
+# ImageAnimation.h and ShadowShape.h so far. None of them has React Native in
+# it, so taking them does not make this target depend on the half that does --
+# and the alternative is a focus ring that is a different blue on each desktop,
+# three toolkits each with their own idea of which way a rotated card is facing,
+# a GIF paced differently on each, and a hand-rolled copy of CSS's shadow-corner
+# cubic per platform.
 #
 # Header-only is the constraint, not a preference: this library links no core,
 # so anything it takes from there has to be `inline`.

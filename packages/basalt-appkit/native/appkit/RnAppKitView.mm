@@ -5,6 +5,7 @@
 #include "ImageAnimation.h"
 #include "FocusRing.h"
 #include "ScrollIndicator.h"
+#include "ShadowShape.h"
 
 #include <vector>
 
@@ -180,26 +181,15 @@ struct RnAppKitGradientRecord {
   std::vector<RnAppKitGradientStop> stops;
 };
 
-// A corner radius grown by a shadow's spread, which is not just an addition.
-//
-// The CSS spec says so and gives the curve: a corner tighter than the spread is
-// rounded off more gently than the spread alone would make it, so a small radius
-// on a widely spread shadow does not turn into a circle. Ported from React
-// Native's iOS half, which took it from the same place.
-// See https://drafts.csswg.org/css-backgrounds/#shadow-shape
-static CGFloat RnAppKitSpreadRadius(CGFloat radius, CGFloat spread) {
-  CGFloat adjustment = spread;
-  if (radius < fabs(spread)) {
-    const CGFloat ratio = radius / fabs(spread);
-    adjustment *= 1.0 + pow(ratio - 1.0, 3.0);
-  }
-  return fmax(radius + adjustment, 0);
-}
-
 // The eight radii of a shadow's own box, each grown by the spread.
+//
+// The curve is `core/ShadowShape.h`'s, shared with the Win32 host, which builds
+// a Direct2D geometry where this builds a CGPath and needs the same arithmetic.
+// It lived here first; the comment about what the curve is and why it is not an
+// addition moved with it.
 static void RnAppKitSpreadRadii(const CGFloat radii[8], CGFloat spread, CGFloat out[8]) {
   for (int i = 0; i < 8; i++) {
-    out[i] = RnAppKitSpreadRadius(radii[i], spread);
+    out[i] = static_cast<CGFloat>(basalt::spreadRadius(radii[i], spread));
   }
 }
 

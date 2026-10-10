@@ -109,6 +109,28 @@ roundedBoxGeometry(ID2D1Factory *factory, const D2D1_RECT_F &rect, const float r
   return result;
 }
 
+// Two shapes as one geometry, the second punching a hole in the first.
+//
+// An even-odd fill over a group, which is Direct2D's way of saying "between
+// these two outlines". Three things here are that shape: an outset box shadow,
+// which is cast by the box and must not paint inside it; an inset one, which is
+// cast by a wide rectangle with the hole the shadow spills in from; and the clip
+// that keeps an outset shadow outside the box that casts it.
+inline Microsoft::WRL::ComPtr<ID2D1Geometry>
+geometryWithHole(ID2D1Factory *factory, ID2D1Geometry *outer, ID2D1Geometry *hole) {
+  Microsoft::WRL::ComPtr<ID2D1Geometry> result;
+  if (factory == nullptr || outer == nullptr || hole == nullptr) {
+    return result;
+  }
+  ID2D1Geometry *both[2] = {outer, hole};
+  Microsoft::WRL::ComPtr<ID2D1GeometryGroup> group;
+  if (SUCCEEDED(factory->CreateGeometryGroup(
+          D2D1_FILL_MODE_ALTERNATE, both, 2, group.GetAddressOf()))) {
+    result = group;
+  }
+  return result;
+}
+
 class ScopedGeometryClip {
  public:
   // A null target means "no clip"; the caller then does not have to choose
@@ -126,6 +148,12 @@ class ScopedGeometryClip {
   ScopedGeometryClip(ID2D1RenderTarget *target, const D2D1_RECT_F &rect, const float radii[8])
       : target_(target) {
     push(rect, radii);
+  }
+
+  // Any shape at all, for the clips a box is not: everything *outside* a
+  // rounded box, which is what an outset shadow is allowed to paint on.
+  ScopedGeometryClip(ID2D1RenderTarget *target, ID2D1Geometry *mask) : target_(target) {
+    pushMask(mask);
   }
 
   ~ScopedGeometryClip() {
@@ -151,6 +179,14 @@ class ScopedGeometryClip {
       return;
     }
 
+    pushMask(mask.Get());
+  }
+
+  void pushMask(ID2D1Geometry *mask) {
+    if (target_ == nullptr || mask == nullptr) {
+      return;
+    }
+
     // One layer object per push. Direct2D pools the backing surfaces itself, so
     // this costs an allocation rather than a render target; caching one per
     // view is the optimisation to make if a profile ever asks for it.
@@ -160,7 +196,7 @@ class ScopedGeometryClip {
 
     auto parameters = D2D1::LayerParameters();
     parameters.contentBounds = D2D1::InfiniteRect();
-    parameters.geometricMask = mask.Get();
+    parameters.geometricMask = mask;
     target_->PushLayer(parameters, layer_.Get());
     pushed_ = true;
   }

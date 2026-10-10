@@ -119,7 +119,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   props the backlog thought were handled. These are the ones no host mentions
   anywhere, and which nothing in this backlog mentioned either:
 
-  - ~~`boxShadow`~~, **done on GTK and AppKit 2026-10-08**, and with it the
+  - ~~`boxShadow`~~, **done on GTK and AppKit 2026-10-08 and on Windows
+    2026-10-10**, and with it the
     older `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`,
     which are iOS's pre-CSS spelling of the same idea and are now converted into
     it. What the work turned out to be is at the end of this entry.
@@ -205,6 +206,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and masks on the other, plus an end-to-end scenario that reads the dump on
   both. Sabotages checked: a spread applied as a blur, dx and dy swapped, inset
   painted as outset, and a clipping view keeping its shadow inside.
+
+  **Windows, done 2026-10-10, and it is the host that can be asked in pixels.**
+  `CLSID_D2D1Shadow` blurs the alpha of whatever is drawn and colours it, so the
+  blur is the platform's and the work is the geometry: the box grown by the
+  spread and moved by the offset for an outset shadow, and a wide rectangle with
+  that box punched out of it for an inset one, which is where the ring and the
+  crescent come from. It draws into the same bitmap as everything else, so its
+  eleven tests assert the picture -- the offset's axis, the four sides of a
+  spread, a blur softening an edge a spread leaves hard, the list's order, and a
+  negative blur clamped while a negative spread stays signed. The corner curve
+  is now `core/ShadowShape.h`, shared with AppKit, which had it first.
 
   **`backgroundImage` as a linear gradient, done on GTK and AppKit 2026-10-08.**
   Two halves, and the interesting one is not the drawing.
