@@ -1,5 +1,6 @@
 #include "Win32MountingManager.h"
 
+#include "BlendModes.h"
 #include "Filters.h"
 
 #include "DirectWriteLayout.h"
@@ -424,6 +425,13 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
       view->setPointerEvents(win32::RnWin32View::PointerEvents::Auto);
       break;
   }
+
+  // `mixBlendMode`, as a CSS keyword, shared with the other two hosts for the
+  // reason `core/BlendModes.h` gives: React Native's list is CSS's and so is
+  // every compositor's, so the keyword is the thing that crosses the seam and
+  // each view layer maps it. Direct2D's blend modes are CSS's plus a few of its
+  // own, including the one GSK has no node for.
+  view->setBlendMode(basalt::blendModeName(props->mixBlendMode));
 
   // `filter`. The arithmetic is `core/Filters.h`'s and is shared with the other
   // two hosts: nine CSS functions collapse to one colour matrix, one blur, one

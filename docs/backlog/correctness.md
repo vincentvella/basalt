@@ -141,9 +141,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   - ~~`outlineColor`, `outlineWidth`, `outlineOffset` and `outlineStyle`~~,
     **done on GTK and AppKit 2026-10-08**. What the work turned out to be is at
     the end of this entry.
-  - ~~`mixBlendMode`~~, **done on GTK and AppKit 2026-10-08**; `isolation`
-    beside it is deliberately not implemented, and both are at the end of this
-    entry.
+  - ~~`mixBlendMode`~~, **done on GTK and AppKit 2026-10-08 and on Windows
+    2026-10-10**; `isolation` beside it is deliberately not implemented, and
+    both are at the end of this entry.
   - ~~`hitSlop`~~, **done on GTK and AppKit 2026-10-08**. The one of the nine
     that is behaviour rather than decoration, so an app relying on it was wrong
     rather than plain. What the work turned out to be is at the end of this
@@ -459,13 +459,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and a scenario on both hosts. Sabotage: the keyword table, the blend itself, the
   paint-order sort and each host's wiring all fail tests of their own.
 
-  **Windows** has `CLSID_D2D1Blend`, whose `D2D1_BLEND_PROP_MODE` is CSS's list
-  plus a few Direct2D extras, so the arithmetic is the platform's. What it needs
-  is the backdrop as an input: the effect takes two bitmaps, so the parent has to
-  render what is beneath the blended child into an intermediate
-  `ID2D1BitmapRenderTarget` rather than straight to the window, which is the same
-  look-ahead the GTK half does and the reason this is not a one-line port. Its
-  scenario skips by name.
+  **Windows, done 2026-10-10, and it is the host with all seventeen.**
+  `D2D1_BLEND_MODE` has every CSS mode including `plus-lighter`, which it spells
+  `LINEAR_DODGE`: clamped addition, the same reading AppKit's
+  `CILinearDodgeBlendMode` gives it, so the one mode GSK cannot do is the one
+  thing all of CSS's list has in common here. The backdrop is an input, as this
+  entry said, so a view with a blended child paints its whole subtree into an
+  offscreen and each blended child reads that bitmap -- which is the arrangement
+  `filter` already needed on that host, and the reason this was short. Its
+  backdrop stops at the parent, like GTK's, so the two desktops that can be
+  compared in a picture agree. backlog/platform-windows.md has what Direct2D
+  imposed, and the one case left: a blended child inside a filtered view.
 
   **`isolation` is deliberately not implemented, on any host.** It asks for an
   element to become a stacking context so that its descendants' blending stops

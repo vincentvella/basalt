@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <utility>
 #include <cmath>
 #include <cstdint>
@@ -543,8 +544,17 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
   // `filter`, which applies to this view and everything inside it, as CSS says.
   // That needs the subtree as a picture, so it goes through an offscreen bitmap
   // and an effect graph; everything else draws straight onto the target.
+  //
+  // A blended child needs the same picture for a different reason: a blend
+  // takes the backdrop as an input, and the backdrop is this view's content
+  // plus whatever was painted before that child. Both cases are "the subtree
+  // into a bitmap first", which is what made `paintContents` worth splitting
+  // out; a view with both takes the filter's path and the blend is skipped
+  // inside it, see paintFiltered.
   if (filters_.needsEffects()) {
     paintFiltered(target);
+  } else if (hasBlendedChild()) {
+    paintBlendLayer(target);
   } else {
     paintContents(target);
   }
@@ -552,7 +562,8 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
   target->SetTransform(parentTransform);
 }
 
-void RnWin32View::paintContents(ID2D1RenderTarget *target) const {
+void RnWin32View::paintContents(ID2D1RenderTarget *target,
+                               ID2D1BitmapRenderTarget *blendLayer) const {
   const D2D1_RECT_F bounds = D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height);
 
   // The transform this view's contents are drawn in, read rather than composed
@@ -568,7 +579,12 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target) const {
     // `filter`'s own `opacity()` multiplies the view's: CSS has two ways to ask
     // for the same thing and an app can use both. Folded in here rather than
     // being an effect of its own, which is what the GTK host does too.
-    const ScopedOpacity fade(target, opacity_ * filters_.opacity);
+    // No layer when the subtree is going through one of its own: a pushed
+    // layer holds everything drawn inside it in an intermediate surface, and
+    // the blended children below read the target's bitmap. `paintBlendLayer`
+    // applies the opacity to that bitmap instead, which is the same picture.
+    const ScopedOpacity fade(target,
+                             blendLayer != nullptr ? 1.0f : opacity_ * filters_.opacity);
 
     // The background is always clipped to the rounded box, even when children
     // are not: `overflow: visible` lets a child escape the corner, but the
@@ -635,7 +651,7 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target) const {
       paintControl(target);
     }
 
-    paintChildren(target);
+    paintChildren(target, blendLayer);
 
     // paintChildren leaves a ScrollView's offset applied, and nothing below
     // here scrolls with the content -- so put the transform back to this view's
@@ -1366,7 +1382,93 @@ void RnWin32View::paintScrollIndicators(ID2D1RenderTarget *target) const {
   }
 }
 
-void RnWin32View::paintChildren(ID2D1RenderTarget *target) const {
+namespace {
+
+// CSS's blend keyword as a Direct2D blend mode, or nothing for a keyword this
+// host cannot blend.
+//
+// The keyword is what crosses the seam -- see core/BlendModes.h -- so this is
+// the one place that turns it into Direct2D's vocabulary, as the GTK host turns
+// it into a GskBlendMode and AppKit into a Core Image filter. Sixteen of the
+// seventeen are the same word in both lists, which is why they are written out
+// rather than mapped by position: the enum and CSS's list are in different
+// orders, and a table by position reports a neighbour's blend.
+//
+// **`plus-lighter` is `LINEAR_DODGE`**, which is the choice AppKit made with
+// `CILinearDodgeBlendMode` and for the same reason: the keyword means clamped
+// addition and linear dodge is addition. That makes this the only one of the
+// three hosts with all seventeen; GSK has no node for it and paints unblended.
+std::optional<D2D1_BLEND_MODE> blendModeFor(const std::string &keyword) {
+  if (keyword.empty() || keyword == "normal") {
+    return std::nullopt;
+  }
+  if (keyword == "multiply") {
+    return D2D1_BLEND_MODE_MULTIPLY;
+  }
+  if (keyword == "screen") {
+    return D2D1_BLEND_MODE_SCREEN;
+  }
+  if (keyword == "overlay") {
+    return D2D1_BLEND_MODE_OVERLAY;
+  }
+  if (keyword == "darken") {
+    return D2D1_BLEND_MODE_DARKEN;
+  }
+  if (keyword == "lighten") {
+    return D2D1_BLEND_MODE_LIGHTEN;
+  }
+  if (keyword == "color-dodge") {
+    return D2D1_BLEND_MODE_COLOR_DODGE;
+  }
+  if (keyword == "color-burn") {
+    return D2D1_BLEND_MODE_COLOR_BURN;
+  }
+  if (keyword == "hard-light") {
+    return D2D1_BLEND_MODE_HARD_LIGHT;
+  }
+  if (keyword == "soft-light") {
+    return D2D1_BLEND_MODE_SOFT_LIGHT;
+  }
+  if (keyword == "difference") {
+    return D2D1_BLEND_MODE_DIFFERENCE;
+  }
+  if (keyword == "exclusion") {
+    return D2D1_BLEND_MODE_EXCLUSION;
+  }
+  if (keyword == "hue") {
+    return D2D1_BLEND_MODE_HUE;
+  }
+  if (keyword == "saturation") {
+    return D2D1_BLEND_MODE_SATURATION;
+  }
+  if (keyword == "color") {
+    return D2D1_BLEND_MODE_COLOR;
+  }
+  if (keyword == "luminosity") {
+    return D2D1_BLEND_MODE_LUMINOSITY;
+  }
+  if (keyword == "plus-lighter") {
+    return D2D1_BLEND_MODE_LINEAR_DODGE;
+  }
+  return std::nullopt;
+}
+
+} // namespace
+
+void RnWin32View::setBlendMode(const char *name) {
+  blendMode_ = name != nullptr ? name : "";
+  // `normal` is "no blending", which is also what no keyword at all means. Held
+  // as nothing so that the dump says nothing: `core/BlendModes.h` answers null
+  // for it, so this is only reachable from a direct call, and the three hosts'
+  // lines have to agree either way.
+  if (blendMode_ == "normal") {
+    blendMode_.clear();
+  }
+  blends_ = blendModeFor(blendMode_).has_value();
+}
+
+void RnWin32View::paintChildren(ID2D1RenderTarget *target,
+                               ID2D1BitmapRenderTarget *blendLayer) const {
   if (children_.empty()) {
     return;
   }
@@ -1376,20 +1478,219 @@ void RnWin32View::paintChildren(ID2D1RenderTarget *target) const {
 
   // `overflow: hidden`, and only that: the background above is clipped whether
   // or not this is set.
+  //
+  // **With a blended child it cannot be one clip around the whole walk.** A
+  // clip here is a layer with a geometric mask -- see Win32Clip.h -- and a
+  // pushed layer holds everything drawn inside it in an intermediate surface,
+  // where the bitmap a blend reads as its backdrop cannot see it. So each child
+  // gets its own clip instead, which paints the same picture: clipping a group
+  // and clipping each of its members to the same box are the same thing. The
+  // GTK half had to do this too, for a different reason -- there the pops that
+  // close each blend happen between the children.
   const D2D1_RECT_F bounds = D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height);
-  ScopedGeometryClip clip(clipsChildren_ ? target : nullptr, bounds, cornerRadii_);
+  const bool clipsEachChild = blendLayer != nullptr && clipsChildren_;
+  const ScopedGeometryClip clip(
+      clipsChildren_ && !clipsEachChild ? target : nullptr, bounds, cornerRadii_);
 
   // A ScrollView's offset moves its children and nothing else, so it belongs
   // between this view's transform and theirs.
+  const D2D1::Matrix3x2F childTransform = scrollX_ != 0.0f || scrollY_ != 0.0f
+      ? D2D1::Matrix3x2F::Translation(-scrollX_, -scrollY_) * worldTransform
+      : worldTransform;
   if (scrollX_ != 0.0f || scrollY_ != 0.0f) {
-    target->SetTransform(D2D1::Matrix3x2F::Translation(-scrollX_, -scrollY_) * worldTransform);
+    target->SetTransform(childTransform);
   }
 
   // Forwards, so the last child painted is on top. Hit testing walks the same
   // list backwards.
+  //
+  // In paint order rather than insertion order, which matters twice over for a
+  // blend: zIndex can differ from the list, and a blend's backdrop is what was
+  // painted beneath it. The GTK half has to sort the blended children for the
+  // same reason; here the order is simply the order they are blended in.
   for (const RnWin32View *child : childrenInPaintOrder()) {
+    if (child == nullptr) {
+      continue;
+    }
+    if (blendLayer != nullptr && child->blends() && !child->hidden_) {
+      blendChildIntoLayer(blendLayer, child);
+      continue;
+    }
+    if (clipsEachChild) {
+      // The clip is in this view's own coordinates, so it is pushed with the
+      // scroll offset off and the offset put back for the child itself.
+      target->SetTransform(worldTransform);
+      const ScopedGeometryClip own(target, bounds, cornerRadii_);
+      target->SetTransform(childTransform);
+      child->paint(target);
+      continue;
+    }
     child->paint(target);
   }
+}
+
+bool RnWin32View::hasBlendedChild() const {
+  for (const RnWin32View *child : children_) {
+    if (child != nullptr && child->blends() && !child->hidden_) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// This view's subtree into an offscreen bitmap, so that a blended child has a
+// backdrop to read, and then that bitmap onto the target.
+//
+// The backdrop is the one thing a blend needs and the one thing a view cannot
+// see: `CLSID_D2D1Blend` takes two images, and what is beneath a child is
+// whatever its parent painted before it. On GTK the parent pushes a blend node
+// per blended child before it paints anything; here the parent paints into a
+// bitmap and each blended child reads it. Same arrangement, different compositor.
+//
+// **The backdrop stops at this view**, which is the deviation CSS would not
+// make and backlog/correctness.md records for GTK as well: CSS blends with the
+// backdrop of the nearest stacking context, which for a plain <View> reaches
+// past its parent. What is beneath this view is on the window and cannot be
+// read back without copying the window; what is inside it is this bitmap. The
+// AppKit host does blend with the whole layer tree, because Core Animation
+// composites it, so the two differ and the end-to-end scenario is deliberately
+// an arrangement where they agree.
+void RnWin32View::paintBlendLayer(ID2D1RenderTarget *target) const {
+  const ComPtr<ID2D1BitmapRenderTarget> layer =
+      createOffscreen(target, frame_.width, frame_.height);
+  if (!layer) {
+    // No offscreen, no backdrop: the children paint unblended, which is the
+    // same fallback a keyword this host cannot blend takes.
+    paintContents(target);
+    return;
+  }
+
+  layer->BeginDraw();
+  layer->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+  paintContents(layer.Get(), layer.Get());
+  if (FAILED(layer->EndDraw())) {
+    paintContents(target);
+    return;
+  }
+
+  ComPtr<ID2D1Bitmap> picture;
+  if (FAILED(layer->GetBitmap(picture.GetAddressOf())) || !picture) {
+    paintContents(target);
+    return;
+  }
+
+  // The view's own opacity, which `paintContents` did not apply because a
+  // pushed layer would have hidden the backdrop from the children. On the
+  // bitmap it is the same picture and one multiply rather than a layer.
+  target->DrawBitmap(picture.Get(),
+                     D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height),
+                     opacity_ * filters_.opacity,
+                     D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                     nullptr);
+}
+
+// One blended child, in place of painting it onto the layer.
+//
+// Three surfaces, and each is there for a reason Direct2D imposes. The child
+// goes into one of its own because the blend wants it as an image rather than
+// as a draw. The result goes into another because the backdrop is the layer's
+// own bitmap, and Direct2D will not read a bitmap it is drawing into. And the
+// layer is then cleared and the result drawn back, rather than drawn over,
+// because the result already contains the backdrop: drawing it over would
+// composite the backdrop with itself.
+void RnWin32View::blendChildIntoLayer(ID2D1BitmapRenderTarget *layer,
+                                      const RnWin32View *child) const {
+  const std::optional<D2D1_BLEND_MODE> mode = blendModeFor(child->blendMode());
+  ComPtr<ID2D1DeviceContext> context;
+  if (!mode.has_value() || FAILED(layer->QueryInterface(IID_PPV_ARGS(&context)))) {
+    // A keyword Direct2D has no mode for, or no device context to run an effect
+    // on: the child paints unblended rather than not at all. The dump still
+    // reports the keyword, which is the rule GTK follows for `plus-lighter`.
+    child->paint(layer);
+    return;
+  }
+
+  // What is beneath the child: this view's own content and the children painted
+  // before it, which is exactly what the layer holds at this point.
+  layer->Flush();
+  ComPtr<ID2D1Bitmap> backdrop;
+  if (FAILED(layer->GetBitmap(backdrop.GetAddressOf())) || !backdrop) {
+    child->paint(layer);
+    return;
+  }
+
+  // The child's own picture, in this view's coordinates: the transform the
+  // layer is in, which carries a <ScrollView>'s offset, so the child lands
+  // where it would have been painted.
+  D2D1::Matrix3x2F transform;
+  layer->GetTransform(&transform);
+  const ComPtr<ID2D1BitmapRenderTarget> top =
+      createOffscreen(layer, frame_.width, frame_.height);
+  ComPtr<ID2D1Bitmap> topBitmap;
+  if (!top) {
+    child->paint(layer);
+    return;
+  }
+  top->BeginDraw();
+  top->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+  {
+    // `overflow: hidden` clips the child here rather than where the blend
+    // lands, which is what lets the result be drawn back over the whole layer:
+    // outside the clip the child is transparent, a blend with nothing on top is
+    // the backdrop, and the result is the layer unchanged there. The clip goes
+    // on with the scroll offset off, as it does in paintChildren, and the
+    // layer's own transform is what that offset was applied to.
+    const D2D1::Matrix3x2F unscrolled =
+        D2D1::Matrix3x2F::Translation(scrollX_, scrollY_) * transform;
+    top->SetTransform(unscrolled);
+    const ScopedGeometryClip clip(clipsChildren_ ? top.Get() : nullptr,
+                                  D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height),
+                                  cornerRadii_);
+    top->SetTransform(transform);
+    child->paint(top.Get());
+  }
+  if (FAILED(top->EndDraw()) || FAILED(top->GetBitmap(topBitmap.GetAddressOf()))
+      || !topBitmap) {
+    child->paint(layer);
+    return;
+  }
+
+  const ComPtr<ID2D1BitmapRenderTarget> blended =
+      createOffscreen(layer, frame_.width, frame_.height);
+  ComPtr<ID2D1DeviceContext> blendedContext;
+  ComPtr<ID2D1Effect> blend;
+  ComPtr<ID2D1Bitmap> result;
+  if (!blended || FAILED(blended->QueryInterface(IID_PPV_ARGS(&blendedContext)))
+      || FAILED(blendedContext->CreateEffect(CLSID_D2D1Blend, blend.GetAddressOf()))
+      || !blend) {
+    child->paint(layer);
+    return;
+  }
+  blend->SetInput(0, backdrop.Get());
+  blend->SetInput(1, topBitmap.Get());
+  blend->SetValue(D2D1_BLEND_PROP_MODE, mode.value());
+  blended->BeginDraw();
+  blended->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+  blendedContext->SetTransform(D2D1::Matrix3x2F::Identity());
+  blendedContext->DrawImage(blend.Get(), D2D1::Point2F(0.0f, 0.0f));
+  if (FAILED(blended->EndDraw()) || FAILED(blended->GetBitmap(result.GetAddressOf()))
+      || !result) {
+    child->paint(layer);
+    return;
+  }
+
+  // Back onto the layer, in its own coordinates rather than the scrolled ones:
+  // the result is already in this view's space, and it is the whole layer --
+  // backdrop included -- which is why the layer is cleared first rather than
+  // drawn over.
+  layer->SetTransform(D2D1::Matrix3x2F::Identity());
+  layer->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+  layer->DrawBitmap(result.Get(),
+                    D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height),
+                    1.0f,
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    nullptr);
+  layer->SetTransform(transform);
 }
 
 // --- Hit testing ------------------------------------------------------------
@@ -1744,6 +2045,14 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     appendFormat(out,
                  " border-style=%s",
                  borderStyle_ == LineStyle::Dotted ? "dotted" : "dashed");
+  }
+
+  // The blend mode the app asked for, which a frame cannot show unless there is
+  // something beneath it. The keyword rather than Direct2D's mode, so the line
+  // is comparable with the other two hosts', and printed even for a keyword
+  // this host cannot blend: the dump says what was asked for.
+  if (!blendMode_.empty()) {
+    appendFormat(out, " blend=%s", blendMode_.c_str());
   }
 
   // The outline, which is invisible in every other line: it is not a border,

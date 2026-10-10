@@ -983,3 +983,242 @@ TEST(win32_describe_prints_a_filter_as_gtk_does) {
   // hosts are handed.
   EXPECT(dump.find("shadow=(4,6,3,#00000080)") != std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// `mixBlendMode`, which is the one view prop whose whole observable is what it
+// does to the pixels beneath it.
+//
+// A dump can say the keyword arrived; only a rendered picture can say the blend
+// happened, and happened against the right backdrop. These are deliberately the
+// same nine questions tests/test_gtk_paint.cpp asks, with the same arrangement
+// and the same expected pixels: a mid grey child over a red parent, where the
+// three answers that matter are far apart -- multiply is (128,0,0), screen is
+// (255,128,128) and no blend at all is (128,128,128).
+// ---------------------------------------------------------------------------
+namespace {
+
+// A red parent with a grey child in the middle of it, which is what every blend
+// test here starts from. The child is returned; the parent is at (10,10), so a
+// pixel at (50,50) is inside both.
+RnWin32View *greyOnRed(Tree &tree, RnWin32View *root, const char *blend) {
+  RnWin32View *parent = tree.colouredBox(2, 10, 10, 80, 80, 1.0f, 0.0f, 0.0f);
+  RnWin32View *child = tree.colouredBox(3, 20, 20, 40, 40, 0.5f, 0.5f, 0.5f);
+  parent->insertChild(child, 0);
+  root->insertChild(parent, 0);
+  child->setBlendMode(blend);
+  return child;
+}
+
+} // namespace
+
+TEST(win32_paint_multiply_blends_a_child_with_its_parent) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  greyOnRed(tree, root, "multiply");
+
+  // Half of red is half red, and the green and blue the child had are
+  // multiplied away by the parent's zeroes. Unblended this pixel is grey.
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 128, 0, 0, 255);
+}
+
+// A second mode, because one mode can be hard-coded and still pass the first
+// test. Screen is multiply's opposite and lands where neither of the other two
+// answers is.
+TEST(win32_paint_screen_is_not_multiply) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  greyOnRed(tree, root, "screen");
+
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 255, 128, 128, 255);
+}
+
+// Which input is the backdrop, which multiply and screen cannot say: both are
+// symmetric, so a host that fed `CLSID_D2D1Blend` its two images the wrong way
+// round passes every test above. `color-dodge` is not symmetric -- it divides
+// the backdrop by the inverse of the source -- so the two orders give two
+// different pixels.
+TEST(win32_paint_a_blend_knows_which_input_is_the_backdrop) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  greyOnRed(tree, root, "color-dodge");
+
+  // Red dodged by half grey: the red channel divides by a half and clamps, and
+  // the other two are the parent's zeroes divided by anything, which is zero.
+  // The other way round -- grey dodged by red -- is (255,128,128).
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 255, 0, 0, 255);
+}
+
+// The backdrop is everything beneath the child, not only its parent's
+// background. A blend that only saw the parent would come out half red here;
+// one that sees the sibling comes out half blue.
+TEST(win32_paint_a_blend_sees_the_siblings_beneath_it) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *parent = tree.colouredBox(2, 10, 10, 80, 80, 1.0f, 0.0f, 0.0f);
+  RnWin32View *under = tree.colouredBox(3, 20, 20, 40, 40, 0.0f, 0.0f, 1.0f);
+  RnWin32View *blended = tree.colouredBox(4, 20, 20, 40, 40, 0.5f, 0.5f, 0.5f);
+  blended->setBlendMode("multiply");
+  parent->insertChild(under, 0);
+  parent->insertChild(blended, 1);
+  root->insertChild(parent, 0);
+
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 0, 0, 128, 255);
+}
+
+// The negative control, and the way back: `mixBlendMode: 'normal'` arrives as no
+// keyword at all, and a view that was blending has to stop -- which also means
+// the parent stops painting through an offscreen.
+TEST(win32_paint_no_blend_mode_is_no_blending) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *child = greyOnRed(tree, root, nullptr);
+
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 128, 128, 128, 255);
+
+  child->setBlendMode("multiply");
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 128, 0, 0, 255);
+
+  child->setBlendMode(nullptr);
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 128, 128, 128, 255);
+}
+
+// The clip still clips, which is the case this implementation had to be careful
+// about: a clip here is a layer, a pushed layer holds what is drawn in an
+// intermediate surface, and the backdrop a blend reads is the target's own
+// bitmap. So the child is clipped where it is drawn rather than where it lands,
+// and the picture has to be the same picture.
+TEST(win32_paint_a_blended_child_is_still_clipped_by_overflow_hidden) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *parent = tree.colouredBox(2, 10, 10, 80, 80, 1.0f, 0.0f, 0.0f);
+  parent->setClipsChildren(true);
+  RnWin32View *child = tree.colouredBox(3, 40, 40, 60, 60, 0.5f, 0.5f, 0.5f);
+  child->setBlendMode("multiply");
+  parent->insertChild(child, 0);
+  root->insertChild(parent, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Inside the parent, where the child is: blended.
+  EXPECT_PIXEL(pixels, 70, 70, 128, 0, 0, 255);
+  // Past the parent's edge, where the child would reach if nothing clipped it.
+  EXPECT_PIXEL(pixels, 95, 95, 0, 0, 0, 0);
+}
+
+// zIndex decides the backdrop, because it decides what is painted beneath. The
+// blended child here paints last, so the blue sibling is under it rather than
+// over it.
+TEST(win32_paint_z_index_decides_what_a_blend_blends_with) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *parent = tree.colouredBox(2, 10, 10, 80, 80, 1.0f, 0.0f, 0.0f);
+  RnWin32View *blended = tree.colouredBox(3, 20, 20, 40, 40, 0.5f, 0.5f, 0.5f);
+  blended->setBlendMode("multiply");
+  RnWin32View *above = tree.colouredBox(4, 20, 20, 20, 20, 0.0f, 0.0f, 1.0f);
+  parent->insertChild(blended, 0);
+  parent->insertChild(above, 1);
+  // The blue one is second in the list already; this says so out loud and moves
+  // the blended one above it, so the two orders are not the same order.
+  above->setZIndex(1);
+  blended->setZIndex(2);
+  root->insertChild(parent, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Where only the blended child is: half red, as ever.
+  EXPECT_PIXEL(pixels, 55, 55, 128, 0, 0, 255);
+  // Where both are, the blended one is on top of the blue one, so the blue one
+  // is its backdrop: half blue.
+  EXPECT_PIXEL(pixels, 40, 40, 0, 0, 128, 255);
+}
+
+// Two blended children, in an order zIndex reversed. Each blends with what is
+// beneath it where it lands, so the two orders give two different pixels -- and
+// the blends have to happen in paint order rather than in insertion order,
+// which is what this is really asserting.
+TEST(win32_paint_two_blends_happen_in_paint_order) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *parent = tree.colouredBox(2, 10, 10, 80, 80, 1.0f, 0.0f, 0.0f);
+  RnWin32View *grey = tree.colouredBox(3, 20, 20, 40, 40, 0.5f, 0.5f, 0.5f);
+  grey->setBlendMode("multiply");
+  grey->setZIndex(2);
+  RnWin32View *blue = tree.colouredBox(4, 20, 20, 40, 40, 0.0f, 0.0f, 1.0f);
+  blue->setBlendMode("screen");
+  blue->setZIndex(1);
+  parent->insertChild(grey, 0);
+  parent->insertChild(blue, 1);
+  root->insertChild(parent, 0);
+
+  // Blue first: screen of red and blue is magenta. Then grey: multiply of
+  // magenta and half grey is half magenta. The other order ends in (128,0,255),
+  // so the blue channel is what says which happened.
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 128, 0, 128, 255);
+}
+
+// A blended child with nothing beneath it, which the blend's two inputs make
+// worth asking about: the backdrop is empty.
+//
+// CSS answers this exactly -- the result is weighted by the backdrop's alpha, so
+// a transparent backdrop leaves the source colour untouched -- and the child has
+// to be drawn either way. **This is also the property the implementation leans
+// on**: the child's picture is clipped where it is drawn, and the blend result
+// is drawn back over the whole layer, which is only the same picture because a
+// blend with nothing on top is the backdrop and a blend over nothing is the top.
+TEST(win32_paint_a_blend_over_nothing_still_draws_the_child) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *parent = tree.box(2, 10, 10, 80, 80);
+  RnWin32View *child = tree.colouredBox(3, 20, 20, 40, 40, 0.5f, 0.5f, 0.5f);
+  child->setBlendMode("multiply");
+  parent->insertChild(child, 0);
+  root->insertChild(parent, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The child, unchanged: there was no backdrop to multiply with.
+  EXPECT_PIXEL(pixels, 50, 50, 128, 128, 128, 255);
+  // And beside it, where only the transparent parent is: still nothing. The
+  // layer the subtree goes through must not turn into a box of its own.
+  EXPECT_PIXEL(pixels, 15, 15, 0, 0, 0, 0);
+}
+
+// `plus-lighter`, the one CSS mode GSK has no node for, which makes this host
+// the only one of the three with all seventeen. Direct2D's linear dodge is
+// clamped addition, which is what the keyword means, and is the same filter
+// AppKit reaches for.
+TEST(win32_paint_plus_lighter_adds_rather_than_being_ignored) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  greyOnRed(tree, root, "plus-lighter");
+
+  // Red plus half grey: the red channel clamps and the other two are the grey's
+  // own. Unblended this pixel is grey, which is what the GTK host answers.
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 255, 128, 128, 255);
+}
+
+// And the keyword is in the dump, spelled as the other two hosts spell it,
+// which is what lets one end-to-end scenario check the wiring on all three.
+TEST(win32_describe_prints_a_blend_mode) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *child = greyOnRed(tree, root, nullptr);
+
+  EXPECT(root->describeTree().find("blend=") == std::string::npos);
+
+  child->setBlendMode("color-dodge");
+  EXPECT(root->describeTree().find("blend=color-dodge") != std::string::npos);
+  EXPECT(child->blends());
+
+  // A keyword Direct2D has no mode for is still what the app asked for, so it
+  // is still reported -- and it does not blend, which is the rule GTK follows
+  // for `plus-lighter`.
+  child->setBlendMode("not-a-mode");
+  EXPECT(root->describeTree().find("blend=not-a-mode") != std::string::npos);
+  EXPECT(!child->blends());
+  EXPECT_PIXEL(basalt::win32::renderToPixels(*root), 50, 50, 128, 128, 128, 255);
+
+  // `normal` is the default and means no blending, so nothing is printed: the
+  // other two hosts answer no keyword at all for it and the three lines are
+  // diffed against each other.
+  child->setBlendMode("normal");
+  EXPECT(root->describeTree().find("blend=") == std::string::npos);
+  EXPECT(!child->blends());
+}

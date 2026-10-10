@@ -56,6 +56,7 @@
 // without dragging <d2d1.h> -- and windows.h behind it -- into every
 // translation unit that only wants to build a tree. The tests do exactly that.
 struct ID2D1RenderTarget;
+struct ID2D1BitmapRenderTarget;
 
 namespace basalt::win32 {
 
@@ -209,6 +210,24 @@ class RnWin32View {
 
   void setFilters(const Filters &filters);
   const Filters &filters() const { return filters_; }
+
+  // `mixBlendMode`, as CSS's keyword rather than as a Direct2D enum.
+  //
+  // The keyword is what crosses the seam on all three hosts, for the reason
+  // `core/BlendModes.h` gives: React Native's list is CSS's and so is every
+  // compositor's, so one place says what a value is called and each view layer
+  // answers for its own. Empty, or `normal`, is no blending.
+  //
+  // A keyword this host cannot blend is still stored and still reported --
+  // `describeTree` says what the app asked for -- and the view paints
+  // unblended, which is the rule GTK follows for `plus-lighter`. Direct2D has
+  // all seventeen, so nothing takes that path today; it is still the behaviour
+  // rather than a crash if a future keyword arrives.
+  void setBlendMode(const char *name);
+  const std::string &blendMode() const { return blendMode_; }
+  // Whether this view blends, which is a question its *parent* asks: a blend
+  // needs the backdrop, and only the parent can see what is beneath a child.
+  bool blends() const { return blends_; }
 
   // How a border or an outline is drawn: filled, or stroked with a dash
   // pattern. One enum for both because it is one concept and the three values
@@ -518,7 +537,8 @@ class RnWin32View {
   // Paints the children into whatever space the target's transform is already
   // in, which is this view's own. Separate from `paint` so the clip and the
   // scroll offset have an obvious scope, and so no Direct2D type appears above.
-  void paintChildren(ID2D1RenderTarget *target) const;
+  void paintChildren(ID2D1RenderTarget *target,
+                     ID2D1BitmapRenderTarget *blendLayer = nullptr) const;
   // The spinner and the switch, drawn into this view's own coordinates.
   void paintControl(ID2D1RenderTarget *target) const;
   // React DevTools' overlay, over everything including the children.
@@ -535,8 +555,22 @@ class RnWin32View {
   // placing its origin at zero. Split out of `paint` so that a filtered view
   // can draw the same thing into an offscreen bitmap and run an effect graph
   // over it.
-  void paintContents(ID2D1RenderTarget *target) const;
+  //
+  // `blendLayer` is the offscreen `target` draws into when this view's whole
+  // subtree goes through one, and null when it draws straight onto the window.
+  // Only a blended child needs it: `mixBlendMode` has to read what is beneath
+  // it, and what is beneath it is that bitmap.
+  void paintContents(ID2D1RenderTarget *target,
+                     ID2D1BitmapRenderTarget *blendLayer = nullptr) const;
   void paintFiltered(ID2D1RenderTarget *target) const;
+  // This view's subtree through an offscreen, so that a blended child has a
+  // backdrop to read. The view's opacity is applied to that bitmap rather than
+  // inside it, which is both cheaper than a layer and necessary: a pushed layer
+  // holds what is drawn in an intermediate surface the backdrop cannot see.
+  void paintBlendLayer(ID2D1RenderTarget *target) const;
+  // Blends one child into the layer, in place of painting it onto the target.
+  void blendChildIntoLayer(ID2D1BitmapRenderTarget *layer, const RnWin32View *child) const;
+  bool hasBlendedChild() const;
   void describeInto(std::string &out, int depth) const;
 
   int32_t tag_;
@@ -599,6 +633,11 @@ class RnWin32View {
   size_t imageFrame_ = 0;
   double imageElapsedMs_ = 0.0;
   Filters filters_;
+  // `mixBlendMode`: the keyword the app asked for, and whether this host can
+  // blend it. Both, because the dump reports the first and the paint path asks
+  // the second.
+  std::string blendMode_;
+  bool blends_ = false;
   RnAccessibleInfo accessible_;
   bool hasTransform_ = false;
   // The 2D affine part, in the order Direct2D's Matrix3x2F stores it:

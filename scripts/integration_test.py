@@ -5068,25 +5068,21 @@ def test_legacy_shadow(bundle: Path) -> None:
 
 
 def test_mix_blend_mode(bundle: Path) -> None:
-    """`mixBlendMode` reaches the view as the keyword both hosts take.
+    """`mixBlendMode` reaches the view as the keyword all three hosts take.
 
-    What the blend does to the pixels is asserted on GTK, where the render tree
-    is readable and a blended pixel can be compared against an unblended one.
-    macOS composites in the window server, and `renderInContext:` -- which is
-    what this project's snapshots use -- composites nothing, so there is no
-    picture to compare there. The dump is what both hosts can be asked, and it
-    carries the keyword rather than each host's own spelling: GTK maps it to a
-    `GskBlendMode` and macOS to a Core Image filter, and core/BlendModes.h is the
-    one place that says what the value is called.
+    What the blend does to the pixels is asserted on GTK and on Windows, where
+    the picture is readable and a blended pixel can be compared against an
+    unblended one. macOS composites in the window server, and
+    `renderInContext:` -- which is what this project's snapshots use --
+    composites nothing, so there is no picture to compare there. The dump is
+    what all three can be asked, and it carries the keyword rather than each
+    host's own spelling: GTK maps it to a `GskBlendMode`, macOS to a Core Image
+    filter and Windows to a `D2D1_BLEND_MODE`, and core/BlendModes.h is the one
+    place that says what the value is called.
 
     e2e/views.tsx asks for `multiply` on a child of a red box, which is also the
-    arrangement the GTK pixel tests use.
-
-    Windows blends nothing yet, so it is skipped by name.
+    arrangement the pixel tests use.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D is given no blend mode yet")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)

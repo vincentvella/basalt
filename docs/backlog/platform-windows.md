@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (12):**
+**Open (11):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -20,7 +20,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 13. ~~`filter` is not applied~~
 14. ~~`textTransform` is ignored, so an uppercase label is not uppercase~~
 15. ~~The `outline` family is not drawn~~
-16. `mixBlendMode` blends nothing
+16. ~~`mixBlendMode` blends nothing~~
 17. ~~No text shadow, so `textShadowColor` and friends do nothing~~
 18. The desktop's text scale is not read, so large text does not enlarge text
 19. ~~No text decoration~~, except the styles DirectWrite has no form of
@@ -391,16 +391,52 @@ and none of it is a missing half.
   dump. The end-to-end scenario now reads `outline=(3,2,#e0484dff,dashed)` on
   all three hosts.
 
-- **`mixBlendMode` blends nothing.** The keyword reaches this host's props and
-  nothing reads it. Direct2D has the arithmetic: `CLSID_D2D1Blend`'s
-  `D2D1_BLEND_PROP_MODE` is CSS's list of modes plus a few extras of its own, so
-  there is no matrix to write. What it needs is the backdrop as an input, the
-  effect taking two bitmaps -- so the parent has to paint what is beneath a
-  blended child into an intermediate `ID2D1BitmapRenderTarget` and feed that in,
-  which is the same look-ahead the GTK half does for `gtk_snapshot_push_blend`.
-  backlog/correctness.md has what the other two decided, including which
-  backdrop each of them blends with and why the two differ. The end-to-end
-  scenario is skipped here by name.
+- ~~**`mixBlendMode` blends nothing.**~~ It blends as of 2026-10-10, and this
+  host ended up the most capable of the three: `D2D1_BLEND_MODE` has all
+  seventeen of CSS's modes, including the `plus-lighter` GSK has no node for,
+  which Direct2D spells `LINEAR_DODGE` -- clamped addition, which is what the
+  keyword means and the same filter AppKit reaches for. The keyword crosses the
+  seam as `core/BlendModes.h` intends and this host maps it, so nothing in the
+  table agrees with itself by construction.
+
+  **The shape is the one this entry predicted, and the split the filter work
+  left behind is what made it short.** A blend needs the backdrop, a view cannot
+  see its own backdrop, so the parent is what has to build it: a view with a
+  blended child paints its whole subtree into an offscreen, each blended child
+  reads that bitmap as `CLSID_D2D1Blend`'s first input, and the result replaces
+  the layer. `paintBlendLayer` is the same arrangement `paintFiltered` already
+  had, for the same reason, and the backdrop therefore stops at the parent --
+  which is GTK's deviation from CSS too, and why the end-to-end scenario is an
+  arrangement where the three hosts agree.
+
+  Three things Direct2D imposed, each with the test that would otherwise have
+  found them later. The child goes into a surface of its own, because a blend
+  wants an image rather than a draw. The result goes into another, because the
+  backdrop is the layer's own bitmap and Direct2D will not read a bitmap it is
+  drawing into. And the layer is cleared before the result is drawn back, not
+  drawn over, because the result already contains the backdrop.
+
+  **`overflow: hidden` had to stop being one clip around the whole walk**, which
+  is the same conclusion the GTK half reached from the other direction. A clip
+  here is a layer with a geometric mask, a pushed layer holds what is drawn in
+  an intermediate surface, and that surface is invisible to the bitmap a blend
+  reads. So each child gets its own clip, and a blended child is clipped where
+  its picture is drawn rather than where the blend lands -- which is only the
+  same picture because a blend with nothing on top is the backdrop, and
+  `win32_paint_a_blend_over_nothing_still_draws_the_child` is what says so.
+
+  Eleven tests, ten of them against pixels. Among them: which input is the
+  backdrop, which multiply and screen cannot say because both are symmetric, so
+  `color-dodge` asks it; two blended children in an order `zIndex` reversed,
+  which pins the blends happening in paint order; and the keyword in the dump,
+  reported even for a mode this host cannot blend.
+
+  **What is left is a blended child inside a *filtered* view**, which paints
+  unblended: `paint` sends a filtered view through `paintFiltered`, and that
+  path does not hand its offscreen on as a blend layer because the filter's own
+  opacity is applied inside it. Both would work with one more effect in the
+  graph, `CLSID_D2D1Opacity` on the way out, which is the call that would make
+  it work.
 
 - ~~**`writingDirection` is not read, so a right-to-left paragraph starts on
   the left.**~~ Done, 2026-10-09, with
