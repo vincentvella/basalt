@@ -479,6 +479,15 @@ void RnWin32View::paint(ID2D1RenderTarget *target) const {
 void RnWin32View::paintContents(ID2D1RenderTarget *target) const {
   const D2D1_RECT_F bounds = D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height);
 
+  // The transform this view's contents are drawn in, read rather than composed
+  // because the two callers set it differently: `paint` has applied this view's
+  // own matrix to the window's target, and `paintFiltered` draws into an
+  // offscreen bitmap that starts at the identity because the whole subtree goes
+  // there. Kept because `paintChildren` leaves a <ScrollView>'s offset applied
+  // and what comes after it does not scroll.
+  D2D1::Matrix3x2F contentTransform;
+  target->GetTransform(&contentTransform);
+
   {
     // `filter`'s own `opacity()` multiplies the view's: CSS has two ways to ask
     // for the same thing and an app can use both. Folded in here rather than
@@ -555,7 +564,7 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target) const {
     // paintChildren leaves a ScrollView's offset applied, and nothing below
     // here scrolls with the content -- so put the transform back to this view's
     // own before drawing any of it.
-    target->SetTransform(local * parentTransform);
+    target->SetTransform(contentTransform);
 
     // The scrollbars: an overlay, so above the content and above any children,
     // which is what "overlay indicator" means -- and below the DevTools overlay
