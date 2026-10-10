@@ -122,6 +122,14 @@ and none of it is a missing half.
   the colours the cue banner and the selection take from the system, and a
   field with no `backgroundColor` paints the system window colour, because a
   child window cannot see through itself to what Direct2D drew behind it.
+
+  A *controlled* selection does work as of 2026-10-10 -- `EM_SETSEL` with
+  `EM_SCROLLCARET`, under the same staleness rule the text is under -- which is
+  the half of `onSelectionChange`'s absence that an app can work around. What is
+  still missing is the event going the other way: a plain `EDIT` has no
+  notification for the caret moving, `EN_SELCHANGE` belonging to RichEdit, so
+  the selection is read after anything that could have moved it and compared
+  with what was last reported. See `reportSelectionIfChanged`.
 - **`BASALT_SNAPSHOT` cannot see a `<TextInput>` on Windows.** It renders the
   `RnWin32View` tree offscreen and a text field's peer is a child window, not a
   view, so a field comes out as its background with no text, no placeholder

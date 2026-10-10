@@ -1614,8 +1614,7 @@
     "TextInputProps.selection": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textinput"
+      "windows": "yes"
     },
     "TextInputProps.inputAccessoryViewID": {
       "linux": "ignored",

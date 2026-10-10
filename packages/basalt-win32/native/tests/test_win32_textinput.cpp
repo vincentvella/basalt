@@ -29,6 +29,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 using basalt::Win32MountingManager;
 using basalt::win32::narrow;
@@ -138,6 +139,11 @@ struct FieldOptions {
   bool secure{false};
   int maxLength{0};
   float padding{0};
+  // A controlled selection, as JavaScript sends one. -1 for "the app sent
+  // none", which is what an uncontrolled field looks like and is a different
+  // thing from sending (0, 0).
+  int selectionStart{-1};
+  int selectionEnd{-1};
 };
 
 ShadowView makeField(Tag tag,
@@ -157,6 +163,10 @@ ShadowView makeField(Tag tag,
   }
   if (options.maxLength > 0) {
     raw["maxLength"] = options.maxLength;
+  }
+  if (options.selectionStart >= 0) {
+    raw["selection"] =
+        folly::dynamic::object("start", options.selectionStart)("end", options.selectionEnd);
   }
 
   RawProps rawProps{std::move(raw)};
@@ -606,4 +616,89 @@ TEST(win32_destroying_the_manager_destroys_every_peer) {
     manager->destroySurfaceRoot(kSurfaceId);
   }
   EXPECT(!IsWindow(control));
+}
+
+// A controlled selection, which is `selection` on the props and `EM_SETSEL` on
+// the control. The same three rules the text is under, because it is the same
+// kind of prop: applied when it changes, dropped when it is stale, and never
+// reported back as the user having moved the caret.
+TEST(win32_the_selection_prop_reaches_the_control) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  const ShadowView before =
+      makeField(10, 20, 30, 200, 44, {.text = "hello world", .mostRecentEventCount = 1});
+  mount(*manager, kSurfaceId, before);
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  const auto selectionOf = [](HWND field) {
+    DWORD start = 0;
+    DWORD end = 0;
+    SendMessage(field, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+    return std::pair<int, int>{static_cast<int>(start), static_cast<int>(end)};
+  };
+
+  update(*manager,
+         before,
+         makeField(10,
+                   20,
+                   30,
+                   200,
+                   44,
+                   {.text = "hello world",
+                    .mostRecentEventCount = 1,
+                    .selectionStart = 2,
+                    .selectionEnd = 7}));
+  EXPECT_EQ(selectionOf(control).first, 2);
+  EXPECT_EQ(selectionOf(control).second, 7);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// A selection older than what the user has since typed is dropped, which is the
+// rule that keeps a fast typist's caret from jumping backwards.
+TEST(win32_a_stale_selection_prop_is_dropped) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  const ShadowView before = makeField(10, 20, 30, 200, 44);
+  mount(*manager, kSurfaceId, before);
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  // Two keystrokes, so the control's event count is ahead of anything
+  // JavaScript sent before them.
+  type(control, L"hi");
+
+  update(*manager,
+         before,
+         makeField(10,
+                   20,
+                   30,
+                   200,
+                   44,
+                   {.text = "hi",
+                    .mostRecentEventCount = 0,
+                    .selectionStart = 0,
+                    .selectionEnd = 0}));
+
+  DWORD start = 0;
+  DWORD end = 0;
+  SendMessage(control, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+  // Still at the end, where typing left it: the stale selection was dropped
+  // rather than applied, so the caret did not go home.
+  EXPECT_EQ(static_cast<int>(start), 2);
+  EXPECT_EQ(static_cast<int>(end), 2);
+
+  manager->destroySurfaceRoot(kSurfaceId);
 }

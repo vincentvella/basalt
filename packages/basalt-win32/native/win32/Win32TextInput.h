@@ -64,9 +64,10 @@
 #include <windows.h>
 
 #include <functional>
+#include <optional>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 namespace basalt {
 
@@ -189,6 +190,12 @@ class Win32TextInputManager {
     // uncontrolled one's never does.
     std::string lastPropText;
     bool sawProps{false};
+
+    // The last `selection` prop seen, for the same reason and under the same
+    // rule: a controlled selection is applied when it changes, not whenever it
+    // differs from the control. Absent means the field has never sent one,
+    // which is what an uncontrolled selection looks like.
+    std::optional<facebook::react::Selection> lastPropSelection{};
 
     COLORREF textColor{RGB(0, 0, 0)};
     COLORREF backgroundColor{RGB(255, 255, 255)};

@@ -351,6 +351,40 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
     }
   }
 
+  // A controlled *selection*, under the same staleness rule the text is under:
+  // JavaScript that has not yet seen the last keystroke must not be allowed to
+  // drag the caret back to where it thought it was.
+  //
+  // Applied when it changes rather than whenever it differs, for the reason the
+  // text is: a merely uncontrolled field sends no selection at all, and
+  // re-asserting one every render would fight the user's own arrow keys.
+  //
+  // `EM_SETSEL` is the whole of it here, where GTK has `select_region` and
+  // AppKit has to reach the field editor the field borrows. Between
+  // `entry.applying` so the selection this installs is not reported back as the
+  // user having moved the caret, which is the same guard the text uses and the
+  // same loop it would otherwise start.
+  if (props.selection.has_value() && !stale) {
+    const auto &selection = *props.selection;
+    if (!entry.lastPropSelection.has_value()
+        || entry.lastPropSelection->start != selection.start
+        || entry.lastPropSelection->end != selection.end) {
+      entry.lastPropSelection = selection;
+      entry.applying = true;
+      SendMessage(entry.control,
+                  EM_SETSEL,
+                  static_cast<WPARAM>(selection.start),
+                  static_cast<LPARAM>(selection.end));
+      // And scroll it into view, which `EM_SETSEL` does not do on its own: a
+      // selection set past the visible end of a long single-line field would
+      // otherwise be somewhere the user cannot see.
+      SendMessage(entry.control, EM_SCROLLCARET, 0, 0);
+      entry.applying = false;
+      entry.lastReportedSelection = facebook::react::AttributedString::Range{
+          selection.start, selection.end - selection.start};
+    }
+  }
+
   // The cue banner, which is Windows' placeholder and needs visual styles --
   // see the manifest at the top of this file. TRUE keeps it visible while the
   // field has focus and no text, which is what both other desktops do.
