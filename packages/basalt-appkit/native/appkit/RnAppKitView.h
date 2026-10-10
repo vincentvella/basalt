@@ -262,6 +262,31 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 // both the mounting manager and the measurement seam go through that, so the
 // size a view draws at is the size Yoga was told.
 - (void)setRnTextLayout:(nullable id)layout;
+
+// --- Selecting that text ------------------------------------------------------
+//
+// `<Text selectable>`, which `userSelect` also arrives in. The same four
+// questions the GTK side answers in C, in the same order and with the same
+// units: whether this paragraph may be selected, where a point lands in its
+// text, what range is selected, and what that range says. The state machine
+// above them is core/TextSelection.h, shared by all three hosts.
+//
+// Indices are UTF-16 code units, which is what `NSAttributedString` counts;
+// the GTK side counts UTF-8 bytes, and core/TextSelection.h says why the two
+// never have to agree.
+- (void)setRnTextSelectable:(BOOL)selectable;
+- (BOOL)rnTextSelectable;
+
+// -1 when this view draws no paragraph. `point` is in the view's own
+// coordinates.
+- (NSInteger)rnTextIndexAtPoint:(CGPoint)point;
+
+- (void)setRnTextSelectionStart:(NSInteger)start length:(NSInteger)length;
+- (NSInteger)rnTextSelectionStart;
+- (NSInteger)rnTextSelectionLength;
+
+// The selected text, or nil when nothing is selected.
+- (nullable NSString *)rnSelectedText;
 - (void)setRnClipsChildren:(BOOL)clips;
 
 // `zIndex`. Reorders painting and hit testing, and never the child list --

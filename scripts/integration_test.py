@@ -6559,6 +6559,122 @@ def test_action_sheet(bundle: Path) -> str:
     return f"an option, a dismissal, and a sheet anchored at ({x:g}, {y:g})"
 
 
+def test_text_selection(bundle: Path) -> str:
+    """`<Text selectable>`: a drag selects, and a tap clears.
+
+    The prop did nothing on any host until 2026-10-10, and not for want of a
+    field: `BaseParagraphProps::isSelectable` is where both `selectable` and
+    `userSelect` arrive. What was missing was a host that drew a selection or
+    reported one, which is this scenario's subject on all three.
+
+    **A drag rather than a tap**, through `BASALT_TEST_DRAG`: a sweep is the
+    whole of what makes a selection, and a press that never moves is a tap --
+    which is deliberate, a press inside selectable text being also how a
+    `<Pressable>` around it fires. core/TextSelection.h is the state machine and
+    says why the gesture is only claimed once the pointer has travelled.
+
+    The dump carries the two lines nothing else can show: `selectable`, which
+    changes no box, and `selection=`, the highlight being a wash under the
+    glyphs. The range itself is each engine's own unit -- UTF-8 bytes on GTK,
+    UTF-16 code units on AppKit and Windows -- so what is compared here is that
+    *something* is selected, and each host's own suite asserts the pixels.
+
+    Two runs, and the second is the one that could catch a host selecting
+    whatever it can reach rather than what the app allowed:
+
+      selected    a drag across the selectable paragraph selects *part* of it --
+                  the length is asserted to be less than the whole string, which
+                  is what says the selection follows the pointer rather than
+                  being all or nothing.
+      refused     the same sweep over a paragraph that did not ask to be
+                  selectable selects nothing.
+
+    **A tap clearing the selection is asserted in each host's own suite rather
+    than here**, and not for want of trying: the scripted instruments fire in a
+    fixed order, and `BASALT_TEST_TAP` is scheduled before `BASALT_TEST_DRAG` on
+    all three hosts -- so a tap and a drag in one run is a tap *then* a drag,
+    which re-selects. The three unit suites each drive a real press through the
+    dispatcher for that claim.
+    """
+    app = bundle_app(bundle.parent, "selection")
+
+    def run(drag: str) -> str:
+        env = dict(os.environ)
+        env["BASALT_QUIT_AFTER_MS"] = "6000"
+        env["BASALT_TEST_DRAG"] = drag
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                     "BASALT_TEST_FOCUS", "BASALT_TEST_MENU", "BASALT_TEST_QUIT"):
+            env.pop(name, None)
+
+        with tempfile.TemporaryDirectory() as directory:
+            dump = Path(directory) / "tree.txt"
+            env["BASALT_DUMP_TREE"] = str(dump)
+            result = run_host_process(
+                [str(HOST), str(app), "BasaltSelection"],
+                cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+            )
+            _remember_output(result.stderr)
+            check_output(result.stderr, result.returncode)
+            if not dump.exists():
+                raise Failure("host wrote no widget tree")
+            return dump.read_text(encoding="utf-8")
+
+    def lineFor(tree: str, text: str) -> str:
+        matching = [line for line in tree.splitlines() if f'text="{text}' in line]
+        if len(matching) != 1:
+            raise Failure(
+                f"{len(matching)} paragraphs in the tree say {text!r}; "
+                f"e2e/selection.tsx has one.\n{tree}"
+            )
+        return matching[0]
+
+    # Along the selectable paragraph, which sits at left: 40, top: 56 at 24pt --
+    # so y=70 is inside its line on every font these three have, and x=150 is
+    # part way through "Select this sentence" on all of them.
+    selected = run("44,70,150,70")
+    chosen = lineFor(selected, "Select this sentence")
+    if "selectable" not in chosen:
+        raise Failure(
+            "the paragraph does not report itself selectable, so the prop did not "
+            f"reach the view and nothing below this means anything.\n{chosen}"
+        )
+    found = re.search(r"selection=(\d+),(\d+)", chosen)
+    if found is None:
+        raise Failure(
+            "a drag across selectable text selected nothing. Either the press did "
+            "not find the paragraph, or the moves never claimed the gesture -- see "
+            f"core/TextSelection.h.\n{chosen}"
+        )
+    start, length = int(found.group(1)), int(found.group(2))
+    whole = len("Select this sentence")
+    if start != 0 or not 0 < length < whole:
+        raise Failure(
+            f"the drag selected {length} characters from {start}, and it swept from "
+            f"the first character to part way along: a selection of the whole "
+            f"paragraph means the pointer was not followed.\n{chosen}"
+        )
+
+    # The control paragraph, in the same run: a selection in one <Text> must not
+    # appear in another.
+    plain = lineFor(selected, "Leave this one alone")
+    if "selectable" in plain or "selection=" in plain:
+        raise Failure(
+            f"a paragraph that did not ask to be selectable reports one.\n{plain}"
+        )
+
+    # And the same sweep over text that is not selectable, which is the half
+    # that catches a host selecting whatever it can reach.
+    refused = run("44,154,150,154")
+    if "selection=" in lineFor(refused, "Leave this one alone"):
+        raise Failure(
+            "a drag selected text in a paragraph that did not ask to be "
+            f"selectable.\n{lineFor(refused, 'Leave this one alone')}"
+        )
+
+    return (f"a drag selected {length} of {whole} characters, and text that said "
+            "nothing was left alone")
+
+
 def test_crash_handler(bundle: Path) -> None:
     """What the host says when it dies.
 
@@ -7276,6 +7392,7 @@ SCENARIOS = [
     ("a font loaded at runtime is the font the paragraph uses", test_runtime_font),
     ("writingDirection and the edge it puts the text against",
      test_writing_direction),
+    ("a drag selects a selectable paragraph's text", test_text_selection),
     ("a text shadow reaches the paragraph", test_text_shadow),
     ("a desktop text scale, and the props that refuse it", test_font_scaling),
     ("textTransform changes what the engine lays out", test_text_transform),

@@ -1,5 +1,6 @@
 #include "RnWin32TextLayout.h"
 
+#include "TextHighlight.h"
 #include "TextVerticalAlign.h"
 
 #include "Win32Offscreen.h"
@@ -1114,6 +1115,111 @@ void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
   context->DrawImage(shadow.Get(), D2D1::Point2F(shadowDx_, shadowDy_));
 }
 
+void RnWin32TextLayout::setSelection(UINT32 start, UINT32 length) {
+  selectionStart_ = start;
+  selectionLength_ = length;
+}
+
+UINT32 RnWin32TextLayout::indexAtPoint(float x, float y, float width, float height) const {
+  ComPtr<IDWriteTextLayout> layout;
+  layout.Attach(buildLayout(width, height));
+  if (!layout) {
+    return 0;
+  }
+  applyLineLimit(layout.Get());
+
+  // Where `textAlignVertical` put the paragraph, taken off the point: the hit
+  // test and the draw have to agree about which line a y is in.
+  float verticalOffset = 0.0f;
+  if (verticalFlush_ > 0.0f) {
+    DWRITE_TEXT_METRICS metrics{};
+    if (SUCCEEDED(layout->GetMetrics(&metrics))) {
+      verticalOffset = static_cast<float>(
+          basalt::textVerticalOffset(height, metrics.height, verticalFlush_));
+    }
+  }
+
+  BOOL trailing = FALSE;
+  BOOL inside = FALSE;
+  DWRITE_HIT_TEST_METRICS metrics{};
+  // Fills the metrics for the nearest character whether or not the point is
+  // inside the text, which is what a drag off the end of a line wants.
+  if (FAILED(layout->HitTestPoint(x, y - verticalOffset, &trailing, &inside, &metrics))) {
+    return 0;
+  }
+  // `trailing` is the right half of a glyph, where the caret belongs after it.
+  return trailing != FALSE ? metrics.textPosition + metrics.length : metrics.textPosition;
+}
+
+std::string RnWin32TextLayout::selectedText() const {
+  if (selectionLength_ == 0 || utf16_.empty()) {
+    return {};
+  }
+  // Clamped against the string rather than trusted: a paragraph can be rebuilt
+  // between a selection and a copy, and the old offsets would read past the end
+  // of a shorter one.
+  const size_t length = utf16_.size();
+  const size_t start = std::min(static_cast<size_t>(selectionStart_), length);
+  const size_t end = std::min(start + static_cast<size_t>(selectionLength_), length);
+  if (end <= start) {
+    return {};
+  }
+  return narrow(utf16_.substr(start, end - start));
+}
+
+void RnWin32TextLayout::drawSelection(ID2D1RenderTarget *target,
+                                      IDWriteTextLayout *layout,
+                                      float verticalOffset) const {
+  if (selectionLength_ == 0) {
+    return;
+  }
+
+  // Two calls, which is DirectWrite's own pattern for this: the first answers
+  // how many rectangles the range covers, the second fills them in. One per
+  // line, and more than one on a line with both directions in it -- a selection
+  // contiguous in the string is not contiguous on such a line, which is why
+  // this is a list rather than a rectangle.
+  UINT32 needed = 0;
+  // The first call answers E_NOT_SUFFICIENT_BUFFER and the count, which is why
+  // its result is deliberately not checked: "there is no room for the answer"
+  // is the answer.
+  (void)layout->HitTestTextRange(
+      selectionStart_, selectionLength_, 0.0f, verticalOffset, nullptr, 0, &needed);
+  if (needed == 0) {
+    return;
+  }
+  std::vector<DWRITE_HIT_TEST_METRICS> boxes(needed);
+  if (FAILED(layout->HitTestTextRange(selectionStart_,
+                                      selectionLength_,
+                                      0.0f,
+                                      verticalOffset,
+                                      boxes.data(),
+                                      needed,
+                                      &needed))) {
+    return;
+  }
+
+  // A wash rather than a solid fill, because nothing recolours the text and it
+  // has to stay legible through it. See core/TextHighlight.h for why the colour
+  // is this project's rather than COLOR_HIGHLIGHT.
+  ComPtr<ID2D1SolidColorBrush> brush;
+  if (FAILED(target->CreateSolidColorBrush(D2D1::ColorF(basalt::kTextSelectionRed,
+                                                        basalt::kTextSelectionGreen,
+                                                        basalt::kTextSelectionBlue,
+                                                        basalt::kTextSelectionAlpha),
+                                           brush.GetAddressOf()))) {
+    return;
+  }
+  for (UINT32 i = 0; i < needed && i < boxes.size(); i++) {
+    const DWRITE_HIT_TEST_METRICS &box = boxes[i];
+    if (box.width <= 0.0f || box.height <= 0.0f) {
+      continue;
+    }
+    target->FillRectangle(
+        D2D1::RectF(box.left, box.top, box.left + box.width, box.top + box.height), brush.Get());
+  }
+}
+
 void RnWin32TextLayout::draw(ID2D1RenderTarget *target, float width, float height) const {
   if (target == nullptr) {
     return;
@@ -1145,6 +1251,11 @@ void RnWin32TextLayout::draw(ID2D1RenderTarget *target, float width, float heigh
   if (hasShadow()) {
     drawShadow(target, layout.Get(), width, height, verticalOffset);
   }
+
+  // Then the selection, which is under the glyphs and over the shadow: a
+  // highlight behind a shadowed paragraph would otherwise be drawn over its own
+  // shadow.
+  drawSelection(target, layout.Get(), verticalOffset);
 
   // What each run is painted with, attached to the layout as a drawing effect
   // and handed back per glyph run, underline and strikethrough.

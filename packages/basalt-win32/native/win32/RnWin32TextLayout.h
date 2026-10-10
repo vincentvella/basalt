@@ -222,6 +222,33 @@ class RnWin32TextLayout {
   // Draws at the target's current origin, into a box `width` by `height`.
   void draw(ID2D1RenderTarget *target, float width, float height) const;
 
+  // --- Selecting that text ----------------------------------------------------
+  //
+  // `<Text selectable>`, which `userSelect` also arrives in. The two questions
+  // that need DirectWrite -- where a point lands in the text, and what a range
+  // covers -- plus the substring a clipboard takes. What a press and a drag
+  // *mean* is core/TextSelection.h, shared with the other two hosts.
+  //
+  // Offsets are UTF-16 code units, which is what DirectWrite counts and what
+  // this object already holds alongside the UTF-8 it was given. The AppKit host
+  // counts the same unit and the GTK one counts bytes; core/TextSelection.h
+  // says why the three never have to agree.
+
+  // The range to draw as selected. A length of zero selects nothing, which is
+  // how a selection is cleared.
+  void setSelection(UINT32 start, UINT32 length);
+  UINT32 selectionStart() const { return selectionStart_; }
+  UINT32 selectionLength() const { return selectionLength_; }
+
+  // The offset nearest a point in the paragraph's own coordinates, inside a box
+  // of (width, height) -- the same box `draw` is given, because the answer
+  // depends on all of it: the width breaks the lines and the height is what
+  // `textAlignVertical` moved the paragraph inside.
+  UINT32 indexAtPoint(float x, float y, float width, float height) const;
+
+  // The selected text, in UTF-8, or empty when nothing is selected.
+  std::string selectedText() const;
+
   // How far down its own box the paragraph sits: 0 for the top, 0.5 for the
   // middle, 1 for the bottom, which is what `textAlignVertical` asks for and
   // what `verticalAlign` becomes in React Native's own JavaScript. The offset
@@ -280,6 +307,14 @@ class RnWin32TextLayout {
   // layer hands over an ID2D1RenderTarget, and this asks it for one. See
   // `draw`.
   float verticalFlush_ = 0.0f;
+  UINT32 selectionStart_ = 0;
+  UINT32 selectionLength_ = 0;
+
+  // The highlight, under the glyphs. Its own method for the reason the shadow's
+  // is: it draws before the runs and needs the layout the caller just built.
+  void drawSelection(ID2D1RenderTarget *target,
+                     IDWriteTextLayout *layout,
+                     float verticalOffset) const;
 
   void drawShadow(ID2D1RenderTarget *target,
                   IDWriteTextLayout *layout,

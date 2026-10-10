@@ -424,6 +424,26 @@ class RnWin32View {
   void setTextLayout(std::shared_ptr<RnWin32TextLayout> layout);
   const std::shared_ptr<RnWin32TextLayout> &textLayout() const { return textLayout_; }
 
+  // --- Selecting that text ----------------------------------------------------
+  //
+  // `<Text selectable>`, which `userSelect` also arrives in. The same four
+  // questions the other two hosts answer, in the same order and in DirectWrite's
+  // unit -- UTF-16 code units, which is also AppKit's. The state machine above
+  // them is core/TextSelection.h, shared by all three.
+  void setTextSelectable(bool selectable);
+  bool textSelectable() const { return textSelectable_; }
+
+  // -1 when this view draws no paragraph. The point is in the view's own
+  // coordinates.
+  int textIndexAtPoint(float x, float y) const;
+
+  void setTextSelection(int start, int length);
+  int textSelectionStart() const;
+  int textSelectionLength() const;
+
+  // The selected text, or empty when nothing is selected.
+  std::string selectedText() const;
+
   // What the paragraph's dump lines say, which neither the box nor the string
   // can show: the direction the app asked for -- "ltr", "rtl", "natural" or
   // null -- and the edge its text ended up against, resolved. Both are literals
@@ -780,6 +800,8 @@ class RnWin32View {
   const char *writingDirectionName_ = nullptr;
   const char *textAlignName_ = nullptr;
   const char *textVerticalAlignName_ = nullptr;
+  // `<Text selectable>`; the range itself lives on the layout, which draws it.
+  bool textSelectable_ = false;
   std::shared_ptr<RnWin32Image> image_;
   std::shared_ptr<RnWin32Painter> painter_;
   RnImageFit imageFit_ = RnImageFit::Cover;

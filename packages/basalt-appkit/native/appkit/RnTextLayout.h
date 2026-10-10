@@ -77,6 +77,31 @@ NS_ASSUME_NONNULL_BEGIN
 // view is not on screen.
 - (CGRect)frameForCharacterIndex:(NSUInteger)index width:(CGFloat)maxWidth;
 
+// --- Selecting that text ------------------------------------------------------
+//
+// The range to draw as selected, in UTF-16 code units -- what
+// `NSAttributedString` counts and what the hit test below answers. Length zero
+// selects nothing, which is how a selection is cleared.
+//
+// The state machine above this -- what a press and a drag mean -- is
+// core/TextSelection.h, shared with the other two hosts. What is here is the
+// part that needs Core Text.
+@property(nonatomic) NSRange selection;
+
+// The character index nearest a point in the view's own coordinates, inside a
+// box of `size` -- the same box `drawInContext:size:` is given, because the
+// answer depends on all of it: the width breaks the lines, and the height is
+// what `textAlignVertical` moved the paragraph inside.
+//
+// Nearest rather than inside: a point past the end of a line answers the end of
+// that line, and a point above the first or below the last answers that line,
+// which is what dragging off the edge of a paragraph has to mean.
+- (NSUInteger)characterIndexAtPoint:(CGPoint)point size:(CGSize)size;
+
+// The selected text, or nil when nothing is selected. What the clipboard takes:
+// a substring rather than a pair of offsets.
+- (nullable NSString *)selectedText;
+
 // Draws into `context`, top-left origin, in a box `size` wide and tall.
 - (void)drawInContext:(CGContextRef)context size:(CGSize)size;
 

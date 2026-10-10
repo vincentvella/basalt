@@ -92,6 +92,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_action_sheet.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_alignment.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_selection.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sourcecode.cpp
     CACHE INTERNAL "core's own tests")
 
@@ -282,6 +283,8 @@ if(DEFINED RN_DIR)
     core/SettingsStore.cpp
     # Which way a paragraph runs when the app did not say; see the header.
     core/TextDirection.cpp
+    # What a press and a drag mean inside selectable text; see the header.
+    core/TextSelection.cpp
     core/SourceCodeModule.cpp
     # Answering a modal dialog without showing one; see the header.
     core/TestDialog.cpp

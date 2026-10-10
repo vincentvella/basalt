@@ -146,6 +146,7 @@ set(BASALT_APPKIT_TEST_SOURCES
   # Core Text, against RnTextLayout alone. No React Native, so these run in the
   # toolkit-only build too.
   tests/test_appkit_text.mm
+  tests/test_appkit_selection.mm
   # The resize modes, against a real bitmap. No React Native, so these run in
   # the toolkit-only build too.
   tests/test_appkit_image.mm

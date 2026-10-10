@@ -25,6 +25,7 @@
 #include <react/renderer/graphics/Transform.h>
 #include <react/renderer/components/scrollview/ScrollViewProps.h>
 #include <react/renderer/components/image/ImageProps.h>
+#include <react/renderer/components/text/ParagraphProps.h>
 #include <react/renderer/components/text/ParagraphState.h>
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/core/ConcreteState.h>
@@ -1146,6 +1147,14 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
           basalt::textVerticalFlushFactor(data.paragraphAttributes.textAlignVertical)));
   rn_view_set_text_valign(
       view, basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical));
+
+  // `<Text selectable>`, which `userSelect` also arrives in: React Native's own
+  // `Text.js` maps the style onto the prop. From the props rather than the
+  // state, unlike everything else here -- the text is state and this is not.
+  const auto paragraphProps =
+      std::dynamic_pointer_cast<const facebook::react::ParagraphProps>(shadowView.props);
+  rn_view_set_text_selectable(
+      view, paragraphProps != nullptr && paragraphProps->isSelectable ? TRUE : FALSE);
 
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     const GdkRGBA shadowColor{shadow->red, shadow->green, shadow->blue, shadow->alpha};

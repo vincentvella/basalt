@@ -1,5 +1,6 @@
 #import "RnTextLayout.h"
 
+#include "TextHighlight.h"
 #include "TextVerticalAlign.h"
 
 #include <cmath>
@@ -212,6 +213,78 @@
   return 0;
 }
 
+// `textAlignVertical`: where the paragraph sits in a box taller than it is. The
+// height the text needs is the one `sizeForWidth:` sums, walked the same way
+// here, so this asks the lines rather than measuring again.
+//
+// Its own method because the hit test needs the same number as the draw: a
+// paragraph sitting at the bottom of its box is hit-tested there too.
+- (CGFloat)verticalOffsetForSize:(CGSize)size lines:(NSArray *)lines {
+  if (self.verticalFlush <= 0) {
+    return 0;
+  }
+  CGFloat textHeight = 0;
+  for (id item in lines) {
+    CTLineRef line = (__bridge CTLineRef)item;
+    CGFloat ascent = 0, descent = 0, leading = 0;
+    (void)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+    textHeight += std::ceil(ascent + descent + leading);
+  }
+  return (CGFloat)basalt::textVerticalOffset(size.height, textHeight, self.verticalFlush);
+}
+
+- (NSUInteger)characterIndexAtPoint:(CGPoint)point size:(CGSize)size {
+  NSMutableArray *lines = [NSMutableArray array];
+  [self linesForWidth:size.width outLines:lines];
+  if (lines.count == 0) {
+    return 0;
+  }
+
+  // Which line the y falls in, walked the same way `sizeForWidth:` sums the
+  // heights so that a hit test and a measurement agree about where a line is.
+  // A point above the first line or below the last answers that line, which is
+  // what a drag off the top or the bottom of a paragraph means.
+  CGFloat top = [self verticalOffsetForSize:size lines:lines];
+  CTLineRef found = (__bridge CTLineRef)lines[0];
+  for (id item in lines) {
+    CTLineRef line = (__bridge CTLineRef)item;
+    CGFloat ascent = 0, descent = 0, leading = 0;
+    (void)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+    const CGFloat height = std::ceil(ascent + descent + leading);
+    found = line;
+    if (point.y < top + height) {
+      break;
+    }
+    top += height;
+  }
+
+  // The x, in the line's own coordinates: a right-aligned or centred paragraph
+  // draws its lines offset, and the index at a point has to use the same
+  // offset the glyphs were drawn with.
+  const CGFloat flush = [self flushFactor];
+  const CGFloat lineX =
+      flush == 0 ? 0 : (CGFloat)CTLineGetPenOffsetForFlush(found, flush, size.width);
+  const CFIndex index =
+      CTLineGetStringIndexForPosition(found, CGPointMake(point.x - lineX, 0));
+  return index == kCFNotFound ? 0 : (NSUInteger)index;
+}
+
+- (nullable NSString *)selectedText {
+  if (_selection.length == 0 || _attributedString.length == 0) {
+    return nil;
+  }
+  // Clamped against the string rather than trusted: a paragraph can be rebuilt
+  // between a selection and a copy, and the old offsets would read past the end
+  // of a shorter one.
+  const NSUInteger length = _attributedString.length;
+  const NSUInteger start = MIN(_selection.location, length);
+  const NSUInteger end = MIN(start + _selection.length, length);
+  if (end <= start) {
+    return nil;
+  }
+  return [_attributedString.string substringWithRange:NSMakeRange(start, end - start)];
+}
+
 - (void)drawInContext:(CGContextRef)context size:(CGSize)size {
   NSMutableArray *lines = [NSMutableArray array];
   [self linesForWidth:size.width outLines:lines];
@@ -239,21 +312,9 @@
                                 self.shadowColor.CGColor);
   }
 
-  // `textAlignVertical`: where the paragraph sits in a box taller than it is.
-  // The height the text needs is the one `sizeForWidth:` sums, walked the same
-  // way below, so this asks the lines rather than measuring again.
-  CGFloat textHeight = 0;
-  for (id item in lines) {
-    CTLineRef line = (__bridge CTLineRef)item;
-    CGFloat ascent = 0, descent = 0, leading = 0;
-    (void)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-    textHeight += std::ceil(ascent + descent + leading);
-  }
-
   // Core Text's y grows upward and the context has just been flipped back into
   // that, so moving the paragraph *down* the box means starting lower.
-  CGFloat y = size.height -
-      (CGFloat)basalt::textVerticalOffset(size.height, textHeight, self.verticalFlush);
+  CGFloat y = size.height - [self verticalOffsetForSize:size lines:lines];
   for (id item in lines) {
     CTLineRef line = (__bridge CTLineRef)item;
     CGFloat ascent = 0, descent = 0, leading = 0;
@@ -261,6 +322,40 @@
 
     y -= std::ceil(ascent + descent + leading);
     const CGFloat x = flush == 0 ? 0 : (CGFloat)CTLineGetPenOffsetForFlush(line, flush, size.width);
+
+    // The selection, under this line's glyphs and before them: a wash rather
+    // than a solid fill, because nothing recolours the text and it has to stay
+    // legible through it. See core/TextHighlight.h for why the colour is this
+    // project's rather than the system's.
+    if (_selection.length > 0) {
+      const CFRange lineRange = CTLineGetStringRange(line);
+      const NSUInteger lineStart = (NSUInteger)lineRange.location;
+      const NSUInteger lineEnd = lineStart + (NSUInteger)lineRange.length;
+      const NSUInteger from = MAX(_selection.location, lineStart);
+      const NSUInteger to = MIN(_selection.location + _selection.length, lineEnd);
+      if (to > from) {
+        // Two offsets along the line, which is where a bidirectional line needs
+        // more than one rectangle -- a selection contiguous in the string is not
+        // contiguous on the line. Taking the span between the two offsets is one
+        // rectangle and is what iOS's own `UITextView` draws for the common
+        // case; the mixed-direction case is recorded in backlog/text.md.
+        const CGFloat startX = CTLineGetOffsetForStringIndex(line, (CFIndex)from, nullptr);
+        const CGFloat endX = CTLineGetOffsetForStringIndex(line, (CFIndex)to, nullptr);
+        const CGRect wash = CGRectMake(x + MIN(startX, endX),
+                                       y,
+                                       std::abs(endX - startX),
+                                       std::ceil(ascent + descent + leading));
+        CGContextSaveGState(context);
+        CGContextSetRGBFillColor(context,
+                                 basalt::kTextSelectionRed,
+                                 basalt::kTextSelectionGreen,
+                                 basalt::kTextSelectionBlue,
+                                 basalt::kTextSelectionAlpha);
+        CGContextFillRect(context, wash);
+        CGContextRestoreGState(context);
+      }
+    }
+
     CGContextSetTextPosition(context, x, y + std::ceil(descent + leading));
     CTLineDraw(line, context);
   }

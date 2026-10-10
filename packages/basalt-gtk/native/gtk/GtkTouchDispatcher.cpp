@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace basalt {
@@ -77,6 +78,23 @@ GtkTouchDispatcher::GtkTouchDispatcher(GtkMountingManager *mountingManager, RnVi
   gtk_widget_add_controller(GTK_WIDGET(surfaceRoot_), motionController_);
   g_object_add_weak_pointer(G_OBJECT(motionController_),
                             reinterpret_cast<gpointer *>(&motionController_));
+
+  // What `Copy` in a menu and Ctrl+C copy when a paragraph has a selection.
+  // Neither of those can reach this object -- one is in the platform services
+  // and the other in the host's own key controller -- so this is where they
+  // ask. See core/TextSelection.h.
+  basalt::setSelectedTextProvider([this]() -> std::string {
+    if (highlightView_ == nullptr) {
+      return {};
+    }
+    char *selected = rn_view_copy_selected_text(highlightView_);
+    if (selected == nullptr) {
+      return {};
+    }
+    std::string text(selected);
+    g_free(selected);
+    return text;
+  });
 }
 
 GtkTouchDispatcher::~GtkTouchDispatcher() {
@@ -106,6 +124,13 @@ GtkTouchDispatcher::~GtkTouchDispatcher() {
     g_object_remove_weak_pointer(G_OBJECT(motionController_),
                                  reinterpret_cast<gpointer *>(&motionController_));
   }
+  // The selection's two, for the same reason: a weak pointer left on a widget
+  // that outlives this object would be written to through freed memory.
+  setSelectionView(nullptr);
+  setHighlightView(nullptr);
+  // And the provider, which holds `this`: a Copy role performed after a reload
+  // would otherwise ask a destroyed dispatcher for the selection.
+  basalt::setSelectedTextProvider(nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +401,91 @@ std::vector<basalt::HitView> hitChain(RnView *root, double x, double y) {
 
 } // namespace
 
+std::pair<RnView *, int> GtkTouchDispatcher::selectableTextAt(double x, double y) const {
+  if (surfaceRoot_ == nullptr) {
+    return {nullptr, -1};
+  }
+
+  // From the resolved target, like every other hit test here, so that a
+  // box-none ancestor that swallows a press swallows a selection too.
+  GtkWidget *picked = GTK_WIDGET(pickTarget(surfaceRoot_, x, y));
+  for (GtkWidget *widget = picked; widget != nullptr; widget = gtk_widget_get_parent(widget)) {
+    if (!RN_IS_VIEW(widget) || !rn_view_get_text_selectable(RN_VIEW(widget))) {
+      if (widget == GTK_WIDGET(surfaceRoot_)) {
+        break;
+      }
+      continue;
+    }
+    RnView *view = RN_VIEW(widget);
+    const int index = textIndexIn(view, x, y);
+    return {view, index};
+  }
+  return {nullptr, -1};
+}
+
+int GtkTouchDispatcher::textIndexIn(RnView *view, double x, double y) const {
+  if (view == nullptr) {
+    return -1;
+  }
+  // GTK computes the transform, so a scrolled or transformed ancestor counts --
+  // the same reason walkHitChain asks it rather than summing frames.
+  graphene_point_t from{};
+  from.x = static_cast<float>(x);
+  from.y = static_cast<float>(y);
+  graphene_point_t inView{};
+  if (!gtk_widget_compute_point(GTK_WIDGET(surfaceRoot_), GTK_WIDGET(view), &from, &inView)) {
+    return -1;
+  }
+  return rn_view_text_index_at(view, inView.x, inView.y);
+}
+
+void GtkTouchDispatcher::setSelectionView(RnView *view) {
+  if (selectionView_ == view) {
+    return;
+  }
+  if (selectionView_ != nullptr) {
+    g_object_remove_weak_pointer(G_OBJECT(selectionView_),
+                                 reinterpret_cast<gpointer *>(&selectionView_));
+  }
+  selectionView_ = view;
+  if (selectionView_ != nullptr) {
+    g_object_add_weak_pointer(G_OBJECT(selectionView_),
+                              reinterpret_cast<gpointer *>(&selectionView_));
+  }
+}
+
+void GtkTouchDispatcher::setHighlightView(RnView *view) {
+  if (highlightView_ == view) {
+    return;
+  }
+  if (highlightView_ != nullptr) {
+    g_object_remove_weak_pointer(G_OBJECT(highlightView_),
+                                 reinterpret_cast<gpointer *>(&highlightView_));
+  }
+  highlightView_ = view;
+  if (highlightView_ != nullptr) {
+    g_object_add_weak_pointer(G_OBJECT(highlightView_),
+                              reinterpret_cast<gpointer *>(&highlightView_));
+  }
+}
+
+void GtkTouchDispatcher::drawSelection() {
+  // The paragraph that was holding a highlight, when it is not this one: a
+  // press in a second <Text> ends the first one's selection, which is what
+  // every desktop does and what one anchor in the model enforces.
+  if (highlightView_ != nullptr && highlightView_ != selectionView_) {
+    rn_view_set_text_selection(highlightView_, 0, 0);
+    setHighlightView(nullptr);
+  }
+  if (selectionView_ == nullptr) {
+    return;
+  }
+
+  const basalt::TextSelectionRange range = selection_.range();
+  rn_view_set_text_selection(selectionView_, range.start, range.length);
+  setHighlightView(range.empty() ? nullptr : selectionView_);
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -417,6 +527,21 @@ void GtkTouchDispatcher::dispatchTouchStart(double x, double y, basalt::PointerB
     return;
   }
 
+  // Selectable text remembers where the press landed and nothing more: a press
+  // is also how a <Pressable> around this text is pressed, so claiming here
+  // would stop every tap on a selectable label. The press *does* clear whatever
+  // was selected, which is how a click dismisses a highlight. See
+  // core/TextSelection.h.
+  {
+    const auto [paragraph, index] = selectableTextAt(x, y);
+    setSelectionView(paragraph);
+    selection_.press(paragraph != nullptr ? rn_view_get_tag(paragraph) : 0,
+                     index < 0 ? 0 : index,
+                     Point{.x = static_cast<facebook::react::Float>(x),
+                           .y = static_cast<facebook::react::Float>(y)});
+    drawSelection();
+  }
+
   if (!basalt::gestures().empty()) {
     basalt::gestures().pointerDown(
         hitChain(surfaceRoot_, x, y), x, y, basalt::monotonicMilliseconds());
@@ -432,6 +557,24 @@ void GtkTouchDispatcher::dispatchTouchStart(double x, double y, basalt::PointerB
 }
 
 void GtkTouchDispatcher::dispatchTouchMove(double x, double y) {
+  // A selection that has claimed the pointer owns every move after it, and this
+  // is before the guards below on purpose: claiming *cancelled* the touch, so
+  // `isDown_` is false and `activeTarget_` is zero from then on, and a check
+  // after them would extend a selection exactly once. That was the bug a
+  // backwards drag found -- it selected from the press to the first move and
+  // then stopped.
+  //
+  // The gesture recognisers are not fed either: they were sent a cancel with
+  // the touch, and moves after a cancel would pan something while the person is
+  // selecting text.
+  if (selection_.dragging()) {
+    selection_.moveTo(textIndexIn(selectionView_, x, y),
+                      Point{.x = static_cast<facebook::react::Float>(x),
+                            .y = static_cast<facebook::react::Float>(y)});
+    drawSelection();
+    return;
+  }
+
   if (!basalt::gestures().empty()) {
     basalt::gestures().pointerMove(x, y, basalt::monotonicMilliseconds());
   }
@@ -442,6 +585,20 @@ void GtkTouchDispatcher::dispatchTouchMove(double x, double y) {
   if (!isDown_ || activeTarget_ == 0) {
     return;
   }
+
+  // The move that turns a press inside selectable text into a selection: far
+  // enough from where it started to be a sweep rather than a tap. The touch
+  // sequence this was reporting is cancelled, which is what the responder
+  // system sees when a scroll takes a touch away -- a touchstart, some moves,
+  // a cancel.
+  if (selection_.moveTo(textIndexIn(selectionView_, x, y),
+                        Point{.x = static_cast<facebook::react::Float>(x),
+                              .y = static_cast<facebook::react::Float>(y)})) {
+    drawSelection();
+    dispatchTouchCancel();
+    return;
+  }
+
   if (yieldToGesture(x, y)) {
     return;
   }
@@ -468,9 +625,22 @@ void GtkTouchDispatcher::dispatchTouchEnd(double x, double y, basalt::PointerBut
     }
   }
 
+  // The pointer is up, so a selection stops growing. The highlight stays: a
+  // person lets go and expects the text to stay selected until they click.
+  const bool wasSelecting = selection_.dragging();
+  selection_.release();
+
   // And nothing else for a button that never pressed anything -- there is no
   // touch to end, no gesture to finish and no <Switch> to toggle.
   if (!basalt::isPressButton(button)) {
+    return;
+  }
+
+  // A selection already cancelled the touch sequence, so there is no touch to
+  // end and nothing to press: the release belongs to the selection.
+  if (wasSelecting) {
+    isDown_ = false;
+    activeTarget_ = 0;
     return;
   }
 

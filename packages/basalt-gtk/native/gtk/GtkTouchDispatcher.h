@@ -20,9 +20,12 @@
 #include "HoverTracker.h"
 #include "PointerButtons.h"
 #include "RnView.h"
+#include "TextSelection.h"
 
 #include <react/renderer/components/view/TouchEventEmitter.h>
 #include <react/renderer/graphics/Point.h>
+
+#include <utility>
 
 namespace basalt {
 
@@ -92,6 +95,31 @@ class GtkTouchDispatcher {
   void dispatchHover(double x, double y);
   void dispatchHoverLeave();
 
+  // --- Selecting text -------------------------------------------------------
+  //
+  // A press inside a selectable paragraph is remembered and nothing else; the
+  // gesture becomes a selection only once the pointer has moved far enough to
+  // say the person is sweeping rather than tapping, at which point the touch
+  // sequence this was reporting is cancelled. core/TextSelection.h is the state
+  // machine and says why it works that way; these three are the GTK half of it:
+  // which paragraph a point is in, where in its text, and drawing the result.
+
+  // The innermost selectable paragraph under a point in root coordinates, and
+  // the byte offset in its text, or {nullptr, -1}.
+  //
+  // Walks the widget tree rather than asking the mounting manager for a tag:
+  // the widget is what the next two calls need, and a view holds its own text.
+  std::pair<RnView *, int> selectableTextAt(double x, double y) const;
+
+  // The byte offset in `view`'s text nearest a point in *root* coordinates,
+  // which is not the same question: a drag that has left the paragraph still
+  // extends the selection inside it.
+  int textIndexIn(RnView *view, double x, double y) const;
+
+  // Pushes the model's range onto the view it belongs to, and takes the
+  // highlight off whatever held one before.
+  void drawSelection();
+
   enum class TouchKind { Start, Move, End, Cancel };
 
   // Hands the pointer to a gesture recogniser that has activated, cancelling
@@ -121,6 +149,25 @@ class GtkTouchDispatcher {
 
   GtkMountingManager *mountingManager_;
   RnView *surfaceRoot_;
+
+  // What is selected, which paragraph it is in, and which paragraph is holding
+  // a highlight. The last two are not the same: a selection that moves to
+  // another paragraph has to clear the one it left, and after a release the
+  // highlight outlives the drag.
+  //
+  // Weak pointers, through g_object_add_weak_pointer, rather than tags: a
+  // paragraph can be unmounted while its text is selected -- a list that
+  // re-renders under the pointer -- and a tag whose view has gone would be
+  // looked up as null anyway. GTK nulls these, so the one state that cannot
+  // happen is a selection pointing at a freed widget.
+  basalt::TextSelection selection_;
+  RnView *selectionView_{nullptr};
+  RnView *highlightView_{nullptr};
+
+  // The two halves of keeping those pointers honest, in one place because a
+  // mismatched pair leaks a weak reference into a destroyed widget's list.
+  void setSelectionView(RnView *view);
+  void setHighlightView(RnView *view);
 
   GtkGesture *clickGesture_{nullptr};
   GtkEventController *motionController_{nullptr};

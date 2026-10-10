@@ -701,6 +701,24 @@ gboolean onDevMenuKey(GtkEventControllerKey * /*controller*/,
   return GDK_EVENT_STOP;
 }
 
+// Ctrl+C: the selection in a paragraph, onto the clipboard.
+//
+// Only when a paragraph has one. A `<TextInput>` with focus handles its own
+// Ctrl+C inside GTK, before this controller sees the key, and a press in a
+// field clears a paragraph's selection anyway -- so this fires exactly when
+// there is selected text that nothing else is going to copy. Left to travel on
+// otherwise, which is what lets an app bind the key itself.
+gboolean onCopyKey(GtkEventControllerKey * /*controller*/,
+                   guint keyval,
+                   guint /*keycode*/,
+                   GdkModifierType state,
+                   gpointer /*data*/) {
+  if ((keyval != GDK_KEY_c && keyval != GDK_KEY_C) || (state & GDK_CONTROL_MASK) == 0) {
+    return GDK_EVENT_PROPAGATE;
+  }
+  return basalt::copySelectedText() ? GDK_EVENT_STOP : GDK_EVENT_PROPAGATE;
+}
+
 // ---------------------------------------------------------------------------
 // Window size -> surface constraints
 // ---------------------------------------------------------------------------
@@ -1228,6 +1246,15 @@ HostWindow *createHostWindow(Host *host,
   gtk_event_controller_set_propagation_phase(devKeys, GTK_PHASE_CAPTURE);
   g_signal_connect(devKeys, "key-pressed", G_CALLBACK(onDevMenuKey), host);
   gtk_widget_add_controller(GTK_WIDGET(made->window), devKeys);
+
+  // Ctrl+C, which copies a paragraph's selection. In the bubble phase rather
+  // than the capture one, which is the opposite of the dev menu and deliberate:
+  // a <TextInput> with focus must keep its own Ctrl+C, and a GtkText handles
+  // the key before a bubbling controller ever sees it. What reaches this is a
+  // Ctrl+C nothing else wanted.
+  GtkEventController *copyKeys = gtk_event_controller_key_new();
+  g_signal_connect(copyKeys, "key-pressed", G_CALLBACK(onCopyKey), host);
+  gtk_widget_add_controller(GTK_WIDGET(made->window), copyKeys);
 
   host->windows.push_back(std::move(owned));
   return made;

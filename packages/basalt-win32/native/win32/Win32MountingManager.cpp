@@ -807,6 +807,13 @@ void Win32MountingManager::applyText(RnWin32View *view, const ShadowView &shadow
       basalt::writingDirectionName(basalt::writingDirection(data.attributedString)),
       basalt::paragraphTextAlignmentName(data.attributedString),
       basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical));
+
+  // `<Text selectable>`, which `userSelect` also arrives in: React Native's own
+  // `Text.js` maps the style onto the prop. From the props rather than the
+  // state, unlike the text itself.
+  const auto paragraphProps =
+      std::dynamic_pointer_cast<const facebook::react::ParagraphProps>(shadowView.props);
+  view->setTextSelectable(paragraphProps != nullptr && paragraphProps->isSelectable);
 }
 
 namespace {

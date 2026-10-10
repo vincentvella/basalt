@@ -50,8 +50,8 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 191 of 280 | 192 of 280 | 188 of 280 |
-| | `██████████████░░░░░░` | `██████████████░░░░░░` | `█████████████░░░░░░░` |
+| Done | 192 of 280 | 193 of 280 | 189 of 280 |
+| | `██████████████░░░░░░` | `██████████████░░░░░░` | `██████████████░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
 Yoga does it for every host: a layout prop never reaches one of these
@@ -463,7 +463,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
-| `selectable` <sub>`isSelectable`</sub><br/><sub>`userSelect`</sub> | ✖ | ✖ | ✖ | [no host draws a selection or reports one yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `selectable` <sub>`isSelectable`</sub><br/><sub>`userSelect`</sub> | ✅ | ✅ | ✅ | [the paragraph is selected and copied; an inline view inside one is not](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `onTextLayout` | △ | △ | △ | [the cxx TextLayoutManager has no measureLines](https://github.com/vincentvella/basalt/blob/main/docs/backlog/upstream.md) |
 
 ### Neither

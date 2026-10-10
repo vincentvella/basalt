@@ -315,6 +315,42 @@ gboolean rn_view_get_focusable(RnView *self);
 // glyphs that carry no foreground attribute of their own.
 void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *color);
 
+// --- Selecting that text ------------------------------------------------------
+//
+// `<Text selectable>`, which is `BaseParagraphProps::isSelectable` and which
+// `userSelect` also arrives in. What the widget layer owns is the part that
+// needs the layout: where a point lands in the text, and what a range looks
+// like. The state machine -- what a press and a drag mean, and when a drag
+// stops being a press -- is core/TextSelection.h, because all three hosts need
+// the same answers and they are not about Pango.
+
+// Whether this paragraph's text can be selected with a pointer. A view with no
+// paragraph ignores it.
+void rn_view_set_text_selectable(RnView *self, gboolean selectable);
+gboolean rn_view_get_text_selectable(RnView *self);
+
+// The byte offset in the paragraph's text nearest the point (x, y), in the
+// view's own coordinates, or -1 when there is no paragraph.
+//
+// Bytes because that is what Pango counts and what the two calls either side of
+// this one take; nothing converts, and core/TextSelection.h says why it does
+// not have to.
+//
+// Nearest rather than inside: a point past the end of a line answers the end of
+// that line, which is what dragging off the end of a line has to mean.
+int rn_view_text_index_at(RnView *self, double x, double y);
+
+// The range to draw as selected, in bytes, as rn_view_text_index_at answers
+// them. A length of zero selects nothing, which is how a selection is cleared.
+void rn_view_set_text_selection(RnView *self, int start, int length);
+int rn_view_get_text_selection_start(RnView *self);
+int rn_view_get_text_selection_length(RnView *self);
+
+// The selected text itself, newly allocated, or NULL when nothing is selected.
+// What the clipboard takes: a substring rather than a pair of offsets, which is
+// the one form every desktop's clipboard agrees about.
+char *rn_view_copy_selected_text(RnView *self);
+
 // How much of a laid-out paragraph its own `numberOfLines` leaves visible, in
 // points.
 //

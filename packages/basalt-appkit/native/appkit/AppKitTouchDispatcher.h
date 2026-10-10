@@ -21,9 +21,12 @@
 #include "AppKitMountingManager.h"
 #include "HoverTracker.h"
 #include "PointerButtons.h"
+#include "TextSelection.h"
 
 #include <react/renderer/components/view/TouchEventEmitter.h>
 #include <react/renderer/graphics/Point.h>
+
+#include <utility>
 
 namespace basalt {
 
@@ -67,6 +70,15 @@ class AppKitTouchDispatcher {
   // negative coordinate means the pointer left the surface.
   void synthesiseHover(double x, double y);
 
+  // --- Selecting text -------------------------------------------------------
+  //
+  // The AppKit half of what the GTK dispatcher does, in the same three calls
+  // and for the same reasons: a press inside a selectable paragraph is
+  // remembered and nothing else, and the gesture becomes a selection only once
+  // the pointer has moved far enough to be a sweep rather than a tap -- at
+  // which point the touch sequence this was reporting is cancelled. The state
+  // machine is core/TextSelection.h.
+
   // The main-thread half, called by the view that received the mouse event.
   // Public because the Objective-C trampoline has to reach them.
   // `button` decides whether this presses anything. Only the primary one drives
@@ -91,6 +103,19 @@ class AppKitTouchDispatcher {
   void dispatchHoverLeave();
 
  private:
+
+  // The innermost selectable paragraph under a point in root coordinates, and
+  // the character index in its text, or {nil, -1}.
+  std::pair<RnAppKitView *, NSInteger> selectableTextAt(double x, double y) const;
+
+  // The index in `view`'s text nearest a point in *root* coordinates, which is
+  // not the same question: a drag that has left the paragraph still extends the
+  // selection inside it.
+  NSInteger textIndexIn(RnAppKitView *view, double x, double y) const;
+
+  // Pushes the model's range onto the paragraph it belongs to, and takes the
+  // highlight off whatever held one before.
+  void drawSelection();
   enum class TouchKind { Start, Move, End, Cancel };
 
   // The window stopped being key while the mouse was down.
@@ -133,6 +158,18 @@ class AppKitTouchDispatcher {
                          basalt::PointerButton button);
   void emitPointerMove(
       facebook::react::Tag target, double originX, double originY, double x, double y);
+
+  // What is selected, which paragraph it is in, and which is holding a
+  // highlight -- the last two differ when a selection moves to another
+  // paragraph, and after a release the highlight outlives the drag.
+  //
+  // Strong references, unlike the GTK side's weak pointers: an NSView is
+  // retained by its superview and these keep a paragraph alive a moment longer
+  // than its unmounting, which is a retain cycle nobody can observe rather than
+  // a dangling pointer. Cleared on press, on release and in the destructor.
+  basalt::TextSelection selection_;
+  RnAppKitView *selectionView_{nil};
+  RnAppKitView *highlightView_{nil};
 
   AppKitMountingManager *mountingManager_;
   RnAppKitView *surfaceRoot_;

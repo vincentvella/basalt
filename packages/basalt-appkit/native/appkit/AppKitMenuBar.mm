@@ -22,6 +22,7 @@
 // would deliver it to the wrong object and do nothing.
 
 #include "MenuModel.h"
+#include "TextSelection.h"
 
 #import "AppKitAppWindow.h"
 
@@ -345,6 +346,20 @@ bool menuRoleSupported(const std::string &role) {
 }
 
 void performMenuRole(const std::string &role) {
+  // A paragraph's selection first, when there is one: `Copy` over selected text
+  // means that text, and the responder chain below is what the role meant when
+  // only a <TextInput> could hold a selection. At most one of the two exists --
+  // pressing in a field clears a paragraph's selection on the way past -- so
+  // the order settles a case that does not arise rather than choosing between
+  // two live selections.
+  //
+  // This is also what makes Cmd+C work for a selected paragraph: the
+  // application menu's Copy item carries the key equivalent and performs this
+  // role, so there is no second key path to write. See core/TextSelection.h.
+  if (role == "copy" && copySelectedText()) {
+    return;
+  }
+
   SEL selector = selectorForRole(role);
   if (selector == nullptr) {
     return;

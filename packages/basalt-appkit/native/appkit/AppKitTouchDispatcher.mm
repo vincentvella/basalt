@@ -8,6 +8,7 @@
 #include <react/renderer/components/view/TouchEvent.h>
 
 #include <cstdint>
+#include <string>
 
 // The bridge between AppKit's protocol and the C++ dispatcher. A C++ object
 // cannot conform to an Objective-C protocol, and the root holds its handler
@@ -126,6 +127,15 @@ AppKitTouchDispatcher::AppKitTouchDispatcher(AppKitMountingManager *mountingMana
   // hover, and AppKit will not ask again just because a property changed.
   [surfaceRoot_ updateTrackingAreas];
 
+  // What `Copy` in a menu and Cmd+C copy when a paragraph has a selection.
+  // Neither of those can reach this object -- one is in the platform services
+  // and the other in the application's own key handling -- so this is where
+  // they ask. See core/TextSelection.h.
+  basalt::setSelectedTextProvider([this]() -> std::string {
+    NSString *text = highlightView_ == nil ? nil : [highlightView_ rnSelectedText];
+    return text == nil ? std::string{} : std::string(text.UTF8String);
+  });
+
   // A press that the window stops being able to finish. Registered with no
   // object, and filtered on delivery: at construction the root is not in a
   // window yet, so there is nothing to register *for*.
@@ -158,6 +168,11 @@ AppKitTouchDispatcher::~AppKitTouchDispatcher() {
   // pointer first means an event already in flight cannot reach a dead object.
   ((RnAppKitInputTarget *)inputTarget_).dispatcher = nullptr;
   inputTarget_ = nil;
+  // The provider holds `this`: a Copy role performed after a reload would
+  // otherwise ask a destroyed dispatcher for the selection.
+  basalt::setSelectedTextProvider(nullptr);
+  selectionView_ = nil;
+  highlightView_ = nil;
 }
 
 void AppKitTouchDispatcher::synthesiseTap(double x, double y) {
@@ -253,6 +268,53 @@ static Tag targetUnder(RnAppKitView *surfaceRoot, double x, double y, NSPoint *o
   return 0;
 }
 
+std::pair<RnAppKitView *, NSInteger> AppKitTouchDispatcher::selectableTextAt(double x,
+                                                                             double y) const {
+  if (surfaceRoot_ == nil) {
+    return {nil, -1};
+  }
+  // From the resolved hit, like every other hit test here, so that a box-none
+  // ancestor that swallows a press swallows a selection too.
+  RnAppKitView *hit = RnAppKitHitTest(surfaceRoot_, x, y);
+  for (NSView *view = hit; view != nil; view = view.superview) {
+    if ([view isKindOfClass:[RnAppKitView class]] && ((RnAppKitView *)view).rnTextSelectable) {
+      RnAppKitView *paragraph = (RnAppKitView *)view;
+      return {paragraph, textIndexIn(paragraph, x, y)};
+    }
+    if (view == surfaceRoot_) {
+      break;
+    }
+  }
+  return {nil, -1};
+}
+
+NSInteger AppKitTouchDispatcher::textIndexIn(RnAppKitView *view, double x, double y) const {
+  if (view == nil || surfaceRoot_ == nil) {
+    return -1;
+  }
+  // AppKit computes the transform, so a scrolled or transformed ancestor counts
+  // -- the same reason targetUnder asks it rather than summing frames.
+  const NSPoint inView = [view convertPoint:NSMakePoint(x, y) fromView:surfaceRoot_];
+  return [view rnTextIndexAtPoint:CGPointMake(inView.x, inView.y)];
+}
+
+void AppKitTouchDispatcher::drawSelection() {
+  // The paragraph that was holding a highlight, when it is not this one: a
+  // press in a second <Text> ends the first one's selection, which is what
+  // every desktop does.
+  if (highlightView_ != nil && highlightView_ != selectionView_) {
+    [highlightView_ setRnTextSelectionStart:0 length:0];
+    highlightView_ = nil;
+  }
+  if (selectionView_ == nil) {
+    return;
+  }
+
+  const basalt::TextSelectionRange range = selection_.range();
+  [selectionView_ setRnTextSelectionStart:range.start length:range.length];
+  highlightView_ = range.empty() ? nil : selectionView_;
+}
+
 void AppKitTouchDispatcher::dispatchTouchStart(double x, double y, basalt::PointerButton button) {
   NSPoint origin = NSZeroPoint;
   const Tag target = targetUnder(surfaceRoot_, x, y, &origin);
@@ -272,6 +334,21 @@ void AppKitTouchDispatcher::dispatchTouchStart(double x, double y, basalt::Point
     return;
   }
 
+  // Selectable text remembers where the press landed and nothing more: a press
+  // is also how a <Pressable> around this text is pressed, so claiming here
+  // would stop every tap on a selectable label. The press *does* clear whatever
+  // was selected, which is how a click dismisses a highlight. See
+  // core/TextSelection.h.
+  {
+    const auto [paragraph, index] = selectableTextAt(x, y);
+    selectionView_ = paragraph;
+    selection_.press(paragraph != nil ? static_cast<Tag>(paragraph.rnTag) : 0,
+                     index < 0 ? 0 : static_cast<int>(index),
+                     Point{.x = static_cast<facebook::react::Float>(x),
+                           .y = static_cast<facebook::react::Float>(y)});
+    drawSelection();
+  }
+
   if (!basalt::gestures().empty()) {
     basalt::gestures().pointerDown(
         hitChain(surfaceRoot_, x, y), x, y, basalt::monotonicMilliseconds());
@@ -287,6 +364,19 @@ void AppKitTouchDispatcher::dispatchTouchStart(double x, double y, basalt::Point
 }
 
 void AppKitTouchDispatcher::dispatchTouchMove(double x, double y) {
+  // A selection that has claimed the pointer owns every move after it, and this
+  // is before the guards below on purpose: claiming *cancelled* the touch, so
+  // `isDown_` is false and `activeTarget_` is zero from then on, and a check
+  // after them would extend a selection exactly once. The gesture recognisers
+  // are not fed either -- they were sent a cancel with the touch.
+  if (selection_.dragging()) {
+    selection_.moveTo(static_cast<int>(textIndexIn(selectionView_, x, y)),
+                      Point{.x = static_cast<facebook::react::Float>(x),
+                            .y = static_cast<facebook::react::Float>(y)});
+    drawSelection();
+    return;
+  }
+
   if (!basalt::gestures().empty()) {
     basalt::gestures().pointerMove(x, y, basalt::monotonicMilliseconds());
   }
@@ -297,6 +387,17 @@ void AppKitTouchDispatcher::dispatchTouchMove(double x, double y) {
   if (!isDown_ || activeTarget_ == 0) {
     return;
   }
+
+  // The move that turns a press inside selectable text into a selection: far
+  // enough from where it started to be a sweep rather than a tap.
+  if (selection_.moveTo(static_cast<int>(textIndexIn(selectionView_, x, y)),
+                        Point{.x = static_cast<facebook::react::Float>(x),
+                              .y = static_cast<facebook::react::Float>(y)})) {
+    drawSelection();
+    dispatchTouchCancel();
+    return;
+  }
+
   if (yieldToGesture(x, y)) {
     return;
   }
@@ -315,9 +416,22 @@ void AppKitTouchDispatcher::dispatchTouchEnd(double x, double y, basalt::Pointer
     }
   }
 
+  // The pointer is up, so a selection stops growing. The highlight stays: a
+  // person lets go and expects the text to stay selected until they click.
+  const bool wasSelecting = selection_.dragging();
+  selection_.release();
+
   // And nothing else for a button that never pressed anything -- there is no
   // touch to end, no gesture to finish and no <Switch> to toggle.
   if (!basalt::isPressButton(button)) {
+    return;
+  }
+
+  // A selection already cancelled the touch sequence, so there is no touch to
+  // end and nothing to press: the release belongs to the selection.
+  if (wasSelecting) {
+    isDown_ = false;
+    activeTarget_ = 0;
     return;
   }
 

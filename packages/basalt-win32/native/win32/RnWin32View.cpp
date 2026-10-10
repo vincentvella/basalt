@@ -320,6 +320,55 @@ void RnWin32View::setHidden(bool hidden) {
 
 // --- Content ----------------------------------------------------------------
 
+void RnWin32View::setTextSelectable(bool selectable) {
+  if (textSelectable_ == selectable) {
+    return;
+  }
+  textSelectable_ = selectable;
+  // A paragraph that stops being selectable keeps no highlight: the prop going
+  // false is an app saying this text is not to be selected, and leaving the
+  // last selection drawn would be the one state nothing can clear.
+  // No repaint request here, for the reason `setImage` makes none: this host
+  // invalidates once per mounted transaction rather than per view, and a
+  // selection changed by the pointer is repainted by whoever changed it. See
+  // Win32TouchDispatcher's repaint requester.
+  if (!selectable && textLayout_ != nullptr && textLayout_->selectionLength() > 0) {
+    textLayout_->setSelection(0, 0);
+  }
+}
+
+int RnWin32View::textIndexAtPoint(float x, float y) const {
+  if (textLayout_ == nullptr) {
+    return -1;
+  }
+  return static_cast<int>(
+      textLayout_->indexAtPoint(x, y, frame_.width, frame_.height));
+}
+
+void RnWin32View::setTextSelection(int start, int length) {
+  if (textLayout_ == nullptr) {
+    return;
+  }
+  const UINT32 from = static_cast<UINT32>(std::max(0, start));
+  const UINT32 count = static_cast<UINT32>(std::max(0, length));
+  if (textLayout_->selectionStart() == from && textLayout_->selectionLength() == count) {
+    return;
+  }
+  textLayout_->setSelection(from, count);
+}
+
+int RnWin32View::textSelectionStart() const {
+  return textLayout_ == nullptr ? 0 : static_cast<int>(textLayout_->selectionStart());
+}
+
+int RnWin32View::textSelectionLength() const {
+  return textLayout_ == nullptr ? 0 : static_cast<int>(textLayout_->selectionLength());
+}
+
+std::string RnWin32View::selectedText() const {
+  return textLayout_ == nullptr ? std::string{} : textLayout_->selectedText();
+}
+
 void RnWin32View::setParagraphNames(const char *writingDirection,
                                     const char *textAlign,
                                     const char *textVerticalAlign) {
@@ -330,6 +379,16 @@ void RnWin32View::setParagraphNames(const char *writingDirection,
 }
 
 void RnWin32View::setTextLayout(std::shared_ptr<RnWin32TextLayout> layout) {
+  // A selection survives a rebuild of the same text and not a change to it.
+  // Every mutation that touches a paragraph builds a new layout -- a parent
+  // re-rendering is enough -- so dropping the selection each time would make it
+  // impossible to keep one in a live app; keeping it across *different* text
+  // would highlight whatever now sits at those offsets. The other two hosts
+  // draw the same line in their own setters.
+  if (textLayout_ != nullptr && layout != nullptr && textLayout_->selectionLength() > 0 &&
+      textLayout_->text() == layout->text()) {
+    layout->setSelection(textLayout_->selectionStart(), textLayout_->selectionLength());
+  }
   textLayout_ = std::move(layout);
 }
 
@@ -2514,6 +2573,17 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     if (textVerticalAlignName_ != nullptr) {
       out += " text-valign=";
       out += textVerticalAlignName_;
+    }
+    // `<Text selectable>`, and what is selected in it. Neither can be seen any
+    // other way in a dump: the prop changes no box and the highlight is a wash
+    // under the glyphs. The range is in this host's own unit -- UTF-16 code
+    // units, where GTK counts bytes -- so an end-to-end scenario compares
+    // "something is selected" rather than the numbers.
+    if (textSelectable_) {
+      out += " selectable";
+    }
+    if (textSelectionLength() > 0) {
+      appendFormat(out, " selection=%d,%d", textSelectionStart(), textSelectionLength());
     }
     if (writingDirectionName_ != nullptr) {
       out += " writing-dir=";

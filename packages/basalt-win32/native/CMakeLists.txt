@@ -204,6 +204,7 @@ set(BASALT_WIN32_TEST_SOURCES
   tests/test_win32_hittest.cpp
   # DirectWrite measurement, against RnWin32TextLayout alone.
   tests/test_win32_text.cpp
+  tests/test_win32_selection.cpp
   # The resize modes, against a real bitmap and real pixels.
   tests/test_win32_image.cpp
   # The UIA mapping. The React Native role name is what the cross-platform diff

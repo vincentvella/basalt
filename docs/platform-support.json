@@ -238,7 +238,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
     },
     "text-selection": {
-      "text": "no host draws a selection or reports one yet",
+      "text": "the paragraph is selected and copied; an inline view inside one is not",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     }
   },
@@ -1378,9 +1378,12 @@
       ]
     },
     "BaseParagraphProps.isSelectable": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "isSelectable"
+      ],
       "why": "text-selection"
     },
     "BaseParagraphProps.onTextLayout": {

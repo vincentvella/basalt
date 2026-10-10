@@ -14,7 +14,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    ~~fontVariant~~ and ~~a fragment's opacity~~ are done)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
-7. Text is not selectable and reports nothing to AT-SPI
+7. A selected paragraph reports nothing to a screen reader
 9. ~~`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
    Windows~~
 10. ~~`verticalAlign` reaches ReactCommon under a name it does not read~~
@@ -452,36 +452,92 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   it is inert regardless: the backend here is `PangoCoreTextFontMap`, so the
   `PANGO_IS_FC_FONT_MAP` guard is false and an app font never reaches Pango at
   all.
-- **Text is not selectable and reports nothing to AT-SPI**, and there is nothing
-  upstream in the way of the first half of that.
+- **A selected paragraph reports nothing to a screen reader.** The selecting
+  half is done on all three hosts as of 2026-10-10; what is left is this entry
+  and the two limits at the end of it.
 
   `selectable` is the prop, `userSelect` is the style name React Native's own
-  `Text.js` rewrites into it -- a `userSelectToSelectableMap`, beside the
-  `verticalAlignToTextAlignVerticalMap` this file got wrong in the same way on
-  the same day -- and `BaseParagraphProps::isSelectable` is the field both
-  arrive in. So this is a desktop with no selection rather than an API with
-  nowhere to land, which is what entry 11 concluded and is struck through for.
+  `Text.js` rewrites into it, and `BaseParagraphProps::isSelectable` is the
+  field both arrive in -- so there was nothing upstream in the way, which entry
+  11 concluded the opposite of and is struck through for.
 
-  `BaseParagraphProps` was not on the list of structs
-  `scripts/scrape_props.py` scrapes, so `selectable` had no row on the support
-  page at all while `userSelect` had one saying ReactCommon declared no field
-  for it. The struct is on the list now: one row, under the name an app writes,
-  with both spellings beside it -- and `onTextLayout` got its first row out of
-  the same change, which is upstream's; see [upstream.md](upstream.md) entry 17.
+  **What a press and a drag mean is shared and the rest is not.**
+  `core/TextSelection.h` is a state machine with eleven tests of its own,
+  because the hard part is not the selection: a press inside selectable text
+  cannot become one immediately, since a press is also how a `<Pressable>`
+  wrapping that text fires and how a `<ScrollView>` holding it is dragged.
+  Claiming on the press would break both. So a press only remembers where it
+  landed; the gesture becomes a selection once the pointer has moved two points,
+  and at that moment the host cancels the touch sequence it was reporting --
+  which is what the responder system already sees when a scroll claims a touch.
+  A press that never moves is a tap, and a tap clears the selection.
 
-  What selecting text takes, per host, and the shape is the same on all three: a
-  point to a character index (`pango_layout_xy_to_index`,
-  `CTLineGetStringIndexForPosition`, `IDWriteTextLayout::HitTestPoint`), a range
-  to rectangles (`pango_layout_line_get_x_ranges`,
-  `CTLineGetOffsetForStringIndex` per line, `HitTestTextRange`), a highlight
-  drawn under the glyphs in the platform's own selection colour, press, drag and
-  release wired to the two indices, and Ctrl or Cmd with C copying the range
-  through the clipboard this project already has. The model -- anchor and focus,
-  which way round they are, what the substring is -- belongs in `core/` where
-  the three can share it.
+  Each host answers the two questions that need its own engine. GTK:
+  `pango_layout_xy_to_index` for a point, `pango_layout_line_get_x_ranges` per
+  line for the rectangles -- which is one range per visual run, so a
+  bidirectional line highlights correctly. AppKit:
+  `CTLineGetStringIndexForPosition`, and `CTLineGetOffsetForStringIndex` twice
+  per line for a span between two offsets, which is one rectangle and is what
+  `UITextView` draws for the common case; a line with both directions in it is
+  highlighted as one run there, which is the one place the two hosts differ and
+  is why this sentence exists.
 
-  AT-SPI is the other half and a separate piece of work: a selectable paragraph
-  has to implement `AtkText` for a screen reader to read it by word and by line.
+  Indices are each engine's own unit -- UTF-8 bytes on GTK, UTF-16 code units on
+  AppKit -- and nothing converts: a paragraph's selection never leaves the host,
+  `ParagraphEventEmitter` having no event for it. What crosses to the clipboard
+  is the substring.
+
+  The highlight is this project's blue at 35% alpha, from
+  `core/TextHighlight.h`, and not each platform's own selection colour: the
+  argument `core/FocusRing.h` makes about the focus ring, and React Native has
+  no prop an app could use to put three disagreeing hosts back in step --
+  `selectionColor` belongs to `<TextInput>`.
+
+  Copying goes through one function, `basalt::copySelectedText`, which both the
+  `Copy` menu role and the key path ask. The role's half is tested on GTK and
+  AppKit -- a drag, then `performMenuRole("copy")`, then the clipboard read back
+  -- and **the key bindings themselves are not**: `BASALT_TEST_KEY` presses an
+  app's declared shortcuts through the focus manager, which is a different path
+  from a window's own accelerator, so Ctrl+C and Cmd+C are the one line of this
+  that only a person has exercised. On macOS that is the whole of it: the
+  application menu's Copy item carries Cmd+C and performs the role, so there is
+  no second key path. GTK has a Ctrl+C controller on the window, in the bubble
+  phase, so a focused `<TextInput>` keeps its own Ctrl+C and what reaches the
+  window is a copy nothing else wanted.
+
+  Windows is the third, in the same shape: `IDWriteTextLayout::HitTestPoint` for
+  a point and `HitTestTextRange` for the rectangles -- which answers an array of
+  them, so a bidirectional line is handled there the way Pango handles it and
+  AppKit does not. Its Ctrl+C is answered in `WM_KEYDOWN`, after a field's own
+  child window has had its chance, and its dispatcher asks for a repaint
+  explicitly: this host repaints per mounted transaction, and a selection
+  changed by the pointer is not one.
+
+  All three print two dump lines nothing else can show -- `selectable`, which
+  changes no box, and `selection=`, the highlight being a wash under the glyphs
+  -- which is what lets the end-to-end scenario drive `BASALT_TEST_DRAG` and
+  read the result on every host. The range in that line is each engine's own
+  unit, so what crosses between hosts is "something is selected" and the pixels
+  are each suite's own.
+
+  Two things are recorded rather than done on any host:
+
+  - **An inline `<View>` does not move with the text**, which is the same gap
+    `textAlignVertical` has for the same reason: attachment frames are answered
+    without the box they sit in. Selecting across one highlights the text around
+    it and leaves the view where it was.
+  - **Double-click to select a word and triple-click to select the paragraph.**
+    Both are what a desktop does and neither is wired: the click count arrives
+    (GTK's gesture has it, AppKit's `NSEvent.clickCount`, Win32's
+    `WM_LBUTTONDBLCLK`), and the word boundaries would come from
+    `pango_break`, `CTLineGetStringIndexForPosition`'s word granularity, or
+    `IDWriteTextAnalyzer`. The model would gain two transitions and the hosts a
+    boundary call each.
+
+  AT-SPI is the other half of this entry and a separate piece of work: a
+  selectable paragraph has to implement `AtkText` for a screen reader to read it
+  by word and by line, and the same is true of `NSAccessibilityStaticText` and
+  UIA's `ITextProvider`.
 
 - ~~**`textShadowColor`, `textShadowOffset` and `textShadowRadius`.**~~ Done on
   GTK and AppKit 2026-10-09. Three props every pre-CSS React Native title sets

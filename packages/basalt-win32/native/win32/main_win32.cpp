@@ -66,6 +66,7 @@
 
 #include <react/renderer/animated/NativeAnimatedNodesManagerProvider.h>
 #include "Win32Focus.h"
+#include "TextSelection.h"
 #include "Win32TouchDispatcher.h"
 #include "Win32UiThread.h"
 #include "DragAndDrop.h"
@@ -1537,6 +1538,15 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
         basalt::showDevMenu(gHost.reactHost.get());
         return 0;
       }
+      // Ctrl+C copies a paragraph's selection, when there is one. A
+      // <TextInput>'s peer is a real child window and handles its own Ctrl+C
+      // before this is reached, so what arrives here is a copy nothing else
+      // wanted; with no selection this falls through and an app's own binding
+      // below still sees the key. See core/TextSelection.h.
+      if (wparam == 'C' && (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
+          basalt::copySelectedText()) {
+        return 0;
+      }
       // An app's own declared shortcuts, before Escape and before Tab: an app
       // that binds Escape means it. After Ctrl+D above, deliberately -- the
       // developer menu is not an app's to take, and an app that bound Ctrl+D
@@ -1954,6 +1964,10 @@ HostWindow *createHostWindow(facebook::react::SurfaceId surfaceId,
   // with the first one's would deliver every press to the wrong tree.
   made->touchDispatcher =
       std::make_unique<basalt::Win32TouchDispatcher>(gHost.mountingManager.get(), made->root);
+  // A selection changed by the pointer is not a transaction, and this host
+  // repaints per transaction -- so the dispatcher has to ask. See
+  // Win32TouchDispatcher::setRepaintRequester.
+  made->touchDispatcher->setRepaintRequester([] { requestRepaint(); });
   // The keyboard half: Tab reaching a <Pressable>, and Enter activating it.
   // All of it is this project's -- a React Native view is not a window here, so
   // there is nothing for Windows to focus. See Win32Focus.h.

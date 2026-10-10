@@ -431,6 +431,9 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   std::vector<bool> _highlightFilled;
   NSString *_roleName;
   RnTextLayout *_textLayout;
+  // `<Text selectable>`; the range itself lives on the layout, which is what
+  // draws it. See setRnTextSelectable.
+  BOOL _textSelectable;
   CGImageRef _image;
   // An animated image's frames, their delays as the file carried them, and how
   // many times round. See setRnImageFrames:delaysMs:loopCount:. `_image` is
@@ -1266,11 +1269,75 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
 }
 
 - (void)setRnTextLayout:(id)layout {
-  _textLayout = (RnTextLayout *)layout;
+  // A selection survives a rebuild of the same text and not a change to it.
+  // Every mutation that touches a paragraph builds a new layout here -- a
+  // parent re-rendering is enough -- and dropping the selection each time would
+  // make it impossible to keep one in a live app; keeping it across *different*
+  // text would highlight whatever now sits at those offsets. The GTK side draws
+  // the same line in rn_view_set_text_layout.
+  RnTextLayout *replacement = (RnTextLayout *)layout;
+  const BOOL sameText = _textLayout != nil && replacement != nil &&
+      [_textLayout.attributedString.string isEqualToString:replacement.attributedString.string];
+  const NSRange carried = sameText ? _textLayout.selection : NSMakeRange(0, 0);
+
+  _textLayout = replacement;
+  if (_textLayout != nil) {
+    _textLayout.selection = carried;
+  }
   // A layer-backed view with a drawRect: gets its contents from that draw, and
   // only redraws when told. Without this the first paragraph appears and no
   // later one ever does.
   self.needsDisplay = YES;
+}
+
+- (void)setRnTextSelectable:(BOOL)selectable {
+  if (_textSelectable == selectable) {
+    return;
+  }
+  _textSelectable = selectable;
+  // A paragraph that stops being selectable keeps no highlight: the prop going
+  // false is an app saying this text is not to be selected, and leaving the
+  // last selection drawn would be the one state nothing can clear.
+  if (!selectable && _textLayout != nil && _textLayout.selection.length > 0) {
+    _textLayout.selection = NSMakeRange(0, 0);
+    self.needsDisplay = YES;
+  }
+}
+
+- (BOOL)rnTextSelectable {
+  return _textSelectable;
+}
+
+- (NSInteger)rnTextIndexAtPoint:(CGPoint)point {
+  if (_textLayout == nil) {
+    return -1;
+  }
+  return (NSInteger)[_textLayout characterIndexAtPoint:point size:self.bounds.size];
+}
+
+- (void)setRnTextSelectionStart:(NSInteger)start length:(NSInteger)length {
+  if (_textLayout == nil) {
+    return;
+  }
+  const NSRange range =
+      NSMakeRange((NSUInteger)MAX((NSInteger)0, start), (NSUInteger)MAX((NSInteger)0, length));
+  if (NSEqualRanges(_textLayout.selection, range)) {
+    return;
+  }
+  _textLayout.selection = range;
+  self.needsDisplay = YES;
+}
+
+- (NSInteger)rnTextSelectionStart {
+  return _textLayout == nil ? 0 : (NSInteger)_textLayout.selection.location;
+}
+
+- (NSInteger)rnTextSelectionLength {
+  return _textLayout == nil ? 0 : (NSInteger)_textLayout.selection.length;
+}
+
+- (nullable NSString *)rnSelectedText {
+  return _textLayout == nil ? nil : [_textLayout selectedText];
 }
 
 // Only views with text draw anything; the rest are pure CALayer properties and
@@ -3021,6 +3088,18 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   }
   if (self.rnTextVerticalAlign.length > 0) {
     [out appendFormat:@" text-valign=%@", self.rnTextVerticalAlign];
+  }
+  // `<Text selectable>`, and what is selected in it. Neither can be seen any
+  // other way in a dump: the prop changes no box and the highlight is a wash
+  // under the glyphs. The range is in this host's own unit -- UTF-16 code
+  // units, where GTK counts bytes -- so an end-to-end scenario compares
+  // "something is selected" rather than the numbers.
+  if (self.rnTextSelectable) {
+    [out appendString:@" selectable"];
+  }
+  if ([self rnTextSelectionLength] > 0) {
+    [out appendFormat:@" selection=%ld,%ld", (long)[self rnTextSelectionStart],
+                      (long)[self rnTextSelectionLength]];
   }
   if (self.rnWritingDirection.length > 0) {
     [out appendFormat:@" writing-dir=%@", self.rnWritingDirection];

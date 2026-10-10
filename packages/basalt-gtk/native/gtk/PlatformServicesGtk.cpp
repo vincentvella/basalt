@@ -2,6 +2,7 @@
 
 #include "PlatformServices.h"
 #include "ShareFallback.h"
+#include "TextSelection.h"
 // For `quitHost`, which the `quit` role goes through so a quit handler is asked.
 #include "WindowHost.h"
 
@@ -829,6 +830,16 @@ void performMenuRole(const std::string &role) {
   }
 
   if (window == nullptr) {
+    return;
+  }
+
+  // A paragraph's selection first, when there is one: `Copy` over selected text
+  // means that text, and the focused widget below is what the role meant when
+  // only a <TextInput> could hold a selection. At most one of the two exists --
+  // pressing in a field clears a paragraph's selection on the way past -- so
+  // the order settles a case that does not arise rather than choosing between
+  // two live selections. See core/TextSelection.h.
+  if (role == "copy" && copySelectedText()) {
     return;
   }
 

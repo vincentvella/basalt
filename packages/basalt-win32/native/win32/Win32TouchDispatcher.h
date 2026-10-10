@@ -27,10 +27,14 @@
 #include "HoverTracker.h"
 #include "PointerButtons.h"
 #include "RnWin32View.h"
+#include "TextSelection.h"
 #include "Win32MountingManager.h"
 
 #include <react/renderer/components/view/TouchEventEmitter.h>
 #include <react/renderer/graphics/Point.h>
+
+#include <functional>
+#include <utility>
 
 namespace basalt {
 
@@ -43,6 +47,7 @@ class Win32TouchDispatcher {
  public:
   Win32TouchDispatcher(Win32MountingManager *mountingManager,
                        win32::RnWin32View *surfaceRoot);
+  ~Win32TouchDispatcher();
 
   Win32TouchDispatcher(const Win32TouchDispatcher &) = delete;
   Win32TouchDispatcher &operator=(const Win32TouchDispatcher &) = delete;
@@ -81,6 +86,23 @@ class Win32TouchDispatcher {
   // injectable for anything about it to be provable outside a person's hand.
   void synthesiseDrag(double fromX, double fromY, double toX, double toY, int steps);
 
+  // --- Selecting text -------------------------------------------------------
+  //
+  // The Win32 half of what the other two dispatchers do, in the same three
+  // calls and for the same reasons: a press inside a selectable paragraph is
+  // remembered and nothing else, and the gesture becomes a selection once the
+  // pointer has moved far enough to be a sweep rather than a tap -- at which
+  // point the touch sequence this was reporting is cancelled. The state machine
+  // is core/TextSelection.h.
+
+  // How this host asks for a repaint, which it does per transaction rather than
+  // per view: a selection changed by the pointer is not a transaction, so the
+  // thing that changed it has to ask. Left unset in the tests, which render on
+  // demand. See requestRepaint in main_win32.cpp.
+  void setRepaintRequester(std::function<void()> requestRepaint) {
+    requestRepaint_ = std::move(requestRepaint);
+  }
+
   // Moves the pointer without pressing it, which is what produces hover. Same
   // reason as the two above, and the same entry point WM_MOUSEMOVE uses. A
   // negative coordinate means the pointer left the window.
@@ -109,6 +131,19 @@ class Win32TouchDispatcher {
   bool isDown() const { return isDown_; }
 
  private:
+  // The innermost selectable paragraph under a point in root coordinates, and
+  // the UTF-16 offset in its text, or {nullptr, -1}.
+  std::pair<win32::RnWin32View *, int> selectableTextAt(double x, double y) const;
+
+  // The offset in `view`'s text nearest a point in *root* coordinates, which is
+  // not the same question: a drag that has left the paragraph still extends the
+  // selection inside it.
+  int textIndexIn(win32::RnWin32View *view, double x, double y) const;
+
+  // Pushes the model's range onto the paragraph it belongs to, takes the
+  // highlight off whatever held one before, and asks for a repaint.
+  void drawSelection();
+
   enum class TouchKind { Start, Move, End, Cancel };
 
   // Hands the pointer to a gesture recogniser that has activated, cancelling
@@ -137,6 +172,19 @@ class Win32TouchDispatcher {
       facebook::react::Tag target, double originX, double originY, double x, double y);
 
   Win32MountingManager *mountingManager_;
+
+  // What is selected, which paragraph it is in, and which is holding a
+  // highlight -- the last two differ when a selection moves to another
+  // paragraph, and after a release the highlight outlives the drag.
+  //
+  // Raw pointers into the view tree, cleared on press and in the destructor.
+  // This host's views are owned by the mounting manager and outlive a
+  // transaction, and a paragraph unmounted mid-selection is the case
+  // `clearSelection` exists for.
+  basalt::TextSelection selection_;
+  win32::RnWin32View *selectionView_ = nullptr;
+  win32::RnWin32View *highlightView_ = nullptr;
+  std::function<void()> requestRepaint_;
   win32::RnWin32View *surfaceRoot_;
 
   // The view a gesture started on. React Native reports every touch in a

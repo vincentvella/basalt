@@ -27,6 +27,7 @@
 #include <react/renderer/components/image/ImageEventEmitter.h>
 #include <react/renderer/components/image/ImageProps.h>
 #include <react/renderer/components/scrollview/ScrollViewProps.h>
+#include <react/renderer/components/text/ParagraphProps.h>
 #include <react/renderer/components/text/ParagraphState.h>
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/core/ConcreteState.h>
@@ -849,6 +850,13 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   const char *const verticalAlign =
       basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical);
   view.rnTextVerticalAlign = verticalAlign != nullptr ? @(verticalAlign) : nil;
+
+  // `<Text selectable>`, which `userSelect` also arrives in: React Native's own
+  // `Text.js` maps the style onto the prop. From the props rather than the
+  // state, unlike the text itself.
+  const auto paragraphProps =
+      std::dynamic_pointer_cast<const facebook::react::ParagraphProps>(shadowView.props);
+  [view setRnTextSelectable:paragraphProps != nullptr && paragraphProps->isSelectable ? YES : NO];
 
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     layout.shadowOffset = CGSizeMake(shadow->dx, shadow->dy);

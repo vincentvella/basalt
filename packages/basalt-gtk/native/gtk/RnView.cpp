@@ -6,6 +6,7 @@
 
 #include "ControlMetrics.h"
 #include "FocusRing.h"
+#include "TextHighlight.h"
 #include "TextVerticalAlign.h"
 #include "GtkTextPeer.h"
 
@@ -235,6 +236,11 @@ struct _RnView {
   float text_vertical_flush;
   // And what the app called it, for the dump; see rn_view_set_text_valign.
   const char *text_valign;
+  // `<Text selectable>` and what is selected in it, in bytes; see
+  // rn_view_set_text_selectable.
+  gboolean text_selectable;
+  int text_selection_start;
+  int text_selection_length;
   // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
   // to GDK so the tree dump can report what the app asked for.
   char *cursor_name;
@@ -432,6 +438,10 @@ static void rn_view_accessible_init(GtkAccessibleInterface *iface) {
 #else
 G_DEFINE_TYPE(RnView, rn_view, GTK_TYPE_WIDGET)
 #endif
+
+// Declared here and defined beside the other paragraph calls: the snapshot
+// needs it and the definition belongs with rn_view_set_text_layout.
+static float rn_view_text_offset_y(RnView *self);
 
 static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   RnView *self = RN_VIEW(widget);
@@ -816,13 +826,7 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     // the lines that survived rather than all of them.
     const gboolean aligns_text = self->text_vertical_flush > 0.0f;
     if (aligns_text) {
-      int text_height = 0;
-      pango_layout_get_pixel_size(self->text_layout, nullptr, &text_height);
-      const double offset = basalt::textVerticalOffset(
-          bounds.size.height,
-          clips_text ? clip_height : static_cast<double>(text_height),
-          self->text_vertical_flush);
-      const graphene_point_t down{0.0f, static_cast<float>(offset)};
+      const graphene_point_t down{0.0f, rn_view_text_offset_y(self)};
       gtk_snapshot_save(snapshot);
       gtk_snapshot_translate(snapshot, &down);
     }
@@ -853,6 +857,44 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
                              self->text_shadow_dy,
                              self->text_shadow_radius};
       gtk_snapshot_push_shadow(snapshot, &shadow, 1);
+    }
+    // The selection, under the glyphs: a wash rather than a solid fill, because
+    // nothing recolours the text and it has to stay legible through it. See
+    // core/TextSelection.h for why the colour is this project's rather than the
+    // theme's.
+    if (self->text_selection_length > 0) {
+      const GdkRGBA highlight{basalt::kTextSelectionRed,
+                              basalt::kTextSelectionGreen,
+                              basalt::kTextSelectionBlue,
+                              basalt::kTextSelectionAlpha};
+      const int selection_end = self->text_selection_start + self->text_selection_length;
+      PangoLayoutIter *iter = pango_layout_get_iter(self->text_layout);
+      do {
+        PangoLayoutLine *line = pango_layout_iter_get_line_readonly(iter);
+        PangoRectangle logical{};
+        pango_layout_iter_get_line_extents(iter, nullptr, &logical);
+
+        // One range per visual run of the selection on this line, which is two
+        // or more when the line is bidirectional: a selection that is
+        // contiguous in the string is not contiguous on the line there.
+        int *ranges = nullptr;
+        int range_count = 0;
+        pango_layout_line_get_x_ranges(
+            line, self->text_selection_start, selection_end, &ranges, &range_count);
+        for (int i = 0; i < range_count; i++) {
+          graphene_rect_t rect;
+          rect.origin.x = static_cast<float>(ranges[2 * i]) / PANGO_SCALE;
+          rect.origin.y = static_cast<float>(logical.y) / PANGO_SCALE;
+          rect.size.width =
+              static_cast<float>(ranges[2 * i + 1] - ranges[2 * i]) / PANGO_SCALE;
+          rect.size.height = static_cast<float>(logical.height) / PANGO_SCALE;
+          if (rect.size.width > 0.0f && rect.size.height > 0.0f) {
+            gtk_snapshot_append_color(snapshot, &highlight, &rect);
+          }
+        }
+        g_free(ranges);
+      } while (pango_layout_iter_next_line(iter));
+      pango_layout_iter_free(iter);
     }
     gtk_snapshot_append_layout(snapshot, self->text_layout, &self->text_color);
     if (shadows_text) {
@@ -1263,6 +1305,9 @@ static void rn_view_init(RnView *self) {
   self->text_align = nullptr;
   self->text_vertical_flush = 0.0f;
   self->text_valign = nullptr;
+  self->text_selectable = FALSE;
+  self->text_selection_start = 0;
+  self->text_selection_length = 0;
   self->spell_check = nullptr;
   self->auto_correct = nullptr;
   self->auto_capitalize = nullptr;
@@ -1847,8 +1892,45 @@ void rn_view_set_text_shadow(
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
+// How far down its box the paragraph is drawn, which the highlight and the hit
+// test both need and the snapshot used to compute inline. The *visible* height
+// is what is aligned: for a paragraph `numberOfLines` cut, the lines that
+// survived rather than all of them. See core/TextVerticalAlign.h.
+static float rn_view_text_offset_y(RnView *self) {
+  if (self->text_layout == nullptr || self->text_vertical_flush <= 0.0f) {
+    return 0.0f;
+  }
+
+  float clip_height = 0.0f;
+  const gboolean clips_text = rn_pango_clip_height(self->text_layout, &clip_height);
+  int text_height = 0;
+  pango_layout_get_pixel_size(self->text_layout, nullptr, &text_height);
+
+  const double box = gtk_widget_get_height(GTK_WIDGET(self));
+  return static_cast<float>(basalt::textVerticalOffset(
+      box,
+      clips_text ? clip_height : static_cast<double>(text_height),
+      self->text_vertical_flush));
+}
+
 void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *color) {
   g_return_if_fail(RN_IS_VIEW(self));
+
+  // A selection survives a rebuild of the same text and not a change to it.
+  // Every mutation that touches a paragraph builds a new layout here -- a
+  // parent re-rendering is enough -- so dropping the selection each time would
+  // make it impossible to keep one in a live app; keeping it across *different*
+  // text would highlight whatever now sits at those offsets. The AppKit side
+  // draws the same line in setRnTextLayout:.
+  if (self->text_selection_length > 0) {
+    const char *was = self->text_layout != nullptr ? pango_layout_get_text(self->text_layout)
+                                                   : nullptr;
+    const char *now = layout != nullptr ? pango_layout_get_text(layout) : nullptr;
+    if (was == nullptr || now == nullptr || strcmp(was, now) != 0) {
+      self->text_selection_start = 0;
+      self->text_selection_length = 0;
+    }
+  }
 
   if (layout != nullptr) {
     g_object_ref(layout);
@@ -1861,6 +1943,109 @@ void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *c
   }
 
   gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void rn_view_set_text_selectable(RnView *self, gboolean selectable) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  if (self->text_selectable == selectable) {
+    return;
+  }
+  self->text_selectable = selectable;
+  // A paragraph that stops being selectable keeps no highlight: the prop going
+  // false is an app saying this text is not to be selected, and leaving the
+  // last selection drawn would be the one state nothing can clear.
+  if (!selectable && self->text_selection_length > 0) {
+    self->text_selection_start = 0;
+    self->text_selection_length = 0;
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+  }
+}
+
+gboolean rn_view_get_text_selectable(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), FALSE);
+  return self->text_selectable;
+}
+
+int rn_view_text_index_at(RnView *self, double x, double y) {
+  g_return_val_if_fail(RN_IS_VIEW(self), -1);
+  if (self->text_layout == nullptr) {
+    return -1;
+  }
+
+  // In the paragraph's own coordinates, which are the view's minus wherever
+  // `textAlignVertical` put it.
+  const double text_y = y - rn_view_text_offset_y(self);
+
+  int index = 0;
+  int trailing = 0;
+  // Answers FALSE for a point outside the layout and still fills in the nearest
+  // index, which is what a drag off the end of a line wants: the end of that
+  // line rather than nothing at all.
+  pango_layout_xy_to_index(self->text_layout,
+                           static_cast<int>(x * PANGO_SCALE),
+                           static_cast<int>(text_y * PANGO_SCALE),
+                           &index,
+                           &trailing);
+
+  // `trailing` is how many characters past `index` the point fell, which is one
+  // when the pointer is in the right half of a glyph. In bytes here, because
+  // that is the unit the two calls around this one take, and a character is one
+  // to four of them.
+  const char *text = pango_layout_get_text(self->text_layout);
+  if (text != nullptr) {
+    const char *at = text + index;
+    const char *end = text + strlen(text);
+    for (int i = 0; i < trailing && at < end; i++) {
+      at = g_utf8_find_next_char(at, end);
+      if (at == nullptr) {
+        at = end;
+        break;
+      }
+    }
+    index = static_cast<int>(at - text);
+  }
+  return index;
+}
+
+void rn_view_set_text_selection(RnView *self, int start, int length) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  if (self->text_selection_start == start && self->text_selection_length == length) {
+    return;
+  }
+  self->text_selection_start = start;
+  self->text_selection_length = length;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+int rn_view_get_text_selection_start(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0);
+  return self->text_selection_start;
+}
+
+int rn_view_get_text_selection_length(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0);
+  return self->text_selection_length;
+}
+
+char *rn_view_copy_selected_text(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
+  if (self->text_layout == nullptr || self->text_selection_length <= 0) {
+    return nullptr;
+  }
+  const char *text = pango_layout_get_text(self->text_layout);
+  if (text == nullptr) {
+    return nullptr;
+  }
+  // Clamped against the string rather than trusted: the layout can be rebuilt
+  // by a mutation between a selection and a copy, and a shorter string with the
+  // old offsets would read past the end.
+  const int length = static_cast<int>(strlen(text));
+  const int start = CLAMP(self->text_selection_start, 0, length);
+  const int end = CLAMP(start + self->text_selection_length, start, length);
+  if (end <= start) {
+    return nullptr;
+  }
+  return g_strndup(text + start, static_cast<gsize>(end - start));
 }
 
 gboolean rn_pango_clip_height(PangoLayout *layout, float *out_height) {
@@ -3054,6 +3239,18 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   }
   if (self->text_valign != nullptr) {
     g_string_append_printf(out, " text-valign=%s", self->text_valign);
+  }
+  // `<Text selectable>`, and what is selected in it. Neither can be seen any
+  // other way in a dump: the prop changes no box and the highlight is a wash
+  // under the glyphs. The range is in each host's own unit -- bytes here,
+  // UTF-16 code units on the other two -- so what an end-to-end scenario
+  // compares across hosts is "something is selected" rather than the numbers.
+  if (self->text_selectable) {
+    g_string_append(out, " selectable");
+  }
+  if (self->text_selection_length > 0) {
+    g_string_append_printf(
+        out, " selection=%d,%d", self->text_selection_start, self->text_selection_length);
   }
   if (self->writing_direction != nullptr) {
     g_string_append_printf(out, " writing-dir=%s", self->writing_direction);
