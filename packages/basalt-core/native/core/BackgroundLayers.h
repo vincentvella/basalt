@@ -156,15 +156,23 @@ inline float roundedExtent(float item, float area) {
 // -- `{top, left}`, `{bottom, right}`, `{top, right}` or `{bottom, left}` -- so a
 // `right` in the map means the `left` beside it is React Native's default and
 // not the author's.
-inline float backgroundOffset(const std::optional<facebook::react::ValueUnit> &near,
-                              const std::optional<facebook::react::ValueUnit> &far,
+//
+// `nearEdge` and `farEdge` rather than `near` and `far`, which is not a style
+// choice: `windows.h` defines both of those as empty macros, left over from the
+// 16-bit memory model, so the obvious names turn into nothing at all wherever
+// this header is used from a Windows translation unit. That cost a red build
+// the day the Win32 host started drawing gradients -- the two other hosts had
+// compiled it for days -- and the error is `expected expression` on a line that
+// looks perfectly ordinary.
+inline float backgroundOffset(const std::optional<facebook::react::ValueUnit> &nearEdge,
+                              const std::optional<facebook::react::ValueUnit> &farEdge,
                               float areaOrigin,
                               float available) {
-  if (far.has_value()) {
-    return areaOrigin + (available - far->resolve(available));
+  if (farEdge.has_value()) {
+    return areaOrigin + (available - farEdge->resolve(available));
   }
-  if (near.has_value()) {
-    return areaOrigin + near->resolve(available);
+  if (nearEdge.has_value()) {
+    return areaOrigin + nearEdge->resolve(available);
   }
   return areaOrigin;
 }
