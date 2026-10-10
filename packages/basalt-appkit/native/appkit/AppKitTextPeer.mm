@@ -20,8 +20,34 @@ static void RnApplyTextChecking(NSTextView *_Nullable editor,
   }
 }
 
+// `selectionColor` and `cursorColor`, on the same NSTextView and under the same
+// rule: nil leaves AppKit's own answer alone, which is the third state the
+// props have.
+static void RnApplyEditorColours(NSTextView *_Nullable editor,
+                                 NSColor *_Nullable selection,
+                                 NSColor *_Nullable caret) {
+  if (editor == nil) {
+    return;
+  }
+  if (caret != nil) {
+    editor.insertionPointColor = caret;
+  }
+  if (selection != nil) {
+    // One key of the dictionary rather than the whole of it: the rest is
+    // AppKit's, including how a selection dims when its window loses focus.
+    NSMutableDictionary *attributes = [editor.selectedTextAttributes mutableCopy];
+    if (attributes == nil) {
+      attributes = [NSMutableDictionary dictionary];
+    }
+    attributes[NSBackgroundColorAttributeName] = selection;
+    editor.selectedTextAttributes = attributes;
+  }
+}
+
 @interface RnAppKitTextField : NSTextField
 @property(nonatomic, assign) NSInteger rnTag;
+@property(nonatomic, strong, nullable) NSColor *rnSelectionColour;
+@property(nonatomic, strong, nullable) NSColor *rnCaretColour;
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
 @property(nonatomic, assign) RnTextChecking rnSpellCheck;
 @property(nonatomic, assign) RnTextChecking rnAutoCorrect;
@@ -35,6 +61,8 @@ static void RnApplyTextChecking(NSTextView *_Nullable editor,
     // the spell-checking flags can be put on it. See RnPeerSetTextChecking.
     if ([self.currentEditor isKindOfClass:NSTextView.class]) {
       RnApplyTextChecking((NSTextView *)self.currentEditor, _rnSpellCheck, _rnAutoCorrect);
+      RnApplyEditorColours(
+          (NSTextView *)self.currentEditor, _rnSelectionColour, _rnCaretColour);
     }
     [_rnOwner rnFieldDidBecomeFirstResponder:_rnTag];
   }
@@ -44,6 +72,8 @@ static void RnApplyTextChecking(NSTextView *_Nullable editor,
 
 @interface RnAppKitSecureTextField : NSSecureTextField
 @property(nonatomic, assign) NSInteger rnTag;
+@property(nonatomic, strong, nullable) NSColor *rnSelectionColour;
+@property(nonatomic, strong, nullable) NSColor *rnCaretColour;
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
 @property(nonatomic, assign) RnTextChecking rnSpellCheck;
 @property(nonatomic, assign) RnTextChecking rnAutoCorrect;
@@ -57,6 +87,8 @@ static void RnApplyTextChecking(NSTextView *_Nullable editor,
     // the spell-checking flags can be put on it. See RnPeerSetTextChecking.
     if ([self.currentEditor isKindOfClass:NSTextView.class]) {
       RnApplyTextChecking((NSTextView *)self.currentEditor, _rnSpellCheck, _rnAutoCorrect);
+      RnApplyEditorColours(
+          (NSTextView *)self.currentEditor, _rnSelectionColour, _rnCaretColour);
     }
     [_rnOwner rnFieldDidBecomeFirstResponder:_rnTag];
   }
@@ -66,6 +98,8 @@ static void RnApplyTextChecking(NSTextView *_Nullable editor,
 
 @interface RnAppKitTextView : NSTextView
 @property(nonatomic, assign) NSInteger rnTag;
+@property(nonatomic, strong, nullable) NSColor *rnSelectionColour;
+@property(nonatomic, strong, nullable) NSColor *rnCaretColour;
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
 @property(nonatomic, strong, nullable) NSAttributedString *rnPlaceholder;
 @property(nonatomic, assign) RnTextChecking rnSpellCheck;
@@ -256,6 +290,59 @@ void RnPeerSetTextChecking(NSView *peer,
     RnApplyTextChecking(
         (NSTextView *)((NSTextField *)peer).currentEditor, spellCheck, autoCorrect);
   }
+}
+
+void RnPeerSetEditorColours(NSView *peer, NSColor *selection, NSColor *caret) {
+  if (peer == nil) {
+    return;
+  }
+  if (RnPeerIsMultiline(peer)) {
+    // Its own editor, so the colours could go straight on -- they are still
+    // remembered, so that reading them back answers what the app asked for
+    // rather than what AppKit currently holds.
+    ((RnAppKitTextView *)peer).rnSelectionColour = selection;
+    ((RnAppKitTextView *)peer).rnCaretColour = caret;
+    RnApplyEditorColours((NSTextView *)peer, selection, caret);
+    return;
+  }
+  // Remembered first, because a field with no focus has no field editor to put
+  // them on and `becomeFirstResponder` is what applies them then.
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    ((RnAppKitTextField *)peer).rnSelectionColour = selection;
+    ((RnAppKitTextField *)peer).rnCaretColour = caret;
+  } else if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    ((RnAppKitSecureTextField *)peer).rnSelectionColour = selection;
+    ((RnAppKitSecureTextField *)peer).rnCaretColour = caret;
+  }
+  if ([((NSTextField *)peer).currentEditor isKindOfClass:NSTextView.class]) {
+    RnApplyEditorColours((NSTextView *)((NSTextField *)peer).currentEditor, selection, caret);
+  }
+}
+
+NSColor *RnPeerSelectionColour(NSView *peer) {
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    return ((RnAppKitTextView *)peer).rnSelectionColour;
+  }
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    return ((RnAppKitTextField *)peer).rnSelectionColour;
+  }
+  if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    return ((RnAppKitSecureTextField *)peer).rnSelectionColour;
+  }
+  return nil;
+}
+
+NSColor *RnPeerCaretColour(NSView *peer) {
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    return ((RnAppKitTextView *)peer).rnCaretColour;
+  }
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    return ((RnAppKitTextField *)peer).rnCaretColour;
+  }
+  if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    return ((RnAppKitSecureTextField *)peer).rnCaretColour;
+  }
+  return nil;
 }
 
 // The remembered request, from whichever peer this is. A multiline view has no

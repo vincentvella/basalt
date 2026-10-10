@@ -9,11 +9,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. The synthetic typing instruments cannot observe either event on GTK
 4. No shared focus registry: TextInput
 5. ~~`blur` grabs focus for the window rather than dropping it~~
-6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored **
+6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored
+   on Windows; done on GTK and AppKit
 7. src/overrides/TextInput
 8. returnKeyType, clearButtonMode, selectTextOnFocus and clearTextOnFocus are
    ignored, and ~~autoCapitalize, autoCorrect, spellCheck and keyboardType~~ are
-   done on two hosts
+   done on all three
 9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
 10. ~~`TextInputProps` and its traits have no rows on the support page~~
 
@@ -114,24 +115,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `gtk_window_get_focus` is NULL after the command, in a real window, and fails
   on the old behaviour.
 - `placeholderTextColor`, `selectionColor` and `cursorColor` are parsed and
-  ignored **on AppKit and on Windows**. Done on GTK 2026-10-07.
+  ignored **on Windows**. Done on GTK 2026-10-07 and **on AppKit 2026-10-10**.
 
   **This entry said AppKit already honoured the placeholder colour, and that was
   wrong**, found on 2026-10-09 when every `TextInput` prop got a row on the
   support page and the audit asked which host reads which.
-  `AppKitTextInput.mm` paints `NSColor.placeholderTextColor`, which is the
-  *system's* placeholder grey, and never reads `props->placeholderTextColor`. An
-  app asking for a red placeholder gets grey, and the entry made that look done.
+  `AppKitTextInput.mm` painted `NSColor.placeholderTextColor`, which is the
+  *system's* placeholder grey, and never read `props->placeholderTextColor`. An
+  app asking for a red placeholder got grey, and the entry made that look done.
 
-  What AppKit would take is known and is the awkward shape this host keeps
-  hitting: the placeholder is an attributed string, so its colour is a line
-  beside the font it already sets. The caret and the selection are not. They are
-  `NSTextView.insertionPointColor` and `selectedTextAttributes`, and an
-  `NSTextField` has no text view of its own: it borrows the window's shared
-  field editor while it is focused, which is the same thing that made
-  `spellCheck` reapply on `becomeFirstResponder`. So those two want setting when
-  the field takes focus rather than when its props arrive, and resetting when it
-  loses focus, or the next field inherits them.
+  **What AppKit took was the shape this entry predicted.** The placeholder is an
+  attributed string, so its colour is a line beside the font that was already
+  set. The caret and the selection are not: they are
+  `NSTextView.insertionPointColor` and the background colour inside
+  `selectedTextAttributes`, and an `NSTextField` has no text view of its own --
+  it borrows the window's shared field editor while it is focused. So those two
+  are remembered on the peer and applied in `becomeFirstResponder`, which is
+  exactly where `spellCheck` already had to be applied for the same reason. One
+  key of `selectedTextAttributes` is replaced rather than the dictionary, the
+  rest of it being AppKit's, including how a selection dims when its window
+  loses focus.
+
+  Two things that would have been bugs. `SharedColor`'s unset value is zero, so
+  each colour crosses as a pointer that is nil when the app asked for nothing --
+  otherwise every caret is black and every placeholder transparent. And
+  `cursorColor` falls back to `selectionColor`, which is React Native's
+  documented contract rather than an invention: `selectionColor` is "the
+  highlight, selection handle and cursor color", and `cursorColor` overrides the
+  caret alone.
+
+  Six tests, five of which fail with the colours not applied -- checked by
+  sabotage -- and the sixth is the negative control: a field that asked for
+  nothing keeps the system grey. One focuses a field in a real window and reads
+  the field editor's own two properties back, which is the half the remembering
+  exists for.
 
   Not through a per-widget provider, which is what the entry used to propose.
   The only per-widget route is `gtk_widget_get_style_context`, deprecated since

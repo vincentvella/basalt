@@ -75,6 +75,27 @@ void RnPeerSetTextChecking(NSView *_Nullable peer,
 // the machine allows it.
 RnTextChecking RnPeerSpellCheck(NSView *_Nullable peer);
 RnTextChecking RnPeerAutoCorrect(NSView *_Nullable peer);
+
+// `selectionColor` and `cursorColor`, which live on the same NSTextView the
+// spell-checking flags do and are remembered for the same reason: a single-line
+// field borrows the window's field editor and only has one while it is focused.
+// So these are stored and applied again in `becomeFirstResponder`.
+//
+// Null means "the app did not ask", which leaves AppKit's own colour alone --
+// the system accent for a selection and the text colour for a caret. That is a
+// third state rather than a default, exactly as it is for the checking flags:
+// `SharedColor`'s unset value is zero, and passing that through would paint
+// every caret black.
+//
+// The caret is `insertionPointColor` and the selection is the background colour
+// inside `selectedTextAttributes`, which is a dictionary this replaces one key
+// of rather than wholesale: the rest of it is AppKit's, including whether the
+// selection dims when the window loses focus.
+void RnPeerSetEditorColours(NSView *_Nullable peer,
+                            NSColor *_Nullable selection,
+                            NSColor *_Nullable caret);
+NSColor *_Nullable RnPeerSelectionColour(NSView *_Nullable peer);
+NSColor *_Nullable RnPeerCaretColour(NSView *_Nullable peer);
 void RnPeerSetTextStyle(NSView *_Nullable peer, NSFont *_Nullable font,
                         NSColor *_Nullable colour, NSTextAlignment alignment);
 

@@ -198,7 +198,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "ti-colours": {
-      "text": "AppKit paints the system colours through a borrowed field editor, and a Win32 EDIT has no form of them at all",
+      "text": "a Win32 EDIT has no form of them: no CSS, no colour on EM_SETCUEBANNER, the system highlight unless it is owner-drawn",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "win-upper-only": {
@@ -1491,19 +1491,19 @@
     },
     "BaseTextInputProps.placeholderTextColor": {
       "linux": "yes",
-      "macos": "no",
+      "macos": "yes",
       "windows": "no",
       "why": "ti-colours"
     },
     "BaseTextInputProps.cursorColor": {
       "linux": "yes",
-      "macos": "no",
+      "macos": "yes",
       "windows": "no",
       "why": "ti-colours"
     },
     "BaseTextInputProps.selectionColor": {
       "linux": "yes",
-      "macos": "no",
+      "macos": "yes",
       "windows": "no",
       "why": "ti-colours"
     },

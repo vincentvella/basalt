@@ -17,6 +17,25 @@
 #include <string_view>
 
 // The bridge between AppKit's delegate protocol and the C++ manager, for the
+// A colour the app asked for, or nil when it asked for nothing.
+//
+// nil is the whole point: `SharedColor`'s unset value is zero, so a conversion
+// that always answered a colour would make "the app said nothing" and "the app
+// said transparent black" the same request, and every caret would come out
+// black. Explicitly sRGB, for the reason `toColor` in CoreTextLayout.mm is: a
+// device colour space shifts every colour on a wide-gamut display, and a field
+// that does not match Linux is the bug this project is least able to afford.
+static NSColor *_Nullable RnColourOrNil(facebook::react::SharedColor colour) {
+  if (!colour) {
+    return nil;
+  }
+  const auto components = facebook::react::colorComponentsFromColor(colour);
+  return [NSColor colorWithSRGBRed:components.red
+                             green:components.green
+                              blue:components.blue
+                             alpha:components.alpha];
+}
+
 // same reason the touch dispatcher and the scroll manager have one.
 @interface RnAppKitTextInputDelegate
     : NSObject <NSTextFieldDelegate, NSTextViewDelegate, RnAppKitTextPeerOwner>
@@ -302,6 +321,25 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
     }
   }
 
+  // The three colours React Native has for a field, which this host read none
+  // of until 2026-10-10: the placeholder, the selection and the caret.
+  //
+  // Each crosses as nil when the app did not ask, which is the distinction that
+  // matters: `SharedColor`'s unset value is zero, so passing it through
+  // unconditionally would paint every caret black and every selection
+  // transparent. nil leaves AppKit's own colour alone.
+  //
+  // `cursorColor` falls back to `selectionColor`, which is React Native's
+  // documented contract rather than an invention here: `selectionColor` is "the
+  // highlight, selection handle and cursor color of the text input", and
+  // `cursorColor` exists to override the caret on its own. The GTK host reads
+  // the pair the same way, and on iOS both are the view's tintColor.
+  NSColor *const selectionColour =
+      RnColourOrNil(props->selectionColor);
+  NSColor *const caretColour =
+      props->cursorColor ? RnColourOrNil(props->cursorColor) : selectionColour;
+  RnPeerSetEditorColours(entry.field, selectionColour, caretColour);
+
   if (props->placeholder.empty()) {
     RnPeerSetPlaceholder(entry.field, nil);
   } else {
@@ -310,8 +348,16 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
       placeholder = @"";
     }
     // Styled like the text, so a placeholder in a 20pt field is not 13pt.
+    //
+    // `placeholderTextColor` when the app asked, and the system's placeholder
+    // grey otherwise. This host painted the grey unconditionally until
+    // 2026-10-10 and the backlog recorded the prop as done, which is what the
+    // support page's per-row audit caught: an app asking for a red placeholder
+    // got grey.
     NSMutableDictionary *placeholderAttributes = [attributes mutableCopy];
-    placeholderAttributes[NSForegroundColorAttributeName] = NSColor.placeholderTextColor;
+    NSColor *const asked = RnColourOrNil(props->placeholderTextColor);
+    placeholderAttributes[NSForegroundColorAttributeName] =
+        asked != nil ? asked : NSColor.placeholderTextColor;
     RnPeerSetPlaceholder(entry.field,
                          [[NSAttributedString alloc] initWithString:placeholder
                                                          attributes:placeholderAttributes]);

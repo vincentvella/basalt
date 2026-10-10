@@ -912,3 +912,180 @@ TEST(textinput_reports_react_natives_own_defaults_for_the_pair) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// --- The three colours a field has ------------------------------------------
+//
+// `placeholderTextColor`, `selectionColor` and `cursorColor`, which this host
+// read none of until 2026-10-10 -- and which the backlog recorded as done for
+// the first of them, because the system's placeholder grey looks like an
+// answer. The per-row support audit is what caught that.
+//
+// Each is a third state rather than a default: `SharedColor`'s unset value is
+// zero, so "the app said nothing" has to stay distinguishable from "the app
+// said black". nil is what crosses, and nil leaves AppKit's own colour alone.
+
+TEST(textinput_placeholder_takes_the_colour_the_app_asked_for) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager,
+        10,
+        folly::dynamic::object("placeholder", "Search")("placeholderTextColor", 0xffff0000));
+    NSView *field = fieldOf(view);
+
+    NSAttributedString *placeholder = RnPeerPlaceholder(field);
+    EXPECT(placeholder != nil);
+    if (placeholder == nil) {
+      manager.destroySurfaceRoot(kSurfaceId);
+      return;
+    }
+    NSColor *colour = [placeholder attribute:NSForegroundColorAttributeName
+                                     atIndex:0
+                              effectiveRange:nullptr];
+    EXPECT(colour != nil);
+    // Red, in sRGB, which is what the app asked for rather than the system's
+    // placeholder grey.
+    NSColor *const sRGB = [colour colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(sRGB != nil);
+    EXPECT(sRGB != nil && sRGB.redComponent > 0.9);
+    EXPECT(sRGB != nil && sRGB.greenComponent < 0.1);
+    EXPECT(sRGB != nil && sRGB.blueComponent < 0.1);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// And a field that asked for nothing keeps the system's grey, which is the
+// third state: a host that resolved unset to a colour would paint every
+// placeholder transparent black.
+TEST(textinput_a_placeholder_with_no_colour_keeps_the_systems) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 10, folly::dynamic::object("placeholder", "Search"));
+    NSAttributedString *placeholder = RnPeerPlaceholder(fieldOf(view));
+    EXPECT(placeholder != nil);
+    if (placeholder != nil) {
+      NSColor *colour = [placeholder attribute:NSForegroundColorAttributeName
+                                       atIndex:0
+                                effectiveRange:nullptr];
+      EXPECT(colour == NSColor.placeholderTextColor);
+    }
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// The selection and the caret are remembered before they can be applied: a
+// single-line field borrows the window's field editor and has none until it is
+// focused, which is the same reason the spell-checking flags are remembered.
+TEST(textinput_selection_and_cursor_colours_are_remembered_for_the_editor) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager,
+        10,
+        folly::dynamic::object("selectionColor", 0xff00ff00)("cursorColor", 0xff0000ff));
+    NSView *field = fieldOf(view);
+
+    NSColor *selection =
+        [RnPeerSelectionColour(field) colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    NSColor *caret =
+        [RnPeerCaretColour(field) colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(selection != nil);
+    EXPECT(caret != nil);
+    EXPECT(selection != nil && selection.greenComponent > 0.9);
+    EXPECT(caret != nil && caret.blueComponent > 0.9);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// `cursorColor` falls back to `selectionColor`, which is React Native's
+// contract: `selectionColor` is the highlight *and* the cursor, and
+// `cursorColor` exists to override the second on its own. A field given only
+// the first should not have a theme-coloured caret.
+TEST(textinput_a_cursor_with_no_colour_of_its_own_follows_the_selection) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 10, folly::dynamic::object("selectionColor", 0xff00ff00));
+    NSView *field = fieldOf(view);
+
+    NSColor *caret =
+        [RnPeerCaretColour(field) colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(caret != nil);
+    EXPECT(caret != nil && caret.greenComponent > 0.9);
+
+    // And a field that asked for neither has neither, so AppKit's own colours
+    // stand.
+    RnAppKitView *plain = mountField(manager, 11, folly::dynamic::object("text", "x"));
+    EXPECT(RnPeerSelectionColour(fieldOf(plain)) == nil);
+    EXPECT(RnPeerCaretColour(fieldOf(plain)) == nil);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// And they reach the real field editor when the field is focused, which is the
+// half the remembering exists for.
+TEST(textinput_the_field_editor_takes_the_colours_when_it_appears) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager,
+        10,
+        folly::dynamic::object("selectionColor", 0xff00ff00)("cursorColor", 0xff0000ff));
+    NSView *field = fieldOf(view);
+
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:manager.getSurfaceRoot(kSurfaceId)];
+    EXPECT([window makeFirstResponder:field]);
+
+    NSTextView *editor = (NSTextView *)((NSTextField *)field).currentEditor;
+    EXPECT(editor != nil);
+    if (editor != nil) {
+      NSColor *caret = [editor.insertionPointColor
+          colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+      EXPECT(caret != nil && caret.blueComponent > 0.9);
+
+      NSColor *selection = [editor.selectedTextAttributes[NSBackgroundColorAttributeName]
+          colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+      EXPECT(selection != nil);
+      EXPECT(selection != nil && selection.greenComponent > 0.9);
+    }
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// A multiline peer is its own editor, so the colours go straight on -- and are
+// still remembered, so that reading them back says what the app asked for.
+TEST(textinput_a_multiline_field_takes_the_colours_directly) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager,
+        10,
+        folly::dynamic::object("multiline", true)("selectionColor", 0xff00ff00)(
+            "cursorColor", 0xff0000ff));
+    NSView *field = fieldOf(view);
+    EXPECT(RnPeerIsMultiline(field));
+
+    NSTextView *editor = (NSTextView *)field;
+    NSColor *caret =
+        [editor.insertionPointColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(caret != nil && caret.blueComponent > 0.9);
+    NSColor *selection = [editor.selectedTextAttributes[NSBackgroundColorAttributeName]
+        colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(selection != nil && selection.greenComponent > 0.9);
+    EXPECT(RnPeerSelectionColour(field) != nil);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
