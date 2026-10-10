@@ -73,6 +73,7 @@
 #include "Win32TitleBar.h"
 #include "Win32WindowModule.h"
 #include "RnWin32View.h"
+#include "Win32Cursors.h"
 
 #include "AppearanceModule.h"
 #include "BlobModule.h"
@@ -1433,6 +1434,43 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
       self->touchDispatcher->dispatchTouchStart(
           GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam), button);
       return 0;
+    }
+
+    // The `cursor` style property, which on Windows is the window's job rather
+    // than a view's: there is no per-view cursor to set, so the pointer is
+    // decided by asking what is under it. GTK sets a cursor on the widget and
+    // AppKit installs a cursor rect, and both toolkits then answer this message
+    // themselves.
+    //
+    // Only for the client area and only for this window: `wparam` is the window
+    // the pointer is over, and the non-client half -- the resize edges and the
+    // caption -- belongs to DefWindowProc, which draws the right arrows there.
+    case WM_SETCURSOR: {
+      if (reinterpret_cast<HWND>(wparam) != hwnd
+          || LOWORD(lparam) != HTCLIENT || self == nullptr || self->root == nullptr) {
+        break;
+      }
+      POINT where{};
+      if (GetCursorPos(&where) == 0 || ScreenToClient(hwnd, &where) == 0) {
+        break;
+      }
+      const basalt::win32::Win32Cursor answer = basalt::win32::win32CursorFor(
+          basalt::win32::cursorNameAt(self->root,
+                                      static_cast<float>(where.x),
+                                      static_cast<float>(where.y)));
+      if (answer.hidden) {
+        // `cursor: 'none'`, which is the one keyword that is an absence of an
+        // image rather than a different one.
+        SetCursor(nullptr);
+        return TRUE;
+      }
+      if (answer.cursor == nullptr) {
+        // No keyword, or one Windows has nothing for: let DefWindowProc put the
+        // class cursor back, which is the arrow.
+        break;
+      }
+      SetCursor(answer.cursor);
+      return TRUE;
     }
 
     case WM_MOUSEMOVE:

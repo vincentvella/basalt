@@ -45,8 +45,8 @@
       "text": "CLSID_D2D1Blend",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
-    "win-cursor": {
-      "text": "WM_SETCURSOR needs a hit test",
+    "win-stock-cursors": {
+      "text": "six keywords have no stock cursor",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
     "win-text": {
@@ -335,8 +335,8 @@
     "BaseViewProps.cursor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-cursor"
+      "windows": "partial",
+      "why": "win-stock-cursors"
     },
     "BaseViewProps.boxShadow": {
       "linux": "yes",

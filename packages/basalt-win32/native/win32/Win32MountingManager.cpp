@@ -2,6 +2,7 @@
 
 #include "BackgroundLayers.h"
 #include "BlendModes.h"
+#include "CursorNames.h"
 #include "Filters.h"
 #include "Gradients.h"
 #include "LegacyShadow.h"
@@ -564,6 +565,12 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
     }
     view->setBoxShadows(std::move(shadows));
   }
+
+  // The `cursor` style property, as a CSS keyword. GDK's names are CSS's so the
+  // GTK host passes it straight through; here the view stores it and the window
+  // answers `WM_SETCURSOR` with whatever is under the pointer, Win32 having no
+  // per-view cursor at all. `core/CursorNames.h` is what says a value's name.
+  view->setCursor(basalt::cursorName(props->cursor));
 
   // `mixBlendMode`, as a CSS keyword, shared with the other two hosts for the
   // reason `core/BlendModes.h` gives: React Native's list is CSS's and so is

@@ -14,6 +14,7 @@
 #include "TestHarness.h"
 
 #include "RnWin32View.h"
+#include "Win32Cursors.h"
 
 #include <memory>
 #include <sstream>
@@ -519,4 +520,140 @@ TEST(hit_slop_is_reported_in_the_tree) {
   const float none[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   view->setHitSlop(none);
   EXPECT(root->describeTree().find("hit-slop=") == std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// The `cursor` style property, which is a hit-test question on this platform.
+//
+// Win32 has no per-view cursor: the window answers `WM_SETCURSOR` with whatever
+// is under the pointer, so "which cursor" is "which view", and that is what
+// these ask. The GTK and AppKit hosts hand the keyword to their toolkit and get
+// the inheritance for free, which is why this is the only suite that has to say
+// what inheritance means.
+// ---------------------------------------------------------------------------
+
+TEST(cursor_is_the_innermost_view_that_asked_for_one) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *button = tree.box(2, 50, 50, 100, 100);
+  RnWin32View *label = tree.box(3, 10, 10, 20, 20);
+  button->setCursor("pointer");
+  label->setCursor("text");
+  button->insertChild(label, 0);
+  root->insertChild(button, 0);
+
+  // Over the label: its own keyword.
+  EXPECT_EQ(basalt::win32::cursorNameAt(root, 70, 70), std::string("text"));
+  // Over the button but not the label: the button's.
+  EXPECT_EQ(basalt::win32::cursorNameAt(root, 120, 120), std::string("pointer"));
+  // Over neither: nothing, which is what leaves the pointer alone.
+  EXPECT(basalt::win32::cursorNameAt(root, 300, 300).empty());
+}
+
+// CSS's cursor inherits, so a child that asked for nothing shows its parent's.
+// A host that only read the view under the pointer would answer nothing here,
+// which is an arrow over the middle of a button.
+TEST(cursor_is_inherited_by_a_child_that_asked_for_nothing) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *button = tree.box(2, 50, 50, 100, 100);
+  RnWin32View *label = tree.box(3, 10, 10, 20, 20);
+  button->setCursor("pointer");
+  button->insertChild(label, 0);
+  root->insertChild(button, 0);
+
+  EXPECT_EQ(basalt::win32::cursorNameAt(root, 70, 70), std::string("pointer"));
+
+  // And taken away again: `cursor: 'auto'` arrives as no keyword at all.
+  button->setCursor(nullptr);
+  EXPECT(basalt::win32::cursorNameAt(root, 70, 70).empty());
+}
+
+// A view a press passes through does not change the pointer either, which falls
+// out of using the same hit test for both and is worth pinning: the two must
+// not disagree about what the pointer is over.
+TEST(cursor_follows_pointer_events_like_a_press_does) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  RnWin32View *under = tree.box(2, 50, 50, 100, 100);
+  RnWin32View *over = tree.box(3, 50, 50, 100, 100);
+  under->setCursor("pointer");
+  over->setCursor("text");
+  over->setPointerEvents(RnWin32View::PointerEvents::None);
+  root->insertChild(under, 0);
+  root->insertChild(over, 1);
+
+  EXPECT_EQ(basalt::win32::cursorNameAt(root, 70, 70), std::string("pointer"));
+}
+
+TEST(cursor_is_reported_in_the_tree) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 400, 400);
+  EXPECT(root->describeTree().find("cursor=") == std::string::npos);
+
+  root->setCursor("ns-resize");
+  // The keyword, as the other two hosts print it: one end-to-end scenario reads
+  // this line on all three, and the hyphenated name is where a mapping table
+  // goes wrong.
+  EXPECT(root->describeTree().find("cursor=ns-resize") != std::string::npos);
+}
+
+// And the Win32 half: a keyword as a cursor the system has.
+//
+// Against `LoadCursorW` rather than a table of names, because the table is the
+// thing under test: a keyword that landed on a cursor the system does not have
+// answers null, and the assertions below would pass on an empty map if they
+// only checked that nothing crashed. So each group is also compared against the
+// others, which is what says `ns-resize` and `ew-resize` are not the same arrow.
+TEST(cursor_keywords_map_onto_the_cursors_windows_has) {
+  const auto loaded = [](const char *keyword) {
+    return basalt::win32::win32CursorFor(keyword).cursor;
+  };
+
+  EXPECT(loaded("default") == LoadCursorW(nullptr, IDC_ARROW));
+  EXPECT(loaded("pointer") == LoadCursorW(nullptr, IDC_HAND));
+  EXPECT(loaded("text") == LoadCursorW(nullptr, IDC_IBEAM));
+  EXPECT(loaded("crosshair") == LoadCursorW(nullptr, IDC_CROSS));
+  EXPECT(loaded("wait") == LoadCursorW(nullptr, IDC_WAIT));
+  EXPECT(loaded("progress") == LoadCursorW(nullptr, IDC_APPSTARTING));
+  EXPECT(loaded("help") == LoadCursorW(nullptr, IDC_HELP));
+  EXPECT(loaded("not-allowed") == LoadCursorW(nullptr, IDC_NO));
+
+  // The families, which share a cursor because Windows draws no difference --
+  // and the eight resize keywords collapse onto four arrows the way a window's
+  // own edges do.
+  EXPECT(loaded("grab") == loaded("move"));
+  EXPECT(loaded("grabbing") == loaded("all-scroll"));
+  EXPECT(loaded("ew-resize") == loaded("col-resize"));
+  EXPECT(loaded("ns-resize") == loaded("row-resize"));
+  EXPECT(loaded("ne-resize") == loaded("nesw-resize"));
+  EXPECT(loaded("nw-resize") == loaded("nwse-resize"));
+
+  // And the four resize arrows are four different arrows.
+  EXPECT(loaded("ew-resize") != loaded("ns-resize"));
+  EXPECT(loaded("nesw-resize") != loaded("nwse-resize"));
+  EXPECT(loaded("ew-resize") != loaded("nesw-resize"));
+}
+
+TEST(cursor_none_hides_the_pointer_rather_than_loading_one) {
+  const basalt::win32::Win32Cursor none = basalt::win32::win32CursorFor("none");
+  EXPECT(none.hidden);
+  EXPECT(none.cursor == nullptr);
+
+  // No keyword at all is neither: the pointer is left as it is.
+  const basalt::win32::Win32Cursor nothing = basalt::win32::win32CursorFor("");
+  EXPECT(!nothing.hidden);
+  EXPECT(nothing.cursor == nullptr);
+}
+
+// The keywords the stock set has nothing for, which is a decision rather than
+// an omission: the art exists inside shell32 as unnamed ordinals, and loading
+// an ordinal out of a system DLL works until an update moves it. The dump still
+// reports the keyword, so what the app asked for is not lost.
+TEST(cursor_a_keyword_windows_has_nothing_for_leaves_the_pointer_alone) {
+  for (const char *keyword : {"alias", "cell", "context-menu", "copy", "zoom-in", "zoom-out"}) {
+    const basalt::win32::Win32Cursor answer = basalt::win32::win32CursorFor(keyword);
+    EXPECT(answer.cursor == nullptr);
+    EXPECT(!answer.hidden);
+  }
 }

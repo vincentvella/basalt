@@ -2111,6 +2111,27 @@ RnWin32View *hitTest(RnWin32View *root, float x, float y) {
   return root;
 }
 
+void RnWin32View::setCursor(const char *name) {
+  cursor_ = name != nullptr ? name : "";
+}
+
+std::string cursorNameAt(RnWin32View *root, float x, float y) {
+  // The innermost view under the point, which is the same answer a press gets:
+  // one hit test for both means a cursor cannot disagree with what a click will
+  // do. `pointerEvents: none` is skipped by it, which is right here too -- a
+  // view a press passes through should not be changing the pointer either.
+  RnWin32View *view = hitTest(root, x, y);
+  // And then up, because CSS's cursor inherits: a <Text> inside a button that
+  // asked for `pointer` shows the hand, having asked for nothing itself.
+  while (view != nullptr) {
+    if (!view->cursor().empty()) {
+      return view->cursor();
+    }
+    view = view->parent();
+  }
+  return {};
+}
+
 // --- Reporting -------------------------------------------------------------
 
 std::string RnWin32View::describeTree() const {
@@ -2422,6 +2443,13 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     appendFormat(out,
                  " border-style=%s",
                  borderStyle_ == LineStyle::Dotted ? "dotted" : "dashed");
+  }
+
+  // The cursor the app asked for, which is invisible in a frame: the pointer is
+  // not part of the picture. Printed for the reason `pointerEvents` is, and in
+  // CSS's words rather than Win32's, so the three hosts' lines agree.
+  if (!cursor_.empty()) {
+    appendFormat(out, " cursor=%s", cursor_.c_str());
   }
 
   // The blend mode the app asked for, which a frame cannot show unless there is

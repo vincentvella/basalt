@@ -272,6 +272,19 @@ class RnWin32View {
   void setBoxShadows(std::vector<BoxShadow> shadows);
   const std::vector<BoxShadow> &boxShadows() const { return boxShadows_; }
 
+  // The `cursor` style property, as CSS's keyword.
+  //
+  // The keyword crosses the seam for the reason `core/CursorNames.h` gives:
+  // React Native's list is CSS's and so is GDK's, and each view layer answers
+  // for its own platform. Empty is `auto`, which means "whatever the view
+  // around this one says", so it is an absence rather than an arrow.
+  //
+  // Nothing in this layer loads a cursor. Win32 has no per-view cursor at all:
+  // the window answers `WM_SETCURSOR` with whatever is under the pointer, which
+  // is what `cursorNameAt` below is for.
+  void setCursor(const char *name);
+  const std::string &cursor() const { return cursor_; }
+
   // `mixBlendMode`, as CSS's keyword rather than as a Direct2D enum.
   //
   // The keyword is what crosses the seam on all three hosts, for the reason
@@ -700,6 +713,7 @@ class RnWin32View {
   size_t imageFrame_ = 0;
   double imageElapsedMs_ = 0.0;
   Filters filters_;
+  std::string cursor_;
   std::vector<Gradient> gradients_;
   std::vector<BoxShadow> boxShadows_;
   // `mixBlendMode`: the keyword the app asked for, and whether this host can
@@ -731,5 +745,17 @@ class RnWin32View {
 // rotated view is clickable where it is drawn, and it is `localToParent` that
 // guarantees "where it is drawn" means the same thing to both.
 RnWin32View *hitTest(RnWin32View *root, float x, float y);
+
+// The `cursor` keyword that applies at a point, or an empty string for none.
+//
+// Hit tests and then walks up: CSS's cursor inherits, so a <Text> inside a
+// `cursor: 'pointer'` button shows the hand even though the text itself asked
+// for nothing. Both other hosts get that from their toolkit -- a GTK widget
+// with no cursor of its own inherits its parent's, and an AppKit view installs
+// no cursor rect -- so this is the one place in this project that spells it out.
+//
+// Here rather than in the host because it is the view tree's question, and
+// because this way it has a test that needs no window.
+std::string cursorNameAt(RnWin32View *root, float x, float y);
 
 } // namespace basalt::win32

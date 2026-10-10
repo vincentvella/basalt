@@ -5559,21 +5559,16 @@ def test_cursor_style(bundle: Path) -> None:
     NSCursors it has, and installs nothing for the half-dozen it has no cursor
     for, so those inherit rather than snapping back to an arrow.
 
-    Two keywords, because they fail differently: `pointer`, which both hosts have,
-    and `ns-resize`, which is hyphenated and is where a mapping table goes wrong.
+    Two keywords, because they fail differently: `pointer`, which every host
+    has, and `ns-resize`, which is hyphenated and is where a mapping table goes
+    wrong.
 
     Runs e2e/views.js, the app scripts/compare_hosts.sh diffs between desktops,
     which is also where the backlog was wrong about this: its cursor entry
     described what is left as the work "beyond what the `cursor` style property
     covers", and nothing covered it.
 
-    Windows is skipped by name: there is no per-view cursor in Win32, so the
-    window has to answer `WM_SETCURSOR` with whatever is under the pointer, and
-    that is not written yet.
     """
-    if PLATFORM == "windows":
-        raise Skipped("no WM_SETCURSOR handling yet, so no per-view cursor")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)

@@ -13,7 +13,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 5. ~~A type check used as a liveness check~~, fixed in four places; the ordering
    it depended on is now core's
 6. ~~backgroundSize, backgroundPosition and backgroundRepeat are ignored~~,
-   done on GTK and AppKit; what is left of `backgroundImage` is an image loader
+   done on all three hosts; what is left of `backgroundImage` is an image loader
 
 - ~~**`borderStyles`, dashed and dotted borders.**~~ Done on GTK 2026-10-07 and
   on AppKit 2026-10-08, with one limitation that is structural rather than

@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (11):**
+**Open (10):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -13,7 +13,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    left of it is an open entry in testing.md
 7. Nothing makes a red build hard to ignore
 8. An inline `<View>` inside a `<Text>` is not positioned
-9. Five style props the other two hosts draw and this one ignores
+9. ~~Five style props the other two hosts draw and this one ignores~~
 10. `accessibilityLabelledBy` sets no relation
 11. ~~`hitSlop` is not part of the hit test~~
 12. No accessibility announcements, so `accessibilityLiveRegion` is silent
@@ -205,10 +205,10 @@ and none of it is a missing half.
   `SetInlineObject` with an `IDWriteInlineObject` that answers React Native's own
   metrics, read back with `HitTestTextPosition`.
 
-- **Five style props the other two hosts draw and this one ignores**, of which
-  `cursor` is the one that is left. All five
-  landed on GTK and AppKit on 2026-10-07 and 2026-10-08, and all five recorded
-  here the day the second host got them rather than later:
+- ~~**Five style props the other two hosts draw and this one ignores.**~~ All
+  five landed on GTK and AppKit on 2026-10-07 and 2026-10-08, all five were
+  recorded here the day the second host got them rather than later, and all five
+  are done on Windows as of 2026-10-10:
 
   - ~~`blurRadius` on an `<Image>`.~~ Done 2026-10-09, with
     `CLSID_D2D1GaussianBlur` over the device context the text shadow proved
@@ -284,18 +284,46 @@ and none of it is a missing half.
     One list rather than two, `background-image` being one list that paints the
     first on top, and the positioning area is the padding box where the painting
     area is the border box.
-  - The `cursor` style property. This is the one that differs in shape: Win32 has
-    no per-view cursor, so `WM_SETCURSOR` has to be answered by the window with
-    whatever view is under the pointer, which means a hit test on every cursor
-    query rather than a property on a widget. `LoadCursor` with the `IDC_` family
-    covers most of CSS's keywords.
+  - ~~The `cursor` style property.~~ Done 2026-10-10, and it did differ in
+    shape: Win32 has no per-view cursor, so the window answers `WM_SETCURSOR`
+    by asking what is under the pointer. `cursorNameAt` is that question, in the
+    view layer beside `hitTest` and using it, so a cursor cannot disagree with
+    what a click will do -- and so that it has a test needing no window.
 
-  What is left of this entry is `cursor`, which has a unit test per host to copy
-  the assertions from and an end-to-end scenario that is skipped on Windows by
-  name. One consequence worth knowing before running it:
-  `scripts/compare_hosts.sh` against Windows will report the `cursor=` line as a
-  tree difference, because it is one. That is the script doing its job, and it
-  goes away when the last of these lands.
+    **CSS's cursor inherits and this is the only host that had to say so.** A
+    GTK widget with no cursor of its own shows its parent's and an AppKit view
+    with no cursor rect does too, both for free; here the walk goes up the tree
+    from the view under the pointer until one has a keyword. A host that read
+    only the innermost view puts an arrow over the middle of a button.
+
+    `LoadCursorW` with the `IDC_` family covers most of the list, and several
+    keywords land on the same arrow because Windows draws no difference: `move`,
+    `all-scroll`, `grab` and `grabbing` are all `IDC_SIZEALL`, and the eight
+    resize keywords collapse onto the four `IDC_SIZE*` arrows the way a window's
+    own edges do. `cursor: 'none'` is `SetCursor(nullptr)`, which is the one
+    keyword that is an absence rather than a different image.
+
+    **Six keywords have no stock cursor**: `alias`, `cell`, `context-menu`,
+    `copy`, `zoom-in` and `zoom-out`. The art exists inside shell32 and comctl32
+    as unnamed ordinals, which is the kind of thing that works until an update
+    moves it, so those leave the pointer alone and the dump still reports what
+    the app asked for -- the same choice the AppKit map makes for the six
+    keywords macOS has no NSCursor for. The support page says `partial` for this
+    host and names the reason.
+
+    Eight tests: the innermost view that asked for one, inheritance both ways,
+    `pointerEvents: none` skipped by the cursor as it is by a press, the dump,
+    each stock keyword against `LoadCursorW` with the families compared against
+    each other -- which is what says `ns-resize` and `ew-resize` are not the
+    same arrow -- `none`, and the six that answer nothing. The end-to-end
+    scenario now runs on all three hosts.
+
+  What each of them took is above, in the order they were done in. The
+  consequence this entry warned about has gone with them:
+  `scripts/compare_hosts.sh` against Windows reported the `blur=`,
+  `border-style=`, `cursor=`, `shadow=` and `gradient=` lines as tree
+  differences, because they were, and all five lines now agree across the three
+  hosts.
 
 - **`accessibilityLabelledBy` sets no relation.** The hard half is done and is
   shared: `core/LabelRegistry.h` resolves a `nativeID` to a tag and says when,
