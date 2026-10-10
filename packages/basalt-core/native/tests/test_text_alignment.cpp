@@ -27,10 +27,10 @@ namespace {
 
 // UTF-8 as a source file can carry it without depending on the compiler's idea
 // of an execution charset.
-const std::string kHebrew = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d";          // שלום
-const std::string kArabic = "\xd8\xa7\xd9\x84\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85"; // السلام
-const std::string kThaana = "\xde\x8b\xde\xa8";                          // ދި
-const std::string kNko = "\xdf\x92\xdf\x8a";                             // ߒߊ
+const std::string kHebrew = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d";          // Hebrew
+const std::string kArabic = "\xd8\xa7\xd9\x84\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85"; // Arabic
+const std::string kThaana = "\xde\x8b\xde\xa8";                          // Thaana
+const std::string kNko = "\xdf\x92\xdf\x8a";                             // NKo
 
 const char *name(PhysicalTextAlignment alignment) {
   switch (alignment) {
@@ -111,10 +111,17 @@ TEST(direction_a_right_to_left_script_makes_a_right_to_left_paragraph) {
 
 TEST(direction_latin_and_every_other_left_to_right_script_does_not) {
   EXPECT(!textStartsRightToLeft("hello"));
-  EXPECT(!textStartsRightToLeft("Grüße"));
-  EXPECT(!textStartsRightToLeft("日本語"));
-  EXPECT(!textStartsRightToLeft("Ελληνικά"));
-  EXPECT(!textStartsRightToLeft("Привет"));
+  // Latin with diacritics, Japanese, Greek and Cyrillic, as UTF-8 bytes: this
+  // file is compiled by MSVC too, which reads a source as the machine's code
+  // page unless it is told otherwise, and would re-encode a literal written in
+  // the script itself. The escapes say exactly what reaches the function.
+  //
+  // Split before the `e`: a hex escape in C++ is greedy, so "\x9fe" is one
+  // escape and out of range rather than an eszett followed by a letter.
+  EXPECT(!textStartsRightToLeft("Gr\xc3\xbc\xc3\x9f" "e"));             // Gruesse
+  EXPECT(!textStartsRightToLeft("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));     // Japanese
+  EXPECT(!textStartsRightToLeft("\xce\x95\xce\xbb\xce\xbb\xce\xb7"));         // Greek
+  EXPECT(!textStartsRightToLeft("\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2"));         // Cyrillic
 }
 
 TEST(direction_the_first_strong_character_decides_and_the_rest_do_not) {
@@ -140,12 +147,12 @@ TEST(direction_arabic_indic_digits_are_not_strong) {
   // U+0660..0669 are class AN, inside the Arabic block and not strong, so a
   // paragraph that starts with them is not right-to-left by P2. Reading the
   // block as a whole is the obvious mistake here.
-  const std::string digits = "\xd9\xa1\xd9\xa2\xd9\xa3"; // ١٢٣
+  const std::string digits = "\xd9\xa1\xd9\xa2\xd9\xa3"; // Arabic-Indic 123
   EXPECT(!textStartsRightToLeft(digits));
   EXPECT(!textStartsRightToLeft(digits + " hello"));
   EXPECT(textStartsRightToLeft(digits + " " + kArabic));
   // The extended Arabic-Indic digits, U+06F0..06F9, which are class EN.
-  const std::string extended = "\xdb\xb1\xdb\xb2"; // ۱۲
+  const std::string extended = "\xdb\xb1\xdb\xb2"; // extended Arabic-Indic 12
   EXPECT(!textStartsRightToLeft(extended + " hello"));
   EXPECT(textStartsRightToLeft(extended + " " + kArabic));
 }

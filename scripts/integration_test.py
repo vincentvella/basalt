@@ -503,7 +503,7 @@ def run_host(bundle: Path, taps: str = "", run_ms: int = 4000, typing: str = "")
 
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        return dump.read_text()
+        return dump.read_text(encoding="utf-8")
 
 
 def expect_logged(needle: str, why: str) -> None:
@@ -922,7 +922,7 @@ class Metro:
 def tail(log: Path, lines: int = 25) -> str:
     if not log.exists():
         return "(no log)"
-    return "\n".join(log.read_text().splitlines()[-lines:])
+    return "\n".join(log.read_text(encoding="utf-8").splitlines()[-lines:])
 
 
 def git_bash() -> Path | None:
@@ -1088,7 +1088,15 @@ def run_host_process(args: list, *, cwd: Path = REPO, env: dict = None,
     this before concluding anything from it.
     """
     assert capture_output and text, "a host is always captured, and always text"
+    # UTF-8 rather than the machine's locale encoding, and `replace` rather than
+    # a raised exception. Every host writes UTF-8 -- a tree dump holds whatever
+    # strings an app rendered -- and Python on Windows decodes a pipe as cp1252
+    # by default, which raises on the first byte outside it. A paragraph of
+    # Hebrew in e2e/text.tsx took every Windows shard down that way, in
+    # scenarios that had nothing to do with it; see the `read_text` calls, which
+    # were the same bug in the same run.
     with subprocess.Popen(args, cwd=cwd, env=env, text=True,
+                          encoding="utf-8", errors="replace",
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE) as host:
         try:
             out, err = host.communicate(timeout=timeout)
@@ -1507,7 +1515,7 @@ def test_fast_refresh(bundle: Path):
     """
     skip_edit = bool(os.environ.get("BASALT_SKIP_FAST_REFRESH"))
     source = app_source("index")
-    original = source.read_text()
+    original = source.read_text(encoding="utf-8")
     if original.count(BEFORE) != 1:
         raise Failure(f"the demo does not contain exactly one {BEFORE!r} to edit")
 
@@ -1541,7 +1549,7 @@ def test_fast_refresh(bundle: Path):
             """What is actually on disk, since everything else is inference."""
             try:
                 stat = source.stat()
-                text = source.read_text()
+                text = source.read_text(encoding="utf-8")
                 return (
                     f"{source}: {stat.st_size} bytes, mtime {stat.st_mtime}, "
                     f"contains the edit: {AFTER in text}"
@@ -1605,7 +1613,7 @@ def test_fast_refresh(bundle: Path):
                     # served to this process. The edit is what this machine
                     # cannot do, so stop here rather than fail at it.
                     meaningful = stop_host(process, quit_file)
-                    stderr = log.read_text()
+                    stderr = log.read_text(encoding="utf-8")
                     check_output(stderr, process.returncode if meaningful else 0)
                     if "Failed to load TurboModule: DevSettings" in stderr:
                         raise Failure(
@@ -1672,7 +1680,7 @@ def test_fast_refresh(bundle: Path):
                     process.kill()
                     process.wait(timeout=15)
 
-        stderr = log.read_text()
+        stderr = log.read_text(encoding="utf-8")
         check_output(stderr, process.returncode if meaningful else 0)
 
         # The exact line, not "DevSettings" anywhere: the module logs its own
@@ -1683,7 +1691,7 @@ def test_fast_refresh(bundle: Path):
             raise Failure("DevSettings was not served, so no __DEV__ bundle can run")
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        if AFTER not in dump.read_text():
+        if AFTER not in dump.read_text(encoding="utf-8"):
             raise Failure(
                 "the edit never reached the running app; Fast Refresh did not apply it"
             )
@@ -1837,7 +1845,7 @@ def test_click_focuses_a_field(bundle: Path) -> None:
 
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     # PALETTE[0] on every edge, which styles.fieldFocused sets and nothing else
     # in the demo uses as a border.
@@ -2105,7 +2113,7 @@ def _measure_toast(app: Path, label: str) -> tuple:
         )
         if not dump.exists():
             raise Failure("the host wrote no tree while looking for the error toast")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     for body, (x, y), (width, height) in _views(tree):
         if f'text="{label}"' in body:
@@ -2166,7 +2174,7 @@ def test_logbox(bundle: Path) -> None:
         check_output(result.stderr, result.returncode, allow_js_errors=True)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     if "--- LogBox ---" not in tree:
         raise Failure(
@@ -2413,7 +2421,7 @@ class NotificationService:
         # it before sending anything.
         deadline = time.time() + 10
         while time.time() < deadline:
-            if self.log.exists() and "STUB ready" in self.log.read_text():
+            if self.log.exists() and "STUB ready" in self.log.read_text(encoding="utf-8"):
                 return self
             time.sleep(0.1)
         raise Failure("the notification stub never took the bus name")
@@ -2428,7 +2436,7 @@ class NotificationService:
                        capture_output=True)
 
     def saw(self) -> str:
-        return self.log.read_text() if self.log.exists() else ""
+        return self.log.read_text(encoding="utf-8") if self.log.exists() else ""
 
 
 def packaged_host(build: Path) -> Path:
@@ -2623,7 +2631,7 @@ def test_macos_key_props(bundle: Path) -> None:
             [str(host), str(app), "BasaltMacosKeys"],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
         )
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     _remember_output(result.stderr)
     check_output(result.stderr, result.returncode)
@@ -2847,7 +2855,7 @@ def test_controls(bundle: Path) -> None:
             check_output(result.stderr, result.returncode)
             # Both streams: GLib sends g_message to stdout and only warnings to
             # stderr.
-            return dump.read_text() if dump.exists() else "", result.stdout + result.stderr
+            return dump.read_text(encoding="utf-8") if dump.exists() else "", result.stdout + result.stderr
 
     # --- everything mounts, and says what state it is in ---------------------
     #
@@ -3004,10 +3012,10 @@ def test_dev_menu(bundle: Path) -> None:
                     cwd=REPO, env=env, stdout=subprocess.DEVNULL, stderr=sink, text=True,
                 )
                 process.wait(timeout=run_ms / 1000 + 90)
-            text = log.read_text()
+            text = log.read_text(encoding="utf-8")
             _remember_output(text)
             check_output(text, process.returncode)
-            return (dump.read_text() if dump.exists() else ""), text
+            return (dump.read_text(encoding="utf-8") if dump.exists() else ""), text
 
     with Metro(Path(tempfile.gettempdir()) / "basalt-devmenu-metro.log"):
         # Item 0 is Reload. The app running a second time is the whole
@@ -3674,7 +3682,7 @@ def test_scrollbar_can_be_turned_off(bundle: Path) -> None:
         )
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     if not tree:
         raise Failure("the host dumped no tree")
@@ -3724,7 +3732,7 @@ def test_content_inset(bundle: Path) -> None:
         )
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     if not tree:
         raise Failure("the host dumped no tree")
@@ -3850,7 +3858,7 @@ def test_layout_styles(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     frames = {}
     for line in tree.splitlines():
@@ -3959,7 +3967,7 @@ def test_hit_slop(bundle: Path) -> None:
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
         logged = result.stdout + result.stderr
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     # The prop arrived, which is worth separating from the behaviour: a host that
     # never read it fails here and says so, rather than failing a tap.
@@ -4016,7 +4024,7 @@ def test_animated_image(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     images = [line for line in tree.splitlines() if "texture=" in line]
     if not images:
@@ -4123,7 +4131,7 @@ def test_image_tint_and_blur(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     images = [line for line in tree.splitlines() if "texture=" in line]
     if not images:
@@ -4199,7 +4207,7 @@ def test_border_style(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     bordered = [line for line in tree.splitlines() if "borderw=" in line]
     if len(bordered) != 2:
@@ -4253,7 +4261,7 @@ def test_box_shadow(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     # The view the CSS shadows are on, by its outer shadow: the app also has a
     # view carrying the older iOS shadow props, which arrive as a shadow of
@@ -4306,7 +4314,7 @@ def test_linear_gradient(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     # This one, by its own line: the app has a radial gradient too, which the
     # same dump line reports differently, and a second linear one for the
@@ -4363,7 +4371,7 @@ def test_accessibility_labelled_by(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     related = [line for line in tree.splitlines() if "labelled-by=" in line]
     if len(related) != 1:
@@ -4424,7 +4432,7 @@ def test_test_id(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "testid=" in line]
     if len(carrying) != 1:
@@ -4474,7 +4482,7 @@ def test_modal_view(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     modal = [line for line in tree.splitlines() if " modal" in line]
     if len(modal) != 1:
@@ -4529,7 +4537,7 @@ def test_accessibility_order(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     ordered = [line for line in tree.splitlines() if "a11y-order=" in line]
     if len(ordered) != 1:
@@ -4648,7 +4656,7 @@ def test_filter(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     # The colour-matrix one, by its probe: the app also has a view whose filter
     # is a drop shadow, which the same line reports differently -- see
@@ -4709,7 +4717,7 @@ def test_outline(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "outline=" in line]
     if len(carrying) != 1:
@@ -4767,7 +4775,7 @@ def test_drop_shadow_filter(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "filter=(shadow=" in line]
     if len(carrying) != 1:
@@ -4823,7 +4831,7 @@ def test_view_flattening(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     flattened = [line for line in tree.splitlines() if "7x3" in line]
     if flattened:
@@ -4924,7 +4932,7 @@ def test_background_size_position_repeat(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     # By the image's own rectangle: every gradient reports a tile, `repeat` being
     # React Native's default for all of them.
@@ -4978,7 +4986,7 @@ def test_radial_gradient(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "gradient=(radial" in line]
     if len(carrying) != 1:
@@ -5031,7 +5039,7 @@ def test_legacy_shadow(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "shadow=(2,4,6,0,#00000080)" in line]
     if len(carrying) != 1:
@@ -5079,7 +5087,7 @@ def test_mix_blend_mode(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "blend=" in line]
     if len(carrying) != 1:
@@ -5146,7 +5154,7 @@ def test_font_scaling(bundle: Path) -> None:
             check_output(result.stderr, result.returncode)
             if not dump.exists():
                 raise Failure("host wrote no widget tree")
-            tree = dump.read_text()
+            tree = dump.read_text(encoding="utf-8")
 
         # By the string each label holds, which is what the dump prints and what
         # survives a card being reordered.
@@ -5242,7 +5250,7 @@ def test_runtime_font(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     said = result.stderr
     if "font: no ExpoFontLoader" in said:
@@ -5339,7 +5347,7 @@ def test_text_checking(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     asked = [line for line in tree.splitlines() if "spellcheck=" in line]
     if len(asked) != 1:
@@ -5426,7 +5434,7 @@ def test_writing_direction(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     directed = [line for line in tree.splitlines() if "writing-dir=" in line]
     if len(directed) != 3:
@@ -5513,7 +5521,7 @@ def test_text_shadow(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     carrying = [line for line in tree.splitlines() if "text-shadow=" in line]
     if len(carrying) != 1:
@@ -5572,7 +5580,7 @@ def test_text_transform(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     for needle, why in (
         ('text="SHOUT QUIETLY"', "textTransform: 'uppercase' did not reach the text engine"),
@@ -5629,7 +5637,7 @@ def test_cursor_style(bundle: Path) -> None:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     lines = tree.splitlines()
     for keyword in ("pointer", "ns-resize"):
@@ -5822,7 +5830,7 @@ def test_application_menu(bundle: Path) -> None:
         )
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
-        menu = dump.read_text() if dump.exists() else ""
+        menu = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     both = result.stdout + result.stderr
     supported = "menu supported: true" in both
@@ -5894,7 +5902,7 @@ def test_debugging_overlay(bundle: Path) -> None:
             )
             _remember_output(result.stderr)
             check_output(result.stderr, result.returncode)
-            tree = dump.read_text() if dump.exists() else ""
+            tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
             return tree.count("highlights="), result.stdout + result.stderr
 
     # An inspected element, which stays until it is cleared. Whenever the tree is
@@ -5973,7 +5981,7 @@ def test_windows(bundle: Path) -> None:
             )
             _remember_output(result.stderr)
             check_output(result.stderr, result.returncode)
-            tree = dump.read_text() if dump.exists() else ""
+            tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
             return tree, result.stdout + result.stderr
 
     def run_closing(taps: str, surfaceId: int, run_ms: int) -> tuple[str, str]:
@@ -5996,7 +6004,7 @@ def test_windows(bundle: Path) -> None:
             )
             _remember_output(result.stderr)
             check_output(result.stderr, result.returncode)
-            tree = dump.read_text() if dump.exists() else ""
+            tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
             return tree, result.stdout + result.stderr
 
     if "windows supported: true" not in run("", 5000)[1]:
@@ -6089,7 +6097,7 @@ def test_drop_target(bundle: Path) -> None:
             )
             _remember_output(result.stderr)
             check_output(result.stderr, result.returncode)
-            return (dump.read_text() if dump.exists() else ""), result.stderr
+            return (dump.read_text(encoding="utf-8") if dump.exists() else ""), result.stderr
 
     # Inside the inner target, which is inside the outer one. The innermost
     # accepting view wins, so the outer must not be the one told.
@@ -6157,7 +6165,7 @@ def test_view_key_events(bundle: Path) -> None:
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
         logged = result.stdout + result.stderr
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     # The instrument ran at all. Without this a scenario that pressed nothing
     # would pass every assertion below by pressing nothing.
@@ -6390,7 +6398,7 @@ def test_settings(bundle: Path) -> str:
                "the second run did not write its own count")
 
         try:
-            stored = json.loads(store.read_text())
+            stored = json.loads(store.read_text(encoding="utf-8"))
         except ValueError as error:
             raise Failure(f"{store} is not JSON after two runs: {error}") from None
 
@@ -6741,7 +6749,7 @@ def test_inline_views(bundle: Path) -> str:
         check_output(result.stderr, result.returncode)
         if not dump.exists():
             raise Failure("the host wrote no widget tree")
-        tree = dump.read_text()
+        tree = dump.read_text(encoding="utf-8")
 
     # Found by background colour, which is what the app gives each one for the
     # purpose: a tag would change the moment the app grows another view.
@@ -6846,7 +6854,7 @@ def test_displays(bundle: Path) -> None:
         )
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
         logged = result.stderr
 
     # The count reaches React, which is what says the list crossed the bridge
@@ -6938,7 +6946,7 @@ def test_quit_request(bundle: Path) -> None:
             elapsed = time.monotonic() - started
             _remember_output(result.stderr)
             check_output(result.stderr, result.returncode)
-            tree = dump.read_text() if dump.exists() else ""
+            tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
             return tree, result.stderr, elapsed
 
     # Whether the refusal held is measured rather than read out of a log
@@ -7031,7 +7039,7 @@ def test_window_close_request(bundle: Path) -> None:
             )
             _remember_output(result.stderr)
             check_output(result.stderr, result.returncode)
-            tree = dump.read_text() if dump.exists() else ""
+            tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
             return tree, result.stdout + result.stderr
 
     tree, logged = run("BasaltWindowsGuarded", 3, 11000)
@@ -7104,7 +7112,7 @@ def test_screen_stack(bundle: Path) -> None:
         )
         _remember_output(result.stderr)
         check_output(result.stderr, result.returncode)
-        tree = dump.read_text() if dump.exists() else ""
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
 
     def line_for_text(text: str) -> str:
         for line in tree.split("\n"):
