@@ -40,9 +40,24 @@ Three sources, all of them the code rather than a note about the code:
 
 `docs/platform-modules.json` is the triage: for each name, who answers it and,
 when nobody does, what an app sees. `--check` compares the three sources against
-that file and fails on any difference -- a module added upstream, a provider
-chain that stopped offering one, a status that claims an answer the code does
-not give.
+that file and fails on a provider chain that stopped offering a module, on a
+status that claims an answer the code does not give, and on a module nobody
+answers with nothing written about what an app sees.
+
+## Two kinds of difference, and only one of them is a failure
+
+The file is about the React Native in `scripts/react-native.pin`, which is the
+release CI builds against -- so the list of modules an app can reach is that
+release's list. A local checkout is normally `main`, which has already added
+one (`NativeResizeObserverCxx`), dropped one (`ModalManager`) and changed how it
+asks for another (`NativePerformanceCxx`, now `getEnforcing`).
+
+So a difference in *React Native's own list* read from an unpinned checkout is
+reported as drift and exits zero: that is what the scheduled drift job is for,
+and the same split `scripts/scrape_props.py` makes between `--from-pin` and
+RN_DIR. A difference about *this repository* -- a chain that stopped answering,
+an unresolved provider class, a status claiming an answer nothing gives -- fails
+whichever checkout it read, because those are this project's to get right.
 
 Run with:  python3 scripts/audit_modules.py           # print the table
            python3 scripts/audit_modules.py --check   # fail if it is stale
@@ -59,6 +74,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TRIAGE = REPO / "docs/platform-modules.json"
+PIN = REPO / "scripts/react-native.pin"
 
 # The hosts' provider chains. One per host, and they are expected to agree about
 # every module that is not the host's own -- which is itself something this
@@ -99,6 +115,22 @@ def react_native_dir() -> Path:
     raise SystemExit(
         "no React Native checkout found: set RN_DIR, or put one beside this repository"
     )
+
+
+def pinned_version() -> str:
+    for line in PIN.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return line
+    return "unknown"
+
+
+def checkout_version(rn_dir: Path) -> str:
+    package = rn_dir / "packages/react-native/package.json"
+    try:
+        return "v" + json.loads(package.read_text())["version"]
+    except (OSError, KeyError, json.JSONDecodeError):
+        return "unknown"
 
 
 def module_names(paths: list[Path]) -> dict[str, str]:
@@ -294,10 +326,15 @@ def main() -> int:
     triage = json.loads(TRIAGE.read_text())
     statuses = triage["modules"]
 
+    # Drift is a difference in React Native's own list, which an unpinned
+    # checkout is expected to have; see the note at the top of this file.
+    drift: list[str] = []
+    pinned = checkout_version(rn_dir) == pinned_version()
+
     for row in rows:
         entry = statuses.get(row["module"])
         if entry is None:
-            problems.append(
+            drift.append(
                 f"{row['module']}: React Native asks for it and nothing in "
                 f"docs/platform-modules.json says what happens here"
             )
@@ -308,7 +345,7 @@ def main() -> int:
                 f"code says {row['answeredBy']}"
             )
         if entry["asked"] != row["asked"]:
-            problems.append(
+            drift.append(
                 f"{row['module']}: the file says React Native asks with "
                 f"{entry['asked']} and it asks with {row['asked']}"
             )
@@ -320,7 +357,7 @@ def main() -> int:
 
     for name in statuses:
         if name not in {row["module"] for row in rows} and name not in extra:
-            problems.append(
+            drift.append(
                 f"{name}: has a status and neither React Native nor this platform "
                 f"mentions it any more"
             )
@@ -343,12 +380,25 @@ def main() -> int:
                     f"the others, and the file does not say it is host-specific"
                 )
 
-    if problems:
-        for problem in problems:
-            print(problem)
+    # On the pinned release the two kinds are one kind: the file is about that
+    # release, so a difference in its list is a file nobody updated.
+    if pinned:
+        problems.extend(drift)
+        drift = []
+
+    for problem in problems:
+        print(problem)
+    if drift:
+        print(
+            f"read React Native {checkout_version(rn_dir)} rather than the pin "
+            f"{pinned_version()}, so these are drift rather than failures:"
+        )
+        for difference in drift:
+            print(f"  {difference}")
     print(
         f"{len(rows)} modules asked for, {len(extra)} more answered here, "
         f"{len(problems)} problems"
+        + (f", {len(drift)} differences from the pin" if drift else "")
     )
     return 1 if problems else 0
 

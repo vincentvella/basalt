@@ -483,6 +483,21 @@ jobs:
           node scripts/check_support.js --check
           python3 scripts/test_scrape_props.py
 
+      - name: What happens when an app reaches for a native module
+        # The other half of what an app touches, and the half no page answered
+        # until docs/platform-modules.json: a module nobody provides is either a
+        # silent no-op or an app that dies on the line that reached it,
+        # depending on which of `get` and `getEnforcing` React Native asks with.
+        #
+        # Reads the provider chains and React Native's own JavaScript, so it
+        # needs the checkout this job already has. Its own tests first, for the
+        # reason the checks above give: the parsing is what the audit rests on.
+        env:
+          RN_DIR: react-native-src
+        run: |
+          python3 scripts/test_audit_modules.py
+          python3 scripts/audit_modules.py --check
+
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src
 

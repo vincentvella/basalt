@@ -165,6 +165,16 @@ if command -v node >/dev/null 2>&1; then
   # takes has a row. Not `scrape_props.py --check`, which fetches React Native
   # from GitHub and so cannot run offline or in CI.
   step "prop scrape tests" python3 scripts/test_scrape_props.py
+  # And the same question for native modules: what happens when an app reaches
+  # for one. Needs a React Native checkout, which this machine has and a bare
+  # container may not, so it says why it skipped rather than failing.
+  step "module audit tests" python3 scripts/test_audit_modules.py
+  if [ -n "${RN_DIR:-}" ] || [ -d ../react-native/packages/react-native ] ||
+     [ -d react-native-src/packages/react-native ]; then
+    step "module audit" python3 scripts/audit_modules.py --check
+  else
+    skip "module audit" "no React Native checkout; set RN_DIR"
+  fi
   # Not scripts/scrape_props.py --check, which reads React Native's headers from
   # GitHub at the pinned tag and so needs the network. The committed inventory is
   # what the check above renders from; run the scraper by hand -- with --from-pin
