@@ -12,6 +12,7 @@
 #include "FontScaling.h"
 #include "FontFitting.h"
 #include "PangoTextLayout.h"
+#include "TextDirection.h"
 // For rn_pango_clip_height, the contract between measuring a clipped paragraph
 // and painting one. It lives in the widget layer; see the comment there.
 #include "RnView.h"
@@ -21,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <optional>
 #include <sstream>
 #include <thread>
@@ -1083,4 +1085,171 @@ TEST(text_a_line_limit_does_not_hide_the_overflow_from_the_search) {
   const basalt::FontFit fit = basalt::textFitScale(label, oneLine, 200.0F, 40.0F);
   EXPECT(fit.scales());
   EXPECT(fit.ratio < 1.0);
+}
+
+
+// --- Which edge the text sits against -----------------------------------------
+//
+// `textAlign` is five values and two of them are relative: `start` and `end`
+// name the edges a line runs between, so in a right-to-left paragraph `end` is
+// the left one. All three hosts had this wrong, each in its own way, and the
+// table they now agree on is in core/TextAlignments.h along with what each of
+// them used to answer.
+//
+// Asserted against the ink, through `pango_layout_get_extents`, because this is
+// a question about where the glyphs are rather than about what was asked for. A
+// 300pt box and a short string, so the two edges are far apart and a wrong
+// answer cannot be a rounding difference.
+
+namespace {
+
+// Hebrew, which is right-to-left with no explicit direction needed: its letters
+// are strong R, so Unicode's rule P2 makes the paragraph right-to-left and both
+// Pango and core/TextDirection.h say so.
+const char *const kHebrew = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d \xd7\xa2\xd7\x95\xd7\x9c\xd7\x9d";
+
+// Where the text sits in a 300pt box: the left edge of the logical extents,
+// which is 0 for flush left and about 222 for flush right.
+float alignedAt(const char *text,
+                std::optional<facebook::react::WritingDirection> direction,
+                std::optional<facebook::react::TextAlignment> alignment) {
+  TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.alignment = alignment;
+  attributes.baseWritingDirection = direction;
+
+  AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+  AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  PangoLayout *layout = basalt::buildTextLayout(string, ParagraphAttributes{}, 300.0F);
+  PangoRectangle logical{};
+  pango_layout_get_extents(layout, nullptr, &logical);
+  const float x = static_cast<float>(logical.x) / PANGO_SCALE;
+  g_object_unref(layout);
+  return x;
+}
+
+// Flush left and flush right, as the two answers this can give. The text is
+// about 78pt wide in a 300pt box, so the right edge is past 200 and the left is
+// at 0; nothing in between is either.
+bool isLeft(float x) {
+  return x < 1.0F;
+}
+
+bool isRight(float x) {
+  return x > 200.0F;
+}
+
+} // namespace
+
+TEST(text_align_left_and_right_are_physical_in_both_directions) {
+  using A = facebook::react::TextAlignment;
+  using D = facebook::react::WritingDirection;
+
+  // Latin text: nothing surprising, and the control for everything below.
+  EXPECT(isLeft(alignedAt("hello world", std::nullopt, A::Left)));
+  EXPECT(isRight(alignedAt("hello world", std::nullopt, A::Right)));
+
+  // Hebrew with no explicit direction, which is the case Pango resolves itself.
+  // This is the row that was wrong here: with `auto_dir` on, Pango reads
+  // ALIGN_LEFT and ALIGN_RIGHT as *start* and *end*, so asking for the right
+  // edge put the text on the left.
+  EXPECT(isLeft(alignedAt(kHebrew, std::nullopt, A::Left)));
+  EXPECT(isRight(alignedAt(kHebrew, std::nullopt, A::Right)));
+
+  // And with the direction said out loud, where Pango's alignments are physical
+  // and no inversion is wanted.
+  EXPECT(isLeft(alignedAt(kHebrew, D::RightToLeft, A::Left)));
+  EXPECT(isRight(alignedAt(kHebrew, D::RightToLeft, A::Right)));
+}
+
+TEST(text_align_natural_follows_the_paragraph_direction) {
+  using A = facebook::react::TextAlignment;
+  using D = facebook::react::WritingDirection;
+
+  EXPECT(isLeft(alignedAt("hello world", std::nullopt, A::Natural)));
+  EXPECT(isLeft(alignedAt("hello world", std::nullopt, std::nullopt)));
+  // Resolved from the text, which is what `natural` means.
+  EXPECT(isRight(alignedAt(kHebrew, std::nullopt, A::Natural)));
+  EXPECT(isRight(alignedAt(kHebrew, std::nullopt, std::nullopt)));
+  // And from the prop when there is one, even over Latin text.
+  EXPECT(isRight(alignedAt("hello world", D::RightToLeft, A::Natural)));
+  EXPECT(isRight(alignedAt("hello world", D::RightToLeft, std::nullopt)));
+}
+
+#if BASALT_RN_MINOR >= 87
+TEST(text_align_start_and_end_are_the_edges_the_line_runs_between) {
+  using A = facebook::react::TextAlignment;
+  using D = facebook::react::WritingDirection;
+
+  EXPECT(isLeft(alignedAt("hello world", std::nullopt, A::Start)));
+  EXPECT(isRight(alignedAt("hello world", std::nullopt, A::End)));
+
+  // The entry this closes: `end` in a right-to-left paragraph is the *left*
+  // edge, and this host drew it flush right whether the direction came from the
+  // text or from the prop.
+  EXPECT(isRight(alignedAt(kHebrew, std::nullopt, A::Start)));
+  EXPECT(isLeft(alignedAt(kHebrew, std::nullopt, A::End)));
+  EXPECT(isRight(alignedAt(kHebrew, D::RightToLeft, A::Start)));
+  EXPECT(isLeft(alignedAt(kHebrew, D::RightToLeft, A::End)));
+
+  // Latin text in a paragraph the app said runs right to left, which is the
+  // case that cannot be got right by looking at the text alone.
+  EXPECT(isRight(alignedAt("hello world", D::RightToLeft, A::Start)));
+  EXPECT(isLeft(alignedAt("hello world", D::RightToLeft, A::End)));
+}
+#endif
+
+TEST(text_direction_agrees_with_pangos_own_answer) {
+  // core/TextDirection.h implements Unicode's rule P2 because two of the three
+  // text engines will not answer it. Pango will -- `pango_find_base_dir` is
+  // that rule -- so this is where the shared one is held against a real
+  // implementation of it, which is what makes "the rule below is P2" a
+  // measurement rather than a claim.
+  const char *const samples[] = {
+      "hello",
+      "Grüße",
+      "123",
+      "   ",
+      "",
+      "(1) hello",
+      kHebrew,
+      "\xd8\xa7\xd9\x84\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85",       // Arabic
+      "\xde\x8b\xde\xa8",                                   // Thaana
+      "\xdf\x92\xdf\x8a",                                   // NKo
+      "\xd9\xa1\xd9\xa2\xd9\xa3",                             // Arabic-Indic digits
+      "\xd9\xa1\xd9\xa2\xd9\xa3 \xd8\xa7\xd9\x84\xd8\xb3",            // digits then Arabic
+      "hello \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d",                 // Latin then Hebrew
+      "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d hello",                 // Hebrew then Latin
+      "\xe2\x80\x8f 123",                                    // a right-to-left mark
+      "\xf0\x9f\x98\x80 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d",            // an emoji then Hebrew
+  };
+
+  for (const char *sample : samples) {
+    // `pango_find_base_dir`, deliberately, and it is deprecated as of Pango
+    // 1.56 -- which is why the deprecation is suppressed here rather than the
+    // call being replaced. It is rule P2 and nothing else in Pango is: a
+    // layout's own `pango_layout_get_direction` answers for the *character* at
+    // an index, so over "١٢٣ السلام" it says left-to-right for the digit at
+    // byte 0 while the paragraph it is in runs right to left. That is a correct
+    // answer to a different question, and it is the question this file asked
+    // first.
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    const PangoDirection pango =
+        pango_find_base_dir(sample, static_cast<int>(strlen(sample)));
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    const bool pangoSaysRtl = pango == PANGO_DIRECTION_RTL;
+    const bool oursSaysRtl = basalt::textStartsRightToLeft(sample);
+    if (pangoSaysRtl != oursSaysRtl) {
+      std::ostringstream message;
+      message << "pango_find_base_dir says " << (pangoSaysRtl ? "rtl" : "ltr")
+              << " and textStartsRightToLeft says " << (oursSaysRtl ? "rtl" : "ltr") << " for \""
+              << sample << "\"";
+      ::basalt::testing::recordFailure(std::string(__FILE__) + ":" + std::to_string(__LINE__),
+                                       message.str());
+    }
+  }
 }

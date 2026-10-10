@@ -1228,3 +1228,128 @@ TEST(appkit_text_a_line_limit_does_not_hide_the_overflow_from_the_search) {
     EXPECT(fit.ratio < 1.0);
   }
 }
+
+
+// --- Which edge the text sits against -----------------------------------------
+//
+// The same table the GTK suite asserts, measured the same way -- the leftmost
+// column with ink in it, in a 300pt box -- because the claim is that the two
+// hosts agree. `textAlign`'s `start` and `end` are relative to the paragraph's
+// direction, and this host had four of the eight rows wrong: it folded `left`
+// into `natural`, folded `end` into `right`, and never resolved the direction
+// of a paragraph whose text is right-to-left but whose prop said nothing. See
+// core/TextAlignments.h for what each host used to answer.
+
+namespace {
+
+const char *const kHebrewText = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d \xd7\xa2\xd7\x95\xd7\x9c\xd7\x9d";
+
+// The leftmost column holding ink, with the paragraph drawn into a 300pt box.
+// Flush left is 0 or 1; flush right is past 200.
+int inkStartsAt(const char *text,
+                std::optional<facebook::react::WritingDirection> direction,
+                std::optional<facebook::react::TextAlignment> alignment) {
+  const CGSize size = CGSizeMake(300, 40);
+
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.alignment = alignment;
+  attributes.baseWritingDirection = direction;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  RnTextLayout *layout = basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height, 8,
+                                               0, space, kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+  [layout drawInContext:context size:size];
+
+  auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  int leftmost = -1;
+  for (size_t x = 0; x < (size_t)size.width && leftmost < 0; x++) {
+    for (size_t y = 0; y < (size_t)size.height; y++) {
+      if (pixels[y * stride + x * 4] < 200) {
+        leftmost = (int)x;
+        break;
+      }
+    }
+  }
+  CGContextRelease(context);
+  return leftmost;
+}
+
+bool drawnLeft(int x) {
+  return x >= 0 && x < 5;
+}
+
+bool drawnRight(int x) {
+  return x > 200;
+}
+
+} // namespace
+
+TEST(appkit_text_align_left_and_right_are_physical_in_both_directions) {
+  @autoreleasepool {
+    using A = facebook::react::TextAlignment;
+    using D = facebook::react::WritingDirection;
+
+    EXPECT(drawnLeft(inkStartsAt("hello world", std::nullopt, A::Left)));
+    EXPECT(drawnRight(inkStartsAt("hello world", std::nullopt, A::Right)));
+
+    // The row this host had wrong: `left` was folded into `natural`, so a
+    // right-to-left paragraph asking for the left edge drew flush right.
+    EXPECT(drawnLeft(inkStartsAt(kHebrewText, D::RightToLeft, A::Left)));
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, D::RightToLeft, A::Right)));
+    EXPECT(drawnLeft(inkStartsAt(kHebrewText, std::nullopt, A::Left)));
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, std::nullopt, A::Right)));
+  }
+}
+
+TEST(appkit_text_align_natural_follows_the_paragraph_direction) {
+  @autoreleasepool {
+    using A = facebook::react::TextAlignment;
+    using D = facebook::react::WritingDirection;
+
+    EXPECT(drawnLeft(inkStartsAt("hello world", std::nullopt, A::Natural)));
+    EXPECT(drawnLeft(inkStartsAt("hello world", std::nullopt, std::nullopt)));
+
+    // Resolved from the text, which is what `natural` means and which Core Text
+    // only does inside a frame -- and this layer draws its own lines, so a
+    // paragraph of Hebrew with nothing set drew flush left.
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, std::nullopt, A::Natural)));
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, std::nullopt, std::nullopt)));
+    // And from the prop when there is one.
+    EXPECT(drawnRight(inkStartsAt("hello world", D::RightToLeft, A::Natural)));
+    EXPECT(drawnRight(inkStartsAt("hello world", D::RightToLeft, std::nullopt)));
+  }
+}
+
+#if BASALT_RN_MINOR >= 87
+TEST(appkit_text_align_start_and_end_are_the_edges_the_line_runs_between) {
+  @autoreleasepool {
+    using A = facebook::react::TextAlignment;
+    using D = facebook::react::WritingDirection;
+
+    EXPECT(drawnLeft(inkStartsAt("hello world", std::nullopt, A::Start)));
+    EXPECT(drawnRight(inkStartsAt("hello world", std::nullopt, A::End)));
+
+    // The entry this closes: `end` is the left edge in a right-to-left
+    // paragraph, however the direction was decided.
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, std::nullopt, A::Start)));
+    EXPECT(drawnLeft(inkStartsAt(kHebrewText, std::nullopt, A::End)));
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, D::RightToLeft, A::Start)));
+    EXPECT(drawnLeft(inkStartsAt(kHebrewText, D::RightToLeft, A::End)));
+    EXPECT(drawnRight(inkStartsAt("hello world", D::RightToLeft, A::Start)));
+    EXPECT(drawnLeft(inkStartsAt("hello world", D::RightToLeft, A::End)));
+  }
+}
+#endif

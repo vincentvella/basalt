@@ -8,6 +8,7 @@
 #include "ComponentRegistry.h"
 #include "BackgroundLayers.h"
 #include "TextShadows.h"
+#include "TextAlignments.h"
 #include "WritingDirections.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
@@ -841,6 +842,10 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   const char *const direction =
       basalt::writingDirectionName(basalt::writingDirection(data.attributedString));
   view.rnWritingDirection = direction != nullptr ? @(direction) : nil;
+  // And the edge its text sits against, resolved: `textAlign` is relative in
+  // two of its five spellings, so the prop is not the answer. See
+  // core/TextAlignments.h.
+  view.rnTextAlign = @(basalt::paragraphTextAlignmentName(data.attributedString));
 
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     layout.shadowOffset = CGSizeMake(shadow->dx, shadow->dy);

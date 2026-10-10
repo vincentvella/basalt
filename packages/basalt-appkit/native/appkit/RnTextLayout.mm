@@ -183,21 +183,28 @@
       return 0.5;
     case NSTextAlignmentRight:
       return 1.0;
+    case NSTextAlignmentLeft:
+      // Explicitly left, which is not the same as natural: a right-to-left
+      // paragraph with `textAlign: 'left'` is flush left, and this used to fall
+      // through to the natural branch below and come out flush right.
+      return 0;
     default:
       break;
   }
 
-  // A natural alignment follows the writing direction, and nothing above this
-  // line does that for us. `NSTextAlignmentNatural` means "whichever edge the
-  // direction starts from", which a frame would resolve; this draws its own
-  // lines, so the frame never gets the chance, and a right-to-left paragraph
-  // drew flush left with its glyphs in the right order inside the line.
+  // What is left is `natural` and `justified`, and both mean the edge the
+  // paragraph *starts* from -- the relative alignments, `start` and `end`, were
+  // resolved into left or right before they got here; see
+  // core/TextAlignments.h.
   //
-  // Measured on both hosts and wrong on both at first: Pango flips a natural
-  // alignment only while it is deciding the direction itself, and Core Text
-  // only inside a frame. The two fixes are in different places and are the same
-  // decision. See PangoTextLayout.cpp.
-  if (style.baseWritingDirection == NSWritingDirectionRightToLeft) {
+  // Which edge that is needs the paragraph's direction, and the style's own is
+  // only half of it: `NSWritingDirectionNatural` means "ask the text", which a
+  // frame would resolve and this does not use. `rightToLeft` is that answer,
+  // from core/TextDirection.h. Measured on both hosts and wrong on both at
+  // first: Pango flips a natural alignment only while it is deciding the
+  // direction itself, and Core Text only inside a frame. The two fixes are in
+  // different places and are the same decision. See PangoTextLayout.cpp.
+  if (_rightToLeft || style.baseWritingDirection == NSWritingDirectionRightToLeft) {
     return 1.0;
   }
   return 0;

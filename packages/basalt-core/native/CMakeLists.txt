@@ -91,6 +91,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_share.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_action_sheet.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_alignment.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sourcecode.cpp
     CACHE INTERNAL "core's own tests")
 
@@ -279,6 +280,8 @@ if(DEFINED RN_DIR)
     core/ShareFallback.cpp
     # `Settings`, which is a file here rather than NSUserDefaults; see the header.
     core/SettingsStore.cpp
+    # Which way a paragraph runs when the app did not say; see the header.
+    core/TextDirection.cpp
     core/SourceCodeModule.cpp
     # Answering a modal dialog without showing one; see the header.
     core/TestDialog.cpp

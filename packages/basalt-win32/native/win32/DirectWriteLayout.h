@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "FontFitting.h"
 #include "RnWin32TextLayout.h"
 
@@ -32,8 +34,13 @@ namespace basalt::win32 {
 // `fit` is `adjustsFontSizeToFit`'s answer: the ratio the font size is
 // multiplied by and the two bounds it is clamped against. The default changes
 // nothing, which is what a fragment in a paragraph that never asked gets.
+// `rightToLeft` is the paragraph's resolved direction, which DirectWrite needs
+// told: it never asks the text. Left out, the prop alone decides, which is what
+// a caller with no paragraph to resolve means -- a `<TextInput>`. See
+// core/TextDirection.h.
 RnTextStyle buildTextStyle(const facebook::react::TextAttributes &textAttributes,
-                           basalt::FontFit fit = {});
+                           basalt::FontFit fit = {},
+                           std::optional<bool> rightToLeft = std::nullopt);
 
 // One fragment's text with its `textTransform` applied, which has to happen
 // before anything measures the string. Exposed for the suite, and for the same

@@ -54,6 +54,21 @@ const styles = StyleSheet.create({
   // string are identical, so only the pixels differ, which is why each host's
   // suite asserts this with a picture and the dump only reports what was asked.
   rtl: {fontSize: 16, color: '#2b3445', writingDirection: 'rtl'},
+  // `textAlign`'s two relative spellings, which name the edges a line runs
+  // between rather than the edges of the box: `end` in a right-to-left
+  // paragraph is the *left* one, and `left` is still the left one. Four
+  // paragraphs, because the direction can come from the prop or from the text
+  // and the answer has to be the same either way -- which it was not: all three
+  // hosts had `end` flush right, and each had a different second row wrong.
+  // The dump's `text-align=` line is the resolved edge, so these are comparable
+  // across hosts; each host's own suite asserts the pixels.
+  endLtr: {fontSize: 16, color: '#2b3445', textAlign: 'end'},
+  endRtl: {fontSize: 16, color: '#2b3445', textAlign: 'end', writingDirection: 'rtl'},
+  leftRtl: {fontSize: 16, color: '#2b3445', textAlign: 'left', writingDirection: 'rtl'},
+  // No alignment and no direction: both are resolved from the text, which is
+  // Hebrew, so this is a right-to-left paragraph flush right. Whether the
+  // machine has a font for it does not enter into it.
+  hebrew: {fontSize: 16, color: '#2b3445'},
   variants: {fontSize: 16, color: '#2b3445', fontVariant: ['small-caps', 'tabular-nums']},
   faded: {fontSize: 16, color: '#2b3445', opacity: 0.4},
   dotted: {
@@ -136,6 +151,10 @@ function App() {
         <Text style={styles.variants}>Small caps 1234567890</Text>
         <Text style={styles.faded}>Faded to two fifths</Text>
         <Text style={styles.rtl}>Right to left, in Latin</Text>
+        <Text style={styles.endLtr}>Ends at the right</Text>
+        <Text style={styles.endRtl}>Ends at the left</Text>
+        <Text style={styles.leftRtl}>Left is still left</Text>
+        <Text style={styles.hebrew}>{'\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd'}</Text>
         <Text style={styles.clipped}>
           Plain, then <Text style={styles.emphasis}>bold amber</Text> and{' '}
           <Text style={styles.italic}>italic green</Text> in one paragraph.

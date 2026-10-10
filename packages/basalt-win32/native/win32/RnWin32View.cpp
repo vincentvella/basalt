@@ -320,6 +320,12 @@ void RnWin32View::setHidden(bool hidden) {
 
 // --- Content ----------------------------------------------------------------
 
+void RnWin32View::setParagraphNames(const char *writingDirection, const char *textAlign) {
+  // Literals from core, not copies, the way the GTK host stores the same two.
+  writingDirectionName_ = writingDirection;
+  textAlignName_ = textAlign;
+}
+
 void RnWin32View::setTextLayout(std::shared_ptr<RnWin32TextLayout> layout) {
   textLayout_ = std::move(layout);
 }
@@ -2489,17 +2495,22 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
       appendEscaped(out, text);
       out += "\"";
     }
-    // The paragraph's writing direction, spelled as the other two hosts spell
-    // it, and only when it is the one nothing else in this dump can show: a
-    // right-to-left paragraph of Latin text has the same box and the same
-    // string as a left-to-right one, and only the pixels differ.
+    // The edge the text sits against, resolved, and the direction the app asked
+    // for: the two lines the other two hosts print, in the same words, from the
+    // same functions in core. Neither can be seen any other way in a dump -- a
+    // right-aligned paragraph has the same box and the same string as a
+    // left-aligned one, and a right-to-left paragraph of Latin text has both.
     //
-    // Left-to-right is not printed, where the other two print `ltr` and
-    // `natural` as well. They keep the name the app used; this host keeps a
-    // boolean, because DirectWrite takes a direction rather than a
-    // "decide for me". So what is comparable is the line that matters.
-    if (textLayout_->style().rightToLeft) {
-      out += " writing-dir=rtl";
+    // This used to print the resolved direction as a boolean, because that is
+    // what this host keeps, and so it was the one host whose dump could not be
+    // compared with another's. The name the app used is what crosses now.
+    if (textAlignName_ != nullptr) {
+      out += " text-align=";
+      out += textAlignName_;
+    }
+    if (writingDirectionName_ != nullptr) {
+      out += " writing-dir=";
+      out += writingDirectionName_;
     }
     // The paragraph's text shadow, spelled as the other two hosts spell it: no
     // other line can show it, a shadowed paragraph having the same text, the

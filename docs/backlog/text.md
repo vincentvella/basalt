@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -15,8 +15,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
-9. `textAlign: 'end'` is physical right on GTK and AppKit, and relative on
-   Windows
+9. ~~`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
+   Windows~~
 10. `verticalAlign` reaches ReactCommon under a name it does not read
 11. `userSelect` has no ReactCommon field at all
 8. ~~The mutex covering Pango is not held while text is drawn~~
@@ -496,33 +496,63 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   shadow colour, or `CLSID_D2D1Shadow` over the text layer's alpha, which is the
   same effect the box shadow entry names. Its scenario skips by name.
 
-- **`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
-  Windows.** React Native 0.87 added `start` and `end` beside `left` and
-  `right`, and the two are not the same thing: `end` is the edge a line of text
-  finishes at, which in a right-to-left paragraph is the left one.
+- ~~**`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
+  Windows.**~~ Done on all three on 2026-10-10, and the entry understated it:
+  `end` was one of *four* rows the hosts disagreed on, and there was one correct
+  cell between the three of them. Measured over a paragraph of Hebrew in a 300pt
+  box, before any of this:
 
-  Both of these hosts fold `end` into their physical right, which is correct in
-  a left-to-right paragraph and wrong in a right-to-left one. The Win32 host
-  keeps it relative, because DirectWrite has `DWRITE_TEXT_ALIGNMENT_TRAILING`
-  and asking for it costs nothing. So the three agree until an app sets
-  `writingDirection: 'rtl'` and `textAlign: 'end'` together, which is a real
-  combination in a right-to-left layout and the only alignment they disagree on.
-  Measured on 2026-10-09, when the Windows half was written.
+  | the app wrote | GTK | AppKit | Win32 |
+  | --- | --- | --- | --- |
+  | `rtl` + `end` | right | right | **left** |
+  | `rtl` + `left` | left | right | left |
+  | hebrew + `natural` | right | left | left |
+  | hebrew + `left` | right | left | left |
 
-  What each would take. Pango has no relative alignment: `PANGO_ALIGN_LEFT` and
-  `_RIGHT` are physical, so `end` means asking the layout's own resolved
-  direction (`pango_layout_get_direction` after the text is set, or the base
-  direction the context was given) and choosing the physical one from it. Core
-  Text has `NSTextAlignmentNatural`, which is leading rather than trailing, so
-  `end` has the same shape there: resolve the direction and pick left or right.
-  Both are a few lines in the same place the alignment is already mapped, and
-  both want the direction that `writingDirection` resolved rather than the prop,
-  since `natural` is the common case.
+  Each host had made a local decision about one enum value, and the question is
+  not local: it is "which edge, given a direction", asked three times. So it is
+  answered once now, in `core/TextAlignments.h`, and what is left per host is
+  the spelling -- a `PangoAlignment`, a Core Text flush factor, a
+  `DWRITE_TEXT_ALIGNMENT`.
 
-  Not done with the Windows half because it is a different kind of change on
-  each: here it is one enum value, and there it is each engine's direction
-  resolution. The e2e scenario that would show it needs a right-to-left
-  paragraph with an explicit `end`, which `e2e/text.tsx` does not have yet.
+  **The direction is the other half, and two of the three engines will not
+  answer it.** `natural`, which is also the default, means "ask the text", which
+  is Unicode's rule P2: the first strong character decides. Pango resolves that
+  itself, which is why GTK had the implicit rows right; Core Text resolves it
+  inside a frame, which the AppKit layer does not use because it draws its own
+  lines to honour `numberOfLines`; and DirectWrite does not resolve it at all --
+  `SetReadingDirection` is told, so a paragraph of Hebrew with nothing set was
+  laid out left to right and every relative alignment in it pointed at the wrong
+  edge. `core/TextDirection.h` is that rule, written once for all three, and the
+  GTK suite holds it against `pango_find_base_dir` -- P2 itself -- over
+  seventeen samples, so "this is P2" is a measurement rather than a claim.
+
+  Three things worth keeping from doing it:
+
+  - **Pango's physical alignments are not physical while `auto_dir` is on.**
+    With it on -- which is what `natural` means -- `PANGO_ALIGN_LEFT` and
+    `_RIGHT` are read as the paragraph's *start* and *end*, so a physical answer
+    has to be spelled backwards for a right-to-left paragraph. That is why
+    `textAlign: 'right'` on Hebrew text drew against the left edge here, and
+    nothing in Pango's API says so at the call that looks like it decides.
+  - **AppKit folded `left` into `natural`.** `NSTextAlignmentNatural` was the
+    answer for `left`, `start` and `natural` alike, so a right-to-left paragraph
+    asking for the left edge drew flush right. `natural` is still left alone --
+    it is the paragraph style's default and is what lets an `NSTextField`
+    resolve a field's own direction -- and `left` is now `NSTextAlignmentLeft`.
+  - **Windows was the one host whose paragraph lines could not be compared.**
+    Its dump printed the resolved direction as a boolean where the other two
+    print the name the app used. All three print the name now, and all three
+    print a `text-align=` line carrying the resolved edge, which is what
+    `e2e/text.tsx` and the end-to-end scenario assert: four paragraphs, two of
+    them taking their direction from the text rather than from a prop.
+    `compare_hosts.sh` agrees on all four between GTK and AppKit.
+
+  What is left is `<TextInput>`, which resolves no direction of its own: a field
+  with `textAlign: 'end'` and right-to-left content gets the left edge only if
+  the app also set `writingDirection`. The field holds its own text and its own
+  selection, and the edge it should use is the direction of what has been typed
+  rather than of what was mounted; see backlog/textinput.md.
 
 - **`verticalAlign` reaches ReactCommon under a name it does not read.** The
   prop aligns a paragraph inside its own box: `top`, `bottom`, `middle` or

@@ -8,6 +8,8 @@
 #include "LegacyShadow.h"
 
 #include "DirectWriteLayout.h"
+#include "WritingDirections.h"
+#include "TextAlignments.h"
 #include "ImageBytes.h"
 #include "PlatformServices.h"
 #include "UIManagerAccess.h"
@@ -797,6 +799,13 @@ void Win32MountingManager::applyText(RnWin32View *view, const ShadowView &shadow
                           static_cast<float>(shadowView.layoutMetrics.frame.size.height));
   view->setTextLayout(
       win32::buildTextLayout(data.attributedString, data.paragraphAttributes, fit));
+  // The two dump lines a paragraph's box and string cannot show: what the app
+  // asked for, and where its text ended up. `textAlign` is relative in two of
+  // its five spellings, so the prop is not the answer; see
+  // core/TextAlignments.h.
+  view->setParagraphNames(
+      basalt::writingDirectionName(basalt::writingDirection(data.attributedString)),
+      basalt::paragraphTextAlignmentName(data.attributedString));
 }
 
 namespace {

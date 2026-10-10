@@ -561,6 +561,12 @@ void rn_view_set_accessible_modal(RnView *self, gboolean modal);
 // which this view only paints. Takes a static string and does not copy it.
 void rn_view_set_writing_direction(RnView *self, const char *direction);
 
+// The edge the paragraph's text sits against, resolved: "left", "center",
+// "right", "justified", or nullptr for a view that is not a paragraph. From
+// core/TextAlignments.h, so the three hosts print the same word for the same
+// answer -- `textAlign: 'end'` is one word and two edges.
+void rn_view_set_text_align(RnView *self, const char *align);
+
 // `spellCheck` and `autoCorrect`, for the tree dump: "on", "off" or nullptr for
 // a field that said nothing. Takes static strings and does not copy them. What
 // this host *does* with the first is an input hint on the peer; see

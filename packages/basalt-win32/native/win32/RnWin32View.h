@@ -424,6 +424,13 @@ class RnWin32View {
   void setTextLayout(std::shared_ptr<RnWin32TextLayout> layout);
   const std::shared_ptr<RnWin32TextLayout> &textLayout() const { return textLayout_; }
 
+  // What the paragraph's dump lines say, which neither the box nor the string
+  // can show: the direction the app asked for -- "ltr", "rtl", "natural" or
+  // null -- and the edge its text ended up against, resolved. Both are literals
+  // from core, so the three hosts print the same words; see
+  // core/TextAlignments.h and core/WritingDirections.h.
+  void setParagraphNames(const char *writingDirection, const char *textAlign);
+
   // The decoded pixels of an <Image>, and how they fill this view's frame. Pass
   // null to clear.
   //
@@ -768,6 +775,8 @@ class RnWin32View {
   ControlStyle controlStyle_;
   std::string controlDescription_;
   std::shared_ptr<RnWin32TextLayout> textLayout_;
+  const char *writingDirectionName_ = nullptr;
+  const char *textAlignName_ = nullptr;
   std::shared_ptr<RnWin32Image> image_;
   std::shared_ptr<RnWin32Painter> painter_;
   RnImageFit imageFit_ = RnImageFit::Cover;

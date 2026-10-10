@@ -5392,10 +5392,18 @@ def test_writing_direction(bundle: Path) -> None:
     take one: Latin text in a right-to-left paragraph has the same box and the
     same string, so the pixels are the only difference.
 
-    Windows prints only the right-to-left case, where the other two also print
-    `ltr` and `natural`: those two keep the name the app used, and that host
-    keeps a boolean, DirectWrite taking a direction rather than a "decide for
-    me". The line this reads is the same on all three.
+    All three print the name the app used, which they did not always: this host
+    printed a boolean, because DirectWrite takes a direction rather than a
+    "decide for me", and so Windows was the one host whose paragraph lines could
+    not be compared with another's.
+
+    **The alignment is the other half of the same question**, and the reason
+    this scenario grew: `textAlign` has two relative spellings, `start` and
+    `end`, which name the edges a line runs *between* -- so `end` in a
+    right-to-left paragraph is the left edge. Measured on 2026-10-10, no two
+    hosts agreed on all four rows below and there was one correct cell between
+    them. The dump's `text-align=` is the resolved edge rather than the prop, so
+    what crosses the comparison is the answer.
     """
 
     app = bundle_app(bundle.parent, "text")
@@ -5421,15 +5429,48 @@ def test_writing_direction(bundle: Path) -> None:
         tree = dump.read_text()
 
     directed = [line for line in tree.splitlines() if "writing-dir=" in line]
-    if len(directed) != 1:
+    if len(directed) != 3:
         raise Failure(
             f"{len(directed)} paragraphs report a writing direction; e2e/text.tsx "
-            f"sets one.\n{tree}"
+            f"sets three.\n{tree}"
         )
-    if "writing-dir=rtl" not in directed[0]:
-        raise Failure(
-            f"the paragraph's direction is not the one the app asked for.\n{directed[0]}"
-        )
+    for line in directed:
+        if "writing-dir=rtl" not in line:
+            raise Failure(
+                f"a paragraph's direction is not the one the app asked for.\n{line}"
+            )
+
+    # And the edge the text ended up against, which is the other half of the
+    # same question: `textAlign` is relative in two of its five spellings, so
+    # `end` is one word and two edges. Each paragraph is found by its own text
+    # rather than by position, so adding one to the app above does not move
+    # these.
+    #
+    # The last row is the one with nothing set at all: the direction is resolved
+    # from the text, which is Hebrew, so a paragraph that said nothing about
+    # either prop is flush right.
+    for text, edge, why in (
+        ("Ends at the right", "right",
+         "`textAlign: 'end'` in a left-to-right paragraph is the right edge"),
+        ("Ends at the left", "left",
+         "`textAlign: 'end'` in a right-to-left paragraph is the *left* edge, "
+         "which is the whole difference between `end` and `right` and which all "
+         "three hosts had wrong"),
+        ("Left is still left", "left",
+         "`textAlign: 'left'` is the left of the box in any paragraph, and is "
+         "not a relative alignment"),
+        ("\u05e9\u05dc\u05d5\u05dd", "right",
+         "a paragraph with no alignment and no direction follows its own text, "
+         "which here is right-to-left"),
+    ):
+        matching = [line for line in tree.splitlines() if f'text="{text}' in line]
+        if len(matching) != 1:
+            raise Failure(
+                f"{len(matching)} paragraphs in the tree say {text!r}; e2e/text.tsx "
+                f"has one.\n{tree}"
+            )
+        if f"text-align={edge}" not in matching[0]:
+            raise Failure(f"{why}.\n{matching[0]}")
 
 
 def test_text_shadow(bundle: Path) -> None:
@@ -7191,7 +7232,8 @@ SCENARIOS = [
     ("mixBlendMode reaches the view", test_mix_blend_mode),
     ("spellCheck and autoCorrect reach the field", test_text_checking),
     ("a font loaded at runtime is the font the paragraph uses", test_runtime_font),
-    ("writingDirection reaches the paragraph", test_writing_direction),
+    ("writingDirection and the edge it puts the text against",
+     test_writing_direction),
     ("a text shadow reaches the paragraph", test_text_shadow),
     ("a desktop text scale, and the props that refuse it", test_font_scaling),
     ("textTransform changes what the engine lays out", test_text_transform),

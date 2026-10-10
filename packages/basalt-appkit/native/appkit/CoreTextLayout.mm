@@ -1,5 +1,9 @@
 #import "CoreTextLayout.h"
 
+#include "TextAlignments.h"
+#include "TextDirection.h"
+#include "WritingDirections.h"
+
 #include "FontRegistry.h"
 #include "FontScaling.h"
 #include "FontVariants.h"
@@ -56,25 +60,27 @@ CGFloat toCoreTextWeight(FontWeight weight) {
   return NSFontWeightRegular;
 }
 
-NSTextAlignment toTextAlignment(TextAlignment alignment) {
+// An edge, spelled as AppKit spells it. The relative alignments are gone by
+// here -- core/TextAlignments.h resolved them against the paragraph's direction
+// -- so what arrives is one of four.
+//
+// `NSTextAlignmentNatural` is deliberately not in the answers: it is the style
+// default and stays in place for a paragraph that asked for `natural` or asked
+// for nothing, which is what lets an `NSTextField` resolve a field's own
+// direction. Folding `left` into it is what made `textAlign: 'left'` draw
+// flush right in a right-to-left paragraph.
+NSTextAlignment toTextAlignment(basalt::PhysicalTextAlignment alignment) {
   switch (alignment) {
-    case TextAlignment::Center:
+    case basalt::PhysicalTextAlignment::Center:
       return NSTextAlignmentCenter;
-    case TextAlignment::Right:
-#if BASALT_RN_MINOR >= 87
-    case TextAlignment::End:
-#endif
+    case basalt::PhysicalTextAlignment::Right:
       return NSTextAlignmentRight;
-    case TextAlignment::Justified:
+    case basalt::PhysicalTextAlignment::Justified:
       return NSTextAlignmentJustified;
-    case TextAlignment::Left:
-#if BASALT_RN_MINOR >= 87
-    case TextAlignment::Start:
-#endif
-    case TextAlignment::Natural:
+    case basalt::PhysicalTextAlignment::Left:
       break;
   }
-  return NSTextAlignmentNatural;
+  return NSTextAlignmentLeft;
 }
 
 // A colour core resolved, in sRGB. Explicitly sRGB for the same reason
@@ -184,11 +190,16 @@ NSFont *fontFor(const TextAttributes &textAttributes, basalt::FontFit fit = {}) 
   return font;
 }
 
-NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes) {
+NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes, bool rightToLeft) {
   NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
 
-  if (textAttributes.alignment) {
-    style.alignment = toTextAlignment(*textAttributes.alignment);
+  // `natural` is left alone rather than resolved here: it is this style's own
+  // default, and leaving it is what lets a frame -- or an NSTextField, which
+  // has its own text and its own direction -- resolve it. RnTextLayout resolves
+  // it for the paragraph path, where no frame is used; see its `rightToLeft`.
+  if (textAttributes.alignment && *textAttributes.alignment != TextAlignment::Natural) {
+    style.alignment =
+        toTextAlignment(basalt::physicalTextAlignment(*textAttributes.alignment, rightToLeft));
   }
 
   // `baseWritingDirection`, which is the same call upstream's iOS half makes in
@@ -295,11 +306,12 @@ NSArray *fontFeaturesFor(const TextAttributes &textAttributes) {
 }
 
 NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttributes &textAttributes,
-                                                            basalt::FontFit fit) {
+                                                            basalt::FontFit fit,
+                                                            bool rightToLeft) {
   NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
 
   attributes[NSFontAttributeName] = fontFor(textAttributes, fit);
-  attributes[NSParagraphStyleAttributeName] = paragraphStyleFor(textAttributes);
+  attributes[NSParagraphStyleAttributeName] = paragraphStyleFor(textAttributes, rightToLeft);
 
   // The foreground, with `opacity` multiplied in, and React Native's default of
   // opaque black rather than the system label colour -- which is white in dark
@@ -455,6 +467,14 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
                               basalt::FontFit fit) {
   NSMutableAttributedString *string = [[NSMutableAttributedString alloc] init];
 
+  // Which way the paragraph runs, once for the whole of it: the prop when the
+  // app set one, and Unicode's rule P2 over the text when it said `natural` or
+  // said nothing. Every relative alignment needs it, and Core Text will not
+  // answer it here -- it resolves a direction inside a frame, and this layer
+  // draws its own lines. See core/TextDirection.h.
+  const bool rightToLeft = basalt::paragraphIsRightToLeft(
+      basalt::writingDirection(attributedString), basalt::paragraphText(attributedString));
+
   for (const auto &fragment : attributedString.getFragments()) {
     if (fragment.string.empty()) {
       continue;
@@ -466,7 +486,7 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
     text = transformedFragmentText(fragment, text);
 
     NSMutableDictionary *attributes =
-        [buildTextAttributes(fragment.textAttributes, fit) mutableCopy];
+        [buildTextAttributes(fragment.textAttributes, fit, rightToLeft) mutableCopy];
 
     // An inline `<View>`: one fragment holding U+FFFC, whose own size React
     // Native has already measured into the fragment. A run delegate is
@@ -506,10 +526,13 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
       break;
   }
 
-  return [RnTextLayout layoutWithAttributedString:string
-                             maximumNumberOfLines:paragraphAttributes.maximumNumberOfLines
-                                   truncationType:truncation
-                                        truncates:truncates ? YES : NO];
+  RnTextLayout *layout =
+      [RnTextLayout layoutWithAttributedString:string
+                         maximumNumberOfLines:paragraphAttributes.maximumNumberOfLines
+                               truncationType:truncation
+                                    truncates:truncates ? YES : NO];
+  layout.rightToLeft = rightToLeft ? YES : NO;
+  return layout;
 }
 
 } // namespace basalt

@@ -8,6 +8,7 @@
 #include "ExpoImageComponent.h"
 #include "BackgroundLayers.h"
 #include "TextShadows.h"
+#include "TextAlignments.h"
 #include "WritingDirections.h"
 #include "BlendModes.h"
 #include "LegacyShadow.h"
@@ -1131,6 +1132,10 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // direction itself, through the context it was built on.
   rn_view_set_writing_direction(
       view, basalt::writingDirectionName(basalt::writingDirection(data.attributedString)));
+  // And the edge its text sits against, resolved: `textAlign` is relative in
+  // two of its five spellings, so the prop is not the answer. See
+  // core/TextAlignments.h.
+  rn_view_set_text_align(view, basalt::paragraphTextAlignmentName(data.attributedString));
 
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     const GdkRGBA shadowColor{shadow->red, shadow->green, shadow->blue, shadow->alpha};

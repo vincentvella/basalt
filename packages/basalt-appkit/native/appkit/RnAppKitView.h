@@ -672,6 +672,12 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // layout carries; this is so the two hosts' dumps compare line by line.
 @property(nonatomic, copy, nullable) NSString *rnWritingDirection;
 
+// The edge the paragraph's text sits against, resolved: @"left", @"center",
+// @"right", @"justified", or nil for a view that is not a paragraph. From
+// core/TextAlignments.h, so the three hosts print the same word for the same
+// answer -- `textAlign: 'end'` is one word and two edges.
+@property(nonatomic, copy, nullable) NSString *rnTextAlign;
+
 // `spellCheck` and `autoCorrect`, for the tree dump: @"on", @"off" or nil for a
 // field that said nothing, which is the third state rather than a default. What
 // this host does with them is two properties on the NSTextView a field is or

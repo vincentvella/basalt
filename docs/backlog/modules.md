@@ -63,8 +63,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   | Module | What an app reaches it with | What would answer it |
   | --- | --- | --- |
-  | `ImageEditingManager` | `react-native/Libraries/Image/NativeImageEditor` | A Skia or Core Graphics crop; the hosts all have an image pipeline already |
-  | `ImageStoreManager` | `react-native/Libraries/Image/NativeImageStoreIOS` | Deprecated upstream; probably not worth writing |
+  | `ImageEditingManager` | `react-native/Libraries/Image/NativeImageEditor` | `cropImage(uri, {offset, size, displaySize, resizeMode}, onDone, onError)`: decode through `core/ImageBytes.h`, then `gdk_pixbuf_new_subpixbuf` and `gdk_pixbuf_save_to_buffer` on GTK, `CGImageCreateWithImageInRect` and `CGImageDestinationFinalize` on AppKit, `IWICBitmapClipper` into an `IWICBitmapEncoder` on Win32. The uri it answers with needs somewhere to live: a temporary file and a `file://`, or the store below |
+  | `ImageStoreManager` | `react-native/Libraries/Image/NativeImageStoreIOS` | `addImageFromBase64`, `getBase64ForTag`, `hasImageForTag`, `removeImageForTag`: a map of uri to bytes in `core/`, with `base64Encode`/`base64Decode` from `core/BlobModule.h` and no per-host code at all. The part that is not free is the uri being loadable -- `<Image source={{uri}}>` would have to recognise the scheme, which means a hook in the image loader rather than a module |
 
   Both are `getEnforcing`, which throws at import -- but only for an app that
   imports the spec file by path, because React Native stopped exporting
@@ -78,6 +78,14 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   looking, which is why nothing here has noticed. `PushNotificationIOS` is a
   third of the same shape and has a package instead; see
   `packages/basalt-notifications`.
+
+  **Both are written down rather than built, and that is the decision rather
+  than a pause.** An API React Native no longer exports has no callers to
+  satisfy: an app would have to import a `specs_DEPRECATED` path on purpose, and
+  the thing it would get is iOS's image store, whose whole point was a uri
+  scheme this platform's image loader does not know. The rows above name the
+  calls so that the day somebody does ask, the work is a morning rather than an
+  investigation. Say so if that is the wrong call.
 
 - ~~**`Settings` is a module nobody answers.**~~ Done on all three on
   2026-10-10, and it took a JavaScript override as well as a module, which is

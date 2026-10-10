@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (5):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
@@ -19,6 +19,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    on all three as well
 9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
 10. ~~`TextInputProps` and its traits have no rows on the support page~~
+11. A field resolves no text direction of its own, so `textAlign: 'end'` needs
+    `writingDirection` set beside it
 
 - ~~**An uncontrolled field loses what was typed into it.**~~ Found on Windows
   in phase 46 and fixed on all three in phase 47. React Native's `TextInput.js`
@@ -459,3 +461,26 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   scraped structs have, so the scrape is one entry in `STRUCTS`. The judgement
   per field is the work, and it wants doing after the Image half of the same
   job: backlog/image.md entry 5 has the shape of it.
+
+- **A field resolves no text direction of its own**, so `textAlign: 'end'` and
+  `'start'` mean the left-to-right edges unless the app also sets
+  `writingDirection`. The paragraph half of this was fixed on 2026-10-10 --
+  `core/TextDirection.h` answers Unicode's rule P2 for a `<Text>`, and
+  backlog/text.md has the measurements -- and a field was deliberately left out
+  of it, because the text it would be resolved against is not the same text.
+
+  A paragraph's direction comes from what was mounted. A field's should come
+  from what has been *typed*, which changes under the person's hands and is held
+  by the control rather than by the shadow node: an `NSTextField`'s string, a
+  `GtkText`'s buffer, the Win32 edit's own text. So it is a different question
+  with a different answer, and all three hosts hand the mounted attributes to
+  the control once.
+
+  What each would take: on AppKit, leave `NSTextAlignmentNatural` in place as it
+  already does -- AppKit resolves a field's direction itself, so `natural` is
+  already right there and only `end` is not. On GTK, `gtk_text_set_alignment`
+  is physical and `pango_find_base_dir` over the buffer's text on every change
+  is the answer, which means a handler rather than a mount-time decision. On
+  Win32, `ES_RIGHT` is physical and the field would need the same handler. None
+  of the three is hard and all three are per-keystroke, which is the part worth
+  thinking about before writing it.

@@ -3016,6 +3016,9 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   // here shows it: a right-to-left paragraph of Latin text has the same box and
   // the same string, and only the pixels differ. `natural` is printed too,
   // asking for the algorithm's answer not being the same as saying nothing.
+  if (self.rnTextAlign.length > 0) {
+    [out appendFormat:@" text-align=%@", self.rnTextAlign];
+  }
   if (self.rnWritingDirection.length > 0) {
     [out appendFormat:@" writing-dir=%@", self.rnWritingDirection];
   }

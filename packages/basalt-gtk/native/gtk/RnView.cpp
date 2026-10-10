@@ -228,6 +228,8 @@ struct _RnView {
   // The layout has the direction itself; this is for the dump, which is
   // compared with the AppKit one line by line.
   const char *writing_direction;
+  // The resolved edge, for the dump; see rn_view_set_text_align.
+  const char *text_align;
   // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
   // to GDK so the tree dump can report what the app asked for.
   char *cursor_name;
@@ -1230,6 +1232,7 @@ static void rn_view_init(RnView *self) {
   self->test_id = nullptr;
   self->accessible_modal = FALSE;
   self->writing_direction = nullptr;
+  self->text_align = nullptr;
   self->spell_check = nullptr;
   self->auto_correct = nullptr;
   self->auto_capitalize = nullptr;
@@ -1467,6 +1470,12 @@ void rn_view_set_writing_direction(RnView *self, const char *direction) {
   // A literal from the mounting manager rather than a copy: the three names are
   // static strings, and nothing else ever sets this.
   self->writing_direction = direction;
+}
+
+void rn_view_set_text_align(RnView *self, const char *align) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  // A literal from core, like the direction above.
+  self->text_align = align;
 }
 
 void rn_view_set_accessible_modal(RnView *self, gboolean modal) {
@@ -2995,6 +3004,9 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // box and the same string, and only the pixels differ. `natural` is printed
   // too, because asking for it is not the same as saying nothing -- a nested
   // <Text> inherits the enclosing direction otherwise.
+  if (self->text_align != nullptr) {
+    g_string_append_printf(out, " text-align=%s", self->text_align);
+  }
   if (self->writing_direction != nullptr) {
     g_string_append_printf(out, " writing-dir=%s", self->writing_direction);
   }

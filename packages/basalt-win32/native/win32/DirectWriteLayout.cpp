@@ -1,5 +1,8 @@
 #include "DirectWriteLayout.h"
 
+#include "TextDirection.h"
+#include "WritingDirections.h"
+
 #include "FontScaling.h"
 
 #include "FontRegistry.h"
@@ -47,9 +50,13 @@ RnTextAlign toAlign(const TextAttributes &attributes) {
     // left-aligned, which clang said out loud in a warning nobody had
     // recompiled this file to see.
     //
-    // The other two hosts fold `end` into physical right, which is the same
-    // thing in a left-to-right paragraph and not in a right-to-left one;
-    // backlog/text.md records that as the one alignment the three disagree on.
+    // This is why this host does not use `core/TextAlignments.h`, which the
+    // other two do: that table turns a relative alignment into a physical edge,
+    // and DirectWrite wants the relative one. What this host needed instead was
+    // the *direction* resolved, which is the other half of the same entry --
+    // `SetReadingDirection` is told and never asks the text, so a paragraph of
+    // Hebrew was laid out left to right and every relative alignment in it
+    // pointed at the wrong edge. See buildTextStyle.
     case facebook::react::TextAlignment::End:
       return RnTextAlign::End;
     case facebook::react::TextAlignment::Start:
@@ -212,7 +219,9 @@ RnTextDecorationStyle toDecorationStyle(facebook::react::TextDecorationStyle sty
   return RnTextDecorationStyle::Solid;
 }
 
-RnTextStyle buildTextStyle(const TextAttributes &attributes, basalt::FontFit fit) {
+RnTextStyle buildTextStyle(const TextAttributes &attributes,
+                           basalt::FontFit fit,
+                           std::optional<bool> rightToLeft) {
   RnTextStyle style;
 
   if (!attributes.fontFamily.empty()) {
@@ -261,12 +270,21 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes, basalt::FontFit fit
     style.letterSpacing = static_cast<float>(attributes.letterSpacing);
   }
 
-  // `writingDirection`. `natural` is left-to-right here, as it is on the other
-  // two hosts for Latin text: DirectWrite resolves a paragraph's direction from
-  // the reading direction it is given rather than from the text, so there is no
-  // third state to pass on.
-  style.rightToLeft = attributes.baseWritingDirection.has_value() &&
-      *attributes.baseWritingDirection == facebook::react::WritingDirection::RightToLeft;
+  // `writingDirection`, resolved. DirectWrite has no third state: it lays a
+  // paragraph out in the reading direction it is given and never asks the text,
+  // so `natural` has to be answered before this -- which core/TextDirection.h
+  // does, with Unicode's rule P2, for this host and for AppKit. Without it a
+  // paragraph of Hebrew with nothing set was laid out left to right, and every
+  // relative alignment in it pointed at the wrong edge.
+  //
+  // The caller passes the paragraph's answer. The prop alone is the fallback,
+  // for a caller with one fragment and no paragraph to resolve -- a
+  // `<TextInput>`, whose own text direction is its own question; see
+  // backlog/textinput.md.
+  style.rightToLeft = rightToLeft.has_value()
+      ? *rightToLeft
+      : (attributes.baseWritingDirection.has_value() &&
+         *attributes.baseWritingDirection == facebook::react::WritingDirection::RightToLeft);
 
   // `fontVariant`, as OpenType tags. core/FontVariants.h resolves the bitmask
   // and names the tags, which is what DirectWrite takes too -- the AppKit host
@@ -365,6 +383,12 @@ std::shared_ptr<RnWin32TextLayout>
 buildTextLayout(const AttributedString &attributedString,
                 const ParagraphAttributes &paragraphAttributes,
                 basalt::FontFit fit) {
+  // Which way the paragraph runs, once for the whole of it rather than per
+  // fragment: `writingDirection` is a paragraph's prop, and the text it is
+  // resolved against is the paragraph's text. See core/TextDirection.h.
+  const bool rightToLeft = basalt::paragraphIsRightToLeft(
+      basalt::writingDirection(attributedString), basalt::paragraphText(attributedString));
+
   std::vector<RnTextRun> runs;
   for (const auto &fragment : attributedString.getFragments()) {
     // An attachment is an inline `<View>`, which occupies space rather than
@@ -379,7 +403,8 @@ buildTextLayout(const AttributedString &attributedString,
     // mounting manager paints the view itself.
     if (fragment.isAttachment()) {
       const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
-      RnTextRun run{fragment.string, buildTextStyle(fragment.textAttributes, fit), std::nullopt};
+      RnTextRun run{
+          fragment.string, buildTextStyle(fragment.textAttributes, fit, rightToLeft), std::nullopt};
       run.inlineBox =
           RnInlineBox{static_cast<float>(size.width), static_cast<float>(size.height)};
       runs.push_back(std::move(run));
@@ -390,7 +415,7 @@ buildTextLayout(const AttributedString &attributedString,
     // and the mounting manager go through, so doing it here is what keeps the
     // two agreeing.
     runs.push_back(RnTextRun{transformedFragmentText(fragment.textAttributes, fragment.string),
-                             buildTextStyle(fragment.textAttributes, fit)});
+                             buildTextStyle(fragment.textAttributes, fit, rightToLeft)});
   }
 
   auto layout = RnWin32TextLayout::createFromRuns(

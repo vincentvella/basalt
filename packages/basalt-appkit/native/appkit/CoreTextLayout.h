@@ -66,9 +66,14 @@ NSString *transformedFragmentText(const facebook::react::AttributedString::Fragm
 // The attributes for a whole string, for anything that holds its own text
 // rather than a layout built here -- the equivalent of Pango's
 // buildTextAttributes, and what a <TextInput> will need.
+// `rightToLeft` is the paragraph's resolved direction, which the relative
+// alignments need; see core/TextDirection.h. A caller that holds its own text
+// and resolves its own direction -- an NSTextField -- passes false and leaves
+// `natural` to AppKit.
 NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(
     const facebook::react::TextAttributes &textAttributes,
-    basalt::FontFit fit = {});
+    basalt::FontFit fit = {},
+    bool rightToLeft = false);
 
 // `fontVariant` in Core Text's vocabulary, which is not OpenType's: Apple's
 // older AAT pairs, a feature type and a selector inside it, as upstream's

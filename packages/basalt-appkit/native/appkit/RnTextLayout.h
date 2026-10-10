@@ -32,6 +32,17 @@ NS_ASSUME_NONNULL_BEGIN
 // than carried in the attributed string. `standardDeviation` is what
 // `CGContextSetShadowWithColor` calls blur and is what React Native hands over,
 // which is why nothing here converts it.
+// Whether the paragraph runs right to left, resolved.
+//
+// The paragraph style carries `baseWritingDirection`, and its default --
+// `NSWritingDirectionNatural` -- means "ask the text", which only a frame
+// resolves. This layer draws its own lines so that `numberOfLines` can be
+// honoured, so no frame ever gets the chance: a paragraph of Hebrew with
+// nothing set drew flush left. The answer comes from core/TextDirection.h on
+// the React Native side, where the text is, and the default of NO is what a
+// paragraph built by hand means -- the style's own direction still stands.
+@property(nonatomic) BOOL rightToLeft;
+
 @property(nonatomic, strong, nullable) NSColor *shadowColor;
 @property(nonatomic) CGSize shadowOffset;
 @property(nonatomic) CGFloat shadowStandardDeviation;

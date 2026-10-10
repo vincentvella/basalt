@@ -1,5 +1,8 @@
 #include "PangoTextLayout.h"
 
+#include "TextAlignments.h"
+#include "TextDirection.h"
+
 #include "FontRegistry.h"
 #include "FontScaling.h"
 #include "FontVariants.h"
@@ -99,29 +102,20 @@ PangoStyle toPangoStyle(FontStyle style) {
   return PANGO_STYLE_NORMAL;
 }
 
-// Start and End are the writing-direction-relative alignments, and they arrived
-// in React Native 0.87. Before that the enum has Natural, Left, Center, Right
-// and Justified, and naming the others is a compile error rather than a dead
-// branch. The threshold was guessed at 0.83 first and 0.86 disproved it, which
-// is why it is now checked against the tags rather than assumed.
-PangoAlignment toPangoAlignment(TextAlignment alignment) {
+// An edge, spelled as Pango spells it. The relative alignments are gone by
+// here: `core/TextAlignments.h` resolved them against the paragraph's
+// direction, and `Justified` is expressed separately through
+// `pango_layout_set_justify` -- so what arrives is one of three.
+PangoAlignment toPangoAlignment(basalt::PhysicalTextAlignment alignment) {
   switch (alignment) {
-    case TextAlignment::Center:
+    case basalt::PhysicalTextAlignment::Center:
       return PANGO_ALIGN_CENTER;
-    case TextAlignment::Right:
-#if BASALT_RN_MINOR >= 87
-    case TextAlignment::End:
-#endif
+    case basalt::PhysicalTextAlignment::Right:
       return PANGO_ALIGN_RIGHT;
-    case TextAlignment::Left:
-#if BASALT_RN_MINOR >= 87
-    case TextAlignment::Start:
-#endif
-    case TextAlignment::Natural:
-    case TextAlignment::Justified:
+    case basalt::PhysicalTextAlignment::Left:
+    case basalt::PhysicalTextAlignment::Justified:
       break;
   }
-  // Justified is expressed separately, through pango_layout_set_justify.
   return PANGO_ALIGN_LEFT;
 }
 
@@ -516,9 +510,13 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // character, which is what Pango calls auto direction and has on by default.
   // Anything else is an app overriding that, so auto direction goes off and the
   // context's base direction stands.
-  pango_layout_set_auto_dir(
-      layout,
-      !direction.has_value() || *direction == facebook::react::WritingDirection::Natural);
+  //
+  // Remembered rather than passed straight in, because the alignment below
+  // needs to know which of the two this is: auto direction changes what
+  // ALIGN_LEFT means.
+  const bool autoDirection =
+      !direction.has_value() || *direction == facebook::react::WritingDirection::Natural;
+  pango_layout_set_auto_dir(layout, autoDirection);
   PangoAttrList *attributes = pango_attr_list_new();
 
   // Fragment ranges are byte offsets into the concatenated UTF-8 string, which
@@ -543,32 +541,47 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // Paragraph-level settings come from the first fragment, since React Native
   // resolves alignment onto every fragment from the <Text> that owns them.
   const auto &fragments = attributedString.getFragments();
-  const bool rightToLeft = direction.has_value()
-      && *direction == facebook::react::WritingDirection::RightToLeft;
-  if (!fragments.empty() && fragments.front().textAttributes.alignment) {
-    const auto alignment = *fragments.front().textAttributes.alignment;
-    // A natural alignment in a right-to-left paragraph means the right edge,
-    // and Pango will not work that out here: it flips `ALIGN_LEFT` for a
-    // right-to-left line only when `auto_dir` is on, which is exactly the case
-    // an explicit `baseWritingDirection` turns off. Measured rather than
-    // assumed -- the first version of this set the direction, Pango resolved
-    // the line as right-to-left, and the glyphs stayed against the left edge.
-    //
-    // AppKit needs none of this: `NSTextAlignmentNatural` with a right-to-left
-    // paragraph style is right-aligned by definition.
-    const bool natural = alignment == TextAlignment::Natural
-#if BASALT_RN_MINOR >= 87
-        || alignment == TextAlignment::Start
-#endif
-        ;
-    pango_layout_set_alignment(
-        layout, natural && rightToLeft ? PANGO_ALIGN_RIGHT : toPangoAlignment(alignment));
-    pango_layout_set_justify(layout, alignment == TextAlignment::Justified);
-  } else if (rightToLeft) {
-    // No alignment at all is the same question as a natural one: React Native's
-    // default is to follow the writing direction.
-    pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+  const std::optional<TextAlignment> alignment = fragments.empty()
+      ? std::optional<TextAlignment>{}
+      : fragments.front().textAttributes.alignment;
+
+  // Which way the paragraph runs, which every relative alignment needs an
+  // answer to: the prop when the app set one, and Unicode's rule P2 over the
+  // text when it said `natural` or said nothing. See core/TextDirection.h for
+  // why that rule is answered there rather than asked of Pango, and
+  // tests/test_text.cpp for the assertion that holds the two together.
+  const bool rightToLeft = basalt::paragraphIsRightToLeft(direction, text);
+
+  // Which edge, from core/TextAlignments.h: `start` and `end` are relative and
+  // `left` and `right` are not, and all three hosts had been deciding that
+  // locally and differently.
+  const basalt::PhysicalTextAlignment physical =
+      basalt::physicalTextAlignment(alignment, rightToLeft);
+  const bool justify = physical == basalt::PhysicalTextAlignment::Justified;
+  // Justified text stretches every line but the last, which goes against the
+  // edge the paragraph starts from.
+  basalt::PhysicalTextAlignment edge = justify
+      ? (rightToLeft ? basalt::PhysicalTextAlignment::Right
+                     : basalt::PhysicalTextAlignment::Left)
+      : physical;
+
+  // Pango's two physical alignments are only physical while `auto_dir` is off.
+  // With it on -- which is what `natural` and no direction at all mean -- Pango
+  // reads `PANGO_ALIGN_LEFT` and `_RIGHT` as the start and end of the
+  // paragraph's own direction, so a physical answer has to be spelled backwards
+  // for a right-to-left one. Measured on 2026-10-10: a Hebrew paragraph asking
+  // for ALIGN_RIGHT drew against the *left* edge, which is how
+  // `textAlign: 'right'` on Hebrew text came to be wrong here.
+  if (autoDirection && rightToLeft) {
+    if (edge == basalt::PhysicalTextAlignment::Left) {
+      edge = basalt::PhysicalTextAlignment::Right;
+    } else if (edge == basalt::PhysicalTextAlignment::Right) {
+      edge = basalt::PhysicalTextAlignment::Left;
+    }
   }
+
+  pango_layout_set_alignment(layout, toPangoAlignment(edge));
+  pango_layout_set_justify(layout, justify);
 
   if (maxWidth >= 0) {
     pango_layout_set_width(layout, toPangoUnits(maxWidth));
