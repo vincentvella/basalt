@@ -16,8 +16,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace facebook::react {
 namespace {
@@ -101,23 +103,35 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
       .height = static_cast<Float>(size.height),
   };
 
-  // Inline views (`<Text><View/></Text>`) reach here as attachment fragments.
-  // Reporting a zero frame for each keeps the count right, which is what
-  // ParagraphShadowNode iterates over, but they are not positioned.
+  // Inline views (`<Text><View/></Text>`) reach here as attachment fragments,
+  // and `ParagraphShadowNode` positions each child by the frame reported here.
+  // The paragraph reserved a box for each through an `IDWriteInlineObject`; this
+  // reads back where they landed. See `attachmentBoxes`.
   //
-  // This used to say both other desktops had the same gap. They had it and no
-  // longer do: Pango reserves the box with a shape attribute and Core Text with
-  // a run delegate, both since 2026-10-07, and this host is the one left. The
-  // shape of the fix here is `SetInlineObject` over the fragment's range with an
-  // IDWriteInlineObject answering React Native's own metrics; see
-  // docs/backlog/text.md.
+  // In fragment order, which is the order the boxes come back in, because both
+  // walk the same run list. A fragment whose view measured to nothing gets a
+  // zero frame rather than a position: there is no box to find, and reporting
+  // one would move a view that has no size.
+  const std::vector<basalt::win32::RnAttachmentBox> boxes =
+      layout == nullptr ? std::vector<basalt::win32::RnAttachmentBox>{}
+                        : layout->attachmentBoxes(maxWidth);
+  size_t at = 0;
   for (const auto &fragment : attributedString.getFragments()) {
-    if (fragment.isAttachment()) {
-      measured.attachments.push_back(TextMeasurement::Attachment{
-          .frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 0, .height = 0}},
-          .isClipped = false,
-      });
+    if (!fragment.isAttachment()) {
+      continue;
     }
+    const basalt::win32::RnAttachmentBox box =
+        at < boxes.size() ? boxes[at] : basalt::win32::RnAttachmentBox{};
+    at++;
+    measured.attachments.push_back(TextMeasurement::Attachment{
+        .frame = {.origin = {.x = box.x, .y = box.y},
+                  .size = {.width = box.width, .height = box.height}},
+        // Still always false, as it is on GTK: it means the view fell outside
+        // the paragraph after `numberOfLines` cut it, and telling that one
+        // attachment is on a line DirectWrite has trimmed needs more than the
+        // position -- the same half-answer the GTK entry declined to ship.
+        .isClipped = false,
+    });
   }
 
   {

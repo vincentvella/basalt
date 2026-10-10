@@ -17,9 +17,11 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 using basalt::win32::RnTextAlign;
 using basalt::win32::RnTextSize;
@@ -646,4 +648,180 @@ TEST(text_a_shadow_is_reported_in_the_tree) {
   root->setTextLayout(std::move(layout));
 
   EXPECT(root->describeTree().find("text-shadow=(2,3,4,#4d8cf2ff)") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// An inline `<View>` inside a `<Text>`: the box the paragraph reserves for it
+// and where that box lands.
+//
+// The same two questions tests/test_text.cpp asks of Pango's shape attribute
+// and tests/test_appkit_text.mm asks of Core Text's run delegate, which is the
+// useful part of having done those first: the reservation has to be the size
+// React Native measured, and the position has to come from the engine, because
+// the engine is what knows where the line broke and how it was aligned.
+// ---------------------------------------------------------------------------
+namespace {
+
+using basalt::win32::RnAttachmentBox;
+using basalt::win32::RnInlineBox;
+using basalt::win32::RnTextRun;
+
+// React Native's own placeholder for an attachment: U+FFFC, the object
+// replacement character, which is what `AttributedString::Fragment` carries and
+// what the inline box is attached to.
+constexpr const char *kPlaceholder = "\xEF\xBF\xBC";
+
+RnTextRun textRun(const std::string &text, float fontSize = 16.0f) {
+  RnTextStyle style;
+  style.fontSize = fontSize;
+  return RnTextRun{text, style, std::nullopt};
+}
+
+RnTextRun attachmentRun(float width, float height, float fontSize = 16.0f) {
+  RnTextRun run = textRun(kPlaceholder, fontSize);
+  run.inlineBox = RnInlineBox{width, height};
+  return run;
+}
+
+} // namespace
+
+TEST(text_an_attachment_reserves_the_box_react_native_measured) {
+  const auto plain = RnWin32TextLayout::createFromRuns({textRun("AB")}, 0);
+  const auto withBox =
+      RnWin32TextLayout::createFromRuns({textRun("A"), attachmentRun(48.0f, 24.0f), textRun("B")},
+                                        0);
+  EXPECT(plain != nullptr && withBox != nullptr);
+  if (plain == nullptr || withBox == nullptr) {
+    return;
+  }
+
+  const RnTextSize text = plain->measure(-1.0f);
+  const RnTextSize boxed = withBox->measure(-1.0f);
+
+  // Exactly the box wider, which is two assertions in one: the room is
+  // reserved, and the placeholder character itself draws no glyph of its own.
+  // Without the inline object U+FFFC measures as whatever the font has for it,
+  // which is neither zero nor forty-eight.
+  EXPECT_NEAR(boxed.width, text.width + 48.0, 1.0);
+  // And taller, the box being taller than sixteen point text.
+  EXPECT(boxed.height > text.height);
+  EXPECT(boxed.height >= 24.0f);
+}
+
+TEST(text_an_attachment_is_reported_where_the_engine_put_it) {
+  const auto layout =
+      RnWin32TextLayout::createFromRuns({textRun("A"), attachmentRun(48.0f, 24.0f)}, 0);
+  EXPECT(layout != nullptr);
+  if (layout == nullptr) {
+    return;
+  }
+
+  const std::vector<RnAttachmentBox> boxes = layout->attachmentBoxes(-1.0f);
+  EXPECT_EQ(boxes.size(), 1u);
+  if (boxes.empty()) {
+    return;
+  }
+
+  // The size is React Native's, unchanged.
+  EXPECT_NEAR(boxes[0].width, 48.0, 0.01);
+  EXPECT_NEAR(boxes[0].height, 24.0, 0.01);
+
+  // And the position is after the "A", which is the thing no arithmetic here
+  // could have worked out: it is where DirectWrite laid the line out.
+  const auto letter = RnWin32TextLayout::createFromRuns({textRun("A")}, 0);
+  const RnTextSize measured = letter->measure(-1.0f);
+  EXPECT_NEAR(boxes[0].x, measured.width, 1.5);
+}
+
+// The box's bottom sits on the text baseline, which is what the inline object's
+// baseline says and what CSS does with an inline box. For a box taller than the
+// text that puts its top at the top of the line; for a short one it hangs below.
+TEST(text_an_attachment_sits_on_the_baseline) {
+  const auto tall =
+      RnWin32TextLayout::createFromRuns({textRun("A"), attachmentRun(10.0f, 40.0f)}, 0);
+  const auto shortBox =
+      RnWin32TextLayout::createFromRuns({textRun("A"), attachmentRun(10.0f, 4.0f)}, 0);
+  EXPECT(tall != nullptr && shortBox != nullptr);
+  if (tall == nullptr || shortBox == nullptr) {
+    return;
+  }
+
+  // The tall box is what decides the line's height, so its bottom is the
+  // baseline and its top is the top of the paragraph.
+  const std::vector<RnAttachmentBox> tallBoxes = tall->attachmentBoxes(-1.0f);
+  EXPECT_EQ(tallBoxes.size(), 1u);
+  if (!tallBoxes.empty()) {
+    EXPECT_NEAR(tallBoxes[0].y, 0.0, 1.0);
+  }
+
+  // A four point box on a line of sixteen point text hangs near the bottom: its
+  // top is the baseline less four, which is most of the way down the line. A
+  // host that put every attachment at the top of its line answers zero here.
+  const std::vector<RnAttachmentBox> shortBoxes = shortBox->attachmentBoxes(-1.0f);
+  EXPECT_EQ(shortBoxes.size(), 1u);
+  if (!shortBoxes.empty()) {
+    EXPECT(shortBoxes[0].y > 4.0f);
+    EXPECT(shortBoxes[0].y < shortBox->measure(-1.0f).height);
+  }
+}
+
+TEST(text_every_attachment_is_reported_in_order) {
+  const auto layout = RnWin32TextLayout::createFromRuns({textRun("A"),
+                                                         attachmentRun(10.0f, 10.0f),
+                                                         textRun("B"),
+                                                         attachmentRun(30.0f, 10.0f)},
+                                                        0);
+  EXPECT(layout != nullptr);
+  if (layout == nullptr) {
+    return;
+  }
+
+  const std::vector<RnAttachmentBox> boxes = layout->attachmentBoxes(-1.0f);
+  EXPECT_EQ(boxes.size(), 2u);
+  if (boxes.size() < 2) {
+    return;
+  }
+  // In the order they were given, which is the order the layout manager pairs
+  // them with fragments: the sizes say which is which.
+  EXPECT_NEAR(boxes[0].width, 10.0, 0.01);
+  EXPECT_NEAR(boxes[1].width, 30.0, 0.01);
+  // And the second is to the right of the first, with a "B" between them.
+  EXPECT(boxes[1].x > boxes[0].x + 10.0f);
+}
+
+// A wrap moves an attachment to the next line, which is the case that makes
+// reading the position back worth it rather than adding up widths.
+TEST(text_an_attachment_follows_a_wrap_onto_the_next_line) {
+  const auto layout =
+      RnWin32TextLayout::createFromRuns({textRun("wrap me around"), attachmentRun(40.0f, 10.0f)},
+                                        0);
+  EXPECT(layout != nullptr);
+  if (layout == nullptr) {
+    return;
+  }
+
+  // Narrow enough that the box cannot share the first line.
+  const std::vector<RnAttachmentBox> boxes = layout->attachmentBoxes(60.0f);
+  EXPECT_EQ(boxes.size(), 1u);
+  if (boxes.empty()) {
+    return;
+  }
+  // Below the first line, and near the left edge rather than after the text.
+  EXPECT(boxes[0].y > 10.0f);
+  EXPECT(boxes[0].x < 20.0f);
+}
+
+TEST(text_a_paragraph_with_no_attachment_reports_no_boxes) {
+  const auto layout = RnWin32TextLayout::createFromRuns({textRun("A"), textRun("B")}, 0);
+  EXPECT(layout != nullptr);
+  if (layout != nullptr) {
+    EXPECT(layout->attachmentBoxes(-1.0f).empty());
+  }
+  // And neither does a single-style paragraph, which skips the run list
+  // entirely.
+  const auto plain = paragraph("Hello");
+  EXPECT(plain != nullptr);
+  if (plain != nullptr) {
+    EXPECT(plain->attachmentBoxes(-1.0f).empty());
+  }
 }

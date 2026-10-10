@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -112,6 +113,116 @@ void applyTypography(IDWriteTextLayout *layout,
 // paragraph reaches rather than FLT_MAX.
 constexpr float kUnconstrained = 1.0e6f;
 
+
+// An inline `<View>` as DirectWrite wants it: an object that reports a size and
+// draws nothing.
+//
+// `IDWriteTextLayout::SetInlineObject` is the only way to make room inside a
+// paragraph, and it takes an interface rather than a rectangle -- so this is a
+// COM object, which is three methods of bookkeeping and three of substance.
+// The equivalents on the other two hosts are a Pango shape attribute and a Core
+// Text run delegate, both of which are also "answer these metrics and draw
+// nothing"; this one is just more typing.
+//
+// `Draw` does nothing on purpose. The view is a real view in the tree and the
+// mounting manager paints it at the frame this layout reports, which is what
+// keeps its background, its border and its own children working. An inline
+// object that drew something would draw it twice.
+class RnInlineObject final : public IDWriteInlineObject {
+ public:
+  RnInlineObject(float width, float height) : width_(width), height_(height) {}
+
+  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **object) override {
+    if (object == nullptr) {
+      return E_POINTER;
+    }
+    if (riid == __uuidof(IDWriteInlineObject) || riid == __uuidof(IUnknown)) {
+      *object = static_cast<IDWriteInlineObject *>(this);
+      AddRef();
+      return S_OK;
+    }
+    *object = nullptr;
+    return E_NOINTERFACE;
+  }
+
+  ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
+
+  ULONG STDMETHODCALLTYPE Release() override {
+    const ULONG remaining = --references_;
+    if (remaining == 0) {
+      delete this;
+    }
+    return remaining;
+  }
+
+  HRESULT STDMETHODCALLTYPE Draw(void *,
+                                 IDWriteTextRenderer *,
+                                 FLOAT,
+                                 FLOAT,
+                                 BOOL,
+                                 BOOL,
+                                 IUnknown *) override {
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetMetrics(DWRITE_INLINE_OBJECT_METRICS *metrics) override {
+    if (metrics == nullptr) {
+      return E_POINTER;
+    }
+    metrics->width = width_;
+    metrics->height = height_;
+    // The box's bottom on the text baseline, which is what a baseline equal to
+    // the height means and where CSS puts an inline box that asked for nothing
+    // else. Both other hosts place it the same way.
+    metrics->baseline = height_;
+    metrics->supportsSideways = FALSE;
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetOverhangMetrics(DWRITE_OVERHANG_METRICS *overhangs) override {
+    if (overhangs == nullptr) {
+      return E_POINTER;
+    }
+    // Nothing spills outside the box: the view is clipped to its own frame by
+    // everything above this.
+    *overhangs = DWRITE_OVERHANG_METRICS{0.0f, 0.0f, 0.0f, 0.0f};
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetBreakConditions(DWRITE_BREAK_CONDITION *before,
+                                               DWRITE_BREAK_CONDITION *after) override {
+    // Neutral, which is what a replaced inline element is in CSS: a line may
+    // break beside it if the text around it allows, and the object itself
+    // neither demands nor forbids one.
+    if (before != nullptr) {
+      *before = DWRITE_BREAK_CONDITION_NEUTRAL;
+    }
+    if (after != nullptr) {
+      *after = DWRITE_BREAK_CONDITION_NEUTRAL;
+    }
+    return S_OK;
+  }
+
+ private:
+  std::atomic<ULONG> references_{1};
+  float width_ = 0.0f;
+  float height_ = 0.0f;
+};
+
+// The baseline of the line a text position falls on, measured from that line's
+// own top -- which is what `HitTestTextPosition` answers as its Y.
+float baselineForPosition(const std::vector<DWRITE_LINE_METRICS> &lines, unsigned position) {
+  unsigned at = 0;
+  for (size_t index = 0; index < lines.size(); index++) {
+    const unsigned end = at + lines[index].length;
+    if (position < end || index + 1 == lines.size()) {
+      return lines[index].baseline;
+    }
+    at = end;
+  }
+  return 0.0f;
+}
+
 } // namespace
 
 std::shared_ptr<RnWin32TextLayout>
@@ -187,8 +298,13 @@ RnWin32TextLayout::createFromRuns(const std::vector<RnTextRun> &runs, int maximu
   }
 
   // One style needs no ranges, and skipping them keeps the common case -- a
-  // plain <Text> -- free of per-range work.
-  if (runs.size() == 1) {
+  // plain <Text> -- free of per-range work. An attachment is the exception: its
+  // box is attached to a range, so the runs have to be resolved even when there
+  // is only one of them.
+  const bool anyAttachment = std::any_of(runs.begin(), runs.end(), [](const RnTextRun &run) {
+    return run.inlineBox.has_value();
+  });
+  if (runs.size() == 1 && !anyAttachment) {
     return layout;
   }
 
@@ -198,7 +314,7 @@ RnWin32TextLayout::createFromRuns(const std::vector<RnTextRun> &runs, int maximu
   unsigned start = 0;
   for (const auto &run : runs) {
     const unsigned length = static_cast<unsigned>(widen(run.text).size());
-    layout->runs_.push_back(ResolvedRun{start, length, run.style});
+    layout->runs_.push_back(ResolvedRun{start, length, run.style, run.inlineBox});
     start += length;
   }
   return layout;
@@ -248,6 +364,22 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
       layout->SetStrikethrough(TRUE, range);
     }
     applyTypography(layout, run.style, range);
+  }
+
+  // The inline boxes, which have to come after the per-run styling: setting a
+  // font size over a range that carries an inline object would otherwise be the
+  // last word on how tall the line is.
+  //
+  // One object per attachment rather than one shared between them, because each
+  // carries its own size. The layout takes a reference and this drops its own,
+  // so the object lives exactly as long as the layout does.
+  for (const auto &run : runs_) {
+    if (!run.inlineBox.has_value()) {
+      continue;
+    }
+    ComPtr<IDWriteInlineObject> object;
+    object.Attach(new RnInlineObject(run.inlineBox->width, run.inlineBox->height));
+    layout->SetInlineObject(object.Get(), DWRITE_TEXT_RANGE{run.start, run.length});
   }
 
   // The single-style paragraph has no runs at all: its font, size and weight
@@ -337,6 +469,69 @@ RnTextSize RnWin32TextLayout::measure(float maxWidth) const {
     size.height = std::min(size.height, limitHeight);
   }
   return size;
+}
+
+// Where each inline box landed.
+//
+// Read back rather than computed, which is the whole reason the box goes through
+// DirectWrite at all: the paragraph decides where a line breaks, how the line is
+// aligned and how a right-to-left run is ordered, and an attachment moves with
+// all three.
+//
+// `HitTestTextPosition` answers the leading edge of a character and the top of
+// the line it is on. The inline object's own baseline is its height, so the box
+// hangs above the line's baseline -- which is the line's top plus its baseline
+// offset, and not the same as the line's top whenever the text is taller than
+// the view.
+std::vector<RnAttachmentBox> RnWin32TextLayout::attachmentBoxes(float maxWidth) const {
+  std::vector<RnAttachmentBox> boxes;
+  const bool any = std::any_of(runs_.begin(), runs_.end(), [](const ResolvedRun &run) {
+    return run.inlineBox.has_value();
+  });
+  if (!any) {
+    return boxes;
+  }
+
+  ComPtr<IDWriteTextLayout> layout;
+  layout.Attach(buildLayout(maxWidth, -1.0f));
+  if (!layout) {
+    // No DirectWrite at all. The sizes are still what React Native asked for,
+    // which keeps the count right and puts every box at the origin -- the state
+    // this host was in before any of this, and better than reporting nothing.
+    for (const auto &run : runs_) {
+      if (run.inlineBox.has_value()) {
+        boxes.push_back(RnAttachmentBox{0.0f, 0.0f, run.inlineBox->width, run.inlineBox->height});
+      }
+    }
+    return boxes;
+  }
+  applyLineLimit(layout.Get());
+
+  UINT32 lineCount = 0;
+  layout->GetLineMetrics(nullptr, 0, &lineCount);
+  std::vector<DWRITE_LINE_METRICS> lines(lineCount);
+  if (lineCount > 0 && FAILED(layout->GetLineMetrics(lines.data(), lineCount, &lineCount))) {
+    lines.clear();
+  }
+
+  for (const auto &run : runs_) {
+    if (!run.inlineBox.has_value()) {
+      continue;
+    }
+    RnAttachmentBox box;
+    box.width = run.inlineBox->width;
+    box.height = run.inlineBox->height;
+
+    float pointX = 0.0f;
+    float pointY = 0.0f;
+    DWRITE_HIT_TEST_METRICS metrics{};
+    if (SUCCEEDED(layout->HitTestTextPosition(run.start, FALSE, &pointX, &pointY, &metrics))) {
+      box.x = pointX;
+      box.y = pointY + baselineForPosition(lines, run.start) - run.inlineBox->height;
+    }
+    boxes.push_back(box);
+  }
+  return boxes;
 }
 
 void RnWin32TextLayout::setShadow(float dx,

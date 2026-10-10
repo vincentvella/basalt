@@ -6409,32 +6409,24 @@ def test_clipboard(bundle: Path) -> str:
 
 
 def test_inline_views(bundle: Path) -> str:
-    """An inline `<View>` inside a `<Text>`, which both text engines used to drop.
+    """An inline `<View>` inside a `<Text>`, which every text engine used to drop.
 
     React Native gives a text engine one fragment holding U+FFFC and the size it
     measured for the view, and expects back a box reserved in the line and the
-    frame that box ended up in. Neither host did either: the character reserved
+    frame that box ended up in. No host did either: the character reserved
     whatever width the font gives a missing glyph, and every attachment was
     reported at the origin with no size, so a view inside a sentence rendered as
     a dot in the corner.
 
-    Pango reserves it with a shape attribute and Core Text with a run delegate.
-    What is asserted here is the half that is the same on both: the size comes
-    from React Native, so it must match exactly, and the position comes from the
-    font, so only its relationships can be.
+    Pango reserves it with a shape attribute, Core Text with a run delegate and
+    DirectWrite with an `IDWriteInlineObject`. What is asserted here is the half
+    that is the same on all three: the size comes from React Native, so it must
+    match exactly, and the position comes from the font, so only its
+    relationships can be.
 
     Three cases, each on a line of its own in e2e/inline.tsx so a failure names
     one of them rather than "inline views are wrong".
-
-    Windows is skipped rather than quietly passing: DirectWrite reserves nothing
-    and reports every attachment at the origin, which this scenario found by
-    failing on main for a day after it was added here. The gap is one entry in
-    backlog/text.md and one in backlog/platform-windows.md; the skip is so that a
-    known gap on one host is not a red tick on every commit.
     """
-    if PLATFORM == "windows":
-        raise Skipped("DirectWrite reserves no box for an inline view yet")
-
     app = bundle_app(bundle.parent, "inline")
 
     env = dict(os.environ)

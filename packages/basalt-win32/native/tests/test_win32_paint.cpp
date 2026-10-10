@@ -1618,7 +1618,13 @@ TEST(win32_paint_a_radial_gradient_runs_out_from_its_centre) {
   // Red at the centre, blue at the ending shape, and the two radii are not the
   // same number: twenty up is the end of the ellipse where forty across is, so
   // a brush given one radius for both would differ at one of them.
-  EXPECT_PIXEL(pixels, 50, 50, 255, 0, 0, 255);
+  //
+  // Nearly red rather than exactly: Direct2D samples the brush at the pixel's
+  // centre, which is half a point out from the gradient's, and half a point of
+  // a twenty point radius is a couple of percent of the way to blue. Measured
+  // at (247, 0, 7) rather than guessed at.
+  EXPECT(pixels.at(50, 50).red > 240 && pixels.at(50, 50).blue < 20);
+  EXPECT_NEAR(pixels.at(50, 50).alpha, 255, 1.0);
   EXPECT(pixels.at(88, 50).blue > 200);
   EXPECT(pixels.at(50, 69).blue > 200);
   // Halfway out along each axis is halfway along the gradient, which is what

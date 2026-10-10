@@ -11,6 +11,7 @@
 #include <windows.h>
 
 #include <cwctype>
+#include <optional>
 #include <string>
 
 #include <react/renderer/graphics/Color.h>
@@ -276,12 +277,21 @@ buildTextLayout(const AttributedString &attributedString,
   std::vector<RnTextRun> runs;
   for (const auto &fragment : attributedString.getFragments()) {
     // An attachment is an inline `<View>`, which occupies space rather than
-    // carrying text. Its string is a placeholder React Native does not intend
-    // to be drawn, so it contributes no run -- which is also why the attachment
-    // rects the layout manager reports are all zero, and why nothing reserves
-    // room for one here. The other two desktops reserve it and report it back;
-    // see docs/backlog/text.md for what this one would take.
+    // carrying text. It does contribute a run: its string is React Native's
+    // placeholder character, which is what the inline box is attached to, and
+    // the box is the frame the view was already laid out with -- so the
+    // paragraph reserves the room and `attachmentBoxes` reads back where it
+    // landed. The other two desktops do the same with a Pango shape attribute
+    // and a Core Text run delegate.
+    //
+    // The placeholder is never drawn: the inline object draws nothing and the
+    // mounting manager paints the view itself.
     if (fragment.isAttachment()) {
+      const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
+      RnTextRun run{fragment.string, buildTextStyle(fragment.textAttributes), std::nullopt};
+      run.inlineBox =
+          RnInlineBox{static_cast<float>(size.width), static_cast<float>(size.height)};
+      runs.push_back(std::move(run));
       continue;
     }
     // The transformed text, because a `textTransform` has to happen before

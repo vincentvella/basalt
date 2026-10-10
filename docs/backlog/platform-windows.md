@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (10):**
+**Open (9):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -12,7 +12,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. ~~`scripts/integration_test.py` skips Fast Refresh on Windows~~; what is
    left of it is an open entry in testing.md
 7. Nothing makes a red build hard to ignore
-8. An inline `<View>` inside a `<Text>` is not positioned
+8. ~~An inline `<View>` inside a `<Text>` is not positioned~~
 9. ~~Five style props the other two hosts draw and this one ignores~~
 10. `accessibilityLabelledBy` sets no relation
 11. ~~`hitSlop` is not part of the hit test~~
@@ -197,13 +197,40 @@ and none of it is a missing half.
   failing Linux job is what that cost once, and none of the work above changes
   it.
 
-- **An inline `<View>` inside a `<Text>` is not positioned.** GTK and AppKit
-  reserve a box for the attachment and report where it landed; DirectWrite is
-  handed the same fragments and answers with a zero frame for each, so a view
-  inside a sentence lands at the origin with no size. The end-to-end scenario is
-  skipped here by name, and [text.md](text.md) has what the fix looks like:
-  `SetInlineObject` with an `IDWriteInlineObject` that answers React Native's own
+- ~~**An inline `<View>` inside a `<Text>` is not positioned.**~~ Done
+  2026-10-10, the way [text.md](text.md) said: `SetInlineObject` over the
+  fragment's range with an `IDWriteInlineObject` answering React Native's own
   metrics, read back with `HitTestTextPosition`.
+
+  **The object is the interesting part, and it is mostly bookkeeping.**
+  DirectWrite has no "reserve this rectangle" call, only one that takes an
+  interface, so an inline view is a COM object with three methods of substance:
+  `GetMetrics` answers the width, the height and a baseline equal to the height
+  -- the box's bottom on the text baseline, which is where CSS puts an inline
+  box and where a Pango shape attribute and a Core Text run delegate put it --
+  `GetBreakConditions` answers neutral, which is what a replaced element is, and
+  `Draw` does nothing at all, because the view is a real view and the mounting
+  manager paints it.
+
+  **Reading the position back needs the line metrics, not just the hit test.**
+  `HitTestTextPosition` answers the character's leading edge and the top of its
+  *line*, and the box hangs above that line's baseline rather than starting at
+  its top -- the two are only the same when the view is the tallest thing on the
+  line. So the lines are walked to find the one the position falls on and its
+  baseline is added. A host that used the hit test's Y alone puts every
+  attachment at the top of its line, which the short-box test catches.
+
+  One wrinkle worth knowing: an attachment forces the run list to be resolved
+  even for a single-run paragraph, which `createFromRuns` used to skip, because
+  a box is attached to a *range* and a paragraph with no ranges has nowhere to
+  put one.
+
+  Six tests: the box reserved exactly -- which also says the placeholder draws
+  no glyph of its own, since U+FFFC would measure as whatever the font has for
+  it -- the position after the text before it, the baseline for a tall box and a
+  short one, every attachment in order, one that follows a wrap onto the next
+  line, and a paragraph with none. The end-to-end scenario now runs on all three
+  hosts, and `isClipped` is still false here as it is on GTK.
 
 - ~~**Five style props the other two hosts draw and this one ignores.**~~ All
   five landed on GTK and AppKit on 2026-10-07 and 2026-10-08, all five were

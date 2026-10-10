@@ -60,24 +60,30 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   paragraph after `numberOfLines` cut it, which this host does not enforce yet;
   Core Text reports it, having a truncation to ask about.
 
-  **Windows, and how it was noticed.** `DirectWriteLayoutManager` reports one
+  **Windows, and how it was noticed.** `DirectWriteLayoutManager` reported one
   zero-sized attachment per fragment, which keeps the count `ParagraphShadowNode`
-  iterates over right and positions nothing, and `DirectWriteLayout` skips
-  attachment fragments when it builds the runs. Both carried a comment saying
+  iterates over right and positions nothing, and `DirectWriteLayout` skipped
+  attachment fragments when it built the runs. Both carried a comment saying
   this was "the same gap both other desktops have", which stopped being true the
   day the two were fixed.
 
   The scenario was added for those two and runs on every host, so it had been
   failing Windows CI on main for a day: twelve of thirteen in that shard, with
-  the attachment measuring 0x0 against the 48x24 it asked for. Skipped on Windows
-  now, by name and with a reason, which is what the suite does elsewhere for a
-  gap one host has.
+  the attachment measuring 0x0 against the 48x24 it asked for. Skipped on
+  Windows by name until it was fixed, which is what the suite does elsewhere for
+  a gap one host has.
 
-  What it would take: `IDWriteTextLayout::SetInlineObject` over the fragment's
-  range, with an `IDWriteInlineObject` whose `GetMetrics` answers the width,
-  height and baseline React Native measured, and `HitTestTextPosition` to read
-  the box back afterwards. The same shape as the other two, which is the useful
-  part of having done them first.
+  **Done on Windows 2026-10-10**, in the shape this entry predicted:
+  `SetInlineObject` over the fragment's range with an `IDWriteInlineObject` whose
+  `GetMetrics` answers React Native's width, height and a baseline equal to that
+  height, and the position read back afterwards. Two things the prediction left
+  out. `HitTestTextPosition` answers the top of the *line* rather than of the
+  box, so the line metrics are walked for that line's baseline and the box hangs
+  above it -- the two are only the same when the view is the tallest thing on the
+  line. And an attachment forces a single-run paragraph's runs to be resolved,
+  which `createFromRuns` used to skip, because a box attaches to a range.
+  backlog/platform-windows.md has the rest, and `isClipped` is false on that host
+  for the same reason it is on GTK.
 - **No baseline, so `alignItems: 'baseline'` is wrong for text, and the plumbing
   is not ours to add.** Measured 2026-10-08 rather than reasoned about, and the
   entry used to make it sound like local work.

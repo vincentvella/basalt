@@ -25,8 +25,9 @@
 #pragma once
 
 #include <memory>
-#include <vector>
+#include <optional>
 #include <string>
+#include <vector>
 
 // Forward-declared rather than included, so a translation unit that only builds
 // or measures a paragraph does not pull in <d2d1.h> and <dwrite.h> and
@@ -95,6 +96,19 @@ struct RnTextSize {
   float height = 0.0f;
 };
 
+// An inline `<View>` inside a `<Text>`, as the text layout sees it: a box that
+// occupies space and draws nothing.
+//
+// React Native has already laid the view out and the mounting manager will
+// paint it, so all the paragraph has to do is reserve the room and say where it
+// landed. The box's *bottom* sits on the text baseline, which is where CSS puts
+// an inline box with no explicit vertical alignment and what the other two
+// hosts' shape attributes and run delegates do.
+struct RnInlineBox {
+  float width = 0.0f;
+  float height = 0.0f;
+};
+
 // One styled span of a paragraph.
 //
 // React Native's `<Text>` is not one string with one style: a
@@ -105,6 +119,18 @@ struct RnTextSize {
 struct RnTextRun {
   std::string text;
   RnTextStyle style;
+  // Set when this run is an attachment rather than text. Its `text` is then
+  // React Native's own placeholder character, which is what the inline object
+  // is attached to and is never drawn.
+  std::optional<RnInlineBox> inlineBox;
+};
+
+// Where an inline box landed, in the paragraph's own coordinates.
+struct RnAttachmentBox {
+  float x = 0.0f;
+  float y = 0.0f;
+  float width = 0.0f;
+  float height = 0.0f;
 };
 
 class RnWin32TextLayout {
@@ -165,6 +191,16 @@ class RnWin32TextLayout {
   // Draws at the target's current origin, into a box `width` by `height`.
   void draw(ID2D1RenderTarget *target, float width, float height) const;
 
+  // Where each inline box landed, in the order the attachment runs were given,
+  // laid out at `maxWidth` -- the same width `measure` would be asked, so the
+  // positions belong to the paragraph Yoga was told about.
+  //
+  // Empty when the paragraph has no attachments, which is almost all of them.
+  // The width and height are the ones React Native measured rather than
+  // anything DirectWrite echoes back, so a rounding difference in the reserved
+  // box cannot move the view a fraction of a point from its own layout.
+  std::vector<RnAttachmentBox> attachmentBoxes(float maxWidth) const;
+
  private:
   RnWin32TextLayout() = default;
 
@@ -192,6 +228,7 @@ class RnWin32TextLayout {
     unsigned start = 0;
     unsigned length = 0;
     RnTextStyle style;
+    std::optional<RnInlineBox> inlineBox;
   };
 
   // Drawing a shadow needs an effect, which needs a device context: the view
