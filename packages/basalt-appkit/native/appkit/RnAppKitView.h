@@ -678,6 +678,11 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // answer -- `textAlign: 'end'` is one word and two edges.
 @property(nonatomic, copy, nullable) NSString *rnTextAlign;
 
+// `textAlignVertical`, for the tree dump: @"auto", @"top", @"center",
+// @"bottom", or nil when the app said nothing. The prop rather than the offset,
+// which core/TextAlignments.h argues.
+@property(nonatomic, copy, nullable) NSString *rnTextVerticalAlign;
+
 // `spellCheck` and `autoCorrect`, for the tree dump: @"on", @"off" or nil for a
 // field that said nothing, which is the third state rather than a default. What
 // this host does with them is two properties on the NSTextView a field is or

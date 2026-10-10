@@ -567,6 +567,18 @@ void rn_view_set_writing_direction(RnView *self, const char *direction);
 // answer -- `textAlign: 'end'` is one word and two edges.
 void rn_view_set_text_align(RnView *self, const char *align);
 
+// How far down its own box the paragraph sits: 0 for the top, 0.5 for the
+// middle, 1 for the bottom, which is what `textAlignVertical` asks for and what
+// `verticalAlign` becomes in React Native's own JavaScript. From
+// core/TextAlignments.h, like the edge above.
+void rn_view_set_text_vertical_flush(RnView *self, float flush);
+
+// `textAlignVertical`, for the tree dump: "auto", "top", "center", "bottom", or
+// nullptr when the app said nothing. The prop rather than the offset, which
+// core/TextAlignments.h argues: the offset differs between hosts by a line's
+// worth of font metrics, and what this line is for is proving the prop crossed.
+void rn_view_set_text_valign(RnView *self, const char *valign);
+
 // `spellCheck` and `autoCorrect`, for the tree dump: "on", "off" or nullptr for
 // a field that said nothing. Takes static strings and does not copy them. What
 // this host *does* with the first is an input hint on the peer; see

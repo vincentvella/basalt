@@ -32,7 +32,7 @@
 // ## What it does not do
 //
 // Isolates. P2 skips the characters between an isolate initiator (U+2066..68)
-// and its matching PDI, so `<LRI>שלום<PDI>hello` is a left-to-right paragraph
+// and its matching PDI, so an isolated Hebrew word followed by Latin text is a left-to-right paragraph
 // by the standard and a right-to-left one by this. React Native has no way to
 // emit an isolate, an app would have to put one in a string literal, and
 // handling them means tracking a stack -- so this is the line, and it is drawn

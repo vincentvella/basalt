@@ -3019,6 +3019,9 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (self.rnTextAlign.length > 0) {
     [out appendFormat:@" text-align=%@", self.rnTextAlign];
   }
+  if (self.rnTextVerticalAlign.length > 0) {
+    [out appendFormat:@" text-valign=%@", self.rnTextVerticalAlign];
+  }
   if (self.rnWritingDirection.length > 0) {
     [out appendFormat:@" writing-dir=%@", self.rnWritingDirection];
   }

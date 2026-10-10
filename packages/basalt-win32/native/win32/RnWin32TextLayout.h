@@ -222,6 +222,20 @@ class RnWin32TextLayout {
   // Draws at the target's current origin, into a box `width` by `height`.
   void draw(ID2D1RenderTarget *target, float width, float height) const;
 
+  // How far down its own box the paragraph sits: 0 for the top, 0.5 for the
+  // middle, 1 for the bottom, which is what `textAlignVertical` asks for and
+  // what `verticalAlign` becomes in React Native's own JavaScript. The offset
+  // it produces is core/TextVerticalAlign.h's, applied in `draw` -- the box is
+  // only known then, a view resized without its props changing having new slack
+  // and the same text.
+  //
+  // Not `SetParagraphAlignment`, which is DirectWrite's own answer to this
+  // question: `applyLineLimit` sets the layout's maximum height to the lines
+  // that fit, so FAR would align against the trimmed box rather than the view's
+  // and a `numberOfLines` paragraph would not move at all. The draw origin is
+  // the same arithmetic the other two hosts do, over the box this is given.
+  void setVerticalFlush(float flush) { verticalFlush_ = flush; }
+
   // Where each inline box landed, in the order the attachment runs were given,
   // laid out at `maxWidth` -- the same width `measure` would be asked, so the
   // positions belong to the paragraph Yoga was told about.
@@ -265,10 +279,13 @@ class RnWin32TextLayout {
   // Drawing a shadow needs an effect, which needs a device context: the view
   // layer hands over an ID2D1RenderTarget, and this asks it for one. See
   // `draw`.
+  float verticalFlush_ = 0.0f;
+
   void drawShadow(ID2D1RenderTarget *target,
                   IDWriteTextLayout *layout,
                   float width,
-                  float height) const;
+                  float height,
+                  float verticalOffset) const;
 
   std::string utf8_;
   std::wstring utf16_;

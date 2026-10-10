@@ -52,7 +52,8 @@ std::uint32_t nextCodePoint(std::string_view text, std::size_t &index) {
 // The characters inside the Arabic block that are *numbers* rather than
 // letters: Arabic-Indic digits are class AN and the extended ones are class EN,
 // and neither is strong. Reading the block as a whole is the obvious mistake
-// and it makes "١٢٣ hello" a right-to-left paragraph, which Unicode says it is
+// and it makes a string of Arabic-Indic digits followed by Latin text a
+// right-to-left paragraph, which Unicode says it is
 // not. Asked by both halves below, which is why it is its own function: the
 // first version excluded them from the strong test and forgot the neutral one,
 // so a digit stopped the search as though it were a Latin letter.
@@ -124,7 +125,7 @@ bool isNeutral(std::uint32_t code) {
   }
   if (code >= 0x007B && code <= 0x00BF) {
     // ASCII punctuation past 'z', the C1 controls, and Latin-1's punctuation
-    // and symbols, which end before À.
+    // and symbols, which end before the first accented capital.
     return true;
   }
   if (code == 0x00D7 || code == 0x00F7) {

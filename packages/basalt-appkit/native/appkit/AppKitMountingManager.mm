@@ -846,6 +846,9 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   // two of its five spellings, so the prop is not the answer. See
   // core/TextAlignments.h.
   view.rnTextAlign = @(basalt::paragraphTextAlignmentName(data.attributedString));
+  const char *const verticalAlign =
+      basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical);
+  view.rnTextVerticalAlign = verticalAlign != nullptr ? @(verticalAlign) : nil;
 
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     layout.shadowOffset = CGSizeMake(shadow->dx, shadow->dy);

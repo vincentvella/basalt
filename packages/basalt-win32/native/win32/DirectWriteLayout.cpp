@@ -1,5 +1,6 @@
 #include "DirectWriteLayout.h"
 
+#include "TextAlignments.h"
 #include "TextDirection.h"
 #include "WritingDirections.h"
 
@@ -50,9 +51,10 @@ RnTextAlign toAlign(const TextAttributes &attributes) {
     // left-aligned, which clang said out loud in a warning nobody had
     // recompiled this file to see.
     //
-    // This is why this host does not use `core/TextAlignments.h`, which the
-    // other two do: that table turns a relative alignment into a physical edge,
-    // and DirectWrite wants the relative one. What this host needed instead was
+    // This is why this host does not use `core/TextAlignments.h`'s horizontal
+    // table, which the other two do: it turns a relative alignment into a
+    // physical edge, and DirectWrite wants the relative one. The vertical half
+    // of that header is used here, there being nothing relative about it. What this host needed instead was
     // the *direction* resolved, which is the other half of the same entry --
     // `SetReadingDirection` is told and never asks the text, so a paragraph of
     // Hebrew was laid out left to right and every relative alignment in it
@@ -420,6 +422,12 @@ buildTextLayout(const AttributedString &attributedString,
 
   auto layout = RnWin32TextLayout::createFromRuns(
       runs, static_cast<int>(paragraphAttributes.maximumNumberOfLines));
+  if (layout != nullptr) {
+    // `textAlignVertical`, which is where the paragraph sits in a box taller
+    // than it is. Applied while drawing, the box being known only then.
+    layout->setVerticalFlush(
+        static_cast<float>(basalt::textVerticalFlushFactor(paragraphAttributes.textAlignVertical)));
+  }
 
   // The text shadow, which `core/TextShadows.h` resolves: one per paragraph,
   // from the first fragment that asks for one, because no engine here can draw

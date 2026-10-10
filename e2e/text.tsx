@@ -69,6 +69,16 @@ const styles = StyleSheet.create({
   // Hebrew, so this is a right-to-left paragraph flush right. Whether the
   // machine has a font for it does not enter into it.
   hebrew: {fontSize: 16, color: '#2b3445'},
+  // `verticalAlign`, the cross-platform spelling, and `textAlignVertical`, the
+  // Android one. The first is rewritten into the second by React Native's own
+  // `Text.js` -- `middle` becoming `center` -- so the dump's `text-valign=`
+  // line is the proof that the chain from a stylesheet to a mounting manager
+  // works, which no unit test can show: they all build the attributes directly.
+  //
+  // A height of its own, because the prop only means anything in a box taller
+  // than the text: a paragraph Yoga sized to its content has no slack to sit in.
+  middled: {fontSize: 16, color: '#2b3445', height: 60, verticalAlign: 'middle'},
+  grounded: {fontSize: 16, color: '#2b3445', height: 60, textAlignVertical: 'bottom'},
   variants: {fontSize: 16, color: '#2b3445', fontVariant: ['small-caps', 'tabular-nums']},
   faded: {fontSize: 16, color: '#2b3445', opacity: 0.4},
   dotted: {
@@ -155,6 +165,8 @@ function App() {
         <Text style={styles.endRtl}>Ends at the left</Text>
         <Text style={styles.leftRtl}>Left is still left</Text>
         <Text style={styles.hebrew}>{'\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd'}</Text>
+        <Text style={styles.middled}>Halfway down its box</Text>
+        <Text style={styles.grounded}>At the bottom of its box</Text>
         <Text style={styles.clipped}>
           Plain, then <Text style={styles.emphasis}>bold amber</Text> and{' '}
           <Text style={styles.italic}>italic green</Text> in one paragraph.

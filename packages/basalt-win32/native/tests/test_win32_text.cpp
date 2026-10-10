@@ -212,6 +212,91 @@ TEST(text_draws_where_the_alignment_says) {
   EXPECT(rightInkWhenRight > 0);
 }
 
+// --- Where the paragraph sits in its box --------------------------------------
+//
+// `textAlignVertical`, which `verticalAlign` becomes in React Native's own
+// JavaScript. The same claim both other suites assert against their own pixels,
+// and asserted here for the same reason the horizontal one is: this is the host
+// that can render without a window, so the question "did the glyphs move" costs
+// a function call.
+//
+// Not `SetParagraphAlignment`: see RnWin32TextLayout::setVerticalFlush for why
+// the draw origin is used instead.
+
+TEST(text_draws_where_the_vertical_alignment_says) {
+  const auto inkRowFor = [](float flush) {
+    RnTextStyle style;
+    style.fontSize = 16.0f;
+
+    auto layout = RnWin32TextLayout::create("Up or down", style, 0);
+    if (!layout) {
+      return -1;
+    }
+    layout->setVerticalFlush(flush);
+
+    auto root = std::make_unique<RnWin32View>(1);
+    // A box far taller than one line, so the three positions are tens of rows
+    // apart and no font difference can confuse them.
+    root->setFrame(0, 0, 200, 100);
+    root->setTextLayout(std::move(layout));
+
+    const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+    for (unsigned y = 0; y < pixels.height(); y++) {
+      for (unsigned x = 0; x < pixels.width(); x++) {
+        if (pixels.at(x, y).alpha > 32) {
+          return static_cast<int>(y);
+        }
+      }
+    }
+    return -1;
+  };
+
+  const int top = inkRowFor(0.0f);
+  const int middle = inkRowFor(0.5f);
+  const int bottom = inkRowFor(1.0f);
+
+  // Ink at all, first: a paragraph that drew nothing would pass every
+  // comparison below. Row 0 is the top of the picture, which
+  // win32_paint_draws_the_border_over_the_children relies on too.
+  EXPECT(top >= 0);
+  EXPECT(top < 20);
+  EXPECT(middle > top + 20);
+  EXPECT(bottom > middle + 20);
+  EXPECT(bottom > 60);
+}
+
+TEST(text_as_tall_as_its_box_is_not_pushed_out_of_it) {
+  // The clamp: with no slack there is nowhere to go, and a negative offset
+  // would push the first line out through the top of the box.
+  RnTextStyle style;
+  style.fontSize = 16.0f;
+
+  auto layout = RnWin32TextLayout::create("Nowhere to go", style, 0);
+  EXPECT(layout != nullptr);
+  if (!layout) {
+    return;
+  }
+  layout->setVerticalFlush(1.0f);
+  const RnTextSize needed = layout->measure(200.0f);
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 200, needed.height);
+  root->setTextLayout(std::move(layout));
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  int topmost = -1;
+  for (unsigned y = 0; y < pixels.height() && topmost < 0; y++) {
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      if (pixels.at(x, y).alpha > 32) {
+        topmost = static_cast<int>(y);
+        break;
+      }
+    }
+  }
+  EXPECT(topmost >= 0);
+  EXPECT(topmost < 10);
+}
+
 TEST(each_run_draws_in_its_own_colour) {
   // `Hello <Text style={{color:'red'}}>world</Text>` is two runs of one
   // paragraph, and DirectWrite carries colour as a *drawing effect* rather than

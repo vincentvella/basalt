@@ -134,7 +134,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     },
     "vertical-align": {
-      "text": "no engine here aligns a paragraph inside its box yet",
+      "text": "the paragraph moves in its box; an inline view inside one does not",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     },
     "user-select": {
@@ -1361,9 +1361,12 @@
       ]
     },
     "ParagraphAttributes.textAlignVertical": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "textVerticalFlushFactor("
+      ],
       "why": "vertical-align"
     },
     "StyleSheetTypes.elevation": {
@@ -1379,9 +1382,12 @@
       "why": "user-select"
     },
     "StyleSheetTypes.verticalAlign": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "textVerticalFlushFactor("
+      ],
       "why": "vertical-align"
     },
     "ImageProps.sources": {

@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (6):**
+**Open (5):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -17,7 +17,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 7. Text is not selectable and reports nothing to AT-SPI
 9. ~~`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
    Windows~~
-10. `verticalAlign` reaches ReactCommon under a name it does not read
+10. ~~`verticalAlign` reaches ReactCommon under a name it does not read~~
 11. `userSelect` has no ReactCommon field at all
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
@@ -554,32 +554,61 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   selection, and the edge it should use is the direction of what has been typed
   rather than of what was mounted; see backlog/textinput.md.
 
-- **`verticalAlign` reaches ReactCommon under a name it does not read.** The
-  prop aligns a paragraph inside its own box: `top`, `bottom`, `middle` or
-  `auto`. Nothing here implements it, and the reason it is worth an entry rather
-  than a line on the ignored list is what the audit on 2026-10-09 found about
-  where it goes.
+- ~~**`verticalAlign` reaches ReactCommon under a name it does not read.**~~
+  Done on all three on 2026-10-10, and the entry was half wrong in a way that
+  mattered: it said the cross-platform spelling was dropped before any platform
+  saw it, so only the Android name worked. ReactCommon does drop it --
+  `attributedstring/conversions.h` reads a raw prop called `textAlignVertical`
+  and nothing called `verticalAlign` -- and React Native's own JavaScript
+  rewrites it first. `Text.js` and `TextInput.js` both hold a
+  `verticalAlignToTextAlignVerticalMap`, `middle` becoming `center`, and
+  upstream has an integration test for it. So implementing the Android name
+  implemented both, and the entry's conclusion ("the Android spelling is the one
+  that works") would have had somebody write the wrong one.
 
-  `____TextStyle_InternalBase` declares `verticalAlign`, and
-  `ReactNativeStyleAttributes` passes it through, so it arrives at the shadow
-  node. `ParagraphAttributes` has the field it belongs in,
-  `textAlignVertical`, and `attributedstring/conversions.h` reads the raw prop
-  named `textAlignVertical` and nothing named `verticalAlign`. So the
-  cross-platform spelling an app is told to write is dropped before any
-  platform sees it, and the Android spelling is the one that works.
+  **The arithmetic is shared and the drawing is not.** `textVerticalFlushFactor`
+  in `core/TextAlignments.h` turns the enum into 0, 0.5 or 1, and
+  `core/TextVerticalAlign.h` turns that into an offset against the box -- a
+  separate header because each host's *widget* layer is what needs it, and that
+  layer has no React Native in it. The box is only known while drawing: a view
+  resized without its props changing has new slack and the same text.
 
-  Both names are on the support page for that reason, as two rows that say the
-  same "not yet": one is the prop, the other is the only name that can currently
-  carry it.
+  Then each host spends that offset in its own way. GTK translates the snapshot
+  before the clip `numberOfLines` pushes, so a cut paragraph is cut at the same
+  place wherever it sits. AppKit starts its line walk lower, which is the one
+  place it could go, the frame never being asked to lay the lines out. Windows
+  passes it as the origin of `IDWriteTextLayout::Draw` rather than using
+  `SetParagraphAlignment`, which is DirectWrite's own answer to this question and
+  the wrong one here: `applyLineLimit` sets the layout's maximum height to the
+  lines that fit, so FAR would align against the trimmed box and a
+  `numberOfLines` paragraph would not move at all.
 
-  What implementing it would take, per engine, is one line each and the same
-  arithmetic: the paragraph's height against the box's, and an offset of zero,
-  the difference, or half of it. Pango has `pango_layout_get_pixel_extents` and
-  the snapshot does the translating; Core Text already positions a frame, so it
-  is the frame's origin; DirectWrite has `SetParagraphAlignment`, which is
-  exactly this property and is already set to `NEAR`. The shared part belongs in
-  `core/` with the rest, since three hosts asking the same question twice is how
-  the shadow props drifted.
+  **Never negative**, which is the line worth keeping: a paragraph taller than
+  its box starts at the top however it was aligned, because the alternative is
+  a first line pushed out through the top edge with nothing to scroll it back.
+  That is the `numberOfLines` case -- the box is the lines that fit and the text
+  is all of them -- and it is a test on all three hosts.
+
+  Asserted against real pixels in all three suites, which is unusual here and is
+  what the question deserves: the box, the string and the measured size are
+  identical whichever end of the box the text sits at, so a dump cannot show it.
+  The end-to-end scenario asserts the other half, the chain from a stylesheet to
+  a mounting manager, through the dump's `text-valign=` line: that is where
+  `verticalAlign: 'middle'` arriving as `center` is checked, which no unit test
+  can show because they all build the attributes directly.
+
+  What is left: **an inline `<View>` does not move with the text.** Attachment
+  frames are answered by `frameForCharacterIndex` on AppKit and
+  `pango_layout_index_to_pos` on GTK, and the mounting manager positions the
+  child from them -- so a paragraph that has been pushed down its box leaves its
+  inline views where they were. The same gap exists horizontally on AppKit,
+  which applies no flush to an attachment frame either, and not on GTK, where
+  Pango's own alignment is inside the position it answers. Both are the same
+  shape: the frame is asked for without the box, and the box is what the offset
+  is computed from. `frameForCharacterIndex:width:` would have to take the
+  height as well, and the GTK side would have to add the offset after Pango
+  answers. Recorded rather than half-fixed, because a view whose y follows the
+  text and whose x does not is harder to diagnose than one that does neither.
 
 - **`userSelect` has no ReactCommon field at all.** `____TextStyle_InternalBase`
   declares it, `ReactNativeStyleAttributes` passes it through, and a grep of the

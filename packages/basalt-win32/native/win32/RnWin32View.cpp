@@ -320,10 +320,13 @@ void RnWin32View::setHidden(bool hidden) {
 
 // --- Content ----------------------------------------------------------------
 
-void RnWin32View::setParagraphNames(const char *writingDirection, const char *textAlign) {
-  // Literals from core, not copies, the way the GTK host stores the same two.
+void RnWin32View::setParagraphNames(const char *writingDirection,
+                                    const char *textAlign,
+                                    const char *textVerticalAlign) {
+  // Literals from core, not copies, the way the GTK host stores the same three.
   writingDirectionName_ = writingDirection;
   textAlignName_ = textAlign;
+  textVerticalAlignName_ = textVerticalAlign;
 }
 
 void RnWin32View::setTextLayout(std::shared_ptr<RnWin32TextLayout> layout) {
@@ -2507,6 +2510,10 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     if (textAlignName_ != nullptr) {
       out += " text-align=";
       out += textAlignName_;
+    }
+    if (textVerticalAlignName_ != nullptr) {
+      out += " text-valign=";
+      out += textVerticalAlignName_;
     }
     if (writingDirectionName_ != nullptr) {
       out += " writing-dir=";

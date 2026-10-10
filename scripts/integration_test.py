@@ -5412,6 +5412,15 @@ def test_writing_direction(bundle: Path) -> None:
     hosts agreed on all four rows below and there was one correct cell between
     them. The dump's `text-align=` is the resolved edge rather than the prop, so
     what crosses the comparison is the answer.
+
+    **And the vertical axis**, where the dump carries the prop instead and for
+    the opposite reason: the offset it produces depends on the box and differs
+    between hosts by a line's worth of font metrics, while the prop *is* the
+    answer. What that line proves is the chain from a stylesheet to a mounting
+    manager -- `verticalAlign: 'middle'` is rewritten into
+    `textAlignVertical: 'center'` by React Native's own `Text.js`, and nothing
+    else here can show that it arrived. Where the glyphs then land is asserted
+    against real pixels in all three hosts' own suites.
     """
 
     app = bundle_app(bundle.parent, "text")
@@ -5478,6 +5487,31 @@ def test_writing_direction(bundle: Path) -> None:
                 f"has one.\n{tree}"
             )
         if f"text-align={edge}" not in matching[0]:
+            raise Failure(f"{why}.\n{matching[0]}")
+
+    # And the other axis. `verticalAlign` is the cross-platform spelling and
+    # `textAlignVertical` the Android one; React Native's own `Text.js` rewrites
+    # the first into the second, with `middle` becoming `center`, so the first
+    # row below is the whole chain from a stylesheet to a mounting manager. No
+    # unit test can show that: they all build the attributes directly.
+    #
+    # Where the glyphs then land is each host's own suite, against its own
+    # pixels, all three of them.
+    for text, position, why in (
+        ("Halfway down its box", "center",
+         "`verticalAlign: 'middle'` did not arrive as `textAlignVertical: center`. "
+         "React Native's Text.js rewrites the cross-platform spelling into the "
+         "Android one, and this is the only place that chain is checked"),
+        ("At the bottom of its box", "bottom",
+         "`textAlignVertical: 'bottom'` did not reach the view"),
+    ):
+        matching = [line for line in tree.splitlines() if f'text="{text}' in line]
+        if len(matching) != 1:
+            raise Failure(
+                f"{len(matching)} paragraphs in the tree say {text!r}; e2e/text.tsx "
+                f"has one.\n{tree}"
+            )
+        if f"text-valign={position}" not in matching[0]:
             raise Failure(f"{why}.\n{matching[0]}")
 
 

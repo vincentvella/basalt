@@ -6,6 +6,7 @@
 
 #include "ControlMetrics.h"
 #include "FocusRing.h"
+#include "TextVerticalAlign.h"
 #include "GtkTextPeer.h"
 
 #include <cstring>
@@ -230,6 +231,10 @@ struct _RnView {
   const char *writing_direction;
   // The resolved edge, for the dump; see rn_view_set_text_align.
   const char *text_align;
+  // Where the paragraph sits in its box; see rn_view_set_text_vertical_flush.
+  float text_vertical_flush;
+  // And what the app called it, for the dump; see rn_view_set_text_valign.
+  const char *text_valign;
   // The `cursor` style property's CSS keyword, or NULL. Kept as well as handed
   // to GDK so the tree dump can report what the app asked for.
   char *cursor_name;
@@ -801,6 +806,26 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     // line. See rn_pango_clip_height in RnView.h.
     float clip_height = 0.0f;
     const gboolean clips_text = rn_pango_clip_height(self->text_layout, &clip_height);
+
+    // `textAlignVertical`: where the paragraph sits in a box taller than it is.
+    // Before the clip rather than after, so that a paragraph `numberOfLines`
+    // cut is cut at the same place wherever it has been moved to -- the clip is
+    // anchored to the text's own top edge, not to the box's.
+    //
+    // The *visible* height is what is aligned, which for a clipped paragraph is
+    // the lines that survived rather than all of them.
+    const gboolean aligns_text = self->text_vertical_flush > 0.0f;
+    if (aligns_text) {
+      int text_height = 0;
+      pango_layout_get_pixel_size(self->text_layout, nullptr, &text_height);
+      const double offset = basalt::textVerticalOffset(
+          bounds.size.height,
+          clips_text ? clip_height : static_cast<double>(text_height),
+          self->text_vertical_flush);
+      const graphene_point_t down{0.0f, static_cast<float>(offset)};
+      gtk_snapshot_save(snapshot);
+      gtk_snapshot_translate(snapshot, &down);
+    }
     if (clips_text) {
       // Vertically only. A line wider than its own box overflows today, for
       // every paragraph on this platform, and a limit on the number of lines is
@@ -835,6 +860,9 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     }
     if (clips_text) {
       gtk_snapshot_pop(snapshot);
+    }
+    if (aligns_text) {
+      gtk_snapshot_restore(snapshot);
     }
   }
 
@@ -1233,6 +1261,8 @@ static void rn_view_init(RnView *self) {
   self->accessible_modal = FALSE;
   self->writing_direction = nullptr;
   self->text_align = nullptr;
+  self->text_vertical_flush = 0.0f;
+  self->text_valign = nullptr;
   self->spell_check = nullptr;
   self->auto_correct = nullptr;
   self->auto_capitalize = nullptr;
@@ -1476,6 +1506,21 @@ void rn_view_set_text_align(RnView *self, const char *align) {
   g_return_if_fail(RN_IS_VIEW(self));
   // A literal from core, like the direction above.
   self->text_align = align;
+}
+
+void rn_view_set_text_valign(RnView *self, const char *valign) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  // A literal from core, like the two above it.
+  self->text_valign = valign;
+}
+
+void rn_view_set_text_vertical_flush(RnView *self, float flush) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  if (self->text_vertical_flush == flush) {
+    return;
+  }
+  self->text_vertical_flush = flush;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
 void rn_view_set_accessible_modal(RnView *self, gboolean modal) {
@@ -3006,6 +3051,9 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // <Text> inherits the enclosing direction otherwise.
   if (self->text_align != nullptr) {
     g_string_append_printf(out, " text-align=%s", self->text_align);
+  }
+  if (self->text_valign != nullptr) {
+    g_string_append_printf(out, " text-valign=%s", self->text_valign);
   }
   if (self->writing_direction != nullptr) {
     g_string_append_printf(out, " writing-dir=%s", self->writing_direction);

@@ -1,5 +1,7 @@
 #import "RnTextLayout.h"
 
+#include "TextVerticalAlign.h"
+
 #include <cmath>
 
 @implementation RnTextLayout {
@@ -237,7 +239,21 @@
                                 self.shadowColor.CGColor);
   }
 
-  CGFloat y = size.height;
+  // `textAlignVertical`: where the paragraph sits in a box taller than it is.
+  // The height the text needs is the one `sizeForWidth:` sums, walked the same
+  // way below, so this asks the lines rather than measuring again.
+  CGFloat textHeight = 0;
+  for (id item in lines) {
+    CTLineRef line = (__bridge CTLineRef)item;
+    CGFloat ascent = 0, descent = 0, leading = 0;
+    (void)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+    textHeight += std::ceil(ascent + descent + leading);
+  }
+
+  // Core Text's y grows upward and the context has just been flipped back into
+  // that, so moving the paragraph *down* the box means starting lower.
+  CGFloat y = size.height -
+      (CGFloat)basalt::textVerticalOffset(size.height, textHeight, self.verticalFlush);
   for (id item in lines) {
     CTLineRef line = (__bridge CTLineRef)item;
     CGFloat ascent = 0, descent = 0, leading = 0;

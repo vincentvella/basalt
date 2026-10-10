@@ -1,5 +1,7 @@
 #include "RnWin32TextLayout.h"
 
+#include "TextVerticalAlign.h"
+
 #include "Win32Offscreen.h"
 #include "Win32Strings.h"
 
@@ -1045,7 +1047,8 @@ void RnWin32TextLayout::setShadow(float dx,
 void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
                                    IDWriteTextLayout *layout,
                                    float width,
-                                   float height) const {
+                                   float height,
+                                   float verticalOffset) const {
   const D2D1_COLOR_F colour = D2D1::ColorF(
       shadowColour_[0], shadowColour_[1], shadowColour_[2], shadowColour_[3]);
 
@@ -1057,7 +1060,7 @@ void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
     if (FAILED(target->CreateSolidColorBrush(colour, brush.GetAddressOf()))) {
       return;
     }
-    target->DrawTextLayout(D2D1::Point2F(shadowDx_, shadowDy_),
+    target->DrawTextLayout(D2D1::Point2F(shadowDx_, shadowDy_ + verticalOffset),
                            layout,
                            brush.Get(),
                            D2D1_DRAW_TEXT_OPTIONS_NONE);
@@ -1083,8 +1086,13 @@ void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
   }
   offscreen->BeginDraw();
   offscreen->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-  offscreen->DrawTextLayout(
-      D2D1::Point2F(0.0f, 0.0f), layout, opaque.Get(), D2D1_DRAW_TEXT_OPTIONS_NONE);
+  // Inside the offscreen rather than when the blur is composited: the bitmap is
+  // the size of the box, so a paragraph aligned to the bottom of it has to be
+  // drawn there, and the shadow's own offset still applies to the result.
+  offscreen->DrawTextLayout(D2D1::Point2F(0.0f, verticalOffset),
+                            layout,
+                            opaque.Get(),
+                            D2D1_DRAW_TEXT_OPTIONS_NONE);
   if (FAILED(offscreen->EndDraw())) {
     return;
   }
@@ -1118,12 +1126,24 @@ void RnWin32TextLayout::draw(ID2D1RenderTarget *target, float width, float heigh
   }
   applyLineLimit(layout.Get());
 
+  // `textAlignVertical`: where the paragraph sits in a box taller than it is.
+  // The height the text needs comes from the layout that is about to be drawn,
+  // after the line limit, so what is aligned is the lines that survived.
+  float verticalOffset = 0.0f;
+  if (verticalFlush_ > 0.0f) {
+    DWRITE_TEXT_METRICS metrics{};
+    if (SUCCEEDED(layout->GetMetrics(&metrics))) {
+      verticalOffset = static_cast<float>(
+          basalt::textVerticalOffset(height, metrics.height, verticalFlush_));
+    }
+  }
+
   // The shadow first, so the glyphs land on top of it, and before any drawing
   // effect is attached: it goes through Direct2D's own `DrawTextLayout`, which
   // reads a drawing effect only when it is an `ID2D1Brush`, and the effects
   // below are not.
   if (hasShadow()) {
-    drawShadow(target, layout.Get(), width, height);
+    drawShadow(target, layout.Get(), width, height, verticalOffset);
   }
 
   // What each run is painted with, attached to the layout as a drawing effect
@@ -1152,7 +1172,7 @@ void RnWin32TextLayout::draw(ID2D1RenderTarget *target, float width, float heigh
   }
 
   RnWin32TextRenderer renderer(target, fallback);
-  layout->Draw(nullptr, &renderer, 0.0f, 0.0f);
+  layout->Draw(nullptr, &renderer, 0.0f, verticalOffset);
 }
 
 } // namespace basalt::win32

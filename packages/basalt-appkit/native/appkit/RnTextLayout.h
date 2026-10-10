@@ -43,6 +43,13 @@ NS_ASSUME_NONNULL_BEGIN
 // paragraph built by hand means -- the style's own direction still stands.
 @property(nonatomic) BOOL rightToLeft;
 
+// How far down its own box the paragraph sits: 0 for the top, 0.5 for the
+// middle, 1 for the bottom, which is what `textAlignVertical` asks for and what
+// `verticalAlign` becomes in React Native's own JavaScript. The offset it
+// produces is core/TextVerticalAlign.h's, applied while drawing, because the
+// box is only known then.
+@property(nonatomic) CGFloat verticalFlush;
+
 @property(nonatomic, strong, nullable) NSColor *shadowColor;
 @property(nonatomic) CGSize shadowOffset;
 @property(nonatomic) CGFloat shadowStandardDeviation;

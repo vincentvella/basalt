@@ -429,7 +429,9 @@ class RnWin32View {
   // null -- and the edge its text ended up against, resolved. Both are literals
   // from core, so the three hosts print the same words; see
   // core/TextAlignments.h and core/WritingDirections.h.
-  void setParagraphNames(const char *writingDirection, const char *textAlign);
+  void setParagraphNames(const char *writingDirection,
+                         const char *textAlign,
+                         const char *textVerticalAlign);
 
   // The decoded pixels of an <Image>, and how they fill this view's frame. Pass
   // null to clear.
@@ -777,6 +779,7 @@ class RnWin32View {
   std::shared_ptr<RnWin32TextLayout> textLayout_;
   const char *writingDirectionName_ = nullptr;
   const char *textAlignName_ = nullptr;
+  const char *textVerticalAlignName_ = nullptr;
   std::shared_ptr<RnWin32Image> image_;
   std::shared_ptr<RnWin32Painter> painter_;
   RnImageFit imageFit_ = RnImageFit::Cover;

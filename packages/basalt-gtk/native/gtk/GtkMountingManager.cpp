@@ -1136,6 +1136,16 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // two of its five spellings, so the prop is not the answer. See
   // core/TextAlignments.h.
   rn_view_set_text_align(view, basalt::paragraphTextAlignmentName(data.attributedString));
+  // And where it sits in a box taller than it is, which `textAlignVertical`
+  // asks for and which the widget applies while drawing -- the box is only
+  // known then, a view resized without its props changing having new slack and
+  // the same text.
+  rn_view_set_text_vertical_flush(
+      view,
+      static_cast<float>(
+          basalt::textVerticalFlushFactor(data.paragraphAttributes.textAlignVertical)));
+  rn_view_set_text_valign(
+      view, basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical));
 
   if (const auto shadow = basalt::textShadow(data.attributedString)) {
     const GdkRGBA shadowColor{shadow->red, shadow->green, shadow->blue, shadow->alpha};

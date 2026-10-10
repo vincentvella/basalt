@@ -1253,3 +1253,86 @@ TEST(text_direction_agrees_with_pangos_own_answer) {
     }
   }
 }
+
+// --- Where the paragraph sits in its box --------------------------------------
+//
+// `textAlignVertical`, which `verticalAlign` becomes in React Native's own
+// JavaScript. Asserted against the pixels, because the only observable
+// difference is where the ink is: the box, the string and the measured size are
+// all the same whichever end of it the text sits at.
+
+namespace {
+
+// The topmost row with ink in it, for a short paragraph in a 100pt-tall box.
+int inkRowFor(float flush) {
+  PangoLayout *layout = basalt::buildTextLayout(makeText("Up or down"), ParagraphAttributes{}, 200.0F);
+
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 100.0F);
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_text_layout(view, layout, &black);
+  rn_view_set_text_vertical_flush(view, flush);
+
+  const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 200, 100);
+  int topmost = -1;
+  for (int y = 0; y < 100 && topmost < 0; y++) {
+    for (int x = 0; x < 200; x++) {
+      if (pixels.at(x, y).alpha > 40) {
+        topmost = y;
+        break;
+      }
+    }
+  }
+  g_object_unref(view);
+  return topmost;
+}
+
+} // namespace
+
+TEST(text_vertical_align_moves_the_paragraph_down_its_box) {
+  const int top = inkRowFor(0.0F);
+  const int middle = inkRowFor(0.5F);
+  const int bottom = inkRowFor(1.0F);
+
+  // Ink at all, first: a paragraph that drew nothing would pass every
+  // comparison below.
+  EXPECT(top >= 0);
+  EXPECT(top < 20);
+  // A 16pt line in a 100pt box leaves about 80 points of slack, so the three
+  // positions are tens of pixels apart and no font difference can confuse them.
+  EXPECT(middle > top + 20);
+  EXPECT(bottom > middle + 20);
+  EXPECT(bottom > 60);
+}
+
+TEST(text_vertical_align_a_paragraph_as_tall_as_its_box_does_not_move) {
+  // The clamp, through the widget: with no slack there is nowhere to go, and a
+  // negative offset would push the first line out through the top.
+  PangoLayout *layout =
+      basalt::buildTextLayout(makeText(kLongText), ParagraphAttributes{}, 200.0F);
+  int height = 0;
+  pango_layout_get_pixel_size(layout, nullptr, &height);
+
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  // A box exactly as tall as the text needs.
+  rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, static_cast<float>(height));
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_text_layout(view, layout, &black);
+  rn_view_set_text_vertical_flush(view, 1.0F);
+
+  const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 200, height);
+  int topmost = -1;
+  for (int y = 0; y < height && topmost < 0; y++) {
+    for (int x = 0; x < 200; x++) {
+      if (pixels.at(x, y).alpha > 40) {
+        topmost = y;
+        break;
+      }
+    }
+  }
+  g_object_unref(view);
+  EXPECT(topmost >= 0);
+  EXPECT(topmost < 20);
+}

@@ -115,7 +115,6 @@ TEST(direction_latin_and_every_other_left_to_right_script_does_not) {
   // file is compiled by MSVC too, which reads a source as the machine's code
   // page unless it is told otherwise, and would re-encode a literal written in
   // the script itself. The escapes say exactly what reaches the function.
-  //
   // Split before the `e`: a hex escape in C++ is greedy, so "\x9fe" is one
   // escape and out of range rather than an eszett followed by a letter.
   EXPECT(!textStartsRightToLeft("Gr\xc3\xbc\xc3\x9f" "e"));             // Gruesse
@@ -180,4 +179,41 @@ TEST(direction_the_prop_wins_when_the_app_set_one) {
   EXPECT(basalt::paragraphIsRightToLeft(WritingDirection::Natural, kHebrew));
   EXPECT(basalt::paragraphIsRightToLeft(std::nullopt, kHebrew));
   EXPECT(!basalt::paragraphIsRightToLeft(std::nullopt, "hello"));
+}
+
+// --- The other axis -----------------------------------------------------------
+//
+// `textAlignVertical`, which puts the paragraph somewhere in its own box, and
+// which `verticalAlign` becomes in React Native's own JavaScript before any of
+// this sees it. The arithmetic is three lines and one of them is the clamp,
+// which is the line that matters: a paragraph taller than its box must start at
+// the top rather than above it.
+
+TEST(vertical_alignment_flush_factors_are_the_three_positions) {
+  using V = facebook::react::TextAlignmentVertical;
+  EXPECT_NEAR(basalt::textVerticalFlushFactor(V::Top), 0.0, 0.001);
+  EXPECT_NEAR(basalt::textVerticalFlushFactor(V::Center), 0.5, 0.001);
+  EXPECT_NEAR(basalt::textVerticalFlushFactor(V::Bottom), 1.0, 0.001);
+  // `auto`, and saying nothing, are both the top: that is what every engine
+  // does with no instruction.
+  EXPECT_NEAR(basalt::textVerticalFlushFactor(V::Auto), 0.0, 0.001);
+  EXPECT_NEAR(basalt::textVerticalFlushFactor(std::nullopt), 0.0, 0.001);
+}
+
+TEST(vertical_alignment_offsets_the_slack_in_the_box) {
+  // A 40pt paragraph in a 100pt box: 60 points of slack.
+  EXPECT_NEAR(basalt::textVerticalOffset(100.0, 40.0, 0.0), 0.0, 0.001);
+  EXPECT_NEAR(basalt::textVerticalOffset(100.0, 40.0, 0.5), 30.0, 0.001);
+  EXPECT_NEAR(basalt::textVerticalOffset(100.0, 40.0, 1.0), 60.0, 0.001);
+}
+
+TEST(vertical_alignment_a_paragraph_taller_than_its_box_starts_at_the_top) {
+  // The `numberOfLines` case: the box is the lines that fit and the text is all
+  // of them. A negative offset would push the first line out through the top
+  // edge, where nothing can scroll it back.
+  EXPECT_NEAR(basalt::textVerticalOffset(40.0, 100.0, 1.0), 0.0, 0.001);
+  EXPECT_NEAR(basalt::textVerticalOffset(40.0, 100.0, 0.5), 0.0, 0.001);
+  // And exactly as tall is no slack at all, which is every paragraph Yoga sized
+  // to its own content.
+  EXPECT_NEAR(basalt::textVerticalOffset(40.0, 40.0, 1.0), 0.0, 0.001);
 }

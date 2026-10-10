@@ -805,7 +805,8 @@ void Win32MountingManager::applyText(RnWin32View *view, const ShadowView &shadow
   // core/TextAlignments.h.
   view->setParagraphNames(
       basalt::writingDirectionName(basalt::writingDirection(data.attributedString)),
-      basalt::paragraphTextAlignmentName(data.attributedString));
+      basalt::paragraphTextAlignmentName(data.attributedString),
+      basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical));
 }
 
 namespace {

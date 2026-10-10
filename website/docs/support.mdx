@@ -50,8 +50,8 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 188 of 279 | 189 of 279 | 185 of 279 |
-| | `█████████████░░░░░░░` | `██████████████░░░░░░` | `█████████████░░░░░░░` |
+| Done | 190 of 279 | 191 of 279 | 187 of 279 |
+| | `██████████████░░░░░░` | `██████████████░░░░░░` | `█████████████░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
 Yoga does it for every host: a layout prop never reaches one of these
@@ -429,7 +429,7 @@ Written inside `style={{...}}`. Read from `____TextStyle_InternalBase`.
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `includeFontPadding` | – | – | – | [Android's own: ReactCommon declares it in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `textAlignVertical` | ✖ | ✖ | ✖ | [no engine here aligns a paragraph inside its box yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textAlignVertical` | ✅ | ✅ | ✅ | [the paragraph moves in its box; an inline view inside one does not](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ### Component props
 
@@ -551,7 +551,7 @@ Written inside `style={{...}}`.
 | --- | --- | --- | --- | --- |
 | `elevation` | – | – | – | [Android's shadow prop, declared in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `userSelect` | ✖ | ✖ | ✖ | [ReactCommon declares no field for it, and text is not selectable here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `verticalAlign` | ✖ | ✖ | ✖ | [no engine here aligns a paragraph inside its box yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `verticalAlign` | ✅ | ✅ | ✅ | [the paragraph moves in its box; an inline view inside one does not](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ## Image
 

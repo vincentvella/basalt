@@ -1353,3 +1353,113 @@ TEST(appkit_text_align_start_and_end_are_the_edges_the_line_runs_between) {
   }
 }
 #endif
+
+// --- Where the paragraph sits in its box --------------------------------------
+//
+// `textAlignVertical`, the same claim the GTK suite asserts and measured the
+// same way: the topmost row with ink in it, for a short paragraph in a box far
+// taller than it needs. Nothing else can show it -- the box, the string and the
+// measured size are identical whichever end of it the text sits at.
+
+namespace {
+
+int inkRowForVerticalFlush(CGFloat flush) {
+  const CGSize size = CGSizeMake(200, 100);
+
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = "Up or down";
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  RnTextLayout *layout = basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+  layout.verticalFlush = flush;
+
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height, 8,
+                                               0, space, kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+  [layout drawInContext:context size:size];
+
+  // Counted down from the *top of the box*, which is not row 0 of the bitmap: a
+  // CGBitmapContext's rows run bottom-up, so the first row of the buffer is the
+  // bottom edge of the picture. The horizontal tests above never had to care.
+  auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  const int rows = (int)size.height;
+  for (int y = rows - 1; y >= 0; y--) {
+    for (size_t x = 0; x < (size_t)size.width; x++) {
+      if (pixels[(size_t)y * stride + x * 4] < 200) {
+        CGContextRelease(context);
+        return rows - 1 - y;
+      }
+    }
+  }
+  CGContextRelease(context);
+  return -1;
+}
+
+} // namespace
+
+TEST(appkit_text_vertical_align_moves_the_paragraph_down_its_box) {
+  @autoreleasepool {
+    const int top = inkRowForVerticalFlush(0);
+    const int middle = inkRowForVerticalFlush(0.5);
+    const int bottom = inkRowForVerticalFlush(1);
+
+    EXPECT(top >= 0);
+    EXPECT(top < 20);
+    // A 16pt line in a 100pt box leaves about eighty points of slack, so the
+    // three positions are tens of rows apart.
+    EXPECT(middle > top + 20);
+    EXPECT(bottom > middle + 20);
+    EXPECT(bottom > 60);
+  }
+}
+
+TEST(appkit_text_vertical_align_a_paragraph_as_tall_as_its_box_does_not_move) {
+  @autoreleasepool {
+    // The clamp: with no slack there is nowhere to go, and a negative offset
+    // would push the first line out through the top of the box.
+    facebook::react::TextAttributes attributes;
+    attributes.fontSize = 16.0F;
+    facebook::react::AttributedString::Fragment fragment;
+    fragment.string = "Nowhere to go";
+    fragment.textAttributes = attributes;
+    facebook::react::AttributedString string;
+    string.appendFragment(std::move(fragment));
+
+    RnTextLayout *layout = basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+    layout.verticalFlush = 1;
+    const CGSize needed = [layout sizeForWidth:200];
+
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(nullptr, 200, (size_t)needed.height, 8, 0, space,
+                                                 kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+    CGContextFillRect(context, CGRectMake(0, 0, 200, needed.height));
+    [layout drawInContext:context size:CGSizeMake(200, needed.height)];
+
+    // From the top of the box again, so bottom-up through the buffer.
+    auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+    const size_t stride = CGBitmapContextGetBytesPerRow(context);
+    const int rows = (int)needed.height;
+    int topmost = -1;
+    for (int y = rows - 1; y >= 0 && topmost < 0; y--) {
+      for (size_t x = 0; x < 200; x++) {
+        if (pixels[(size_t)y * stride + x * 4] < 200) {
+          topmost = rows - 1 - y;
+          break;
+        }
+      }
+    }
+    CGContextRelease(context);
+    EXPECT(topmost >= 0);
+    EXPECT(topmost < 10);
+  }
+}

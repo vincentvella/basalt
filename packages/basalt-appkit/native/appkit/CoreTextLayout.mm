@@ -532,6 +532,10 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
                                truncationType:truncation
                                     truncates:truncates ? YES : NO];
   layout.rightToLeft = rightToLeft ? YES : NO;
+  // `textAlignVertical`, which is where the paragraph sits in a box taller than
+  // it is. Applied while drawing, the box being known only then.
+  layout.verticalFlush =
+      basalt::textVerticalFlushFactor(paragraphAttributes.textAlignVertical);
   return layout;
 }
 
