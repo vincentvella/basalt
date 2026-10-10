@@ -95,6 +95,27 @@ void GtkScrollViewManager::update(RnView *view, const ShadowView &shadowView) {
     entry.snap.snapToStart = props->snapToStart;
     entry.snap.snapToEnd = props->snapToEnd;
     entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
+
+    // `contentOffset`, which an app writes to open a list part way down. Its
+    // first value reached here through the state and is adopted below; this is
+    // every later change, applied the way upstream applies it --
+    // `oldScrollViewProps.contentOffset != newScrollViewProps.contentOffset` in
+    // `RCTScrollViewComponentView` -- rather than whenever the prop differs
+    // from where the list is.
+    //
+    // The offset is set rather than animated to, which is what assigning
+    // `UIScrollView.contentOffset` does, and the clamp below is what keeps a
+    // value past the end of the content from showing empty space.
+    if (!entry.lastPropContentOffset.has_value()
+        || *entry.lastPropContentOffset != props->contentOffset) {
+      entry.lastPropContentOffset = props->contentOffset;
+      entry.offsetX = props->contentOffset.x;
+      entry.offsetY = props->contentOffset.y;
+      // Whatever the list was coasting or animating towards is somewhere the
+      // app has just said it does not want to be.
+      stopMomentum(entry, false);
+      stopAnimation(entry);
+    }
     // And the friction, so the projection of where a fling would land uses the
     // same rate the fling itself will.
     entry.snap.decelerationRate = entry.decelerationRate;

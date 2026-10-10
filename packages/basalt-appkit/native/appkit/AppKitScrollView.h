@@ -44,6 +44,7 @@
 #include <react/renderer/mounting/ShadowView.h>
 
 #include <functional>
+#include <optional>
 #include <unordered_map>
 
 namespace basalt {
@@ -124,6 +125,18 @@ class AppKitScrollViewManager {
 
     double offsetX{0};
     double offsetY{0};
+
+    // The last `contentOffset` prop seen, and nothing when none has been.
+    //
+    // The *initial* value of that prop arrives through the state rather than
+    // here -- `ScrollViewShadowNode::initialStateData` seeds the state with it
+    // -- and is adopted below. What this is for is every later change, which
+    // arrives as an ordinary prop update and is applied when it *changes*,
+    // never merely when it differs from where the list is: an app that sets the
+    // prop once and re-renders for an unrelated reason must not have the list
+    // dragged back under the person reading it. The same rule a `<TextInput>`'s
+    // `text` is under, for the same reason.
+    std::optional<facebook::react::Point> lastPropContentOffset{};
     double lastEmitSeconds{0};
     bool dragging{false};
     // Coasting after the fingers left. Tracked for the same reason `dragging`

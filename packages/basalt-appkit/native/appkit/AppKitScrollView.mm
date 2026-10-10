@@ -185,6 +185,27 @@ void AppKitScrollViewManager::update(RnAppKitView *view, const ShadowView &shado
     entry.snap.snapToStart = props->snapToStart;
     entry.snap.snapToEnd = props->snapToEnd;
     entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
+
+    // `contentOffset`, which an app writes to open a list part way down. Its
+    // first value reached here through the state and is adopted below; this is
+    // every later change, applied the way upstream applies it --
+    // `oldScrollViewProps.contentOffset != newScrollViewProps.contentOffset` in
+    // `RCTScrollViewComponentView` -- rather than whenever the prop differs
+    // from where the list is.
+    //
+    // The offset is set rather than animated to, which is what assigning
+    // `UIScrollView.contentOffset` does, and the clamp below is what keeps a
+    // value past the end of the content from showing empty space.
+    if (!entry.lastPropContentOffset.has_value()
+        || *entry.lastPropContentOffset != props->contentOffset) {
+      entry.lastPropContentOffset = props->contentOffset;
+      entry.offsetX = props->contentOffset.x;
+      entry.offsetY = props->contentOffset.y;
+      // Whatever the list was animating towards is somewhere the app has just
+      // said it does not want to be. No fling to stop: the momentum on this
+      // host is not this host's to run.
+      stopAnimation(entry);
+    }
     // `decelerationRate` is not read on this host, so the projection of where a
     // fling would land uses React Native's own default -- which is what the
     // config carries. See the support page's row for the prop.

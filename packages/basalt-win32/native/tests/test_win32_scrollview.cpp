@@ -86,6 +86,11 @@ ShadowView makeScrollView(Tag tag,
 
   auto props = std::make_shared<ScrollViewProps>();
   props->scrollEnabled = scrollEnabled;
+  // The prop as well as the state, because that is how the two arrive for real:
+  // `ScrollViewShadowNode::initialStateData` seeds the state from this prop, so
+  // a test that set only one of them would be testing a shape React Native does
+  // not produce.
+  props->contentOffset = initialOffset;
 
   ScrollViewState data;
   data.contentOffset = initialOffset;
@@ -380,6 +385,54 @@ TEST(win32_a_horizontal_wheel_scrolls_the_other_axis) {
   EXPECT(manager.scrollAt(root, 200, 150, 3 * kNotch, 0));
   EXPECT_NEAR(manager.viewForTag(10)->scrollX(), 3 * kNotch, 0.01);
   EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 0.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// A `contentOffset` that *changes* moves the list, which no host did until
+// 2026-10-10: the first value arrives through the state and is adopted above,
+// and a later one arrives as an ordinary prop update.
+TEST(win32_a_changed_content_offset_moves_the_list) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mount(manager, kSurfaceId, makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 120}));
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 120.0, 0.01);
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 120}),
+      makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 700}),
+      kSurfaceId));
+  apply(manager, std::move(mutations));
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 700.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// And one that has not changed leaves the list alone, which is the rule rather
+// than an optimisation: React Native re-renders for all sorts of reasons and
+// every one of them carries the same `contentOffset` the app wrote once, so a
+// host that applied it whenever it differed would drag the list back under the
+// person reading it.
+TEST(win32_an_unchanged_content_offset_leaves_the_list_where_it_is) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mount(manager, kSurfaceId, makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 120}));
+
+  manager.scrollAt(root, 200, 150, 0, 900);
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 1020.0, 0.01);
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 120}),
+      makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 120}),
+      kSurfaceId));
+  apply(manager, std::move(mutations));
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 1020.0, 0.01);
 
   manager.destroySurfaceRoot(kSurfaceId);
 }

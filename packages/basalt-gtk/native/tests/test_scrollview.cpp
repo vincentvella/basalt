@@ -52,16 +52,21 @@ ShadowView makeScrollView(Tag tag,
                           float contentWidth,
                           float contentHeight,
                           float decelerationRate = 0,
-                          bool pagingEnabled = false) {
+                          bool pagingEnabled = false,
+                          Point contentOffset = Point{0, 0}) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = width, .height = height}};
 
   auto props = std::make_shared<ScrollViewProps>();
   props->decelerationRate = decelerationRate;
   props->pagingEnabled = pagingEnabled;
+  props->contentOffset = contentOffset;
 
   ScrollViewState data;
-  data.contentOffset = Point{0, 0};
+  // Seeded from the prop, which is what ScrollViewShadowNode does for real:
+  // `initialStateData` returns the props' own `contentOffset`. So a test that
+  // set only the prop would not be testing the path an app takes.
+  data.contentOffset = contentOffset;
   data.contentBoundingRect = Rect{.origin = {.x = 0, .y = 0},
                                   .size = Size{.width = contentWidth, .height = contentHeight}};
 
@@ -86,15 +91,25 @@ struct Scroller {
   RnView *view;
   Tag tag;
 
-  Scroller(Tag tag, float contentHeight, float decelerationRate = 0, bool pagingEnabled = false)
+  Scroller(Tag tag,
+           float contentHeight,
+           float decelerationRate = 0,
+           bool pagingEnabled = false,
+           Point contentOffset = Point{0, 0})
       : manager([](Tag) { return facebook::react::EventEmitter::Shared{}; }),
         view(rn_view_new(static_cast<int>(tag))),
         tag(tag) {
     g_object_ref_sink(view);
     rn_view_set_frame(view, 0, 0, 400, 300);
-    manager.update(
-        view,
-        makeScrollView(tag, 400, 300, 400, contentHeight, decelerationRate, pagingEnabled));
+    manager.update(view,
+                   makeScrollView(tag,
+                                  400,
+                                  300,
+                                  400,
+                                  contentHeight,
+                                  decelerationRate,
+                                  pagingEnabled,
+                                  contentOffset));
   }
 
   ~Scroller() {
@@ -255,4 +270,62 @@ TEST(scrollview_a_fling_on_a_plain_list_still_coasts) {
   // runs at the end of every fling.
   Scroller scroller(13, 4000);
   EXPECT(scroller.manager.fling(scroller.tag, 0, 1200));
+}
+
+// --- contentOffset -----------------------------------------------------------
+//
+// An app writes it to open a list part way down, and writes it again to move
+// one. The first of those already worked everywhere, through the state --
+// `ScrollViewShadowNode::initialStateData` seeds the state from the prop -- and
+// a change to the prop afterwards reached no host until 2026-10-10.
+//
+// The rule is upstream's: applied when the prop *changes*, not whenever it
+// differs from where the list is. The difference is the whole entry, and the
+// third test is the one that shows it.
+
+TEST(scrollview_an_initial_content_offset_opens_the_list_there) {
+  Scroller scroller(20, 4000, 0, false, Point{0, 120});
+  EXPECT_NEAR(scroller.offsetY(), 120.0, 0.001);
+}
+
+TEST(scrollview_a_changed_content_offset_moves_the_list) {
+  Scroller scroller(21, 4000, 0, false, Point{0, 120});
+  scroller.manager.update(
+      scroller.view, makeScrollView(21, 400, 300, 400, 4000, 0, false, Point{0, 700}));
+  EXPECT_NEAR(scroller.offsetY(), 700.0, 0.001);
+}
+
+TEST(scrollview_an_unchanged_content_offset_leaves_the_list_where_it_is) {
+  // The test that says why this is a "when it changes" rule. React Native
+  // re-renders for all sorts of reasons, and every one of them produces an
+  // Update mutation carrying the same `contentOffset` the app wrote once. A
+  // host that applied it whenever it differed would drag the list back to the
+  // top under the person reading it.
+  Scroller scroller(22, 4000, 0, false, Point{0, 120});
+  scroller.manager.dispatchCommand(scroller.tag, "scrollTo", folly::dynamic::array(0, 900, false));
+  EXPECT_NEAR(scroller.offsetY(), 900.0, 0.001);
+
+  scroller.manager.update(
+      scroller.view, makeScrollView(22, 400, 300, 400, 4000, 0, false, Point{0, 120}));
+  EXPECT_NEAR(scroller.offsetY(), 900.0, 0.001);
+}
+
+TEST(scrollview_a_content_offset_takes_the_list_off_a_fling) {
+  // The same rule `scrollTo` follows: an app that asked for an offset means
+  // that offset, not that offset plus wherever the coast was heading.
+  Scroller scroller(23, 4000);
+  EXPECT(scroller.manager.fling(scroller.tag, 0, 1200));
+  scroller.manager.advanceFling(scroller.tag, kFrame);
+
+  scroller.manager.update(
+      scroller.view, makeScrollView(23, 400, 300, 400, 4000, 0, false, Point{0, 500}));
+  EXPECT_NEAR(scroller.offsetY(), 500.0, 0.001);
+  EXPECT(!scroller.manager.advanceFling(scroller.tag, kFrame));
+  EXPECT_NEAR(scroller.offsetY(), 500.0, 0.001);
+}
+
+TEST(scrollview_a_content_offset_past_the_content_is_clamped) {
+  Scroller scroller(24, 500, 0, false, Point{0, 400});
+  // 300 of viewport over 500 of content: 200 is as far as it goes.
+  EXPECT_NEAR(scroller.offsetY(), 200.0, 0.001);
 }

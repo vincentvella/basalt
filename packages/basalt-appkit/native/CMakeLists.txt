@@ -288,7 +288,11 @@ if(TARGET basalt_core)
     tests/test_appkit_input.mm
     tests/test_appkit_key_events.mm
     # <TextInput>'s controlled-value loop, through real mutations.
-    tests/test_appkit_textinput.mm)
+    tests/test_appkit_textinput.mm
+    # <ScrollView>'s props, as far as they reach without a window: the manager
+    # takes a view and an emitter lookup, so the offset a prop asks for is
+    # observable with no display at all.
+    tests/test_appkit_scrollview.mm)
 endif()
 
 add_executable(basalt_appkit_tests ${BASALT_APPKIT_TEST_SOURCES})

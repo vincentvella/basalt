@@ -1983,10 +1983,9 @@
       "why": "sv-axis"
     },
     "BaseScrollViewProps.contentOffset": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "sv-untouched"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
     },
     "BaseScrollViewProps.maintainVisibleContentPosition": {
       "linux": "no",

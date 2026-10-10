@@ -9,8 +9,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
 5. ~~`ScrollViewProps` has no rows on the support page~~
-6. Four `<ScrollView>` props are a desktop question nobody has answered, and
-   ~~the three about snapping~~ are done
+6. Three `<ScrollView>` props are a desktop question nobody has answered;
+   ~~the three about snapping and contentOffset~~ are done
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -124,16 +124,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than trusting this file, which is how the `<TextInput>` rows found two
   stale claims in backlog/textinput.md on the day they were added.
 
-- **Four `<ScrollView>` props are a desktop question nobody has answered.**
-  Seven of them were, until 2026-10-10; the three about snapping are done, and
-  the entry keeps the others. Surfaced on 2026-10-09 by giving every prop a row,
+- **Three `<ScrollView>` props are a desktop question nobody has answered.**
+  Seven of them were, until 2026-10-10; the three about snapping and
+  `contentOffset` are done, and the entry keeps the others. Surfaced on 2026-10-09 by giving every prop a row,
   which is the point of the rows: each of these is a thing an app can write that
   no host reads, and none of them is somebody else's platform.
 
-  `contentOffset` is the first one an app notices: it sets where a list starts,
-  and a chat view that opens at the bottom writes it. Every host keeps its
-  offset in its own state and reads it from the scroll state rather than the
-  props, so the initial value is dropped.
+  ~~`contentOffset`~~ is done, 2026-10-10, and the entry had it half wrong,
+  which is worth keeping. It said the initial value was dropped. It was not:
+  `ScrollViewShadowNode::initialStateData` seeds the state from the prop, and
+  all three hosts adopt the state's offset on first sight -- so a list did open
+  where the app asked. What no host read was a *change* to the prop afterwards,
+  which is the other thing an app writes it for.
+
+  Applied the way upstream applies it, which is
+  `oldScrollViewProps.contentOffset != newScrollViewProps.contentOffset` in
+  `RCTScrollViewComponentView`: when the prop changes, and never merely when it
+  differs from where the list is. The difference is the whole of it, and the
+  reason is the one `<TextInput>`'s `text` has -- React Native re-renders for all
+  sorts of reasons and each one carries the same `contentOffset` the app wrote
+  once, so a host comparing against the list would drag it back under the person
+  reading it. A test per host says so.
+
+  Set rather than animated to, which is what assigning `UIScrollView.contentOffset`
+  does, and it takes the list off a fling or an animated `scrollTo` first: an
+  app that asks for an offset means that offset, not that offset plus wherever
+  the coast was heading.
+
+  One difference from iOS, written down rather than fixed: no `onScroll` is
+  emitted for an offset the props asked for. Assigning `UIScrollView.contentOffset`
+  there runs `scrollViewDidScroll`, which reports one. Here it goes through the
+  same path the initial adoption does -- clamp, then set the offset on the view
+  -- and that path reports nothing. An app that wrote the offset already knows
+  where it is; what it would miss is a `contentOffset` clamped by the content
+  being shorter than it asked for.
 
   `maintainVisibleContentPosition` is the one that matters most for a chat
   list, and the hardest: it keeps the visible content still while items are
