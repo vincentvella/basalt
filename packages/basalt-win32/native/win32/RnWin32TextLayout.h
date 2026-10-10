@@ -54,6 +54,20 @@ enum class RnTextAlign {
   End,
 };
 
+// `textDecorationStyle`, as React Native's five.
+//
+// DirectWrite has none of them: `SetUnderline` takes a boolean, so the style is
+// drawn rather than asked for -- which is what the custom text renderer in
+// RnWin32TextLayout.cpp is for, and why this host ends up with all five where
+// Pango has three and Core Text four.
+enum class RnTextDecorationStyle {
+  Solid,
+  Double,
+  Dotted,
+  Dashed,
+  Wavy,
+};
+
 // The attributes this platform honours. React Native has many more; each one
 // added here is a line in `DirectWriteLayout`, which is the file that will
 // translate an AttributedString once there is a mounting manager to deliver
@@ -68,15 +82,25 @@ struct RnTextStyle {
   float lineHeight = 0.0f;
   RnTextAlign align = RnTextAlign::Left;
   float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-  // `textDecorationLine`, as much of it as DirectWrite has: a line is on or it
-  // is off. `SetUnderline` and `SetStrikethrough` take a range and a boolean
-  // and nothing else, so the dotted, dashed and wavy styles and a separate
-  // `textDecorationColor` are not expressible without a custom
-  // `IDWriteTextRenderer` -- which backlog/platform-windows.md records with the
-  // call named. The other two desktops draw what their engines have and fall
-  // back to a solid line, which is what this is.
+  // `textDecorationLine`. `SetUnderline` and `SetStrikethrough` take a range
+  // and a boolean and nothing else, so these two say *whether* there is a line
+  // and the renderer in RnWin32TextLayout.cpp decides what it looks like: it is
+  // handed the position and thickness DirectWrite computed from the font and
+  // draws the line itself.
   bool underline = false;
   bool strikethrough = false;
+  // `textDecorationColor` and `textDecorationStyle`. Unset colour means the
+  // text's own, which is React Native's default and what the other two hosts
+  // do; the style is drawn by the renderer because DirectWrite has no form of
+  // it. See core/TextDecorations.h, which resolves both for all three hosts.
+  bool hasDecorationColour = false;
+  float decorationColour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  RnTextDecorationStyle decorationStyle = RnTextDecorationStyle::Solid;
+  // `backgroundColor` on a `<Text>` fragment: the box behind the glyphs, which
+  // DirectWrite also does not draw -- it draws glyphs and nothing else. Pango
+  // has a background attribute and Core Text fills the rectangle itself.
+  bool hasBackgroundColour = false;
+  float backgroundColour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   // `writingDirection`, which decides the order of the glyphs in a line and
   // which edge the line starts from. False is left-to-right, and is also what
   // `natural` resolves to for Latin text.

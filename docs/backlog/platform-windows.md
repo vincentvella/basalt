@@ -23,7 +23,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 16. ~~`mixBlendMode` blends nothing~~
 17. ~~No text shadow, so `textShadowColor` and friends do nothing~~
 18. ~~The desktop's text scale is not read~~, declined: no WinRT in this host
-19. ~~No text decoration~~, except the styles DirectWrite has no form of
+19. ~~No text decoration~~, and since the custom renderer, all five styles
 20. ~~`fontVariant` and a fragment's `opacity` are not read~~
 21. ~~`writingDirection` is not read~~, and `start` and `end` are relative here
 22. ~~An animated GIF is painted as a still~~
@@ -680,24 +680,49 @@ and none of it is a missing half.
   row is below a strikethrough's, and both at once draw two lines. A test on the
   struct would pass through exactly the bug this entry described.
 
-  **What is left is the style and the colour**, which is why this entry keeps a
-  paragraph. DirectWrite draws an underline in the text's own colour and
-  with no pattern, so `textDecorationColor` and `textDecorationStyle` need a
-  custom renderer: `IDWriteTextRenderer::DrawUnderline` and `DrawStrikethrough`
-  are the callbacks, and they hand over a `DWRITE_UNDERLINE` with the geometry
-  already worked out, so what is left is a `FillRectangle` in the asked-for
-  colour, or a dashed `ID2D1StrokeStyle` for a dotted or dashed one. That would
-  make this host the *most* capable of the three for style, since neither Pango
-  nor Core Text has all five.
+  **The style and the colour are done too, 2026-10-10**, and the custom
+  `IDWriteTextRenderer` this entry kept naming is what did it. `RnWin32TextLayout::draw`
+  no longer calls `ID2D1RenderTarget::DrawTextLayout` at all: it calls
+  `IDWriteTextLayout::Draw` with an `RnWin32TextRenderer`, and attaches an
+  `RnWin32TextEffect` per run instead of an `ID2D1SolidColorBrush`. Each
+  callback is handed that effect back, so a run carries its colour, its
+  background and its decoration rather than only the one thing a brush can say.
 
-  **A `<Text>`'s own `backgroundColor` wants the same renderer**, and is the
-  other row the support page marks against this host for text. Pango has a
-  background attribute and Core Text draws the rectangle itself; DirectWrite
-  draws glyphs and nothing behind them, so the box has to be filled before the
-  run is drawn -- which is `IDWriteTextRenderer::DrawGlyphRun`, where the run's
-  width comes from the glyph advances it is handed and its height from the line
-  metrics. One renderer would answer both that and the decoration pair, which is
-  the argument for writing it once rather than twice.
+  `DrawUnderline` and `DrawStrikethrough` arrive with a `DWRITE_UNDERLINE` whose
+  width, thickness and offset DirectWrite already worked out from the font, so
+  each style is a few calls on the geometry it is given: a `FillRectangle` for
+  solid, two of them for double, a `DrawLine` with an `ID2D1StrokeStyle` of
+  `D2D1_DASH_STYLE_DOT` or `D2D1_DASH_STYLE_DASH` for the broken pair, and an
+  `ID2D1PathGeometry` of alternating quadratics for wavy. **That makes this the
+  only one of the three hosts that draws all five**: Pango's underline enum has
+  no patterns in it and Core Text has no wavy, and both fall back to a single
+  line.
+
+  **A `<Text>`'s own `backgroundColor` came with it**, in `DrawGlyphRun`: the
+  box is filled before the run is drawn, its width summed from the glyph
+  advances the callback is handed and its height from the face's own ascent and
+  descent through `IDWriteFontFace::GetMetrics`. The em box rather than the ink,
+  so two runs of the same size have backgrounds of the same height whatever
+  letters are in them, which is what Pango's attribute and Core Text's
+  rectangle both give. A right-to-left run advances leftwards from its origin,
+  which an odd `bidiLevel` says and the left edge subtracts.
+
+  Six tests in `test_win32_text.cpp`, all on pixels: the background is a box of
+  several hundred green pixels per row with the glyphs still black on top of it,
+  it stops inside the paragraph when only the first of two runs asked for it, a
+  decoration colour paints the line red while the glyphs above it stay black,
+  the dotted and dashed styles put the ink of a line on their row in pieces a
+  fraction of its length and dashed's pieces are longer than dotted's, a double
+  underline makes two row bands where a solid one makes one, and a wavy
+  underline's bottom edge moves across the columns where a straight one's does
+  not.
+
+  One thing the renderer does *not* change: the text shadow still goes through
+  `DrawTextLayout` into an offscreen, because only that bitmap's alpha is read.
+  So a shadow is cast by the glyphs and by a solid line of whatever decoration
+  was asked for, and never by the background box. Both other hosts shadow the
+  glyphs alone, so this is already the closest of the three, and it is written
+  down rather than fixed.
 
   `letterSpacing` was the third row in that group and is done, 2026-10-10:
   `IDWriteTextLayout1::SetCharacterSpacing`, trailing rather than leading

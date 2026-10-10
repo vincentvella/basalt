@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 176 of 279 | 177 of 279 | 167 of 279 |
+| Done | 176 of 279 | 177 of 279 | 170 of 279 |
 | | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `████████████░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -185,7 +185,7 @@ Written inside `style={{...}}`. Read from `____ViewStyle_InternalBase`, `____Tex
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `color` <sub>`foregroundColor`</sub> | ✅ | ✅ | ✅ |  |
-| `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite draws no background; it wants a custom text renderer](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `backgroundColor` | ✅ | ✅ | ✅ |  |
 | `opacity` | ✅ | ✅ | ✅ |  |
 | `fontFamily` | ✅ | ✅ | ✅ |  |
 | `fontSize` | ✅ | ✅ | ✅ |  |
@@ -197,9 +197,9 @@ Written inside `style={{...}}`. Read from `____ViewStyle_InternalBase`, `____Tex
 | `lineHeight` | ✅ | ✅ | ✅ |  |
 | `textAlign` <sub>`alignment`</sub> | ✅ | ✅ | ✅ |  |
 | `writingDirection` <sub>`baseWritingDirection`</sub> | ✅ | ✅ | ✅ |  |
-| `textDecorationColor` | ✅ | ✅ | ◐ | [the line is drawn, its colour and pattern need an IDWriteTextRenderer](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `textDecorationColor` | ✅ | ✅ | ✅ |  |
 | `textDecorationLine` <sub>`textDecorationLineType`</sub> | ✅ | ✅ | ✅ |  |
-| `textDecorationStyle` | ◐ | ◐ | ◐ | [each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy, DirectWrite none of them without a custom renderer](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textDecorationStyle` | ◐ | ◐ | ✅ | [each engine draws the styles it has: Pango no dots or dashes, Core Text no wavy; the Win32 renderer draws all five](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowOffset` | ◐ | ◐ | ◐ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowRadius` | ◐ | ◐ | ◐ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textShadowColor` | ◐ | ◐ | ◐ | [one shadow per paragraph, not per fragment](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |

@@ -242,13 +242,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   2026-10-09**, into `core/TextDecorations.h`, and the style is `partial` on
   both hosts rather than done. That is not laziness, it is the two engines:
 
-  | Style | Pango | Core Text |
-  | --- | --- | --- |
-  | solid | `PANGO_UNDERLINE_SINGLE` | `NSUnderlineStyleSingle` |
-  | double | `PANGO_UNDERLINE_DOUBLE` | `NSUnderlineStyleDouble` |
-  | dotted | nothing | `...Single \| ...PatternDot` |
-  | dashed | nothing | `...Single \| ...PatternDash` |
-  | wavy | `PANGO_UNDERLINE_ERROR` | nothing |
+  | Style | Pango | Core Text | Win32 |
+  | --- | --- | --- | --- |
+  | solid | `PANGO_UNDERLINE_SINGLE` | `NSUnderlineStyleSingle` | `FillRectangle` |
+  | double | `PANGO_UNDERLINE_DOUBLE` | `NSUnderlineStyleDouble` | two of them |
+  | dotted | nothing | `...Single \| ...PatternDot` | `D2D1_DASH_STYLE_DOT` |
+  | dashed | nothing | `...Single \| ...PatternDash` | `D2D1_DASH_STYLE_DASH` |
+  | wavy | `PANGO_UNDERLINE_ERROR` | nothing | `ID2D1PathGeometry` |
 
   Pango's underline is an enum with no patterns in it and its strikethrough is a
   boolean with no style at all, so dotted and dashed fall back to a single line
@@ -256,10 +256,16 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than nothing, which is wrong in a way a reader can see instead of
   wrong in a way that looks like the prop being ignored.
 
-  What would close it is the same work on both: draw the decoration rather than
-  ask for it. GTK already has the hook, `rn_view`'s snapshot, and Pango gives
-  the position and thickness through `pango_font_metrics_get_underline_position`
-  and `..._underline_thickness`; the line itself is a `gtk_snapshot_append_color`
+  **The Win32 column is what closing it looks like, and it is done**, 2026-10-10:
+  a custom `IDWriteTextRenderer` is handed the line's position and thickness and
+  draws it, so that host has all five styles and the colour with them. Which is
+  the argument for the same work on the other two, because the hard part was
+  never the drawing -- the engines already compute the geometry and will hand it
+  over.
+
+  GTK already has the hook, `rn_view`'s snapshot, and Pango gives the position
+  and thickness through `pango_font_metrics_get_underline_position` and
+  `..._underline_thickness`; the line itself is a `gtk_snapshot_append_color`
   per dash. AppKit would need an `NSLayoutManager` subclass or the same manual
   pass in `RnTextLayout`, which draws through `CTLineDraw` and would have to ask
   `CTFontGetUnderlinePosition` for the same two numbers.
@@ -269,8 +275,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   nothing in a dump to assert on; a dump line could only say what was asked for,
   which on GTK would read `dotted` beside a solid line. What asserts these is a
   pixel test per host, which is the thing a dump cannot do: the GTK one renders
-  white text with a red underline and counts red pixels, and the AppKit one does
-  the same in reverse, each with the uncoloured render as its negative control.
+  white text with a red underline and counts red pixels, the AppKit one does
+  the same in reverse, each with the uncoloured render as its negative control,
+  and the Win32 ones measure the shape of the line rather than only its colour,
+  the styles being distinguishable there: how much ink a row carries against the
+  longest unbroken piece of it separates dotted and dashed from solid, two row
+  bands say double, and a bottom edge that moves across the columns says wavy.
 
   **`allowFontScaling` and `maxFontSizeMultiplier` came off this list on
   2026-10-09**, with `fontSizeMultiplier`, into `core/FontScaling.h`. Two things

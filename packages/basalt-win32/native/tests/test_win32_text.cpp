@@ -910,3 +910,324 @@ TEST(text_letter_spacing_applies_to_its_own_run) {
   EXPECT(mixed > plainAll + 10.0f);
   EXPECT(mixed < spacedAll - 10.0f);
 }
+
+// ---------------------------------------------------------------------------
+// What the custom IDWriteTextRenderer draws: a fragment's own
+// `backgroundColor`, `textDecorationColor` and `textDecorationStyle`.
+//
+// All three were recorded rather than done because Direct2D's own renderer has
+// exactly one special case -- a drawing effect that is an `ID2D1Brush`
+// recolours its range -- and none of these three fits through it. DirectWrite
+// draws glyphs and nothing behind them, and `SetUnderline` takes a boolean.
+//
+// Against pixels throughout, for the reason the decoration tests above give: a
+// prop that was read and not drawn is the exact bug, and a test on the struct
+// passes straight through it.
+// ---------------------------------------------------------------------------
+namespace {
+
+// The view and layout both tests below share: wide enough that a line of 20
+// narrow glyphs is well inside it, and large enough that the underline is a
+// few pixels thick -- a dotted line of a one-pixel thickness is a row of
+// single pixels, which is a measurement with no room in it.
+constexpr float kDecorationFontSize = 40.0f;
+constexpr const char *kNarrowGlyphs = "iiiiiiiiiiiiiiiiiiii";
+
+basalt::win32::RnPixels renderParagraph(const RnTextStyle &style,
+                                        const char *text = kNarrowGlyphs) {
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 600, 120);
+  root->setTextLayout(RnWin32TextLayout::create(text, style, 0));
+  return basalt::win32::renderToPixels(*root);
+}
+
+bool inked(const basalt::win32::RnPixels &pixels, unsigned x, unsigned y) {
+  return pixels.at(x, y).alpha > 32;
+}
+
+// The row carrying the most ink, with how much of it was in one unbroken run.
+//
+// For a paragraph of narrow glyphs the busiest row is the decoration, whatever
+// style it is drawn in: even a dotted line puts more pixels on its row than
+// twenty stems put on theirs. Which of `ink` and `longest` is large is then
+// what tells the styles apart -- a dotted line has the ink of a line and the
+// runs of a dot.
+struct BusiestRow {
+  int row{-1};
+  int ink{0};
+  int longest{0};
+};
+
+BusiestRow busiestRow(const basalt::win32::RnPixels &pixels) {
+  BusiestRow busiest;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    int ink = 0;
+    int run = 0;
+    int longest = 0;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      if (inked(pixels, x, y)) {
+        ink++;
+        longest = ++run > longest ? run : longest;
+      } else {
+        run = 0;
+      }
+    }
+    if (ink > busiest.ink) {
+      busiest = BusiestRow{static_cast<int>(y), ink, longest};
+    }
+  }
+  return busiest;
+}
+
+} // namespace
+
+TEST(text_a_background_colour_fills_the_box_behind_the_glyphs) {
+  // The box is the em box -- the face's ascent and descent -- rather than the
+  // ink, so it is taller than the glyphs and continuous across the spaces
+  // between them. Which is what makes it measurable without knowing anything
+  // about the font: a row of several hundred green pixels is not a glyph.
+  RnTextStyle style;
+  style.fontSize = kDecorationFontSize;
+  style.hasBackgroundColour = true;
+  style.backgroundColour[0] = 0.0f;
+  style.backgroundColour[1] = 1.0f;
+  style.backgroundColour[2] = 0.0f;
+  style.backgroundColour[3] = 1.0f;
+
+  const basalt::win32::RnPixels pixels = renderParagraph(style);
+  EXPECT(!pixels.empty());
+
+  int green = 0;
+  int black = 0;
+  int greenRows = 0;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    int rowGreen = 0;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      const auto pixel = pixels.at(x, y);
+      if (pixel.alpha < 128) {
+        continue;
+      }
+      if (pixel.green > 200 && pixel.red < 80 && pixel.blue < 80) {
+        green++;
+        rowGreen++;
+      }
+      if (pixel.red < 80 && pixel.green < 80 && pixel.blue < 80) {
+        black++;
+      }
+    }
+    if (rowGreen > 50) {
+      greenRows++;
+    }
+  }
+
+  // The box is there, and it is a box: several rows of it, each wider than any
+  // glyph. Without the fill in `DrawGlyphRun` there is no green pixel at all.
+  EXPECT(green > 1000);
+  EXPECT(greenRows > 10);
+  // And the glyphs are still drawn on top of it rather than swallowed by it.
+  EXPECT(black > 0);
+}
+
+TEST(text_a_background_colour_covers_only_its_own_run) {
+  // Per fragment, which is the half that a single-run test cannot see: a
+  // background applied to the whole layout would colour the second run too.
+  RnTextStyle plain;
+  plain.fontSize = kDecorationFontSize;
+
+  RnTextStyle backed = plain;
+  backed.hasBackgroundColour = true;
+  backed.backgroundColour[1] = 1.0f;
+  backed.backgroundColour[3] = 1.0f;
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 600, 120);
+  root->setTextLayout(RnWin32TextLayout::createFromRuns(
+      {RnTextRun{"iiiiiiiiii", backed, std::nullopt},
+       RnTextRun{"iiiiiiiiii", plain, std::nullopt}},
+      0));
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(!pixels.empty());
+
+  int leftmost = static_cast<int>(pixels.width());
+  int rightmost = -1;
+  for (unsigned y = 0; y < pixels.height(); y++) {
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      const auto pixel = pixels.at(x, y);
+      if (pixel.alpha < 128 || pixel.green < 200 || pixel.red > 80 || pixel.blue > 80) {
+        continue;
+      }
+      leftmost = std::min(leftmost, static_cast<int>(x));
+      rightmost = std::max(rightmost, static_cast<int>(x));
+    }
+  }
+
+  EXPECT(rightmost > 0);
+  // Starts at the paragraph's own left edge and stops inside it: the second run
+  // is as wide as the first, so a green box that ran past the halfway point
+  // would be one that had been applied to the whole layout.
+  EXPECT(leftmost < 4);
+  EXPECT(rightmost < static_cast<int>(pixels.width() / 2));
+}
+
+TEST(text_a_decoration_colour_is_not_the_text_colour) {
+  // `textDecorationColor`, which was resolved by core/TextDecorations.h and
+  // then dropped here: DirectWrite has no property for it, so the line is drawn
+  // by the renderer in whatever colour the effect carries.
+  RnTextStyle style;
+  style.fontSize = kDecorationFontSize;
+  style.underline = true;
+  style.hasDecorationColour = true;
+  style.decorationColour[0] = 1.0f;
+  style.decorationColour[3] = 1.0f;
+
+  const basalt::win32::RnPixels pixels = renderParagraph(style);
+  EXPECT(!pixels.empty());
+
+  const BusiestRow line = busiestRow(pixels);
+  EXPECT(line.row >= 0);
+  if (line.row < 0) {
+    return;
+  }
+
+  int red = 0;
+  for (unsigned x = 0; x < pixels.width(); x++) {
+    const auto pixel = pixels.at(x, static_cast<unsigned>(line.row));
+    if (pixel.alpha > 128 && pixel.red > 200 && pixel.green < 80 && pixel.blue < 80) {
+      red++;
+    }
+  }
+  // The line is red along its whole length. Black glyphs on the same row would
+  // not be: the default colour is opaque black, which is what this would be
+  // drawn in if the decoration colour were ignored.
+  EXPECT(red > 100);
+
+  // And the glyphs above it are still black, so the decoration colour was not
+  // mistaken for the text colour.
+  int black = 0;
+  for (unsigned y = 0; y < static_cast<unsigned>(line.row); y++) {
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      const auto pixel = pixels.at(x, y);
+      if (pixel.alpha > 128 && pixel.red < 80 && pixel.green < 80 && pixel.blue < 80) {
+        black++;
+      }
+    }
+  }
+  EXPECT(black > 0);
+}
+
+TEST(text_a_dotted_underline_is_broken_and_a_solid_one_is_not) {
+  // The styles DirectWrite has no form of at all. A dotted line has about the
+  // ink of a solid one spread over many short runs, so the pair of numbers --
+  // how much ink, and the longest unbroken piece of it -- separates the three
+  // styles without depending on the font's dash arithmetic.
+  RnTextStyle solid;
+  solid.fontSize = kDecorationFontSize;
+  solid.underline = true;
+
+  RnTextStyle dotted = solid;
+  dotted.decorationStyle = basalt::win32::RnTextDecorationStyle::Dotted;
+
+  RnTextStyle dashed = solid;
+  dashed.decorationStyle = basalt::win32::RnTextDecorationStyle::Dashed;
+
+  const BusiestRow solidRow = busiestRow(renderParagraph(solid));
+  const BusiestRow dottedRow = busiestRow(renderParagraph(dotted));
+  const BusiestRow dashedRow = busiestRow(renderParagraph(dashed));
+
+  // The solid line is one unbroken run the width of the text.
+  EXPECT(solidRow.longest > 100);
+
+  // The dotted one covers a comparable span -- it is on the same row, over the
+  // same text -- in pieces a small fraction of that length.
+  EXPECT(dottedRow.ink > 40);
+  EXPECT(dottedRow.longest < solidRow.longest / 4);
+
+  // And dashed is not a synonym for dotted: Direct2D's DASH is a two-unit dash
+  // where DOT is a zero-length one, so its pieces are longer.
+  EXPECT(dashedRow.longest > dottedRow.longest);
+  EXPECT(dashedRow.longest < solidRow.longest / 4);
+}
+
+TEST(text_a_double_underline_draws_two_lines) {
+  RnTextStyle solid;
+  solid.fontSize = kDecorationFontSize;
+  solid.underline = true;
+
+  RnTextStyle doubled = solid;
+  doubled.decorationStyle = basalt::win32::RnTextDecorationStyle::Double;
+
+  // Bands of consecutive rows wide enough to be a line rather than a glyph. One
+  // for a solid underline, two for a double one, with the gap between them
+  // being what makes it two.
+  const auto lineBands = [](const basalt::win32::RnPixels &pixels) {
+    int bands = 0;
+    bool inBand = false;
+    for (unsigned y = 0; y < pixels.height(); y++) {
+      int run = 0;
+      int longest = 0;
+      for (unsigned x = 0; x < pixels.width(); x++) {
+        if (inked(pixels, x, y)) {
+          longest = ++run > longest ? run : longest;
+        } else {
+          run = 0;
+        }
+      }
+      const bool isLine = longest > 100;
+      if (isLine && !inBand) {
+        bands++;
+      }
+      inBand = isLine;
+    }
+    return bands;
+  };
+
+  EXPECT_EQ(lineBands(renderParagraph(solid)), 1);
+  EXPECT_EQ(lineBands(renderParagraph(doubled)), 2);
+}
+
+TEST(text_a_wavy_underline_is_not_straight) {
+  // The style neither other host can draw: Pango's `ERROR` underline is the
+  // nearest thing and Core Text has none, where a renderer that can take a path
+  // can draw a squiggle.
+  //
+  // Measured as the one thing a wave is and a line is not: its lowest edge
+  // moves. For every column carrying ink, the bottom-most inked row is the
+  // underline's -- the glyphs sit above it -- so a straight line gives the same
+  // row for every column and a wave does not.
+  const auto bottomEdgeSpread = [](const basalt::win32::RnPixels &pixels) {
+    int highest = static_cast<int>(pixels.height());
+    int lowest = -1;
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      int bottom = -1;
+      for (unsigned y = 0; y < pixels.height(); y++) {
+        if (inked(pixels, x, y)) {
+          bottom = static_cast<int>(y);
+        }
+      }
+      if (bottom < 0) {
+        continue;
+      }
+      highest = std::min(highest, bottom);
+      lowest = std::max(lowest, bottom);
+    }
+    return lowest < 0 ? -1 : lowest - highest;
+  };
+
+  RnTextStyle solid;
+  solid.fontSize = kDecorationFontSize;
+  solid.underline = true;
+
+  RnTextStyle wavy = solid;
+  wavy.decorationStyle = basalt::win32::RnTextDecorationStyle::Wavy;
+
+  const int straight = bottomEdgeSpread(renderParagraph(solid));
+  const int wave = bottomEdgeSpread(renderParagraph(wavy));
+
+  // A solid underline's bottom edge is flat, to within the antialiasing of one
+  // row. The wave's rises and falls by its own amplitude, which is the line's
+  // thickness either side of where the straight one would have been.
+  EXPECT(straight >= 0);
+  EXPECT(straight <= 1);
+  EXPECT(wave >= 3);
+}

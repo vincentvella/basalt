@@ -193,6 +193,25 @@ std::string transformedFragmentText(const TextAttributes &attributes, const std:
   return text;
 }
 
+// React Native's five decoration styles, as the renderer's own enum. A
+// one-to-one mapping, which is the point of having the enum: this host draws
+// every one of them, so there is nothing to collapse.
+RnTextDecorationStyle toDecorationStyle(facebook::react::TextDecorationStyle style) {
+  switch (style) {
+    case facebook::react::TextDecorationStyle::Double:
+      return RnTextDecorationStyle::Double;
+    case facebook::react::TextDecorationStyle::Dotted:
+      return RnTextDecorationStyle::Dotted;
+    case facebook::react::TextDecorationStyle::Dashed:
+      return RnTextDecorationStyle::Dashed;
+    case facebook::react::TextDecorationStyle::Wavy:
+      return RnTextDecorationStyle::Wavy;
+    case facebook::react::TextDecorationStyle::Solid:
+      return RnTextDecorationStyle::Solid;
+  }
+  return RnTextDecorationStyle::Solid;
+}
+
 RnTextStyle buildTextStyle(const TextAttributes &attributes) {
   RnTextStyle style;
 
@@ -255,15 +274,27 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
     }
   }
 
-  // `textDecorationLine`, resolved by core/TextDecorations.h so that the three
-  // hosts agree on which lines an app asked for. The style and the colour are
-  // resolved there too and dropped here: a DirectWrite underline is a boolean
-  // per range, and anything more needs a custom renderer. Falling back to a
-  // solid line in the text's colour rather than drawing nothing, which is the
-  // choice that header argues for.
+  // `textDecorationLine`, `textDecorationColor` and `textDecorationStyle`, all
+  // three resolved by core/TextDecorations.h so that the hosts agree on what an
+  // app asked for.
+  //
+  // All three arrive here, where two of them used to be dropped: a DirectWrite
+  // underline is a boolean per range, so the colour and the style are carried
+  // to the custom renderer in RnWin32TextLayout.cpp and drawn there. Which
+  // leaves this the one host that draws all five styles -- Core Text has no
+  // wavy and Pango has no dotted or dashed, and both of those fall back to a
+  // single line.
   if (const auto decoration = basalt::textDecoration(attributes)) {
     style.underline = decoration->underline;
     style.strikethrough = decoration->strikethrough;
+    style.decorationStyle = toDecorationStyle(decoration->style);
+    if (decoration->hasColor) {
+      style.hasDecorationColour = true;
+      style.decorationColour[0] = decoration->red;
+      style.decorationColour[1] = decoration->green;
+      style.decorationColour[2] = decoration->blue;
+      style.decorationColour[3] = decoration->alpha;
+    }
   }
 
   // Through core/TextColors.h rather than straight off the prop, which is what
@@ -275,6 +306,21 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
   style.color[1] = foreground.green;
   style.color[2] = foreground.blue;
   style.color[3] = foreground.alpha;
+
+  // A fragment's own `backgroundColor`, from the same header: an unset one is
+  // nothing rather than transparent black, which is the distinction that keeps
+  // a box from being painted behind text that asked for none.
+  //
+  // DirectWrite draws no background at all -- it draws glyphs -- so this is the
+  // other half of what the custom renderer is for, and it fills the box in
+  // `DrawGlyphRun`.
+  if (const auto background = basalt::textBackgroundColor(attributes)) {
+    style.hasBackgroundColour = true;
+    style.backgroundColour[0] = background->red;
+    style.backgroundColour[1] = background->green;
+    style.backgroundColour[2] = background->blue;
+    style.backgroundColour[3] = background->alpha;
+  }
 
   return style;
 }
