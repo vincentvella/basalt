@@ -121,10 +121,20 @@ void Win32MountingManager::executeMount(SurfaceId surfaceId, MountingTransaction
 
 void Win32MountingManager::applyTransaction(SurfaceId surfaceId,
                                             MountingTransaction &&transaction) {
+  // `maintainVisibleContentPosition` is measured before the mutations and acted
+  // on after them, which is the only place either half can go: the prop is
+  // about how far a child moved *during* a transaction. iOS hangs the same pair
+  // off `mountingTransactionWillMount` and `...DidMount`.
+  scrollViews_.prepareMaintainVisiblePosition();
+
   // The walk itself is in core/MountingWalk.h and is shared with the other two
   // desktops; what is Windows about mounting is below, in the operations it
   // calls back into.
   applyMutations(transaction.getMutations());
+
+  // And the other half, before anything repaints: the offset moves so that the
+  // child the list was looking at is still under the eye.
+  scrollViews_.adjustForMaintainVisiblePosition();
 
   // Tell the UIManager the transaction is on screen. Anything registered as a
   // mount hook -- Reanimated's is the one that matters -- is waiting for this,

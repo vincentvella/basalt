@@ -38,6 +38,7 @@
 #include "ScrollBounds.h"
 #include "ScrollIndicator.h"
 #include "ScrollSnap.h"
+#include "ScrollVisiblePosition.h"
 
 #include <react/renderer/components/scrollview/ScrollViewShadowNode.h>
 #include <react/renderer/core/EventEmitter.h>
@@ -46,6 +47,7 @@
 #include <functional>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace basalt {
 
@@ -66,6 +68,17 @@ class AppKitScrollViewManager {
   void update(RnAppKitView *view, const facebook::react::ShadowView &shadowView);
 
   void remove(facebook::react::Tag tag);
+  // `maintainVisibleContentPosition`, in the two halves a mounting transaction
+  // needs: the children are measured before the mutations and the offset is
+  // moved after, so content under the eye stays where it is while items are
+  // inserted above it. The arithmetic is core/ScrollVisiblePosition.h's.
+  //
+  // Public because the mounting manager is what knows when a transaction starts
+  // and ends, which is upstream's division too: `mountingTransactionWillMount`
+  // and `...DidMount` on iOS.
+  void prepareMaintainVisiblePosition();
+  void adjustForMaintainVisiblePosition();
+
 
   // ScrollView's imperative commands: scrollTo, scrollToEnd. Returns false if
   // the command is not one this handles.
@@ -126,6 +139,13 @@ class AppKitScrollViewManager {
     double offsetX{0};
     double offsetY{0};
 
+    // `maintainVisibleContentPosition`, as React Native hands it over: a
+    // minimum index and an optional threshold, or nothing at all when the list
+    // never asked.
+    std::optional<facebook::react::ScrollViewMaintainVisibleContentPosition> maintainVisible{};
+    // The child being held still across the current transaction, measured by
+    // `prepareMaintainVisiblePosition` and used by the adjust that follows.
+    ScrollPinnedChild pinned{};
     // `indicatorStyle`: which colour the overlay thumb is drawn in. Held as
     // core's enum rather than React Native's, the view layer below knowing
     // nothing about either.
@@ -162,6 +182,11 @@ class AppKitScrollViewManager {
     id displayLink{nil};
     double animationLastSeconds{0};
   };
+
+  // The rows of the content view, on whichever axis scrolls, for
+  // `maintainVisibleContentPosition`. The one part of that prop a toolkit
+  // knows: core decides what to do with the boxes.
+  std::vector<ScrollChildBox> contentChildBoxes(const Entry &entry) const;
 
   void applyOffset(Entry &entry, double x, double y, bool emitEvent);
   // Recomputes both overlay scrollbars and hands them to the view to draw.

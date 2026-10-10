@@ -75,6 +75,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_animation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_bounds.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_visible_position.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_indicator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_snap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_close.cpp
@@ -220,6 +221,8 @@ if(DEFINED RN_DIR)
     core/ScrollBounds.cpp
     core/ScrollIndicator.cpp
     core/ScrollSnap.cpp
+    # Keeping the content still while items are inserted above it.
+    core/ScrollVisiblePosition.cpp
     # `Appearance`, and the portable half of light-vs-dark.
     core/AppearanceModule.cpp
     # Blob, File and FileReader -- portable in full.

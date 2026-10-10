@@ -236,10 +236,6 @@
     "sv-indicator-default": {
       "text": "white is white; iOS's 'default' differs from 'black' only by a white border around the thumb, which these hosts do not draw",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
-    },
-    "sv-untouched": {
-      "text": "a desktop question nobody has answered; the entry lists the group",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
     }
   },
   "statuses": {
@@ -1992,10 +1988,9 @@
       "windows": "yes"
     },
     "BaseScrollViewProps.maintainVisibleContentPosition": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "sv-untouched"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
     },
     "BaseScrollViewProps.snapToStart": {
       "linux": "yes",

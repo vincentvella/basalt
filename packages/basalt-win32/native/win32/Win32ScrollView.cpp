@@ -112,6 +112,11 @@ void Win32ScrollViewManager::update(RnWin32View *view, const ShadowView &shadowV
     // `centerContent`, applied below once the content size is known.
     entry.centerContent = props->centerContent;
 
+    // `maintainVisibleContentPosition`, remembered for the next transaction:
+    // the work it asks for happens around the mutations rather than while a
+    // prop is being read. See `prepareMaintainVisiblePosition`.
+    entry.maintainVisible = props->maintainVisibleContentPosition;
+
     // `indicatorStyle`, resolved to a colour by core so that all three hosts
     // draw the same thumb for the same prop.
     switch (props->indicatorStyle) {
@@ -205,6 +210,116 @@ void Win32ScrollViewManager::update(RnWin32View *view, const ShadowView &shadowV
   // Here as well as in applyOffset: a list that grew or a window that was
   // resized changes the thumb without changing the offset at all.
   updateIndicators(entry);
+}
+
+// ---------------------------------------------------------------------------
+// maintainVisibleContentPosition
+//
+// Two halves around a mounting transaction: measure the child being held still
+// before the mutations, and move the offset by however far it moved after. The
+// arithmetic -- which child, how far, and whether the list was near enough to
+// the start to follow the new content instead -- is core/ScrollVisiblePosition.h.
+//
+// What is here is the part only a toolkit knows: where this host's children
+// are. React Native wraps a ScrollView's children in exactly one content view,
+// so the rows are that view's children.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Whether the list scrolls sideways, decided the way upstream decides it: by
+// the content being wider than the view rather than by a prop, there being no
+// prop for it.
+bool scrollsHorizontally(const Size &container, const Size &content) {
+  return content.width > container.width;
+}
+
+} // namespace
+
+std::vector<ScrollChildBox> Win32ScrollViewManager::contentChildBoxes(const Entry &entry) const {
+  std::vector<ScrollChildBox> boxes;
+  if (entry.view == nullptr || entry.view->children().empty()) {
+    return boxes;
+  }
+  // The content view, which React Native always makes and always makes exactly
+  // one of. Its children are the rows.
+  const RnWin32View *content = entry.view->children().front();
+  if (content == nullptr) {
+    return boxes;
+  }
+  const bool horizontal = scrollsHorizontally(entry.containerSize, entry.contentSize);
+  for (const RnWin32View *child : content->children()) {
+    if (child == nullptr) {
+      continue;
+    }
+    const auto &frame = child->frame();
+    boxes.push_back(ScrollChildBox{.tag = static_cast<int>(child->tag()),
+                                   .leading = horizontal ? frame.x : frame.y,
+                                   .length = horizontal ? frame.width : frame.height});
+  }
+  return boxes;
+}
+
+void Win32ScrollViewManager::prepareMaintainVisiblePosition() {
+  for (auto &[tag, entry] : entries_) {
+    entry.pinned = {};
+    if (!entry.maintainVisible.has_value()) {
+      continue;
+    }
+    const bool horizontal = scrollsHorizontally(entry.containerSize, entry.contentSize);
+    entry.pinned = firstVisibleChild(contentChildBoxes(entry),
+                                     entry.maintainVisible->minIndexForVisible,
+                                     horizontal ? entry.offsetX : entry.offsetY);
+  }
+}
+
+void Win32ScrollViewManager::adjustForMaintainVisiblePosition() {
+  for (auto &[tag, entry] : entries_) {
+    if (!entry.maintainVisible.has_value() || !entry.pinned.has) {
+      continue;
+    }
+    const bool horizontal = scrollsHorizontally(entry.containerSize, entry.contentSize);
+    const double offset = horizontal ? entry.offsetX : entry.offsetY;
+
+    // The same child, found again by tag: its *position in the list* is exactly
+    // what the mutation may have changed, so an index would find a different
+    // row. A child that is gone is not adjusted for, which is upstream's
+    // behaviour too -- it gives up rather than guessing.
+    const ScrollPinnedChild pinned = entry.pinned;
+    entry.pinned = {};
+    std::optional<double> leading;
+    for (const ScrollChildBox &box : contentChildBoxes(entry)) {
+      if (box.tag == pinned.tag) {
+        leading = box.leading;
+        break;
+      }
+    }
+    if (!leading.has_value()) {
+      continue;
+    }
+
+    const ScrollVisibleAdjustment adjustment = visiblePositionAdjustment(
+        pinned.leading, *leading, offset, entry.maintainVisible->autoscrollToTopThreshold);
+    if (!adjustment.move) {
+      continue;
+    }
+
+    if (horizontal) {
+      applyOffset(entry, offset + adjustment.delta, entry.offsetY, true);
+    } else {
+      applyOffset(entry, entry.offsetX, offset + adjustment.delta, true);
+    }
+
+    // And the start, animated, when the list was near enough to it to be
+    // following the new content rather than holding its place.
+    if (adjustment.autoscrollToStart) {
+      if (horizontal) {
+        scrollTowards(entry, 0.0, entry.offsetY, true);
+      } else {
+        scrollTowards(entry, entry.offsetX, 0.0, true);
+      }
+    }
+  }
 }
 
 void Win32ScrollViewManager::remove(Tag tag) {

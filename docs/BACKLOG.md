@@ -29,7 +29,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | [Text](backlog/text.md) | 7 | Measurement and layout gaps. |
 | [TextInput](backlog/textinput.md) | 4 | A controlled value applied by heuristic, the forked component, and the Windows selection highlight. |
 | [Image](backlog/image.md) | 5 | Decorative props, and assets over the network: fetching, caching, progress. |
-| [ScrollView](backlog/scrollview.md) | 5 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
+| [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |
 | [Accessibility](backlog/accessibility.md) | 5 | Nothing has been tested against a real screen reader. |
 | [Correctness](backlog/correctness.md) | 2 | Things that work but not quite right. |

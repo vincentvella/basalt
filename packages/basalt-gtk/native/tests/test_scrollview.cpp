@@ -19,6 +19,7 @@
 
 #include "TestHarness.h"
 
+#include "GtkMountingManager.h"
 #include "GtkScrollView.h"
 #include "RnView.h"
 
@@ -27,10 +28,12 @@
 #include <react/renderer/components/scrollview/ScrollViewState.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <sstream>
 
 using facebook::react::LayoutMetrics;
+using facebook::react::MountingTransaction;
 using facebook::react::Point;
 using facebook::react::Rect;
 using facebook::react::ScrollViewProps;
@@ -38,6 +41,10 @@ using facebook::react::ScrollViewShadowNode;
 using facebook::react::ScrollViewState;
 using facebook::react::ShadowNodeFamily;
 using facebook::react::ShadowView;
+using facebook::react::ShadowViewMutation;
+using facebook::react::ShadowViewMutationList;
+using facebook::react::TransactionTelemetry;
+using facebook::react::ViewProps;
 using facebook::react::Size;
 using facebook::react::SurfaceId;
 using facebook::react::Tag;
@@ -57,7 +64,9 @@ ShadowView makeScrollView(Tag tag,
                           Point contentOffset = Point{0, 0},
                           bool centerContent = false,
                           facebook::react::ScrollViewIndicatorStyle indicatorStyle =
-                              facebook::react::ScrollViewIndicatorStyle::Default) {
+                              facebook::react::ScrollViewIndicatorStyle::Default,
+                          std::optional<facebook::react::ScrollViewMaintainVisibleContentPosition>
+                              maintainVisible = std::nullopt) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = width, .height = height}};
 
@@ -67,6 +76,7 @@ ShadowView makeScrollView(Tag tag,
   props->contentOffset = contentOffset;
   props->centerContent = centerContent;
   props->indicatorStyle = indicatorStyle;
+  props->maintainVisibleContentPosition = maintainVisible;
 
   ScrollViewState data;
   // Seeded from the prop, which is what ScrollViewShadowNode does for real:
@@ -406,4 +416,196 @@ TEST(scrollview_indicator_style_reaches_the_thumb) {
   const std::string reported(whiteDump);
   g_free(whiteDump);
   EXPECT(reported.find("scrollbar-colour=(1,1,1,0.35)") != std::string::npos);
+}
+
+// --- maintainVisibleContentPosition ------------------------------------------
+//
+// The prop a chat list is written with: messages arrive above what the person
+// is reading, and the content under their eye must not jump by the height of
+// whatever was inserted.
+//
+// Through the *mounting* manager rather than the scroll manager, which the rest
+// of this file uses: the two halves of this run around a transaction, so a test
+// that called them itself would not be testing that anything calls them. The
+// arithmetic is tested in core/tests/test_scroll_visible_position.cpp.
+namespace {
+
+ShadowView makePlainView(Tag tag, float x, float y, float width, float height) {
+  LayoutMetrics metrics;
+  metrics.frame = {.origin = {.x = x, .y = y}, .size = {.width = width, .height = height}};
+
+  ShadowView view;
+  view.componentName = "View";
+  view.surfaceId = kSurfaceId;
+  view.tag = tag;
+  view.props = std::make_shared<ViewProps>();
+  view.layoutMetrics = metrics;
+  return view;
+}
+
+void applyTo(basalt::GtkMountingManager &manager, ShadowViewMutationList &&mutations) {
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 1, std::move(mutations), TransactionTelemetry{}));
+}
+
+// A ScrollView with a content view and two hundred-point rows under it, which
+// is the smallest tree the prop can be asked about.
+void mountList(basalt::GtkMountingManager &manager, const ShadowView &scroller) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(scroller));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, scroller, 0));
+  const ShadowView content = makePlainView(11, 0, 0, 400, 1000);
+  mutations.push_back(ShadowViewMutation::CreateMutation(content));
+  mutations.push_back(ShadowViewMutation::InsertMutation(10, content, 0));
+  const ShadowView first = makePlainView(12, 0, 0, 400, 100);
+  const ShadowView second = makePlainView(13, 0, 100, 400, 100);
+  mutations.push_back(ShadowViewMutation::CreateMutation(first));
+  mutations.push_back(ShadowViewMutation::InsertMutation(11, first, 0));
+  mutations.push_back(ShadowViewMutation::CreateMutation(second));
+  mutations.push_back(ShadowViewMutation::InsertMutation(11, second, 1));
+  applyTo(manager, std::move(mutations));
+}
+
+// The first row grows by a hundred points, which pushes the second one down by
+// the same -- the shape an insertion above the visible content has.
+void growTheFirstRow(basalt::GtkMountingManager &manager) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makePlainView(12, 0, 0, 400, 100), makePlainView(12, 0, 0, 400, 200), kSurfaceId));
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makePlainView(13, 0, 100, 400, 100), makePlainView(13, 0, 200, 400, 100), kSurfaceId));
+  applyTo(manager, std::move(mutations));
+}
+
+double offsetOf(basalt::GtkMountingManager &manager, Tag tag) {
+  double x = 0;
+  double y = 0;
+  rn_view_get_scroll_offset(manager.viewForTag(tag), &x, &y);
+  return y;
+}
+
+} // namespace
+
+TEST(scrollview_maintain_visible_content_position_holds_the_content_still) {
+  basalt::GtkMountingManager manager;
+  RnView *root = manager.createSurfaceRoot(kSurfaceId);
+  rn_view_set_frame(root, 0, 0, 400, 300);
+
+  facebook::react::ScrollViewMaintainVisibleContentPosition maintain;
+  maintain.minIndexForVisible = 0;
+  mountList(manager,
+            makeScrollView(10,
+                           400,
+                           300,
+                           400,
+                           1000,
+                           0,
+                           false,
+                           Point{0, 0},
+                           false,
+                           facebook::react::ScrollViewIndicatorStyle::Default,
+                           maintain));
+
+  // Scrolled to 150: the first row is entirely above the viewport and the
+  // second is the first with anything on screen, so the second is the one held
+  // still.
+  manager.applyCommand(10, "scrollTo", folly::dynamic::array(0, 150, false));
+  EXPECT_NEAR(offsetOf(manager, 10), 150.0, 0.001);
+
+  growTheFirstRow(manager);
+
+  // The row moved down by a hundred, so the offset did: what was under the eye
+  // still is.
+  EXPECT_NEAR(offsetOf(manager, 10), 250.0, 0.001);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(scrollview_a_list_that_did_not_ask_lets_the_content_jump) {
+  // The control, and the behaviour of every list that never set the prop: the
+  // offset stays where it was and the content under it moves.
+  basalt::GtkMountingManager manager;
+  RnView *root = manager.createSurfaceRoot(kSurfaceId);
+  rn_view_set_frame(root, 0, 0, 400, 300);
+
+  mountList(manager, makeScrollView(10, 400, 300, 400, 1000));
+  manager.applyCommand(10, "scrollTo", folly::dynamic::array(0, 150, false));
+  growTheFirstRow(manager);
+
+  EXPECT_NEAR(offsetOf(manager, 10), 150.0, 0.001);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(scrollview_min_index_for_visible_skips_a_header) {
+  // `minIndexForVisible` of 1 means the first row is not a candidate, so at the
+  // top of the list the second one is watched -- and it moves, where the first
+  // does not. A list that watched the header would adjust by nothing.
+  basalt::GtkMountingManager manager;
+  RnView *root = manager.createSurfaceRoot(kSurfaceId);
+  rn_view_set_frame(root, 0, 0, 400, 300);
+
+  facebook::react::ScrollViewMaintainVisibleContentPosition maintain;
+  maintain.minIndexForVisible = 1;
+  mountList(manager,
+            makeScrollView(10,
+                           400,
+                           300,
+                           400,
+                           1000,
+                           0,
+                           false,
+                           Point{0, 0},
+                           false,
+                           facebook::react::ScrollViewIndicatorStyle::Default,
+                           maintain));
+
+  EXPECT_NEAR(offsetOf(manager, 10), 0.0, 0.001);
+  growTheFirstRow(manager);
+  EXPECT_NEAR(offsetOf(manager, 10), 100.0, 0.001);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(scrollview_a_list_near_the_start_follows_the_new_content) {
+  // `autoscrollToTopThreshold`: a list within that many points of the start is
+  // taken to the start instead of holding its place, which is what a chat view
+  // sitting where the new messages arrive should do. Animated, so the
+  // assertion runs the animation out.
+  basalt::GtkMountingManager manager;
+  RnView *root = manager.createSurfaceRoot(kSurfaceId);
+  rn_view_set_frame(root, 0, 0, 400, 300);
+
+  // `minIndexForVisible` of 1 so that the row being watched is one that *moves*:
+  // at the top of the list the first row is watched and stays put, and nothing
+  // -- including this -- happens when the watched child did not move. Which is
+  // upstream's rule and is why the threshold alone is not enough to trigger it.
+  facebook::react::ScrollViewMaintainVisibleContentPosition maintain;
+  maintain.minIndexForVisible = 1;
+  maintain.autoscrollToTopThreshold = 50;
+  mountList(manager,
+            makeScrollView(10,
+                           400,
+                           300,
+                           400,
+                           1000,
+                           0,
+                           false,
+                           Point{0, 0},
+                           false,
+                           facebook::react::ScrollViewIndicatorStyle::Default,
+                           maintain));
+
+  manager.applyCommand(10, "scrollTo", folly::dynamic::array(0, 20, false));
+  growTheFirstRow(manager);
+
+  // The instant half happened: the watched row moved a hundred points down and
+  // the offset went with it. The animated half is on its way to the start.
+  EXPECT_NEAR(offsetOf(manager, 10), 120.0, 0.001);
+  for (int frame = 0; frame < 60; frame++) {
+    manager.scrollViews().advanceAnimation(10, 1.0 / 60.0);
+  }
+  EXPECT_NEAR(offsetOf(manager, 10), 0.0, 0.001);
+
+  manager.destroySurfaceRoot(kSurfaceId);
 }

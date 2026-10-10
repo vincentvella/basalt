@@ -155,9 +155,19 @@ void AppKitMountingManager::executeMount(SurfaceId surfaceId, MountingTransactio
 }
 
 void AppKitMountingManager::applyTransaction(SurfaceId surfaceId, MountingTransaction &&transaction) {
+  // `maintainVisibleContentPosition` is measured before the mutations and acted
+  // on after them, which is the only place either half can go: the prop is
+  // about how far a child moved *during* a transaction. iOS hangs the same pair
+  // off `mountingTransactionWillMount` and `...DidMount`.
+  scrollViews_.prepareMaintainVisiblePosition();
+
   // The walk itself is in core/MountingWalk.h and is shared with GTK; what is
   // AppKit about mounting is below, in the operations it calls back into.
   applyMutations(transaction.getMutations());
+
+  // And the other half, before anything repaints: the offset moves so that the
+  // child the list was looking at is still under the eye.
+  scrollViews_.adjustForMaintainVisiblePosition();
 
   // Now that the tree is on screen, anything `autoFocus` asked for can be given
   // focus. Not before: see AppKitTextInput.h.

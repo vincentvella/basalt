@@ -30,6 +30,7 @@
 #include <react/renderer/components/view/ViewProps.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 
 using basalt::Win32MountingManager;
@@ -84,7 +85,9 @@ ShadowView makeScrollView(Tag tag,
                           Point initialOffset = Point{0, 0},
                           bool centerContent = false,
                           facebook::react::ScrollViewIndicatorStyle indicatorStyle =
-                              facebook::react::ScrollViewIndicatorStyle::Default) {
+                              facebook::react::ScrollViewIndicatorStyle::Default,
+                          std::optional<facebook::react::ScrollViewMaintainVisibleContentPosition>
+                              maintainVisible = std::nullopt) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = x, .y = y}, .size = {.width = width, .height = height}};
 
@@ -97,6 +100,7 @@ ShadowView makeScrollView(Tag tag,
   props->contentOffset = initialOffset;
   props->centerContent = centerContent;
   props->indicatorStyle = indicatorStyle;
+  props->maintainVisibleContentPosition = maintainVisible;
 
   ScrollViewState data;
   data.contentOffset = initialOffset;
@@ -522,6 +526,122 @@ TEST(win32_indicator_style_reaches_the_thumb) {
 
   const std::string white = manager.viewForTag(10)->describeTree();
   EXPECT(white.find("scrollbar-colour=(1,1,1,0.35)") != std::string::npos);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// --- maintainVisibleContentPosition ------------------------------------------
+//
+// The prop a chat list is written with: messages arrive above what the person
+// is reading, and the content under their eye must not jump by the height of
+// whatever was inserted.
+//
+// Driven through real transactions, which is the only way to drive it: the two
+// halves run before and after the mutations, so a test that called them itself
+// would not be testing that anything calls them. The arithmetic is
+// core/tests/test_scroll_visible_position.cpp's.
+namespace {
+
+facebook::react::ScrollViewMaintainVisibleContentPosition maintainFrom(int minIndex) {
+  facebook::react::ScrollViewMaintainVisibleContentPosition maintain;
+  maintain.minIndexForVisible = minIndex;
+  return maintain;
+}
+
+ShadowView listScroller(
+    std::optional<facebook::react::ScrollViewMaintainVisibleContentPosition> maintain) {
+  return makeScrollView(10,
+                        0,
+                        0,
+                        400,
+                        300,
+                        400,
+                        1000,
+                        true,
+                        Point{0, 0},
+                        false,
+                        facebook::react::ScrollViewIndicatorStyle::Default,
+                        maintain);
+}
+
+// A ScrollView with a content view and two hundred-point rows under it, which
+// is the smallest tree the prop can be asked about.
+void mountList(Win32MountingManager &manager, const ShadowView &scroller) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(scroller));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, scroller, 0));
+  const ShadowView content = makeView(11, 0, 0, 400, 1000);
+  mutations.push_back(ShadowViewMutation::CreateMutation(content));
+  mutations.push_back(ShadowViewMutation::InsertMutation(10, content, 0));
+  const ShadowView first = makeView(12, 0, 0, 400, 100);
+  const ShadowView second = makeView(13, 0, 100, 400, 100);
+  mutations.push_back(ShadowViewMutation::CreateMutation(first));
+  mutations.push_back(ShadowViewMutation::InsertMutation(11, first, 0));
+  mutations.push_back(ShadowViewMutation::CreateMutation(second));
+  mutations.push_back(ShadowViewMutation::InsertMutation(11, second, 1));
+  apply(manager, std::move(mutations));
+}
+
+// The first row grows by a hundred points, which pushes the second one down by
+// the same -- the shape an insertion above the visible content has.
+void growTheFirstRow(Win32MountingManager &manager) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makeView(12, 0, 0, 400, 100), makeView(12, 0, 0, 400, 200), kSurfaceId));
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makeView(13, 0, 100, 400, 100), makeView(13, 0, 200, 400, 100), kSurfaceId));
+  apply(manager, std::move(mutations));
+}
+
+} // namespace
+
+TEST(win32_maintain_visible_content_position_holds_the_content_still) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mountList(manager, listScroller(maintainFrom(0)));
+
+  // Scrolled to 150: the first row is entirely above the viewport and the
+  // second is the first with anything on screen, so the second is held still.
+  manager.scrollAt(root, 200, 150, 0, 150);
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 150.0, 0.01);
+
+  growTheFirstRow(manager);
+
+  // The row moved down by a hundred, so the offset did: what was under the eye
+  // still is.
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 250.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_a_list_that_did_not_ask_lets_the_content_jump) {
+  // The control, and the behaviour of every list that never set the prop.
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mountList(manager, listScroller(std::nullopt));
+
+  manager.scrollAt(root, 200, 150, 0, 150);
+  growTheFirstRow(manager);
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 150.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_min_index_for_visible_skips_a_header) {
+  // At the top of the list the first row is the visible one, and an index of 1
+  // takes it out of the running -- so the second row is watched, and that one
+  // moves. A list that watched the header would adjust by nothing.
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mountList(manager, listScroller(maintainFrom(1)));
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 0.0, 0.01);
+  growTheFirstRow(manager);
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 100.0, 0.01);
 
   manager.destroySurfaceRoot(kSurfaceId);
 }

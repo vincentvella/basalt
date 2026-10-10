@@ -2,16 +2,14 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (4):**
 
 1. Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11
 2. contentBoundingRect
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
 5. ~~`ScrollViewProps` has no rows on the support page~~
-6. maintainVisibleContentPosition is a desktop question nobody has answered;
-   ~~snapping's three, contentOffset, centerContent and indicatorStyle~~ are
-   done
+6. ~~Seven ScrollView props are a desktop question nobody has answered~~
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -125,10 +123,13 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than trusting this file, which is how the `<TextInput>` rows found two
   stale claims in backlog/textinput.md on the day they were added.
 
-- **One `<ScrollView>` prop is a desktop question nobody has answered.**
-  Seven of them were, until 2026-10-10. Snapping's three, `contentOffset` and
-  `centerContent` are done, `indicatorStyle` is as done as these hosts draw, and
-  what is left is `maintainVisibleContentPosition`. Surfaced on 2026-10-09 by giving every prop a row,
+- ~~**Seven `<ScrollView>` props are a desktop question nobody has answered.**~~
+  All seven are answered, 2026-10-10. Snapping's three, `contentOffset`,
+  `centerContent` and `maintainVisibleContentPosition` are done;
+  `indicatorStyle` is as done as these hosts draw, iOS's `default` differing
+  from `black` only by a border. The paragraphs below are what each took, kept
+  because the order and the surprises are the useful part -- two of the seven
+  were half working already and the entry said otherwise. Surfaced on 2026-10-09 by giving every prop a row,
   which is the point of the rows: each of these is a thing an app can write that
   no host reads, and none of them is somebody else's platform.
 
@@ -161,11 +162,42 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   where it is; what it would miss is a `contentOffset` clamped by the content
   being shorter than it asked for.
 
-  `maintainVisibleContentPosition` is the one that matters most for a chat
-  list, and the hardest: it keeps the visible content still while items are
-  prepended, which means comparing content sizes across a mount and adjusting
-  the offset before anything is drawn. The shape of it belongs in `core/`, since
-  the arithmetic is the same on all three.
+  ~~`maintainVisibleContentPosition`~~ is done, 2026-10-10, and the entry had
+  the shape right: the arithmetic is `core/ScrollVisiblePosition.h` and each
+  host supplies the one thing a toolkit knows, which is where its children are.
+  It was comparing *one child's* position rather than content sizes, which is
+  how upstream does it and is sturdier: a content size can change for reasons
+  that have nothing to do with the visible rows.
+
+  The two halves hang off the mounting transaction, which is the only place they
+  can: the prop is about how far a child moved *during* one. iOS hangs the same
+  pair off `mountingTransactionWillMount` and `...DidMount`; here the three
+  mounting managers call `prepareMaintainVisiblePosition` before the mutations
+  and `adjustForMaintainVisiblePosition` after, before anything repaints.
+
+  Four rules, each from `RCTScrollViewComponentView` and each with a test:
+
+  - **The child watched is the first partly visible one** from
+    `minIndexForVisible` on, which is to say the first whose trailing edge is
+    past the offset. A list keeps a header out of the running with that index.
+  - **The last child is the fallback**, because a list scrolled past everything
+    has no visible child and watching nothing would adjust by nothing -- which
+    is the state a chat view is in almost all the time.
+  - **It is found again by tag, not by index**, since its position in the list
+    is exactly what the mutation may have changed. A child that is gone is not
+    adjusted for.
+  - **Half a point is not a move.** Layout repeats to within a rounding error,
+    and a list that shifted by that on every transaction would drift.
+
+  `autoscrollToTopThreshold` is the opposite behaviour and reads oddly until the
+  case is named: a list within that many points of the start should *follow* the
+  new content rather than hold still, because that is where the new messages
+  arrive. Animated, where the ordinary adjustment is instant, which is upstream's
+  division too.
+
+  Eleven core tests and ten across the three hosts, the host ones driven through
+  real transactions because a test that called the two halves itself would not
+  be testing that anything calls them.
 
   ~~`snapToStart`, `snapToEnd` and `disableIntervalMomentum`~~ are done,
   2026-10-10, in `core/ScrollSnap.h` as this entry predicted -- with one thing

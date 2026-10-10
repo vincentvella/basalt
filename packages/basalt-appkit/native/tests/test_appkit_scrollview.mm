@@ -12,6 +12,7 @@
 
 #include "TestHarness.h"
 
+#include "AppKitMountingManager.h"
 #include "AppKitScrollView.h"
 #include "ScrollIndicator.h"
 
@@ -22,16 +23,22 @@
 #include <react/renderer/components/scrollview/ScrollViewState.h>
 
 #include <memory>
+#include <optional>
 #include <sstream>
 
 using facebook::react::EventEmitter;
 using facebook::react::LayoutMetrics;
+using facebook::react::MountingTransaction;
 using facebook::react::ScrollViewProps;
 using facebook::react::ScrollViewShadowNode;
 using facebook::react::ScrollViewState;
 using facebook::react::ShadowNodeFamily;
 using facebook::react::ShadowView;
+using facebook::react::ShadowViewMutation;
+using facebook::react::ShadowViewMutationList;
 using facebook::react::SurfaceId;
+using facebook::react::TransactionTelemetry;
+using facebook::react::ViewProps;
 using facebook::react::Tag;
 
 // `Point`, `Rect` and `Size` are not imported by name: Carbon declares all
@@ -51,7 +58,9 @@ ShadowView makeScrollView(Tag tag,
                           RnPoint contentOffset = RnPoint{0, 0},
                           bool centerContent = false,
                           facebook::react::ScrollViewIndicatorStyle indicatorStyle =
-                              facebook::react::ScrollViewIndicatorStyle::Default) {
+                              facebook::react::ScrollViewIndicatorStyle::Default,
+                          std::optional<facebook::react::ScrollViewMaintainVisibleContentPosition>
+                              maintainVisible = std::nullopt) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 400, .height = 300}};
 
@@ -59,6 +68,7 @@ ShadowView makeScrollView(Tag tag,
   props->contentOffset = contentOffset;
   props->centerContent = centerContent;
   props->indicatorStyle = indicatorStyle;
+  props->maintainVisibleContentPosition = maintainVisible;
 
   ScrollViewState data;
   // The prop and the state carry the same value, which is what React Native
@@ -226,5 +236,136 @@ TEST(appkit_scrollview_a_default_indicator_is_black) {
     }
     EXPECT_NEAR(colour.redComponent, 0.0, 0.001);
     EXPECT_NEAR(colour.alphaComponent, basalt::kScrollIndicatorAlpha, 0.001);
+  }
+}
+
+// --- maintainVisibleContentPosition ------------------------------------------
+//
+// Through the *mounting* manager rather than the scroll manager the rest of
+// this file uses: the two halves of this prop run around a transaction, so a
+// test that called them itself would not be testing that anything calls them.
+// The arithmetic is core/tests/test_scroll_visible_position.cpp's.
+namespace {
+
+ShadowView makePlainView(Tag tag, float x, float y, float width, float height) {
+  LayoutMetrics metrics;
+  metrics.frame = {.origin = {.x = x, .y = y}, .size = {.width = width, .height = height}};
+
+  ShadowView view;
+  view.componentName = "View";
+  view.surfaceId = kSurfaceId;
+  view.tag = tag;
+  view.props = std::make_shared<ViewProps>();
+  view.layoutMetrics = metrics;
+  return view;
+}
+
+void applyTo(basalt::AppKitMountingManager &manager, ShadowViewMutationList &&mutations) {
+  manager.applyTransaction(
+      kSurfaceId, MountingTransaction(kSurfaceId, 1, std::move(mutations), TransactionTelemetry{}));
+}
+
+// A ScrollView with a content view and two hundred-point rows under it, which
+// is the smallest tree the prop can be asked about.
+void mountList(basalt::AppKitMountingManager &manager, const ShadowView &scroller) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::CreateMutation(scroller));
+  mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, scroller, 0));
+  const ShadowView content = makePlainView(11, 0, 0, 400, 1000);
+  mutations.push_back(ShadowViewMutation::CreateMutation(content));
+  mutations.push_back(ShadowViewMutation::InsertMutation(10, content, 0));
+  const ShadowView first = makePlainView(12, 0, 0, 400, 100);
+  const ShadowView second = makePlainView(13, 0, 100, 400, 100);
+  mutations.push_back(ShadowViewMutation::CreateMutation(first));
+  mutations.push_back(ShadowViewMutation::InsertMutation(11, first, 0));
+  mutations.push_back(ShadowViewMutation::CreateMutation(second));
+  mutations.push_back(ShadowViewMutation::InsertMutation(11, second, 1));
+  applyTo(manager, std::move(mutations));
+}
+
+// The first row grows by a hundred points, which pushes the second one down by
+// the same -- the shape an insertion above the visible content has.
+void growTheFirstRow(basalt::AppKitMountingManager &manager) {
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makePlainView(12, 0, 0, 400, 100), makePlainView(12, 0, 0, 400, 200), kSurfaceId));
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makePlainView(13, 0, 100, 400, 100), makePlainView(13, 0, 200, 400, 100), kSurfaceId));
+  applyTo(manager, std::move(mutations));
+}
+
+double offsetOf(basalt::AppKitMountingManager &manager, Tag tag) {
+  return manager.viewForTag(tag).rnScrollOffset.y;
+}
+
+facebook::react::ScrollViewMaintainVisibleContentPosition maintainFrom(int minIndex) {
+  facebook::react::ScrollViewMaintainVisibleContentPosition maintain;
+  maintain.minIndexForVisible = minIndex;
+  return maintain;
+}
+
+ShadowView listScroller(
+    std::optional<facebook::react::ScrollViewMaintainVisibleContentPosition> maintain) {
+  return makeScrollView(10,
+                        1000,
+                        RnPoint{0, 0},
+                        false,
+                        facebook::react::ScrollViewIndicatorStyle::Default,
+                        maintain);
+}
+
+} // namespace
+
+TEST(appkit_scrollview_maintain_visible_content_position_holds_the_content_still) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    mountList(manager, listScroller(maintainFrom(0)));
+
+    // Scrolled to 150: the first row is entirely above the viewport and the
+    // second is the first with anything on screen, so the second is held still.
+    manager.applyCommand(10, "scrollTo", folly::dynamic::array(0, 150, false));
+    EXPECT_NEAR(offsetOf(manager, 10), 150.0, 0.001);
+
+    growTheFirstRow(manager);
+    EXPECT_NEAR(offsetOf(manager, 10), 250.0, 0.001);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(appkit_scrollview_a_list_that_did_not_ask_lets_the_content_jump) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    mountList(manager, listScroller(std::nullopt));
+    manager.applyCommand(10, "scrollTo", folly::dynamic::array(0, 150, false));
+    growTheFirstRow(manager);
+
+    EXPECT_NEAR(offsetOf(manager, 10), 150.0, 0.001);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(appkit_scrollview_min_index_for_visible_skips_a_header) {
+  @autoreleasepool {
+    // At the top of the list the first row is the visible one, and an index of
+    // 1 takes it out of the running -- so the second row is watched, and that
+    // one moves.
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    mountList(manager, listScroller(maintainFrom(1)));
+    EXPECT_NEAR(offsetOf(manager, 10), 0.0, 0.001);
+    growTheFirstRow(manager);
+    EXPECT_NEAR(offsetOf(manager, 10), 100.0, 0.001);
+
+    manager.destroySurfaceRoot(kSurfaceId);
   }
 }
