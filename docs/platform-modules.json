@@ -1,0 +1,334 @@
+{
+  "comment": [
+    "What happens when an app reaches for a native module, checked by scripts/audit_modules.py.",
+    "`asked` is how React Native's own JavaScript asks for it: `get` answers null and `getEnforcing` throws.",
+    "`answeredBy` is who provides it here: `basalt` for this repository, `react-native` for ReactCxxPlatform or the shared defaults, `nobody` for the rest.",
+    "`effect` is what an app sees when nobody answers, which is the whole reason this file exists.",
+    "`hostSpecific` marks a module each desktop implements itself, so the three provider chains are allowed to differ about it."
+  ],
+  "modules": {
+    "AccessibilityInfo": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "AccessibilityManager": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "ActionSheetManager": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "ActionSheetIOS throws when called: its module is nil and the first call reaches a method on it. A desktop app wants a menu or a dialog instead, which basalt-core has."
+    },
+    "AlertManager": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "AppState": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "Appearance": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "BlobModule": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "CPUTimeCxx": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Nothing an app reaches: Fantom is React Native's own test runner."
+    },
+    "Clipboard": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "DevLoadingView": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "DevMenu": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Importing `DevMenu` from react-native throws, which is what made `export * from 'react-native'` unusable in basalt-core -- see the note in website/docs/reference/api.mdx. This platform has its own dev menu; see core/DevMenu.h."
+    },
+    "DevSettings": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "DeviceEventManager": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: it is Android's hardware back button, and BackHandler resolves to the platform file rather than to this module off Android."
+    },
+    "DeviceInfo": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "DialogManagerAndroid": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: it is Android's half of `Alert`, and `Alert.js` uses `AlertManager` off Android, which is answered here."
+    },
+    "ExceptionsManager": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "FileReaderModule": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "FrameRateLogger": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing an app reaches: an internal performance logger."
+    },
+    "HeadlessJsTaskSupport": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: Android's background tasks."
+    },
+    "I18nManager": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "ImageEditingManager": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "`ImageEditor.cropImage` throws. No desktop equivalent is written yet, and cropping an image is a Skia or a Core Graphics call rather than a module."
+    },
+    "ImageLoader": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "ImageStoreManager": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "`ImageStore` throws. Deprecated upstream and iOS-only."
+    },
+    "IntentAndroid": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: it is Android's half of `Linking`, and `Linking.js` uses `LinkingManager` off Android, which is answered here."
+    },
+    "JSCHeapCapture": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: a JavaScriptCore debugging hook, and this platform runs Hermes."
+    },
+    "KeyboardObserver": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing, and deliberately: `Keyboard.js` passes null for the module off iOS, so listeners are registered and never fire. A desktop has no soft keyboard to report."
+    },
+    "LinkingManager": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "LogBox": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "ModalManager": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: `Modal.js` only reaches it on iOS, where it is the dismissal hook. A <Modal> here is a real window; see core/ControlMetrics.h."
+    },
+    "NativeAnimatedModule": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativeAnimatedTurboModule": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: `NativeAnimatedHelper` prefers `NativeAnimatedModule`, which React Native's own defaults answer, so `useNativeDriver` works."
+    },
+    "NativeDOMCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativeFantomCxx": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Nothing an app reaches: Fantom is React Native's own test runner."
+    },
+    "NativeFantomTestSpecificMethodsCxx": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Nothing an app reaches: Fantom is React Native's own test runner."
+    },
+    "NativeIdleCallbacksCxx": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "NativeIntersectionObserverCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativeMicrotasksCxx": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "NativeMutationObserverCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativePerformanceCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativeReactNativeFeatureFlagsCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativeViewTransitionCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "Networking": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "PermissionsAndroid": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: Android's runtime permissions."
+    },
+    "PlatformConstants": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "PushNotificationManager": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "`PushNotificationIOS` throws. Local notifications are a package here instead; see packages/basalt-notifications."
+    },
+    "ReactDevToolsRuntimeSettingsModule": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "ReactDevToolsSettingsManager": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "DevTools settings are not persisted between runs. The runtime settings module beside it *is* answered, so the DevTools connection itself works."
+    },
+    "RedBox": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: the legacy red box. LogBox is answered, and it is what React Native uses."
+    },
+    "SampleTurboModule": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Nothing an app reaches: React Native's own example module."
+    },
+    "SegmentFetcher": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Nothing an app reaches unless it uses RAM bundles with segments, which Metro does not produce here: one bundle per app."
+    },
+    "SettingsManager": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "`Settings.get` and `Settings.set` throw. iOS's user defaults have no desktop equivalent written yet; an app wants AsyncStorage or a file."
+    },
+    "ShareModule": {
+      "asked": "get",
+      "answeredBy": "basalt"
+    },
+    "SoundManager": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "No click sound from a Touchable, which is iOS's keyboard-click API."
+    },
+    "SourceCode": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "StatusBarManager": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "Timing": {
+      "asked": "get",
+      "answeredBy": "nobody",
+      "effect": "Nothing: the legacy timer module. Timers come from the runtime scheduler in the new architecture, so setTimeout and setInterval work."
+    },
+    "ToastAndroid": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "UIManager": {
+      "asked": "getEnforcing",
+      "answeredBy": "nobody",
+      "effect": "Nothing, and this one is worth reading twice: `UIManager.js` resolves to `BridgelessUIManager` because `RN$Bridgeless` is true here -- ReactInstance.cpp sets it unconditionally -- so the legacy module is never asked for. A library that calls a method BridgelessUIManager does not implement gets its own error naming the method."
+    },
+    "Vibration": {
+      "asked": "getEnforcing",
+      "answeredBy": "basalt"
+    },
+    "WebSocketModule": {
+      "asked": "getEnforcing",
+      "answeredBy": "react-native"
+    },
+    "BasaltApp": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "This project's own: the app's identity and paths. See core/AppIdentity.h."
+    },
+    "BasaltDialog": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "This project's own: the native file dialogs, which React Native has no API for. See core/DialogModule.h."
+    },
+    "BasaltMenu": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "This project's own: the application menu, which on macOS is also what makes Cmd-C reach a field. See core/MenuModule.h."
+    },
+    "BasaltWindow": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "This project's own: the host window a surface is in. Host-specific, each desktop having its own window object.",
+      "hostSpecific": true
+    },
+    "BasaltWindows": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "This project's own: more than one window, which is more than one surface. See core/WindowHost.h."
+    },
+    "RNCSafeAreaContext": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "react-native-safe-area-context's module, answered so the library works unmodified. See core/SafeAreaComponent.h."
+    },
+    "RNGestureHandlerModule": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "react-native-gesture-handler's module, answered whether or not the app has the library: it costs a name comparison."
+    },
+    "RNSModule": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "react-native-screens' module, which basalt-navigation is built on. See core/ScreensComponent.h."
+    },
+    "RNSkiaModule": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "react-native-skia's module, which installs Skia's whole JavaScript API. Host-specific: each desktop has its own canvas.",
+      "hostSpecific": true
+    },
+    "ReanimatedModule": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "react-native-reanimated's module, when the build was pointed at an app that has it. See core/ReanimatedModule.h."
+    },
+    "WorkletsModule": {
+      "asked": "nothing upstream",
+      "answeredBy": "basalt",
+      "what": "react-native-worklets' module, which Reanimated is built on. See core/WorkletsModule.h."
+    }
+  }
+}

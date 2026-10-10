@@ -1540,9 +1540,7 @@ TEST(win32_submit_behavior_newline_puts_a_newline_in_a_multiline_field) {
   auto manager = makeManager();
   RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
   root->setFrame(0, 0, 800, 600);
-  mount(*manager,
-        kSurfaceId,
-        makeField(10, 20, 30, 200, 80, {.text = "a", .multiline = true}));
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 80, {.multiline = true}));
   manager->syncTextInputBounds(root);
 
   HWND control = peerOf(manager->viewForTag(10));
@@ -1552,6 +1550,11 @@ TEST(win32_submit_behavior_newline_puts_a_newline_in_a_multiline_field) {
   }
 
   SetFocus(control);
+  // Typed rather than handed over as a prop, for the reason the test above it
+  // types too: a `text` prop is applied with the caret where it was, which is
+  // the start, so an Enter after one would insert the newline *before* the
+  // letter and the assertion would be about the caret rather than the prop.
+  type(control, L"a");
   pressEnter(control);
 
   // `newline` is React Native's default for a multiline field, and the newline
@@ -1571,12 +1574,7 @@ TEST(win32_submit_behavior_submit_on_a_multiline_field_inserts_nothing) {
   root->setFrame(0, 0, 800, 600);
   mount(*manager,
         kSurfaceId,
-        makeField(10,
-                  20,
-                  30,
-                  200,
-                  80,
-                  {.text = "a", .multiline = true, .submitBehavior = "submit"}));
+        makeField(10, 20, 30, 200, 80, {.multiline = true, .submitBehavior = "submit"}));
   manager->syncTextInputBounds(root);
 
   HWND control = peerOf(manager->viewForTag(10));
@@ -1586,6 +1584,7 @@ TEST(win32_submit_behavior_submit_on_a_multiline_field_inserts_nothing) {
   }
 
   SetFocus(control);
+  type(control, L"a");
   pressEnter(control);
 
   EXPECT_EQ(textOf(control), std::string("a"));
