@@ -89,6 +89,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hover.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_momentum.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_share.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sourcecode.cpp
     CACHE INTERNAL "core's own tests")
 
@@ -273,6 +274,8 @@ if(DEFINED RN_DIR)
     core/ScrollMomentum.cpp
     # A share sheet for the desktops that have none; see the header.
     core/ShareFallback.cpp
+    # `Settings`, which is a file here rather than NSUserDefaults; see the header.
+    core/SettingsStore.cpp
     core/SourceCodeModule.cpp
     # Answering a modal dialog without showing one; see the header.
     core/TestDialog.cpp

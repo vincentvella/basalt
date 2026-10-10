@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. React Native's JavaScript branches two ways and a third platform lands on iOS
 2. Notifications on macOS need a person
@@ -10,14 +10,28 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 4. Scheduling
 5. Packaging the host as an application
 6. A Metro error still has no red box
-7. `ToastAndroid` is absent, deliberately
+7. ~~`ToastAndroid` is absent, deliberately~~
 
-ReactCxxPlatform supplies fourteen TurboModules: `Animated`, `AppState`,
-`DeviceInfo`, `DevLoadingView`, `DevSettings`, `ImageLoader`, `LogBox`,
-`ExceptionsManager`, `IntersectionObserver`, `MutationObserver`, `Networking`,
-`PlatformConstants`, `SourceCode` and `WebSocket`. Everything below is a React
-Native API with no implementation anywhere in this stack, and each one is ours
-to write against GTK, GLib or the portals.
+React Native answers nineteen of the modules it asks for, from *two* providers
+rather than one, and this file said fourteen from one until the native-module
+audit read both chains. `ReactCxxTurboModuleProvider` has `AppState`,
+`DeviceInfo`, `DevLoadingView`, `ExceptionsManager`, `ImageLoader`, `LogBox`,
+`NativeAnimatedModule`, `Networking`, `PlatformConstants` and `WebSocketModule`;
+`DefaultTurboModules`, which it falls through to, has the web APIs --
+`NativeDOMCxx`, `NativeIdleCallbacksCxx`, `NativeIntersectionObserverCxx`,
+`NativeMicrotasksCxx`, `NativeMutationObserverCxx`, `NativePerformanceCxx`,
+`NativeReactNativeFeatureFlagsCxx`, `NativeViewTransitionCxx` and
+`ReactDevToolsRuntimeSettingsModule`. Three of those are answered only under a
+condition the chain does not state -- a dev UI delegate, a feature flag that is
+off by default, a debug macro -- which is a thing a running host said and the
+code did not. `scripts/audit_modules.py` is where that list now comes from, per
+module and per host, rather than from a paragraph; see [modules.md](modules.md).
+`DevSettings` and `SourceCode` were on this list and are answered here instead:
+upstream provides `DevSettings` only when there is a dev server, so a release
+bundle had `DevSettings.reload()` throwing.
+
+Everything below is a React Native API with no implementation anywhere in this
+stack, and each one is ours to write against GTK, GLib or the portals.
 
 How each fails matters, and splits in two. Most are looked up with
 `TurboModuleRegistry.get`, which returns null, so React Native's JavaScript
@@ -48,6 +62,15 @@ so anything importing them dies at startup.
   (phase 26) and `AccessibilityInfo.js` (phase 32) all did this, each found by an
   app failing rather than by review. Worth checking for deliberately the next
   time a module misbehaves.
+
+  Six instances now, and the last three do not land on iOS -- they land on a
+  warning or on nothing, which is harder to notice. `Share.js` rejects with
+  "Unsupported platform", `Alert.js` has no `else` at all, and `Settings.js`
+  hands everything that is not iOS a `SettingsFallback` that warns and answers
+  null. In each case a native module existed, or was written, and was never
+  reached; each needed a file in `src/overrides` as well. **The test for this is
+  cheap and nobody ran it for years: read the JavaScript of the API before
+  implementing the module under it.**
 - **Notifications on macOS need a person.** The implementation is real:
   `UNUserNotificationCenter`, behind the bundle check that keeps an unbundled
   host from raising `bundleProxyForCurrentProcess is nil`, and the first send
@@ -57,9 +80,14 @@ so anything importing them dies at startup.
   anything about it. What *is* asserted is that a bundled host answers
   `granted` where an unbundled one answers `denied`, and that the send is
   accepted.
-- **`ToastAndroid` is absent**, and deliberately: it is Android's own module and
-  only throws if an app imports it directly. Listed so that the throw is a known
-  answer rather than a surprise.
+- ~~**`ToastAndroid` is absent**~~, and it stopped being absent on 2026-09-11,
+  a month before this entry was read again: `DesktopToastModule` answers it on
+  all three hosts and logs the message. The entry said the throw was a known
+  answer, and a `getEnforcing` lookup nobody answers takes the app down at
+  import, which is not an answer -- a toast an app shows is it telling somebody
+  something, and losing it to a log is better than losing the process. Found by
+  the native-module audit, which reads the provider chains rather than this
+  file; see [modules.md](modules.md).
 - ~~**`ShareModule`**~~ is done on all three, and it took a JavaScript override
   as well as a module: `Share.js` branches on `Platform.OS` being exactly
   `android` or `ios` and rejects with "Unsupported platform" otherwise, so no

@@ -3,6 +3,7 @@
 #include "ShareFallback.h"
 #include "TestDialog.h"
 
+#include <jsi/JSIDynamic.h>
 #include <react/bridging/Promise.h>
 
 #include <glog/logging.h>
@@ -587,6 +588,43 @@ Value DesktopShareModule::share(Runtime &rt, Object content, std::optional<Strin
   });
 
   return Value(rt, facebook::react::bridging::toJs(rt, *promise, jsInvoker_));
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+DesktopSettingsManagerModule::DesktopSettingsManagerModule(
+    std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
+    : NativeSettingsManagerCxxSpec(std::move(jsInvoker)), store_(settingsFilePath()) {}
+
+Object DesktopSettingsManagerModule::getConstants(Runtime &rt) {
+  // `Settings._settings` is this object, once, at import. Everything
+  // `Settings.get` answers afterwards is read out of it in JavaScript, so a
+  // run that reads a setting never calls this module again -- which is why
+  // reading is as cheap here as it is on iOS.
+  Object constants(rt);
+  constants.setProperty(rt, "settings", facebook::jsi::valueFromDynamic(rt, store_.values()));
+  return constants;
+}
+
+void DesktopSettingsManagerModule::setValues(Runtime &rt, Object values) {
+  store_.merge(facebook::jsi::dynamicFromValue(rt, Value(rt, values)));
+}
+
+void DesktopSettingsManagerModule::deleteValues(Runtime &rt, Array values) {
+  const size_t count = values.size(rt);
+  std::vector<std::string> keys;
+  keys.reserve(count);
+  for (size_t index = 0; index < count; ++index) {
+    const Value element = values.getValueAtIndex(rt, index);
+    // `Settings` has no deleteValues of its own: this is reached by an app
+    // calling the module directly, so what arrives is whatever it passed.
+    if (element.isString()) {
+      keys.push_back(element.getString(rt).utf8(rt));
+    }
+  }
+  store_.erase(keys);
 }
 
 } // namespace basalt

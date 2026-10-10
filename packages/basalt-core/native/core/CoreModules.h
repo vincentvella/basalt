@@ -1,9 +1,13 @@
 // The core React Native modules ReactCxxPlatform does not provide.
 //
-// Upstream supplies fifteen -- Animated, AppState, DeviceInfo, DevSettings,
-// ImageLoader, LogBox, ExceptionsManager, the observers, Networking,
-// PlatformConstants, SourceCode, WebSocket. What is here is the set a real app
-// reaches for and finds missing, and it splits in two ways that matter.
+// Upstream supplies nineteen, from two providers rather than one:
+// ReactCxxTurboModuleProvider has AppState, DeviceInfo, DevLoadingView,
+// ExceptionsManager, ImageLoader, LogBox, NativeAnimatedModule, Networking,
+// PlatformConstants and WebSocketModule, and DefaultTurboModules -- which it
+// falls through to -- has the web APIs. `scripts/audit_modules.py` prints the
+// list per module and per host; this comment said fifteen from one provider
+// until that audit read both chains. What is here is the set a real app reaches
+// for and finds missing, and it splits in two ways that matter.
 //
 // **How they fail.** `Clipboard` and `Vibration` are looked up with
 // `getEnforcing`, so their absence *throws at import* -- an app that so much as
@@ -25,6 +29,7 @@
 #pragma once
 
 #include "PlatformServices.h"
+#include "SettingsStore.h"
 
 #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
 
@@ -142,6 +147,41 @@ class DesktopShareModule : public facebook::react::NativeShareModuleCxxSpec<Desk
   facebook::jsi::Value share(facebook::jsi::Runtime &rt,
                              facebook::jsi::Object content,
                              std::optional<facebook::jsi::String> dialogTitle);
+};
+
+// `Settings`, which an app reaches through `Settings.get` and `Settings.set`.
+//
+// The second module whose JavaScript had to be replaced as well, and found the
+// same way: `Settings.js` branches on `Platform.OS === 'ios'` and hands
+// everything else `SettingsFallback`, which warns and answers null. So the
+// module was never reached, and the audit's claim that this one *throws* was
+// wrong in the app's favour -- see src/overrides/Settings.ts and
+// docs/backlog/modules.md.
+//
+// A file rather than each desktop's own settings store, for the reasons
+// core/SettingsStore.h argues. The store is a member rather than a global: it
+// is read in the constructor and written on every change, and a reload builds a
+// new module, which re-reads the file -- which is the state.
+//
+// No `settingsUpdated` event, deliberately. iOS sets `_ignoringUpdates` around
+// its own `setValues` for the reason this has nothing to emit: `Settings.set`
+// has already merged into JavaScript's copy by the time the module is called,
+// so `_sendObservations` would see no change and call no watcher. What does
+// fire a watcher is a change from outside the process, which means watching the
+// file; that is recorded rather than written.
+class DesktopSettingsManagerModule
+    : public facebook::react::NativeSettingsManagerCxxSpec<DesktopSettingsManagerModule> {
+ public:
+  explicit DesktopSettingsManagerModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker);
+
+  static constexpr const char *kModuleName = "SettingsManager";
+
+  facebook::jsi::Object getConstants(facebook::jsi::Runtime &rt);
+  void setValues(facebook::jsi::Runtime &rt, facebook::jsi::Object values);
+  void deleteValues(facebook::jsi::Runtime &rt, facebook::jsi::Array values);
+
+ private:
+  SettingsStore store_;
 };
 
 // Right-to-left layout. Portable in full: Yoga already does the work, and this

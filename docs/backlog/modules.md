@@ -4,9 +4,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 **Open (1):**
 
-1. Four modules an app can reach that throw here, each with no desktop
-   equivalent written
+1. Three modules an app can reach that answer nothing here, each with no
+   desktop equivalent written
 2. ~~Nothing runs the audit against a *running* host~~
+3. ~~`Settings` is a module nobody answers~~
 
 - **The audit, and why there is one.** The support page answers "does this prop
   work" one row per attribute, and that page caught claims nothing implemented.
@@ -50,34 +51,93 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   is, per module, rather than only whether it is answered.
 
   As of 2026-10-10: React Native asks for **60**. This repository answers
-  **15** of them, React Native's own two providers answer **19**, and **26** are
+  **16** of them, React Native's own two providers answer **19**, and **25** are
   answered by nobody. The hosts answer eleven *further* modules that React
   Native never asks for -- this project's own, and the libraries whose modules
-  the hosts offer unconditionally -- which is why the chains hold 26 names each
-  and only 15 of those appear in React Native's own JavaScript.
+  the hosts offer unconditionally -- which is why the chains hold 27 names each
+  and only 16 of those appear in React Native's own JavaScript.
 
-- **Four modules an app can reach throw rather than no-op**, and each is a
-  desktop equivalent nobody has written. They are the whole of the first open
-  entry:
+- **Three modules an app can reach answer nothing**, and each is a desktop
+  equivalent nobody has written. They are the whole of the first open entry:
 
-  | Module | What an app did | What would answer it |
+  | Module | What an app reaches it with | What would answer it |
   | --- | --- | --- |
-  | `SettingsManager` | `Settings.get`, `Settings.set` | iOS's user defaults. A file, or AsyncStorage, or the platform's own settings store |
-  | `ImageEditingManager` | `ImageEditor.cropImage` | A Skia or Core Graphics crop; the hosts all have an image pipeline already |
-  | `ImageStoreManager` | `ImageStore.getBase64ForTag` | Deprecated upstream; probably not worth writing |
   | `ActionSheetManager` | `ActionSheetIOS.showActionSheetWithOptions` | A menu or a dialog, both of which `basalt-core` has |
+  | `ImageEditingManager` | `react-native/Libraries/Image/NativeImageEditor` | A Skia or Core Graphics crop; the hosts all have an image pipeline already |
+  | `ImageStoreManager` | `react-native/Libraries/Image/NativeImageStoreIOS` | Deprecated upstream; probably not worth writing |
 
-  None of the four is reached by React Native's own code, only by an app that
-  imports that API, which is why nothing here has noticed. `PushNotificationIOS`
-  is a fifth of the same shape and has a package instead; see
+  `ActionSheetManager` is a `get`, so its module is null and the *first call*
+  reaches a method on nothing. The other two are `getEnforcing`, which throws at
+  import -- but only for an app that imports the spec file by path, because
+  React Native stopped exporting `ImageEditor` and `ImageStore` from its index
+  and nothing in its own JavaScript imports either spec. **Measured on `main`,
+  which is not the pin**: the shape of the claim is the same on v0.87.1 and the
+  exact answer there has not been checked, so what the table names is the import
+  that reaches the module rather than an API call.
+
+  None of the three is reached by React Native's own code, only by an app that
+  goes looking, which is why nothing here has noticed. `PushNotificationIOS` is
+  a fourth of the same shape and has a package instead; see
   `packages/basalt-notifications`.
+
+- ~~**`Settings` is a module nobody answers.**~~ Done on all three on
+  2026-10-10, and it took a JavaScript override as well as a module, which is
+  the third time that pair has been the answer -- `Share`, `Alert`, and now
+  this.
+
+  **The entry it came from was wrong in the app's favour, and the audit was the
+  thing that was wrong.** `SettingsManager` is a `getEnforcing` lookup, so the
+  file recorded `Settings.get` and `Settings.set` as *throwing*. They did not.
+  `Settings.js` branches on `Platform.OS === 'ios'` and hands everything else
+  `SettingsFallback`, whose four methods `console.warn` and answer null, so the
+  module was never reached and nothing threw: an app's settings were silently
+  dropped, one warning per call, which reads like a platform limitation rather
+  than a missing module. Measured by sabotage rather than by reading -- putting
+  React Native's own `Settings.js` back produces
+  `Settings is not yet supported on this platform` and a null, twice per call.
+  A `getEnforcing` in a spec says what happens *if* an app reaches the module,
+  and says nothing about whether any of React Native's own JavaScript will.
+
+  **A file, not this desktop's own settings store**, and the three are not
+  interchangeable: macOS has `NSUserDefaults`, which is the thing `Settings`
+  wraps; GTK's nearest equivalent is `GSettings`, which refuses a key that is
+  not in a compiled schema, and this API's whole contract is that an app invents
+  its keys at runtime; Windows has the registry, which has no JSON and no
+  arrays. So it is one JSON object under the per-user configuration directory on
+  all three -- `$XDG_CONFIG_HOME` or `~/.config`, `~/Library/Application
+  Support`, `%APPDATA%` -- in a directory named after the app's identifier,
+  written through a sibling and renamed over so a process that dies mid-write
+  leaves the previous file. See `core/SettingsStore.h` for the argument and
+  `src/overrides/Settings.ts` for what the JavaScript half had to do.
+
+  Two things are left, and both are recorded rather than forgotten:
+
+  - **`watchKeys` is registered and never fires.** That is iOS's shape, not a
+    stub: `Settings.set` merges into JavaScript's own copy before calling the
+    module, so `_sendObservations` sees no change -- which is why
+    `RCTSettingsManager` sets `_ignoringUpdates` around its own `setValues`
+    instead of emitting. What fires a watcher is a change from *outside* the
+    process, which means watching the file: `GFileMonitor` through
+    `g_file_monitor_file` on Linux, `NSUserDefaultsDidChangeNotification` on
+    macOS if it moved to `NSUserDefaults`, and `ReadDirectoryChangesW` or
+    `FindFirstChangeNotification` on Windows. One listener each, delivering
+    `settingsUpdated` with the file's new contents, and the JavaScript half
+    already handles the rest.
+  - **macOS settings are not visible to `defaults read`**, because they are not
+    in `NSUserDefaults`. `-[NSUserDefaults persistentDomainForName:]` for the
+    snapshot and `-setPersistentDomain:forName:` for the write would change
+    that, for one host, at the cost of the three agreeing about what a settings
+    value can be.
 
 - **The twenty-one others nobody answers are not gaps**, and the audit says so
   per module rather than leaving a reader to wonder. Android's halves of
   cross-platform APIs (`IntentAndroid` for `Linking`, `DialogManagerAndroid` for
-  `Alert`, `PermissionsAndroid`, `ToastAndroid`, `HeadlessJsTaskSupport`,
-  `DeviceEventManager` for the back button) are not reached off Android, and the
-  iOS halves of the same APIs *are* answered here. React Native's own test
+  `Alert`, `PermissionsAndroid`, `HeadlessJsTaskSupport`, `DeviceEventManager`
+  for the back button) are not reached off Android, and the iOS halves of the
+  same APIs *are* answered here. `ToastAndroid` is the exception that is
+  answered rather than skipped: it is a `getEnforcing`, so an app that imports
+  it dies at startup, and since 2026-09-11 a module here logs the message
+  instead -- which is a poor toast and a better answer than a crash. React Native's own test
   infrastructure (`NativeFantomCxx`, `CPUTimeCxx`, `SampleTurboModule`) is not
   an app's. `JSCHeapCapture` is JavaScriptCore's and this platform runs Hermes.
   `RedBox` is the old LogBox. `Timing` is the legacy timer module, and timers

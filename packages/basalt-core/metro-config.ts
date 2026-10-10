@@ -244,6 +244,15 @@ export const PLATFORM_OVERRIDES: ReadonlyArray<OverrideEntry> = [
     path.join(OVERRIDE_DIR, 'Share.js'),
   ],
   [
+    // Also not a shim, and the same shape as Share: `Settings.js` branches on
+    // `Platform.OS === 'ios'` and hands everything else `SettingsFallback`,
+    // which is four methods that warn and answer null -- so `SettingsManager`
+    // was never reached and the audit's note that it threw was wrong. See the
+    // header of the replacement.
+    path.join('Libraries', 'Settings', 'Settings.js'),
+    path.join(OVERRIDE_DIR, 'Settings.js'),
+  ],
+  [
     // React Native's own file, plus the listener the host's developer menu
     // needs: `DevSettings.reload()` is the only way into ReactHost's private
     // reload, and there is no way to call it from C++. It runs from

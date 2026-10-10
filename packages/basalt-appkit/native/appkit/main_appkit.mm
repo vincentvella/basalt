@@ -366,6 +366,11 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         if (name == basalt::DesktopShareModule::kModuleName) {
           return std::make_shared<basalt::DesktopShareModule>(jsInvoker);
         }
+        // `Settings`, kept in a file beside the app's identity rather than in
+        // this desktop's own settings store; see core/SettingsStore.h.
+        if (name == basalt::DesktopSettingsManagerModule::kModuleName) {
+          return std::make_shared<basalt::DesktopSettingsManagerModule>(jsInvoker);
+        }
         // The native file dialogs, which React Native has no API for and which
         // are the first thing a desktop app reaches for. See core/DialogModule.h.
         if (name == basalt::DesktopDialogModule::kModuleName) {

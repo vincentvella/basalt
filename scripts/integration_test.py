@@ -51,6 +51,7 @@ without taking over the machine's cursor.
 
 import argparse
 import bisect
+import json
 import os
 import re
 import signal
@@ -6267,6 +6268,112 @@ def test_turbomodule_proxy(bundle: Path) -> str:
             "says they would")
 
 
+def test_settings(bundle: Path) -> str:
+    """A setting written by one run of an application, read by the next.
+
+    The point of `Settings` is the part no single run can show. So this runs the
+    host twice against one settings file, and e2e/settings.tsx behaves
+    differently the second time: the first run finds nothing and writes, the
+    second finds what the first wrote and says what it found.
+
+    **Both halves of the feature fail visibly here.** `SettingsManager` is a
+    `getEnforcing` lookup, so without the native module the app dies at import
+    and never renders. Without src/overrides/Settings.js, React Native hands the
+    app its own `SettingsFallback` -- four methods that warn and answer null --
+    so the second run finds nothing and logs `unset` where a number belongs.
+    That second failure is the one that was already there: the module had never
+    been reached, which is how the audit came to record this one as throwing
+    when what it really did was quietly nothing.
+
+    The file is read at the end, because the log cannot prove two of the three
+    methods. `Settings.set({tab: null})` deletes the key, and JavaScript's own
+    copy reads undefined whether or not the native side agreed;
+    `deleteValues` is not on `Settings` at all and is reached through the
+    TurboModule proxy. What is on disk afterwards is the only witness to either.
+
+    `BASALT_SETTINGS_FILE` is what keeps this out of the real configuration
+    directory -- two runs against a temporary file rather than against whatever
+    the person running the suite has stored.
+    """
+    app = bundle_app(bundle.parent, "settings")
+
+    with tempfile.TemporaryDirectory() as directory:
+        # Inside a directory that does not exist yet, which is a packaged app's
+        # first run: the store creates it.
+        store = Path(directory) / "dev.example.settings" / "settings.json"
+
+        def run() -> str:
+            env = dict(os.environ)
+            env["BASALT_QUIT_AFTER_MS"] = "4000"
+            env["BASALT_SETTINGS_FILE"] = str(store)
+            for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                         "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
+                env.pop(name, None)
+            result = run_host_process(
+                [str(HOST), str(app), "BasaltSettings"],
+                cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+            )
+            _remember_output(result.stderr)
+            check_output(result.stderr, result.returncode)
+            return result.stdout + result.stderr
+
+        def expect(logged: str, needle: str, why: str) -> None:
+            if needle not in logged:
+                raise Failure(f"{why}.\nexpected {needle!r} in:\n{tail_text(logged)}")
+
+        first = run()
+        expect(first, "settings runs before: unset",
+               "the first run found a setting in a file that did not exist, so the "
+               "store is reading something other than what it was pointed at")
+        expect(first, "settings runs after: 1",
+               "the first run could not read back what it had just written")
+        if not store.exists():
+            raise Failure(
+                f"nothing was written to {store}. The module answered -- the app "
+                "rendered -- so what failed is the file: either the directory was "
+                "not created or the rename over it did not happen"
+            )
+
+        second = run()
+        expect(second, "settings runs before: 1",
+               "the second run did not see what the first wrote, which is the whole "
+               "claim. Either the native module is gone, or Settings.js is React "
+               "Native's own again and the app is talking to SettingsFallback")
+        expect(second, "settings tab before: inbox",
+               "a string written by the first run did not survive, although a number "
+               "did -- so what is wrong is the value, not the file")
+        expect(second, "settings deleteValues: asked",
+               "the proxy did not hand over SettingsManager, so deleteValues was "
+               "never called and the assertion about it below proves nothing")
+        expect(second, "settings runs after: 2",
+               "the second run did not write its own count")
+
+        try:
+            stored = json.loads(store.read_text())
+        except ValueError as error:
+            raise Failure(f"{store} is not JSON after two runs: {error}") from None
+
+        if stored.get("runs") != 2:
+            raise Failure(
+                f"the file says runs={stored.get('runs')!r} after two runs, so one "
+                f"of the writes did not reach it: {stored!r}"
+            )
+        if "tab" in stored:
+            raise Failure(
+                "Settings.set({tab: null}) left the key in the file. iOS removes it "
+                "-- RCTSettingsManager calls removeObjectForKey: -- and an app that "
+                f"forgets a setting here would find it again next run: {stored!r}"
+            )
+        if "window" in stored:
+            raise Failure(
+                "deleteValues(['window']) did not remove the key. It is the one "
+                "method of the three that `Settings` cannot reach, so nothing else "
+                f"in this scenario would have noticed: {stored!r}"
+            )
+
+    return "a setting survived to the next run, and null and deleteValues both forgot one"
+
+
 def test_crash_handler(bundle: Path) -> None:
     """What the host says when it dies.
 
@@ -7008,6 +7115,7 @@ SCENARIOS = [
      test_view_key_events),
     ("__turboModuleProxy answers for this platform and for React Native",
      test_turbomodule_proxy),
+    ("a setting written by one run is there for the next", test_settings),
     ("an inline view inside a Text is given a box and told where it is",
      test_inline_views),
     ("the clipboard round-trips, and the host still exits afterwards",

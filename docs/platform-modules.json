@@ -235,8 +235,7 @@
     },
     "SettingsManager": {
       "asked": "getEnforcing",
-      "answeredBy": "nobody",
-      "effect": "`Settings.get` and `Settings.set` throw. iOS's user defaults have no desktop equivalent written yet; an app wants AsyncStorage or a file."
+      "answeredBy": "basalt"
     },
     "ShareModule": {
       "asked": "get",

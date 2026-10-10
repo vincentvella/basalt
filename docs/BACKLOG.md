@@ -18,7 +18,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | --- | --- | --- |
 | [Desktop capabilities](backlog/desktop-capabilities.md) | 31 | Windows, menus, dialogs and dragging are done; the catalogue at the end of that file is the rest of the surface (tray, permissions, power, global shortcuts) checked one at a time against the repository. |
 | [Ecosystem](backlog/ecosystem.md) | 3 | Nobody else can use this yet: nothing is published. Porting a first third-party native module, and packaging for Arch and Flatpak. |
-| [Core modules](backlog/core-modules.md) | 7 | React Native APIs with no implementation here. |
+| [Core modules](backlog/core-modules.md) | 6 | React Native APIs with no implementation here. |
 | [Expo](backlog/expo.md) | 11 | Beyond the template: more Expo views, Reanimated's untried paths, and the gestures a cursor cannot make. |
 
 ## Components and behaviour
@@ -29,7 +29,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | [Text](backlog/text.md) | 7 | Measurement and layout gaps. |
 | [TextInput](backlog/textinput.md) | 4 | A controlled value applied by heuristic, the forked component, and the Windows selection highlight. |
 | [Image](backlog/image.md) | 5 | Decorative props, and assets over the network: fetching, caching, progress. |
-| [Native modules](backlog/modules.md) | 1 | What happens when an app reaches for one: four throw, and the audit says so per module. |
+| [Native modules](backlog/modules.md) | 1 | What happens when an app reaches for one, per module, checked against a running host. `Settings` is answered as of 2026-10-10; three modules are left and no app's own code reaches them. |
 | [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |
 | [Accessibility](backlog/accessibility.md) | 5 | Nothing has been tested against a real screen reader. |
