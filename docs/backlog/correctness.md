@@ -124,11 +124,12 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     older `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`,
     which are iOS's pre-CSS spelling of the same idea and are now converted into
     it. What the work turned out to be is at the end of this entry.
-  - `backgroundImage`: **gradients are done on GTK and AppKit 2026-10-08**,
-    linear and radial both. `backgroundSize`, `backgroundPosition` and
-    `backgroundRepeat` are still ignored, and that is now its own entry below
-    rather than a line here: they are not waiting on an image loader, which is
-    what this entry used to say.
+  - `backgroundImage`: **gradients are done on GTK and AppKit 2026-10-08 and on
+    Windows 2026-10-10**, linear and radial both, and `backgroundSize`,
+    `backgroundPosition` and `backgroundRepeat` with them -- which is its own
+    entry below, since they were never waiting on an image loader, whatever this
+    entry used to say. What is left of `backgroundImage` is the image half: a
+    `url()` needs a loader.
   - ~~`shouldRasterize` and `removeClippedSubviews`~~: **both deliberately not
     implemented, written down 2026-10-08** with the measurements that decide it.
     At the end of this entry.
@@ -287,14 +288,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   is a radius of hypot(42, 28), and the failure message says what the closest
   corner, the farthest side and a defaulted centre would each report instead.
 
-  **What is left of the prop.** `backgroundSize`, `backgroundPosition` and
-  `backgroundRepeat` have nothing to act on until an image can be a background,
-  which is a loader question rather than a drawing one.
+  **What is left of the prop.** A `url()` background, which needs the image
+  loader rather than a brush. `backgroundSize`, `backgroundPosition` and
+  `backgroundRepeat` are done on all three hosts and apply to the gradients they
+  have; see their own entry.
 
-  **Windows** has `ID2D1RenderTarget::CreateRadialGradientBrush`, whose
-  `D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES` carries a centre and two radii
-  directly, so the ellipse needs no transform there and the shared geometry hands
-  it the numbers. Its scenario skips by name with the linear one.
+  **Windows, done 2026-10-10.** `D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES` carries
+  a centre and two radii directly, so the ellipse needed no transform there and
+  the shared geometry handed it the numbers, exactly as this paragraph expected.
+  Its pixel tests check the two radii against each other -- twenty up and forty
+  across reach the ending shape together -- which is the assertion a circle plus
+  a stretch of the whole picture would fail.
 
   **`hitSlop`, done on GTK and AppKit 2026-10-08.** Four insets that grow what a
   press can land on without moving a pixel, and each host already had one place
@@ -628,7 +632,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   stop.
 
 - ~~**`backgroundSize`, `backgroundPosition` and `backgroundRepeat` are
-  ignored.**~~ Done on GTK and AppKit 2026-10-09. The note this entry replaced
+  ignored.**~~ Done on GTK and AppKit 2026-10-09 and on Windows 2026-10-10. The note this entry replaced
   was wrong twice over: it said they "have nothing to act on until an image can
   be a background, which is a loader question rather than a drawing one", and
   CSS treats a gradient as an image, so all three apply to the gradients both

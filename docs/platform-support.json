@@ -41,10 +41,6 @@
     }
   ],
   "whys": {
-    "win-gradient": {
-      "text": "the gradient brushes",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "win-blend": {
       "text": "CLSID_D2D1Blend",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -359,26 +355,22 @@
     "BaseViewProps.backgroundImage": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-gradient"
+      "windows": "yes"
     },
     "BaseViewProps.backgroundSize": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-gradient"
+      "windows": "yes"
     },
     "BaseViewProps.backgroundPosition": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-gradient"
+      "windows": "yes"
     },
     "BaseViewProps.backgroundRepeat": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-gradient"
+      "windows": "yes"
     },
     "BaseViewProps.mixBlendMode": {
       "linux": "partial",

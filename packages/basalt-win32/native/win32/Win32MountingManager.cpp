@@ -1,7 +1,9 @@
 #include "Win32MountingManager.h"
 
+#include "BackgroundLayers.h"
 #include "BlendModes.h"
 #include "Filters.h"
+#include "Gradients.h"
 #include "LegacyShadow.h"
 
 #include "DirectWriteLayout.h"
@@ -425,6 +427,111 @@ void Win32MountingManager::applyProps(RnWin32View *view, const ShadowView &shado
     case facebook::react::PointerEventsMode::Auto:
       view->setPointerEvents(win32::RnWin32View::PointerEvents::Auto);
       break;
+  }
+
+  // `backgroundImage`: linear and radial gradients. The angle or the ending
+  // shape, the box size and CSS's colour-stop fixup are resolved here through
+  // `core/Gradients.h`, shared with the other two hosts, and the view layer is
+  // handed points and radii and a list of stops: the resolution is the
+  // specified part and belongs in one place, and the drawing is the toolkit's.
+  //
+  // One list rather than two, because `background-image` is one list and the
+  // first in it is the one on top: two lists would lose the order between a
+  // radial gradient and a linear one.
+  //
+  // Against this mutation's own frame, and `applyProps` runs on every update,
+  // so a resized view gets a resized gradient without the view layer knowing
+  // anything about angles or corners.
+  {
+    const auto &metrics = shadowView.layoutMetrics;
+    // The two areas CSS gives a background. The painting area is the border
+    // box, which is what it is clipped to; the positioning area is the padding
+    // box, which sizes and positions it. They differ on any view with a border.
+    const basalt::BackgroundArea painting{0.0f,
+                                          0.0f,
+                                          static_cast<float>(metrics.frame.size.width),
+                                          static_cast<float>(metrics.frame.size.height)};
+    // getPaddingFrame's origin is already relative to the view -- it is the
+    // border widths -- so nothing here subtracts the frame's own position.
+    const auto paddingFrame = metrics.getPaddingFrame();
+    const basalt::BackgroundArea positioning{
+        static_cast<float>(paddingFrame.origin.x),
+        static_cast<float>(paddingFrame.origin.y),
+        static_cast<float>(paddingFrame.size.width),
+        static_cast<float>(paddingFrame.size.height)};
+
+    std::vector<win32::RnWin32View::Gradient> gradients;
+    gradients.reserve(props->backgroundImage.size());
+    for (size_t index = 0; index < props->backgroundImage.size(); index++) {
+      const auto &image = props->backgroundImage[index];
+      // Each list is indexed modulo its own length, which is CSS's rule for a
+      // list shorter than the image list and is what iOS does.
+      const basalt::BackgroundLayer layer = basalt::resolveBackgroundLayer(
+          positioning,
+          painting,
+          basalt::backgroundSizeAt(props->backgroundSize, index),
+          basalt::backgroundPositionAt(props->backgroundPosition, index),
+          basalt::backgroundRepeatAt(props->backgroundRepeat, index));
+      if (layer.empty()) {
+        continue;
+      }
+      // The gradient is resolved against the image's size and then offset to
+      // where the image goes: a gradient that resolved against the view would
+      // ignore `backgroundSize` even with the rectangle right.
+      win32::RnWin32View::Gradient converted;
+      converted.area[0] = layer.x;
+      converted.area[1] = layer.y;
+      converted.area[2] = layer.width;
+      converted.area[3] = layer.height;
+      converted.tile[0] = layer.tileX;
+      converted.tile[1] = layer.tileY;
+      converted.tile[2] = layer.tileWidth;
+      converted.tile[3] = layer.tileHeight;
+      converted.repeats = layer.repeats();
+
+      const std::vector<facebook::react::ColorStop> *colorStops = nullptr;
+      float rayLength = 0.0f;
+      if (std::holds_alternative<facebook::react::LinearGradient>(image)) {
+        const auto &gradient = std::get<facebook::react::LinearGradient>(image);
+        const basalt::GradientLine line =
+            basalt::linearGradientLine(gradient, layer.width, layer.height);
+        converted.kind = win32::RnWin32View::Gradient::Kind::Linear;
+        converted.startX = line.startX + layer.x;
+        converted.startY = line.startY + layer.y;
+        converted.endX = line.endX + layer.x;
+        converted.endY = line.endY + layer.y;
+        colorStops = &gradient.colorStops;
+        rayLength = line.length();
+      } else {
+        const auto &gradient = std::get<facebook::react::RadialGradient>(image);
+        const basalt::GradientEllipse shape =
+            basalt::radialGradientEllipse(gradient, layer.width, layer.height);
+        converted.kind = win32::RnWin32View::Gradient::Kind::Radial;
+        converted.centreX = shape.centerX + layer.x;
+        converted.centreY = shape.centerY + layer.y;
+        converted.radiusX = shape.radiusX;
+        converted.radiusY = shape.radiusY;
+        colorStops = &gradient.colorStops;
+        rayLength = shape.rayLength();
+      }
+
+      const auto resolved = basalt::resolveGradientStops(*colorStops, rayLength);
+      if (resolved.empty()) {
+        continue;
+      }
+      converted.stops.reserve(resolved.size());
+      for (const auto &stop : resolved) {
+        win32::RnWin32View::GradientStop one;
+        one.offset = stop.offset;
+        one.colour[0] = stop.red;
+        one.colour[1] = stop.green;
+        one.colour[2] = stop.blue;
+        one.colour[3] = stop.alpha;
+        converted.stops.push_back(one);
+      }
+      gradients.push_back(std::move(converted));
+    }
+    view->setGradients(std::move(gradients));
   }
 
   // `boxShadow`, as React Native's own six fields: GSK's shadow nodes take the

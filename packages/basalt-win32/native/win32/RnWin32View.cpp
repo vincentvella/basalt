@@ -620,6 +620,10 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target,
       }
     }
 
+    // The `backgroundImage` gradients, over the background colour and under the
+    // content: CSS's background-image is above its background-color.
+    paintGradients(target);
+
     // The inset shadows, over the background and under the content, which is
     // where CSS puts them. (AppKit gets this one wrong and says so: a sublayer
     // is above the view's own text.)
@@ -944,6 +948,138 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
   }
 
   context->DrawImage(source.Get(), D2D1::Point2F(0.0f, 0.0f));
+}
+
+void RnWin32View::setGradients(std::vector<Gradient> gradients) {
+  gradients_ = std::move(gradients);
+}
+
+// The `backgroundImage` gradients, above the background colour and below the
+// content, which is where CSS paints a background image.
+//
+// Back to front, the first in the list being the one on top, and clipped to the
+// view's border box -- CSS's painting area -- which is also what keeps a
+// gradient from squaring off a rounded corner.
+//
+// The geometry and the stops were resolved in the mounting manager against the
+// *image's* size and offset to where the image goes, so this draws a gradient
+// and does no CSS: `area` is the rectangle it fills and `tile` is the period it
+// repeats in. An axis that does not repeat arrives with the painting area as
+// its tile, which comes out drawn once; see core/BackgroundLayers.h.
+void RnWin32View::paintGradients(ID2D1RenderTarget *target) const {
+  if (gradients_.empty()) {
+    return;
+  }
+  const D2D1_RECT_F box = D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height);
+
+  for (size_t index = gradients_.size(); index > 0; index--) {
+    const Gradient &gradient = gradients_[index - 1];
+    if (gradient.stops.empty() || gradient.area[2] <= 0.0f || gradient.area[3] <= 0.0f) {
+      continue;
+    }
+
+    std::vector<D2D1_GRADIENT_STOP> stops;
+    stops.reserve(gradient.stops.size());
+    for (const GradientStop &stop : gradient.stops) {
+      stops.push_back(D2D1_GRADIENT_STOP{
+          stop.offset,
+          D2D1::ColorF(stop.colour[0], stop.colour[1], stop.colour[2], stop.colour[3])});
+    }
+
+    // `D2D1_GAMMA_2_2` interpolates in sRGB rather than in linear light, which
+    // is what CSS says and what the other two hosts do: GSK and Core Graphics
+    // both interpolate the values as given. Linear light would be defensible
+    // and would make the same stylesheet a different picture here.
+    //
+    // Clamped at both ends, which is also CSS: past the last stop the gradient
+    // is that stop's colour, and that is what fills the rest of the image's
+    // rectangle -- the ending shape of a radial gradient is the radius, not the
+    // edge of the box.
+    ComPtr<ID2D1GradientStopCollection> collection;
+    if (FAILED(target->CreateGradientStopCollection(stops.data(),
+                                                    static_cast<UINT32>(stops.size()),
+                                                    D2D1_GAMMA_2_2,
+                                                    D2D1_EXTEND_MODE_CLAMP,
+                                                    collection.GetAddressOf()))
+        || !collection) {
+      continue;
+    }
+
+    ComPtr<ID2D1Brush> brush;
+    if (gradient.kind == Gradient::Kind::Radial) {
+      ComPtr<ID2D1RadialGradientBrush> radial;
+      // The centre and two radii straight from `core/Gradients.h`: Direct2D's
+      // brush takes an ellipse where Core Graphics takes a circle and a
+      // transform, so this is the host that needs no coordinate scaling.
+      const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES properties =
+          D2D1::RadialGradientBrushProperties(
+              D2D1::Point2F(gradient.centreX, gradient.centreY),
+              D2D1::Point2F(0.0f, 0.0f),
+              gradient.radiusX,
+              gradient.radiusY);
+      if (SUCCEEDED(target->CreateRadialGradientBrush(
+              properties, collection.Get(), radial.GetAddressOf()))) {
+        brush = radial;
+      }
+    } else {
+      ComPtr<ID2D1LinearGradientBrush> linear;
+      const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES properties =
+          D2D1::LinearGradientBrushProperties(
+              D2D1::Point2F(gradient.startX, gradient.startY),
+              D2D1::Point2F(gradient.endX, gradient.endY));
+      if (SUCCEEDED(target->CreateLinearGradientBrush(
+              properties, collection.Get(), linear.GetAddressOf()))) {
+        brush = linear;
+      }
+    }
+    if (!brush) {
+      continue;
+    }
+
+    // Always clipped, radii or not: CSS clips a background to the border box,
+    // and `backgroundSize` and `backgroundPosition` can both put the image
+    // outside it.
+    const ScopedGeometryClip clip(target, box, cornerRadii_);
+
+    const D2D1_RECT_F area = D2D1::RectF(gradient.area[0],
+                                         gradient.area[1],
+                                         gradient.area[0] + gradient.area[2],
+                                         gradient.area[1] + gradient.area[3]);
+    if (!gradient.repeats || gradient.tile[2] <= 0.0f || gradient.tile[3] <= 0.0f) {
+      target->FillRectangle(area, brush.Get());
+      continue;
+    }
+
+    // Tiled. The gradient's own geometry sits where the first tile is, so each
+    // tile moves the *brush* rather than the gradient: one brush, one fill per
+    // tile, which is the shape the AppKit host settled on. GSK has a repeat
+    // node and needs none of this.
+    //
+    // From the first tile that can reach the box, which may be above and left
+    // of it: `backgroundPosition` can put the first tile anywhere, and the ones
+    // before it still cover the box.
+    const float width = gradient.tile[2];
+    const float height = gradient.tile[3];
+    const float firstX =
+        gradient.tile[0] - std::ceil((gradient.tile[0] - box.left) / width) * width;
+    const float firstY =
+        gradient.tile[1] - std::ceil((gradient.tile[1] - box.top) / height) * height;
+    for (float y = firstY; y < box.bottom; y += height) {
+      for (float x = firstX; x < box.right; x += width) {
+        brush->SetTransform(
+            D2D1::Matrix3x2F::Translation(x - gradient.tile[0], y - gradient.tile[1]));
+        // The image's rectangle inside this tile, moved with it: a tile is the
+        // period and the image need not fill it.
+        target->FillRectangle(
+            D2D1::RectF(area.left + (x - gradient.tile[0]),
+                        area.top + (y - gradient.tile[1]),
+                        area.right + (x - gradient.tile[0]),
+                        area.bottom + (y - gradient.tile[1])),
+            brush.Get());
+      }
+    }
+    brush->SetTransform(D2D1::Matrix3x2F::Identity());
+  }
 }
 
 void RnWin32View::setBoxShadows(std::vector<BoxShadow> shadows) {
@@ -2063,6 +2199,50 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     }
     out += ")";
   }
+  // Gradients: how many, each one's line and stop count, where the image goes
+  // and the tile it repeats in. Not every stop, which a transition hint can
+  // turn into eleven of: what an end-to-end run needs is that the same gradient
+  // arrived with the same geometry, and the stop fixup itself is asserted in
+  // core's own tests. Spelled exactly as the other two hosts spell it.
+  for (const Gradient &gradient : gradients_) {
+    if (gradient.kind == Gradient::Kind::Radial) {
+      appendFormat(out,
+                   " gradient=(radial (%g,%g) %gx%g,%u stops",
+                   static_cast<double>(gradient.centreX),
+                   static_cast<double>(gradient.centreY),
+                   static_cast<double>(gradient.radiusX),
+                   static_cast<double>(gradient.radiusY),
+                   static_cast<unsigned>(gradient.stops.size()));
+    } else {
+      appendFormat(out,
+                   " gradient=((%g,%g)-(%g,%g),%u stops",
+                   static_cast<double>(gradient.startX),
+                   static_cast<double>(gradient.startY),
+                   static_cast<double>(gradient.endX),
+                   static_cast<double>(gradient.endY),
+                   static_cast<unsigned>(gradient.stops.size()));
+    }
+    // `at=` is the rectangle the image fills and `tile=` is the period, printed
+    // only when it repeats -- so a `no-repeat` background is the line without a
+    // tile. The three background props are invisible in every other line here:
+    // they move and repeat the image without changing the view at all.
+    appendFormat(out,
+                 ",at=(%g,%g %gx%g)",
+                 static_cast<double>(gradient.area[0]),
+                 static_cast<double>(gradient.area[1]),
+                 static_cast<double>(gradient.area[2]),
+                 static_cast<double>(gradient.area[3]));
+    if (gradient.repeats) {
+      appendFormat(out,
+                   ",tile=(%g,%g %gx%g)",
+                   static_cast<double>(gradient.tile[0]),
+                   static_cast<double>(gradient.tile[1]),
+                   static_cast<double>(gradient.tile[2]),
+                   static_cast<double>(gradient.tile[3]));
+    }
+    out += ")";
+  }
+
   // Box shadows, each in full and in the order the app wrote them. Nothing else
   // in this dump can say a shadow is there, and the numbers are the whole
   // feature: an offset that went to the wrong axis or a spread read as a blur

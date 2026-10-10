@@ -211,6 +211,45 @@ class RnWin32View {
   void setFilters(const Filters &filters);
   const Filters &filters() const { return filters_; }
 
+  // One stop of a `backgroundImage` gradient: an offset along the gradient's
+  // line or radius, and a straight sRGB colour. Both resolved by
+  // `core/Gradients.h`, which does CSS's colour-stop fixup.
+  struct GradientStop {
+    float offset = 0.0f;
+    float colour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  };
+
+  // One `backgroundImage` gradient, resolved into what a brush takes.
+  //
+  // Every number is in this view's own coordinates and already offset to where
+  // the image goes, which is what `core/BackgroundLayers.h` works out from
+  // `backgroundSize`, `backgroundPosition` and `backgroundRepeat`. So this
+  // layer draws a gradient and does no CSS.
+  struct Gradient {
+    enum class Kind { Linear, Radial };
+    Kind kind = Kind::Linear;
+    // Linear: the ends of the gradient line. Radial: the centre and the radii.
+    float startX = 0.0f;
+    float startY = 0.0f;
+    float endX = 0.0f;
+    float endY = 0.0f;
+    float centreX = 0.0f;
+    float centreY = 0.0f;
+    float radiusX = 0.0f;
+    float radiusY = 0.0f;
+    // Where the image goes, and the tile it repeats in. `x, y, width, height`.
+    float area[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float tile[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    bool repeats = false;
+    std::vector<GradientStop> stops;
+  };
+
+  // The whole list, in CSS's order: the first is the one on top. Painted above
+  // the background colour and below the content, which is where CSS puts a
+  // background image.
+  void setGradients(std::vector<Gradient> gradients);
+  const std::vector<Gradient> &gradients() const { return gradients_; }
+
   // One `boxShadow`, as React Native's six fields. The list crosses the seam as
   // the app wrote it, and `core/LegacyShadow.h` puts the older iOS shadow props
   // in the same list, so one mechanism draws both.
@@ -595,6 +634,8 @@ class RnWin32View {
   bool hasBlendedChild() const;
   // The shadows of one kind, back to front. Called twice by `paintContents`:
   // the outset ones before the background and the inset ones after it.
+  // The `backgroundImage` gradients, over the background colour.
+  void paintGradients(ID2D1RenderTarget *target) const;
   void paintBoxShadows(ID2D1RenderTarget *target, bool inset) const;
   void paintBoxShadow(ID2D1RenderTarget *target, const BoxShadow &shadow) const;
   void describeInto(std::string &out, int depth) const;
@@ -659,6 +700,7 @@ class RnWin32View {
   size_t imageFrame_ = 0;
   double imageElapsedMs_ = 0.0;
   Filters filters_;
+  std::vector<Gradient> gradients_;
   std::vector<BoxShadow> boxShadows_;
   // `mixBlendMode`: the keyword the app asked for, and whether this host can
   // blend it. Both, because the dump reports the first and the paint path asks

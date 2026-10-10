@@ -1451,3 +1451,256 @@ TEST(win32_describe_prints_a_box_shadow_as_the_other_hosts_do) {
   EXPECT(dump.find("shadow=(0,4,8,0,#00000040)") != std::string::npos);
   EXPECT(dump.find("shadow=(inset 0,1,0,0,#ffffffff)") != std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// `backgroundImage`: the gradients, in pixels.
+//
+// The arithmetic is not this host's: `core/Gradients.h` resolves CSS's gradient
+// line and its colour-stop fixup, and `core/BackgroundLayers.h` works out where
+// the image goes and the tile it repeats in. Both have their own tests in core,
+// shared with the other two hosts. What is this host's, and what these assert,
+// is that a brush is built from those numbers and lands in the right place.
+//
+// Red to blue is the instrument: the red and blue channels say how far along a
+// gradient a pixel is, and a gradient painted backwards or on the wrong axis
+// still looks like a gradient.
+// ---------------------------------------------------------------------------
+namespace {
+
+RnWin32View::Gradient redToBlue(float x, float y, float width, float height) {
+  RnWin32View::Gradient gradient;
+  gradient.area[0] = x;
+  gradient.area[1] = y;
+  gradient.area[2] = width;
+  gradient.area[3] = height;
+  gradient.startX = x;
+  gradient.startY = y;
+  gradient.endX = x + width;
+  gradient.endY = y;
+  RnWin32View::GradientStop red;
+  red.offset = 0.0f;
+  red.colour[0] = 1.0f;
+  red.colour[3] = 1.0f;
+  RnWin32View::GradientStop blue;
+  blue.offset = 1.0f;
+  blue.colour[2] = 1.0f;
+  blue.colour[3] = 1.0f;
+  gradient.stops = {red, blue};
+  return gradient;
+}
+
+} // namespace
+
+TEST(win32_paint_a_linear_gradient_runs_along_its_line) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  view->setGradients({redToBlue(0.0f, 0.0f, 100.0f, 100.0f)});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Along the line: nearly all red at the start, nearly all blue at the end,
+  // and halfway between in the middle. Bounds rather than exact values, which
+  // would pin where Direct2D samples a brush rather than the gradient; the far
+  // end being blue is what a gradient painted backwards fails.
+  EXPECT(pixels.at(2, 50).red > 235 && pixels.at(2, 50).blue < 20);
+  EXPECT(pixels.at(97, 50).blue > 235 && pixels.at(97, 50).red < 20);
+  EXPECT(pixels.at(50, 50).red > 100 && pixels.at(50, 50).red < 160);
+  EXPECT(pixels.at(50, 50).blue > 100 && pixels.at(50, 50).blue < 160);
+  // And across it, nothing changes: a gradient on the wrong axis fails here.
+  EXPECT_NEAR(pixels.at(50, 10).red, pixels.at(50, 90).red, 2.0);
+}
+
+// The background colour is underneath, which is the order CSS gives and the one
+// thing a gradient that replaced the fill would pass anyway -- so the gradient
+// here covers half the box and the colour shows through the other half.
+TEST(win32_paint_a_gradient_sits_over_the_background_colour) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.colouredBox(2, 0, 0, 100, 100, 0.0f, 1.0f, 0.0f);
+  view->setGradients({redToBlue(0.0f, 0.0f, 100.0f, 50.0f)});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Inside the image's rectangle: the gradient.
+  EXPECT(pixels.at(2, 25).red > 235 && pixels.at(2, 25).green < 20);
+  // Below it: the background colour, which the gradient must not have painted
+  // over and must not have replaced.
+  EXPECT_PIXEL(pixels, 2, 75, 0, 255, 0, 255);
+}
+
+// `backgroundSize` and `backgroundPosition` arrive as the image's rectangle, so
+// what this asserts is that the rectangle is honoured and the gradient is
+// resolved against it rather than against the view.
+TEST(win32_paint_a_gradient_fills_the_rectangle_it_was_given) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  view->setGradients({redToBlue(20.0f, 20.0f, 40.0f, 40.0f)});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The ends of the line are the ends of the rectangle, not of the view: two
+  // points into a forty point rectangle is a twentieth along, where two points
+  // into the view would be a fiftieth.
+  EXPECT(pixels.at(22, 40).red > 230 && pixels.at(22, 40).blue < 30);
+  EXPECT(pixels.at(57, 40).blue > 215 && pixels.at(57, 40).red < 40);
+  // And nothing outside it: a `no-repeat` background with a size covers only
+  // what it was given.
+  EXPECT_PIXEL(pixels, 70, 40, 0, 0, 0, 0);
+  EXPECT_PIXEL(pixels, 10, 40, 0, 0, 0, 0);
+}
+
+TEST(win32_paint_a_repeating_gradient_tiles_across_the_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  RnWin32View::Gradient gradient = redToBlue(0.0f, 0.0f, 25.0f, 100.0f);
+  gradient.repeats = true;
+  gradient.tile[0] = 0.0f;
+  gradient.tile[1] = 0.0f;
+  gradient.tile[2] = 25.0f;
+  gradient.tile[3] = 100.0f;
+  view->setGradients({gradient});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Four tiles across, each red at its own left edge: a brush that was not
+  // moved with the tile would be blue everywhere but the first.
+  for (unsigned tile = 0; tile < 4; tile++) {
+    const unsigned left = tile * 25 + 2;
+    const unsigned right = tile * 25 + 22;
+    EXPECT(pixels.at(left, 50).red > 200);
+    EXPECT(pixels.at(right, 50).blue > 180);
+  }
+}
+
+// A tile whose first copy starts left of the box, which is what a
+// `backgroundPosition` of anything but zero does: the tiles before it still
+// have to cover the box.
+TEST(win32_paint_a_repeating_gradient_starts_before_the_box_when_it_has_to) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  RnWin32View::Gradient gradient = redToBlue(10.0f, 0.0f, 25.0f, 100.0f);
+  gradient.repeats = true;
+  gradient.tile[0] = 10.0f;
+  gradient.tile[1] = 0.0f;
+  gradient.tile[2] = 25.0f;
+  gradient.tile[3] = 100.0f;
+  view->setGradients({gradient});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // The first tile starts at ten, so the one before it covers (-15, 10): at
+  // x = 2 that tile is seventeen points along its own twenty-five, which is
+  // mostly blue. A host that only tiled forwards leaves this transparent.
+  EXPECT(pixels.at(2, 50).alpha > 250);
+  EXPECT(pixels.at(2, 50).blue > 120);
+  // And the named tile itself still starts red at ten.
+  EXPECT(pixels.at(12, 50).red > 200);
+}
+
+TEST(win32_paint_a_radial_gradient_runs_out_from_its_centre) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  RnWin32View::Gradient gradient = redToBlue(0.0f, 0.0f, 100.0f, 100.0f);
+  gradient.kind = RnWin32View::Gradient::Kind::Radial;
+  gradient.centreX = 50.0f;
+  gradient.centreY = 50.0f;
+  gradient.radiusX = 40.0f;
+  gradient.radiusY = 20.0f;
+  view->setGradients({gradient});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Red at the centre, blue at the ending shape, and the two radii are not the
+  // same number: twenty up is the end of the ellipse where forty across is, so
+  // a brush given one radius for both would differ at one of them.
+  EXPECT_PIXEL(pixels, 50, 50, 255, 0, 0, 255);
+  EXPECT(pixels.at(88, 50).blue > 200);
+  EXPECT(pixels.at(50, 69).blue > 200);
+  // Halfway out along each axis is halfway along the gradient, which is what
+  // says the ellipse is an ellipse rather than a circle plus a stretch of the
+  // whole picture.
+  EXPECT(pixels.at(70, 50).blue > 100 && pixels.at(70, 50).blue < 180);
+  EXPECT(pixels.at(50, 60).blue > 100 && pixels.at(50, 60).blue < 180);
+  // Past the ending shape the last stop fills the rest of the rectangle, which
+  // is CSS and is `D2D1_EXTEND_MODE_CLAMP`.
+  EXPECT(pixels.at(97, 97).blue > 200);
+}
+
+// The first gradient in the list is the one on top, which is CSS's order for
+// `background-image` and the order both other hosts paint in.
+TEST(win32_paint_the_first_gradient_in_the_list_is_on_top) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  RnWin32View::Gradient top = redToBlue(0.0f, 0.0f, 100.0f, 100.0f);
+  RnWin32View::Gradient under = redToBlue(0.0f, 0.0f, 100.0f, 100.0f);
+  // The one underneath is solid green, so whichever is on top is unambiguous.
+  for (auto &stop : under.stops) {
+    stop.colour[0] = 0.0f;
+    stop.colour[1] = 1.0f;
+    stop.colour[2] = 0.0f;
+  }
+  view->setGradients({top, under});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  EXPECT(pixels.at(2, 50).red > 235);
+  EXPECT(pixels.at(2, 50).green < 20);
+}
+
+// A gradient is clipped to the border box, radii included: CSS clips a
+// background to the painting area, and a gradient that squared off a rounded
+// corner would be a worse bug than no gradient.
+TEST(win32_paint_a_gradient_is_clipped_to_the_rounded_box) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 100, 100);
+  const float radii[8] = {40.0f, 40.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  view->setCornerRadii(radii);
+  view->setGradients({redToBlue(0.0f, 0.0f, 100.0f, 100.0f)});
+  root->insertChild(view, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Inside the corner's curve: painted. Outside it: nothing.
+  EXPECT(pixels.at(30, 30).alpha > 250);
+  EXPECT_PIXEL(pixels, 2, 2, 0, 0, 0, 0);
+}
+
+TEST(win32_describe_prints_a_gradient_as_the_other_hosts_do) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 100, 100);
+  RnWin32View *view = tree.box(2, 0, 0, 80, 40);
+  root->insertChild(view, 0);
+
+  EXPECT(root->describeTree().find("gradient=") == std::string::npos);
+
+  // The 135 degree case the end-to-end scenario reads, whose line is the
+  // perpendicular construction rather than the diagonal.
+  RnWin32View::Gradient linear = redToBlue(0.0f, 0.0f, 80.0f, 40.0f);
+  linear.startX = 10.0f;
+  linear.startY = -10.0f;
+  linear.endX = 70.0f;
+  linear.endY = 50.0f;
+  view->setGradients({linear});
+  EXPECT(root->describeTree().find("gradient=((10,-10)-(70,50),2 stops,at=(0,0 80x40))")
+         != std::string::npos);
+
+  RnWin32View::Gradient radial = redToBlue(0.0f, 0.0f, 80.0f, 40.0f);
+  radial.kind = RnWin32View::Gradient::Kind::Radial;
+  radial.centreX = 40.0f;
+  radial.centreY = 20.0f;
+  radial.radiusX = 40.0f;
+  radial.radiusY = 20.0f;
+  radial.repeats = true;
+  radial.tile[2] = 80.0f;
+  radial.tile[3] = 40.0f;
+  view->setGradients({radial});
+  EXPECT(root->describeTree().find(
+             "gradient=(radial (40,20) 40x20,2 stops,at=(0,0 80x40),tile=(0,0 80x40))")
+         != std::string::npos);
+}

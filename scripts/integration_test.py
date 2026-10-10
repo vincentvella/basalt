@@ -4284,11 +4284,7 @@ def test_linear_gradient(bundle: Path) -> None:
     perpendicular construction, (10,-10) to (70,50) -- longer than the box, ends
     outside it, centred on it -- where the diagonal would be (0,0) to (80,40).
 
-    Windows draws no gradients yet, so it is skipped by name.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws no gradients from backgroundImage yet")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)
@@ -4911,11 +4907,7 @@ def test_background_size_position_repeat(bundle: Path) -> None:
       an image at (0,0)      the position was ignored, which backs up to 0
       no tile at all         the repeat was ignored
 
-    Windows draws no gradients yet, so it is skipped by name.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws no gradients from backgroundImage yet")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)
@@ -4969,11 +4961,7 @@ def test_radial_gradient(bundle: Path) -> None:
     took the farthest side reports 42, and one that defaulted the centre reports
     a radius of 36 at (30, 20).
 
-    Windows draws no gradients yet, so it is skipped by name.
     """
-    if PLATFORM == "windows":
-        raise Skipped("Direct2D draws no gradients from backgroundImage yet")
-
     app = bundle_app(bundle.parent, "views")
 
     env = dict(os.environ)

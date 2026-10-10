@@ -205,7 +205,8 @@ and none of it is a missing half.
   `SetInlineObject` with an `IDWriteInlineObject` that answers React Native's own
   metrics, read back with `HitTestTextPosition`.
 
-- **Five style props the other two hosts draw and this one ignores**, all five
+- **Five style props the other two hosts draw and this one ignores**, of which
+  `cursor` is the one that is left. All five
   landed on GTK and AppKit on 2026-10-07 and 2026-10-08, and all five recorded
   here the day the second host got them rather than later:
 
@@ -289,11 +290,12 @@ and none of it is a missing half.
     query rather than a property on a widget. `LoadCursor` with the `IDC_` family
     covers most of CSS's keywords.
 
-  Each has a unit test per host to copy the assertions from, and an end-to-end
-  scenario that is skipped on Windows by name. One consequence worth knowing
-  before running it: `scripts/compare_hosts.sh` against Windows will now report
-  the `cursor=` and `gradient=` lines as a tree difference, because they are
-  one. That is the script doing its job, and it goes away as each lands.
+  What is left of this entry is `cursor`, which has a unit test per host to copy
+  the assertions from and an end-to-end scenario that is skipped on Windows by
+  name. One consequence worth knowing before running it:
+  `scripts/compare_hosts.sh` against Windows will report the `cursor=` line as a
+  tree difference, because it is one. That is the script doing its job, and it
+  goes away when the last of these lands.
 
 - **`accessibilityLabelledBy` sets no relation.** The hard half is done and is
   shared: `core/LabelRegistry.h` resolves a `nativeID` to a tag and says when,
