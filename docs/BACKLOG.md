@@ -44,7 +44,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |
 | [Testing](backlog/testing.md) | 10 | What the suites cannot see, and one GTK pixel assertion that flaked on CI. |
-| [Upstream](backlog/upstream.md) | 20 | Bugs and gaps in React Native and Expo, with the workarounds here. |
+| [Upstream](backlog/upstream.md) | 21 | Bugs and gaps in React Native and Expo, with the workarounds here. |
 
 ## How to use this
 

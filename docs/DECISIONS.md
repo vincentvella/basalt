@@ -743,3 +743,35 @@ else in the host that wants WinRT: a second reason makes the dependency worth
 its cost, and the call is one line once the runtime is initialised. Until then
 this is written down so it is not re-litigated each time somebody greps for
 `TextScaleFactor`.
+
+## `basalt-core/upstream/...` means React Native's own file, from any module (2026-10-10)
+
+The override table redirects React Native's own paths to this package's
+replacements, and a replacement usually wants the thing it replaces: `View.tsx`
+renders upstream's `View` when a view has no keyboard props, `ScrollView.tsx`
+wraps upstream's. They ask for it with the `basalt-core/upstream/...` prefix.
+
+That prefix used to be honoured by *origin*: the redirect was skipped when the
+module asking was the replacement itself. It is now honoured by prefix, for
+every module, which is both simpler and the only version that survives a second
+caller.
+
+**What the origin rule cost.** `Button.tsx`, written on 2026-10-10, imports
+`basalt-core/upstream/Libraries/Components/View/View` for the view it wraps. Two
+modules then resolved the same specifier from different origins, Metro's
+resolution cache answered both the same way, and the answer it kept was the one
+computed for `Button` -- the override. `View.tsx` required itself, so every
+`<View>` in the application resolved to `undefined`, and the render-error path
+looped until Hermes aborted with "Max heap size was exceeded", before the first
+frame.
+
+It was worth an afternoon because nothing pointed at the cause. The crash is on
+the JavaScript thread with no JavaScript frames; a development bundle does not
+reproduce it, because inline requires change when modules are evaluated; the
+app whose module caused it (`Button`) is never even loaded by the demo; and the
+only visible difference between a working bundle and a broken one is that
+React Native's own `View.js` is missing from the broken one. The bisection that
+found it was adding `.js` to one import.
+
+`scripts/test_platform_js.js` now asserts the rule directly, from an origin that
+is not the override, which is the case the old guard got wrong.

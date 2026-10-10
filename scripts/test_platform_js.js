@@ -299,3 +299,56 @@ test('react-native.config.js loads with nothing but Node', () => {
     assert.equal(platform.dependencyConfig(), null);
   }
 });
+
+// --------------------------------------------------------------------------
+//
+// The resolver's one rule that is easy to get subtly wrong, and whose failure
+// is spectacular: `basalt-core/upstream/...` means React Native's own file and
+// never an override of it.
+//
+// It used to mean that only for the override itself -- the redirect was skipped
+// when the requesting module *was* the replacement -- which held exactly as
+// long as one module imported any given upstream specifier. A second one
+// (Button.tsx, wanting the `<View>` it wraps) resolved the same string from a
+// different origin, and Metro's resolution cache then answered the override's
+// own self-import with the override: `View.js` required itself, every `<View>`
+// in the app became `undefined`, and the error path looped until Hermes ran out
+// of heap before the first frame.
+
+test('an upstream specifier is never answered with the override of it', () => {
+  const {withDesktopPlatforms, PLATFORM_OVERRIDES} = require(
+    path.join(__dirname, '..', 'packages/basalt-core/dist/metro-config.js'),
+  );
+
+  const reactNativeRoot = path.join(__dirname, '..', 'node_modules', 'react-native');
+  const viewPath = path.join(
+    reactNativeRoot, 'Libraries', 'Components', 'View', 'View.js');
+
+  // A resolver that answers with whatever it was asked for, which is enough:
+  // what is under test is what this package does with Metro's answer.
+  const context = {
+    originModulePath: path.join(__dirname, '..', 'e2e', 'index.tsx'),
+    resolveRequest: (_context, name) => {
+      if (name === 'react-native') {
+        return {type: 'sourceFile', filePath: path.join(reactNativeRoot, 'index.js')};
+      }
+      return {type: 'sourceFile', filePath: name.endsWith('.js') ? name : `${name}.js`};
+    },
+  };
+
+  const {resolveRequest} = withDesktopPlatforms({}).resolver;
+
+  // An app asking for React Native's View gets this project's, which is the
+  // whole point of the override table.
+  const app = resolveRequest(context, viewPath, 'macos');
+  const override = PLATFORM_OVERRIDES.find(([tail]) =>
+    tail.endsWith(path.join('View', 'View.js')))[1];
+  assert.equal(app.filePath, override, 'an app should get the override');
+
+  // And an override asking for the file it overrides gets React Native's, from
+  // any origin -- here one that is not the override itself, which is the case
+  // that used to answer with the override and take the app's heap with it.
+  const upstream = resolveRequest(
+    context, 'basalt-core/upstream/Libraries/Components/View/View', 'macos');
+  assert.equal(upstream.filePath, viewPath, "an upstream import should get React Native's");
+});

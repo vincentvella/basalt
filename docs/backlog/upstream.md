@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (20):**
+**Open (21):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -48,6 +48,61 @@ workaround and the comment explaining it, which is already written.
 19. The TypeScript API omits `backgroundSize`, `backgroundPosition` and
     `backgroundRepeat`, which the Flow types and the C++ both have
 20. `accessibilityViewIsModal` is parsed for every platform and declared only by iOS
+21. Fourteen `Platform.select` tables have no `default`, and `<Button>` is four
+    of them
+
+- **Fourteen `Platform.select` tables in React Native's own JavaScript have
+  neither a `default` key nor a desktop one**, so every one of them answers
+  `undefined` on `linux`, `macos` and `windows`. Counted on 2026-10-10 by
+  walking `Libraries/**/*.js` for `Platform.select({...})` blocks that mention
+  `ios` or `android` and carry no `default`.
+
+  `Platform.select` is behaving correctly: it is a lookup with a documented
+  fallback order, and a table with no matching key and no default has nothing
+  to answer. The bug is in the tables.
+
+  **Four of them are `<Button>`**, which is the component an app reaches for
+  before it writes one of its own, and they are its whole appearance:
+
+      button:         undefined   no background, no radius
+      text:           {textAlign: 'center', margin: 8}   no colour, no size
+      buttonDisabled: undefined   a disabled button looks enabled
+      textDisabled:   undefined
+
+  So `<Button title="Press me" />` rendered as black centred text on nothing,
+  on all three hosts, and `color="#8b5cf6"` filled the box while leaving the
+  label black on top of it -- because the `color` prop takes the *non-iOS*
+  branch and sets the background, which is the one piece of that file's
+  platform handling that does have an `else`.
+
+  **Fixed here** rather than only recorded, because it is a core component and
+  the fix is a file this project already knows how to shadow:
+  `basalt-core/src/overrides/Button.tsx`, registered in `PLATFORM_OVERRIDES`
+  beside `TextInput`, `Alert`, `Share`, `Settings` and `RefreshControl`. It
+  takes Android's table -- a filled rectangle with white text -- because that is
+  the one that stays coherent next to a `color` prop that fills the background.
+  The end-to-end scenario asserts the three fills from the dump, the label's
+  colour from a snapshot, and that a tap still reaches `onPress`.
+
+  **The other ten, which are not fixed:**
+
+  - `processDecelerationRate.js`, twice: `'normal'` and `'fast'` become a number
+    per platform and `undefined` here, so a `<ScrollView decelerationRate>`
+    written in either of the two documented spellings reaches the host as
+    nothing. The numbers are 0.998 and 0.99 on iOS, 0.985 and 0.9 on Android.
+  - `ScrollView.js:1903`, in the same area.
+  - Five in LogBox's own interface, all `fontFamily`: the inspector's stack
+    frames ask for `Menlo` on macos and `Consolas` on windows and name no font
+    for linux, so GTK draws the call stack in the UI font. Cosmetic, and
+    visible in the two pictures `BASALT_SNAPSHOT` takes.
+  - `BridgelessUIManager.js`, which is Android-only by construction.
+
+  **What to send upstream** is a `default` key for each table, which is one line
+  per table and changes nothing on iOS or Android. For `<Button>` the obvious
+  default is the iOS table, since a borderless text button needs no colour
+  scheme -- but that would leave the `color` prop filling a box whose text is
+  blue, so the honest fix upstream is to give that file's `color` handling the
+  same treatment at the same time.
 
 - **`http::Body::blob` is typed `std::optional<std::string>`** in
   ReactCxxPlatform, and `convertRequestBody` sends `{blobId, offset, size}`,

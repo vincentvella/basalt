@@ -287,6 +287,16 @@ export const PLATFORM_OVERRIDES: ReadonlyArray<OverrideEntry> = [
     path.join(OVERRIDE_DIR, 'View.js'),
   ],
   [
+    // Also not a shim, and this one is a missing *key* rather than a missing
+    // branch: React Native's `Button.js` builds its look out of four
+    // `Platform.select({ios, android})` tables, and a platform that is neither
+    // gets `undefined` from all four -- so `<Button>` renders as black centred
+    // text on no background, and a disabled one looks enabled. Measured in a
+    // picture on 2026-10-10; see the header of the replacement.
+    path.join('Libraries', 'Components', 'Button.js'),
+    path.join(OVERRIDE_DIR, 'Button.js'),
+  ],
+  [
     // Also not a shim. `fetch` is broken on this platform without it: every
     // request asks for a blob response, which ReactCxxPlatform's
     // NetworkingModule cannot produce, so the response getter throws before
@@ -646,7 +656,11 @@ export function withDesktopPlatforms(
         // neither Babel's deep-import plugin nor Metro's package-exports check
         // has anything to warn about, and resolution is otherwise Metro's.
         let request = moduleName;
-        if (request.startsWith(UPSTREAM_PREFIX)) {
+        // `basalt-core/upstream/...` means React Native's own file and never an
+        // override of it, which is why this is remembered rather than inferred
+        // from the path below. See the override guard at the end.
+        const upstream = request.startsWith(UPSTREAM_PREFIX);
+        if (upstream) {
           const root = reactNativeRoot(() => resolveName('react-native', platform));
           const within = request.slice(UPSTREAM_PREFIX.length);
           const absolute = path.join(root, within);
@@ -738,13 +752,29 @@ export function withDesktopPlatforms(
           return resolution;
         }
 
-        const replacement = replacementFor(resolution.filePath, platform);
-        if (replacement == null || replacement === resolution.filePath) {
+        // An override importing the thing it overrides would loop forever, and
+        // `basalt-core/upstream/...` is how it says it wants the original. That
+        // is the whole meaning of the prefix, so it is honoured for every
+        // module rather than only for the override itself.
+        //
+        // It used to be the second of those: the redirect was skipped when the
+        // *origin* was the replacement. That held exactly as long as the
+        // override was the only module importing its own upstream specifier.
+        // A second one -- `Button.tsx`, importing
+        // `basalt-core/upstream/Libraries/Components/View/View` for the view it
+        // wraps -- resolved the same string from a different origin, and
+        // Metro's resolution cache then answered the override's own self-import
+        // with the override. `View.js` required itself, every `<View>` in the
+        // app became `undefined`, and the error path looped until Hermes ran
+        // out of heap: "Max heap size was exceeded", before the first frame.
+        // Nothing in the bundle looked wrong; the only visible symptom was that
+        // React Native's own View.js was missing from it.
+        if (upstream) {
           return resolution;
         }
 
-        // An override importing the thing it overrides would loop forever.
-        if (path.resolve(context.originModulePath ?? '') === replacement) {
+        const replacement = replacementFor(resolution.filePath, platform);
+        if (replacement == null || replacement === resolution.filePath) {
           return resolution;
         }
 

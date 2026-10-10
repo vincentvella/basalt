@@ -7504,6 +7504,133 @@ def test_snapshot_pixels(bundle: Path) -> str:
     return f"{checked} views are the colour they say, where they say they are"
 
 
+def test_button(bundle: Path) -> str:
+    """React Native's own `<Button>` looks like a button, and can be pressed.
+
+    It did not. `Button.js` builds its whole appearance out of four
+    `Platform.select({ios, android})` tables, and a platform that is neither
+    gets `undefined` from every one of them -- so `<Button title="Press me" />`
+    rendered as black centred text on no background, a disabled button was
+    indistinguishable from an enabled one, and a `color` filled the box while
+    leaving the label black on top of it. On all three hosts, because the
+    tables are React Native's own JavaScript rather than anything a host does.
+
+    `basalt-core/src/overrides/Button.tsx` replaces the file, taking Android's
+    table: a filled rectangle with white text, which is the one that stays
+    coherent here because upstream's `color` prop already sets the background
+    on anything that is not iOS.
+
+    Three assertions, and each needs a different instrument. The dump says the
+    fill arrived and that the three states differ. The picture says the *label*
+    is the colour it should be, which no dump can show: white on the blue one,
+    grey on the disabled one, and the broken version drew both black. And a tap
+    says the thing still works as a control, which matters because a `<Button>`
+    is a TouchableOpacity around a View and the press travels through the
+    responder system rather than through a <Pressable>.
+    """
+    app = bundle_app(bundle.parent, "button")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "6000"
+    for name in ("BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_MENU",
+                 "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        picture = Path(directory) / "window.png"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        env["BASALT_SNAPSHOT"] = str(picture)
+        # The middle of the first button, which the app puts under its first
+        # label. Measured from the tree rather than guessed: see below -- this
+        # first run only paints, and the tap comes from the second.
+        env.pop("BASALT_TEST_TAP", None)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltButton"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists() or not picture.exists():
+            raise Failure("host wrote no tree or no snapshot")
+        tree = dump.read_text(encoding="utf-8")
+        snapshot = Snapshot(picture.read_bytes())
+
+    # The three fills, in the order the app mounts them. A button's background
+    # is a child of the touchable, so these are the views carrying `bg=`.
+    fills = [(body, position, size) for body, position, size in _views(tree)
+             if "bg=#" in body and "role=" not in body]
+    found = [re.search(r"bg=#([0-9a-f]{8})", body).group(1) for body, _p, _s in fills]
+    # The page's own white is the first of them.
+    if found[:4] != ["ffffffff", "2196f3ff", "dfdfdfff", "8b5cf6ff"]:
+        raise Failure(
+            "the three buttons are not filled the way Android's tables say: "
+            f"{found[:4]}. `undefined` from Platform.select is what makes a "
+            f"button render as bare text.\n{tree}"
+        )
+
+    # And the label's colour, which only the picture can say. White on the blue
+    # button; the broken version drew it black, which is the same frame and the
+    # same string.
+    def inkExtreme(text: str, brightest: bool):
+        rows = [(position, size) for body, position, size in _views(tree)
+                if f'text="{text}"' in body]
+        if len(rows) != 1:
+            raise Failure(f"{len(rows)} views in the tree say {text!r}\n{tree}")
+        (x, y), (width, height) = rows[0]
+        best = None
+        for sampleY in range(int(y), int(y + height)):
+            for sampleX in range(int(x), int(x + width)):
+                pixel = snapshot.at(sampleX, sampleY)
+                if pixel is None:
+                    continue
+                if best is None or (pixel[0] > best[0]) == brightest:
+                    best = pixel
+        return best
+
+    label = inkExtreme("Press me", True)
+    if label is None or label[0] < 240 or label[1] < 240 or label[2] < 240:
+        raise Failure(
+            f"the enabled button's label is {label} at its brightest, and it "
+            "should be white. Black text on a blue fill is what Android's text "
+            "table missing looks like."
+        )
+    # The disabled one is grey on grey: darker than its fill, and nothing like
+    # black, which is what no `textDisabled` style looks like.
+    disabled = inkExtreme("Not pressable", False)
+    if disabled is None or disabled[0] > 190 or disabled[0] < 120:
+        raise Failure(
+            f"the disabled button's label is {disabled} at its darkest; "
+            "Android's table says #a1a1a1 on #dfdfdf."
+        )
+
+    # And the press. A second run, because the tap has to land on a button
+    # whose position the first run just reported.
+    pressed = [(position, size) for body, position, size in _views(tree)
+               if 'text="Press me"' in body]
+    (x, y), (width, height) = pressed[0]
+    env["BASALT_TEST_TAP"] = f"{round(x + width / 2)},{round(y + height / 2)}"
+    env.pop("BASALT_DUMP_TREE", None)
+    env.pop("BASALT_SNAPSHOT", None)
+    second = run_host_process(
+        [str(HOST), str(app), "BasaltButton"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(second.stderr)
+    check_output(second.stderr, second.returncode)
+    logged = second.stdout + second.stderr
+    if "button pressed" not in logged:
+        raise Failure(
+            "the button did not report a press. A <Button> is a TouchableOpacity "
+            f"around a <View>, so this is the responder system.\n{tail_text(logged)}"
+        )
+    if "the disabled button was pressed" in logged:
+        raise Failure("a disabled button reported a press")
+
+    return "filled, disabled and coloured, with a label that is not black"
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -7959,6 +8086,7 @@ SCENARIOS = [
     ("an inline view inside a Text is given a box and told where it is",
      test_inline_views),
     ("a snapshot has each view's colour where its frame says", test_snapshot_pixels),
+    ("React Native's own Button looks like one, and presses", test_button),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),
