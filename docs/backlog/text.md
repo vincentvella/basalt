@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (4):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -18,7 +18,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 9. ~~`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
    Windows~~
 10. ~~`verticalAlign` reaches ReactCommon under a name it does not read~~
-11. `userSelect` has no ReactCommon field at all
+11. ~~`userSelect` has no ReactCommon field at all~~
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -452,9 +452,36 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   it is inert regardless: the backend here is `PangoCoreTextFontMap`, so the
   `PANGO_IS_FC_FONT_MAP` guard is false and an app font never reaches Pango at
   all.
-- Text is not selectable and reports nothing to AT-SPI. `userSelect` is the prop
-  an app would write for the first half of that; entry 11 is about where it
-  goes.
+- **Text is not selectable and reports nothing to AT-SPI**, and there is nothing
+  upstream in the way of the first half of that.
+
+  `selectable` is the prop, `userSelect` is the style name React Native's own
+  `Text.js` rewrites into it -- a `userSelectToSelectableMap`, beside the
+  `verticalAlignToTextAlignVerticalMap` this file got wrong in the same way on
+  the same day -- and `BaseParagraphProps::isSelectable` is the field both
+  arrive in. So this is a desktop with no selection rather than an API with
+  nowhere to land, which is what entry 11 concluded and is struck through for.
+
+  `BaseParagraphProps` was not on the list of structs
+  `scripts/scrape_props.py` scrapes, so `selectable` had no row on the support
+  page at all while `userSelect` had one saying ReactCommon declared no field
+  for it. The struct is on the list now: one row, under the name an app writes,
+  with both spellings beside it -- and `onTextLayout` got its first row out of
+  the same change, which is upstream's; see [upstream.md](upstream.md) entry 17.
+
+  What selecting text takes, per host, and the shape is the same on all three: a
+  point to a character index (`pango_layout_xy_to_index`,
+  `CTLineGetStringIndexForPosition`, `IDWriteTextLayout::HitTestPoint`), a range
+  to rectangles (`pango_layout_line_get_x_ranges`,
+  `CTLineGetOffsetForStringIndex` per line, `HitTestTextRange`), a highlight
+  drawn under the glyphs in the platform's own selection colour, press, drag and
+  release wired to the two indices, and Ctrl or Cmd with C copying the range
+  through the clipboard this project already has. The model -- anchor and focus,
+  which way round they are, what the substring is -- belongs in `core/` where
+  the three can share it.
+
+  AT-SPI is the other half and a separate piece of work: a selectable paragraph
+  has to implement `AtkText` for a screen reader to read it by word and by line.
 
 - ~~**`textShadowColor`, `textShadowOffset` and `textShadowRadius`.**~~ Done on
   GTK and AppKit 2026-10-09. Three props every pre-CSS React Native title sets
@@ -610,17 +637,20 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   answers. Recorded rather than half-fixed, because a view whose y follows the
   text and whose x does not is harder to diagnose than one that does neither.
 
-- **`userSelect` has no ReactCommon field at all.** `____TextStyle_InternalBase`
-  declares it, `ReactNativeStyleAttributes` passes it through, and a grep of the
-  whole of `ReactCommon/react/renderer` for the name finds nothing: measured on
-  2026-10-09. So on a Fabric platform the prop arrives at the shadow node and
-  stops there, and there is no field for a host to read even if it wanted to.
+- ~~**`userSelect` has no ReactCommon field at all.**~~ The grep was right and
+  the conclusion was wrong, corrected on 2026-10-10. No field is *named*
+  `userSelect`, and `Text.js` rewrites the style into the `selectable` prop
+  before the props are sent -- which this entry half knew, saying in its own
+  third paragraph that `selectable` is a prop ReactCommon does carry, and then
+  calling the whole thing an upstream gap anyway.
 
-  Which makes it an upstream gap rather than a desktop one, and it is recorded
-  here rather than in backlog/upstream.md because what an app actually wants is
-  the entry above it: selectable text. iOS gets that from `<Text selectable>`,
-  which is a *prop* and not a style, and which ReactCommon does carry.
+  What an app writes reaching a platform is a chain of two links and only one of
+  them is ReactCommon. The JavaScript above it renames props, which is invisible
+  to a grep for the name an app wrote: the same hour found
+  `verticalAlign` -> `textAlignVertical` and `Settings` handed a fallback it
+  never reached. Reading the API's own JavaScript is the check, and it is one
+  file.
 
-  The honest status on the support page is "not yet" on all three hosts with
-  this entry as the reason, rather than "deliberately not done": nobody decided
-  against it.
+  So there is nothing upstream to wait for, the support page has one row for the
+  field under the name an app writes, and what is left is the selection itself;
+  see the entry above.

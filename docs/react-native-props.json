@@ -933,7 +933,34 @@
         },
         {
           "name": "textAlignVertical",
-          "kind": "style"
+          "kind": "style",
+          "spellings": [
+            "verticalAlign"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BaseParagraphProps",
+      "header": "packages/react-native/ReactCommon/react/renderer/components/text/BaseParagraphProps.h",
+      "note": "What a <Text> carries that is not styling: the attributes above, whether its text can be selected, and whether it reports its own lines. Missed off this page until 2026-10-10, which is how `selectable` came to have no row while `userSelect` had one saying ReactCommon declared no field for it.",
+      "styleFrom": [],
+      "props": [
+        {
+          "name": "paragraphAttributes",
+          "kind": "internal"
+        },
+        {
+          "name": "isSelectable",
+          "kind": "component",
+          "javascript": "selectable",
+          "spellings": [
+            "userSelect"
+          ]
+        },
+        {
+          "name": "onTextLayout",
+          "kind": "component"
         }
       ]
     },
@@ -1256,14 +1283,6 @@
         {
           "name": "elevation",
           "kind": "style"
-        },
-        {
-          "name": "userSelect",
-          "kind": "style"
-        },
-        {
-          "name": "verticalAlign",
-          "kind": "style"
         }
       ]
     }
@@ -1524,8 +1543,6 @@
     "width"
   ],
   "unreadStyleProps": [
-    "elevation",
-    "userSelect",
-    "verticalAlign"
+    "elevation"
   ]
 }

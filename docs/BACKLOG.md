@@ -26,7 +26,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | Area | Open | What is left there |
 | --- | --- | --- |
 | [Input](backlog/input.md) | 4 | Multi-touch is not modelled, Wayland input is unverified, `setIsJSResponder` is a no-op. |
-| [Text](backlog/text.md) | 5 | Measurement and layout gaps. |
+| [Text](backlog/text.md) | 4 | Measurement and layout gaps, and text a person cannot select. |
 | [TextInput](backlog/textinput.md) | 5 | A controlled value applied by heuristic, the forked component, and the Windows selection highlight. |
 | [Image](backlog/image.md) | 5 | Decorative props, and assets over the network: fetching, caching, progress. |
 | [Native modules](backlog/modules.md) | 1 | What happens when an app reaches for one, per module, checked against a running host. `Settings` and `ActionSheetIOS` were answered on 2026-10-10; two modules are left and nothing but an app importing a spec by path reaches either. |

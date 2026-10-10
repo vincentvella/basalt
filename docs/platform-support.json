@@ -137,10 +137,6 @@
       "text": "the paragraph moves in its box; an inline view inside one does not",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     },
-    "user-select": {
-      "text": "ReactCommon declares no field for it, and text is not selectable here",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
-    },
     "android-view": {
       "text": "Android's shadow prop, declared in that platform's host props",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
@@ -240,6 +236,10 @@
     "sv-indicator-default": {
       "text": "white is white; iOS's 'default' differs from 'black' only by a white border around the thumb, which these hosts do not draw",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
+    },
+    "text-selection": {
+      "text": "no host draws a selection or reports one yet",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     }
   },
   "statuses": {
@@ -1369,26 +1369,31 @@
       ],
       "why": "vertical-align"
     },
+    "BaseParagraphProps.paragraphAttributes": {
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "paragraphAttributes"
+      ]
+    },
+    "BaseParagraphProps.isSelectable": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "text-selection"
+    },
+    "BaseParagraphProps.onTextLayout": {
+      "linux": "upstream",
+      "macos": "upstream",
+      "windows": "upstream",
+      "why": "measurelines"
+    },
     "StyleSheetTypes.elevation": {
       "linux": "ignored",
       "macos": "ignored",
       "windows": "ignored",
       "why": "android-view"
-    },
-    "StyleSheetTypes.userSelect": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "user-select"
-    },
-    "StyleSheetTypes.verticalAlign": {
-      "linux": "yes",
-      "macos": "yes",
-      "windows": "yes",
-      "reads": [
-        "textVerticalFlushFactor("
-      ],
-      "why": "vertical-align"
     },
     "ImageProps.sources": {
       "linux": "yes",

@@ -185,6 +185,16 @@ STRUCTS = [
         "What belongs to a whole paragraph rather than to a fragment: how many "
         "lines it may take, how it is truncated, and whether it shrinks to fit.",
     ),
+    (
+        "BaseParagraphProps",
+        "packages/react-native/ReactCommon/react/renderer/components/text/BaseParagraphProps.h",
+        "Props",
+        "What a <Text> carries that is not styling: the attributes above, "
+        "whether its text can be selected, and whether it reports its own "
+        "lines. Missed off this page until 2026-10-10, which is how "
+        "`selectable` came to have no row while `userSelect` had one saying "
+        "ReactCommon declared no field for it.",
+    ),
 ]
 
 # Where React Native declares what a `style` takes. Each entry is a file and the
@@ -261,6 +271,11 @@ ALIASES = {
     "sources": "source",
     # A paragraph, where ReactCommon's name is longer than JavaScript's.
     "maximumNumberOfLines": "numberOfLines",
+    # Whether the text can be selected and copied. `selectable` is the prop an
+    # app writes and `userSelect` is the style name that lands in the same
+    # field, which is what SPELLINGS says below: React Native's own `Text.js`
+    # maps one onto the other before the props are sent.
+    "isSelectable": "selectable",
     # Text, where ReactCommon's names are its own.
     "foregroundColor": "color",
     "alignment": "textAlign",
@@ -297,6 +312,15 @@ SPELLINGS = {
         "borderEndEndRadius",
     ],
     "resizeMode": ["objectFit"],
+    # `userSelect` is a style name and `selectable` a prop, and both are this
+    # one field: `Text.js` holds a `userSelectToSelectableMap` and rewrites the
+    # style into the prop. The page said ReactCommon declared no field for
+    # `userSelect` until 2026-10-10, which was a row saying "upstream's problem"
+    # about something upstream had already solved.
+    "isSelectable": ["userSelect"],
+    # The same shape, in the same file upstream: a
+    # `verticalAlignToTextAlignVerticalMap`, with `middle` becoming `center`.
+    "textAlignVertical": ["verticalAlign"],
     "borderColors": [
         "borderTopColor",
         "borderBottomColor",
@@ -313,17 +337,24 @@ SPELLINGS = {
 # Style names React Native declares in JavaScript and no struct here reads.
 #
 # Not a gap in this file: a prop reaches a Fabric platform only if some
-# ReactCommon field takes it, and these three have none that any of these hosts
-# can see. They are listed rather than dropped because an app can still write
-# them, and "the page does not mention it" is indistinguishable from "nobody has
-# looked". Each one's status says what is actually true of it.
+# ReactCommon field takes it, and `elevation` has none that any of these hosts
+# can see. It is listed rather than dropped because an app can still write it,
+# and "the page does not mention it" is indistinguishable from "nobody has
+# looked". Its status says what is actually true of it.
+#
+# `userSelect` and `verticalAlign` were here until 2026-10-10 and were wrong to
+# be: React Native's own `Text.js` rewrites both into props that ReactCommon
+# does declare -- `selectable` and `textAlignVertical` -- so each is a spelling
+# of a field rather than a name with no field. They are in SPELLINGS now, which
+# is what makes the page say so, and the rows claiming upstream had no field for
+# them are gone. The lesson is the one the module audit learned on the same day:
+# "ReactCommon does not read this name" is not the same claim as "nothing an app
+# writes reaches this behaviour", and only the second one matters.
 #
 # Checked like the rest: a name here that upstream stops declaring, or starts
 # declaring a field for, is reported.
 UNREAD = [
     "elevation",
-    "userSelect",
-    "verticalAlign",
 ]
 
 # `  <type> <name>{...};` or `  <type> <name>;`, with the type allowed to carry
