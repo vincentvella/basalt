@@ -794,17 +794,30 @@ void Win32MountingManager::applyText(RnWin32View *view, const ShadowView &shadow
   // the text is painted into the box Yoga assigned, which is the box it has to
   // fit. Measuring and painting run the same search through the same builder,
   // which is what keeps the painted size the measured one.
+  // The *content* box, not the frame: a <Text> may carry padding and a border,
+  // and Yoga measured the paragraph against the size inside them. See
+  // RnWin32View::setTextInset.
+  const auto &insets = shadowView.layoutMetrics.contentInsets;
   const basalt::FontFit fit =
       win32::textFitScale(data.attributedString,
                           data.paragraphAttributes,
-                          static_cast<float>(shadowView.layoutMetrics.frame.size.width),
-                          static_cast<float>(shadowView.layoutMetrics.frame.size.height));
+                          static_cast<float>(shadowView.layoutMetrics.frame.size.width -
+                                             insets.left - insets.right),
+                          static_cast<float>(shadowView.layoutMetrics.frame.size.height -
+                                             insets.top - insets.bottom));
   view->setTextLayout(
       win32::buildTextLayout(data.attributedString, data.paragraphAttributes, fit));
   // The two dump lines a paragraph's box and string cannot show: what the app
   // asked for, and where its text ended up. `textAlign` is relative in two of
   // its five spellings, so the prop is not the answer; see
   // core/TextAlignments.h.
+  // The padding and border the paragraph sits inside, which the view draws at
+  // and hit-tests against. Yoga has already laid the box out with them; this is
+  // what stops the text being drawn underneath its own padding.
+  view->setTextInset(static_cast<float>(insets.left),
+                     static_cast<float>(insets.top),
+                     static_cast<float>(insets.right),
+                     static_cast<float>(insets.bottom));
   view->setParagraphNames(
       basalt::writingDirectionName(basalt::writingDirection(data.attributedString)),
       basalt::paragraphTextAlignmentName(data.attributedString),

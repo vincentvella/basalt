@@ -19,6 +19,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    Windows~~
 10. ~~`verticalAlign` reaches ReactCommon under a name it does not read~~
 11. ~~`userSelect` has no ReactCommon field at all~~
+12. ~~`padding` on a `<Text>` lays the box out and the text ignores it~~
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -692,6 +693,62 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   height as well, and the GTK side would have to add the offset after Pango
   answers. Recorded rather than half-fixed, because a view whose y follows the
   text and whose x does not is harder to diagnose than one that does neither.
+
+- ~~**`padding` on a `<Text>` lays the box out and the text ignores it.**~~
+  Fixed on all three on 2026-10-10, and found by looking at a screenshot of
+  React Native's own LogBox running on this platform rather than by any audit.
+
+  Padding on a `<Text>` is not the same thing as padding on a `<View>` around
+  one. Yoga lays the box out with it either way, so the frame is right on every
+  host and nothing about the layout looks wrong; what differs is that the
+  paragraph is drawn by the view layer, and all three drew it at the box's
+  corner. The text sat underneath its own padding.
+
+  LogBox is the case that shows it, and shows it next to the control: the
+  inspector's heading is a padded `<View>` wrapping a `<Text>`, and its message
+  is a `<Text style={{paddingHorizontal: 12, paddingBottom: 10}}>` with the
+  padding on the text itself. On a phone the two line up. Here the heading was
+  indented and the message was flush against the window's edge.
+
+  Two halves, and the second was the one that was easy to miss.
+
+  **The draw.** Each host now moves the paragraph to the content box's corner:
+  one `gtk_snapshot_translate` folded into the translate `textAlignVertical`
+  was already making, a `CGContextTranslateCTM` around `drawInContext:size:`,
+  and a `D2D1::Matrix3x2F::Translation` composed onto the content transform.
+  The selection highlight follows for free on all three, being drawn inside the
+  same move.
+
+  **The wrap.** The painted layout was built at `frame.size.width`, and Yoga
+  measured the paragraph at the width *inside* the padding -- so a padded
+  paragraph was painted wider than it was measured, which is a line count the
+  box was never sized for. All three now build at the content size, which is
+  also what makes `adjustsFontSizeToFit` search against the box the text has to
+  fit.
+
+  And two things that follow from the same number: `textAlignVertical` centres
+  the paragraph between its padding rather than between its edges, and the hit
+  test subtracts the inset before asking the engine which character is under
+  the pointer, without which a drag on a padded paragraph selects the character
+  beside the one it is on.
+
+  `layoutMetrics.contentInsets` is where Fabric adds padding and border up, and
+  is what each `applyText` passes down. Border is included deliberately: a
+  `<Text>` with a border draws its text inside it. React Native offsets an
+  inline view's frame by the same insets in `ParagraphShadowNode::layout`, so
+  a paragraph drawn at the box's corner also disagreed with the views inside
+  it -- which is the strongest argument that the insets are where the text
+  belongs.
+
+  Tested at both levels, because neither alone is enough. Each host's own suite
+  draws a padded paragraph into a bitmap and asserts the ink moved by exactly
+  the padding, and asks `textIndexAtPoint` for the same character twice, once
+  with padding and once without. Sabotaged on GTK and AppKit by dropping the
+  translate and then the hit test's subtraction: each pair fails. The
+  end-to-end scenario asserts the number arrives, from a stylesheet to the
+  view, and that exactly one paragraph in the app reports one -- a dump is the
+  only thing that can see this, the frame being the box including the padding
+  and the string being the same string either way.
 
 - ~~**`userSelect` has no ReactCommon field at all.**~~ The grep was right and
   the conclusion was wrong, corrected on 2026-10-10. No field is *named*

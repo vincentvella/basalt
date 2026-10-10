@@ -79,6 +79,17 @@ const styles = StyleSheet.create({
   // than the text: a paragraph Yoga sized to its content has no slack to sit in.
   middled: {fontSize: 16, color: '#2b3445', height: 60, verticalAlign: 'middle'},
   grounded: {fontSize: 16, color: '#2b3445', height: 60, textAlignVertical: 'bottom'},
+  // Padding on the <Text> itself rather than on a <View> around it, which is
+  // what React Native's own LogBox writes and what every host drew as if it
+  // were zero: the box was laid out with it and the text was painted in the
+  // corner, underneath its own padding.
+  padded: {
+    fontSize: 16,
+    color: '#2b3445',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#e8ecf5',
+  },
   variants: {fontSize: 16, color: '#2b3445', fontVariant: ['small-caps', 'tabular-nums']},
   faded: {fontSize: 16, color: '#2b3445', opacity: 0.4},
   dotted: {
@@ -167,6 +178,7 @@ function App() {
         <Text style={styles.hebrew}>{'\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd'}</Text>
         <Text style={styles.middled}>Halfway down its box</Text>
         <Text style={styles.grounded}>At the bottom of its box</Text>
+        <Text style={styles.padded}>Inside its own padding</Text>
         <Text style={styles.clipped}>
           Plain, then <Text style={styles.emphasis}>bold amber</Text> and{' '}
           <Text style={styles.italic}>italic green</Text> in one paragraph.

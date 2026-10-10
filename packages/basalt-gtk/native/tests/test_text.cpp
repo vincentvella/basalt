@@ -1336,3 +1336,93 @@ TEST(text_vertical_align_a_paragraph_as_tall_as_its_box_does_not_move) {
   EXPECT(topmost >= 0);
   EXPECT(topmost < 20);
 }
+
+// `padding` on a `<Text>`, which is not the same prop as padding on a <View>
+// and was drawn as if it were zero.
+//
+// React Native's own LogBox is what found it: the inspector's heading is a
+// padded <View> around a <Text> and its message is a `<Text>` with
+// `paddingHorizontal: 12` of its own, so the two lined up on a phone and the
+// message sat flush against the window edge here. Yoga lays the box out with
+// the padding either way, which is why nothing about the frame looked wrong.
+TEST(text_padding_moves_the_paragraph_off_its_corner) {
+  const auto leftmostInk = [](float inset) {
+    TextAttributes attributes;
+    attributes.fontSize = 14.0F;
+
+    AttributedString::Fragment fragment;
+    fragment.string = "Inset";
+    fragment.textAttributes = attributes;
+
+    AttributedString text;
+    text.appendFragment(std::move(fragment));
+
+    PangoLayout *layout = basalt::buildTextLayout(text, ParagraphAttributes{}, 200.0F);
+
+    RnView *view = rn_view_new(1);
+    g_object_ref_sink(view);
+    rn_view_set_frame(view, 0.0F, 0.0F, 200.0F, 80.0F);
+    const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+    rn_view_set_text_layout(view, layout, &black);
+    rn_view_set_text_inset(view, inset, inset, inset, inset);
+
+    const basalt::testing::RnPixels pixels = basalt::testing::renderView(view, 200, 80);
+    int leftmost = -1;
+    for (int x = 0; x < 200 && leftmost < 0; x++) {
+      for (int y = 0; y < 80; y++) {
+        if (pixels.at(x, y).alpha > 40) {
+          leftmost = x;
+          break;
+        }
+      }
+    }
+
+    g_object_unref(layout);
+    g_object_unref(view);
+    return leftmost;
+  };
+
+  const int flush = leftmostInk(0.0F);
+  const int padded = leftmostInk(24.0F);
+
+  // Ink at all, or the comparison below would hold for a paragraph that drew
+  // nothing.
+  EXPECT(flush >= 0);
+  // Moved by the padding, give or take the glyph's own left bearing, which is
+  // the same in both and so cancels.
+  EXPECT_EQ((long)(padded - flush), 24L);
+}
+
+// And the hit test moves with it, or a drag would select the character beside
+// the one under the pointer. Same seam the selection highlight is drawn in.
+TEST(text_padding_moves_the_hit_test_too) {
+  TextAttributes attributes;
+  attributes.fontSize = 14.0F;
+
+  AttributedString::Fragment fragment;
+  fragment.string = "Select this sentence";
+  fragment.textAttributes = attributes;
+
+  AttributedString text;
+  text.appendFragment(std::move(fragment));
+
+  PangoLayout *layout = basalt::buildTextLayout(text, ParagraphAttributes{}, 400.0F);
+
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, 400.0F, 60.0F);
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_text_layout(view, layout, &black);
+
+  const int withoutPadding = rn_view_text_index_at(view, 60.0, 8.0);
+  rn_view_set_text_inset(view, 24.0F, 12.0F, 24.0F, 12.0F);
+  // The same character, which is now 24 points further into the view and 12
+  // points down it.
+  const int withPadding = rn_view_text_index_at(view, 84.0, 20.0);
+
+  EXPECT(withoutPadding > 0);
+  EXPECT_EQ((long)withPadding, (long)withoutPadding);
+
+  g_object_unref(layout);
+  g_object_unref(view);
+}

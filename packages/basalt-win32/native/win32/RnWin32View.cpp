@@ -341,8 +341,25 @@ int RnWin32View::textIndexAtPoint(float x, float y) const {
   if (textLayout_ == nullptr) {
     return -1;
   }
-  return static_cast<int>(
-      textLayout_->indexAtPoint(x, y, frame_.width, frame_.height));
+  // In the paragraph's own coordinates: the view's, minus its padding. The same
+  // move the draw makes, or a drag would select the character beside the one
+  // under the pointer.
+  return static_cast<int>(textLayout_->indexAtPoint(x - textInsetLeft_,
+                                                    y - textInsetTop_,
+                                                    frame_.width - textInsetLeft_ -
+                                                        textInsetRight_,
+                                                    frame_.height - textInsetTop_ -
+                                                        textInsetBottom_));
+}
+
+void RnWin32View::setTextInset(float left, float top, float right, float bottom) {
+  // No repaint request here, for the reason `setImage` makes none: this host
+  // invalidates once per mounted transaction, and this is only ever set during
+  // one.
+  textInsetLeft_ = left;
+  textInsetTop_ = top;
+  textInsetRight_ = right;
+  textInsetBottom_ = bottom;
 }
 
 void RnWin32View::setTextSelection(int start, int length) {
@@ -828,10 +845,21 @@ void RnWin32View::paintContents(ID2D1RenderTarget *target,
 
     // Text sits above the background and below any children, which is the
     // order `<Text>` with nested views expects. The paragraph draws itself at
-    // the view's own origin, in the box Yoga gave the view -- the same box it
-    // was measured against, because both go through RnWin32TextLayout.
+    // the view's *content* origin, in the box Yoga gave it minus its padding
+    // and border -- the same box it was measured against, because both go
+    // through RnWin32TextLayout. See setTextInset.
     if (textLayout_ != nullptr) {
-      textLayout_->draw(target, frame_.width, frame_.height);
+      const bool inset = textInsetLeft_ != 0.0f || textInsetTop_ != 0.0f;
+      if (inset) {
+        target->SetTransform(
+            D2D1::Matrix3x2F::Translation(textInsetLeft_, textInsetTop_) * contentTransform);
+      }
+      textLayout_->draw(target,
+                        frame_.width - textInsetLeft_ - textInsetRight_,
+                        frame_.height - textInsetTop_ - textInsetBottom_);
+      if (inset) {
+        target->SetTransform(contentTransform);
+      }
     }
 
     // A control sits where the text would: above the background, below the
@@ -2573,6 +2601,17 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     if (textVerticalAlignName_ != nullptr) {
       out += " text-valign=";
       out += textVerticalAlignName_;
+    }
+    // A <Text>'s own padding and border. Invisible in every other line here --
+    // the frame is the box including the padding, and the string is the same
+    // string -- and it decides where the text is drawn and how wide it wraps.
+    if (textInsetLeft_ != 0.0f || textInsetTop_ != 0.0f || textInsetRight_ != 0.0f ||
+        textInsetBottom_ != 0.0f) {
+      appendFormat(out, " text-inset=%g,%g,%g,%g",
+                   static_cast<double>(textInsetLeft_),
+                   static_cast<double>(textInsetTop_),
+                   static_cast<double>(textInsetRight_),
+                   static_cast<double>(textInsetBottom_));
     }
     // `<Text selectable>`, and what is selected in it. Neither can be seen any
     // other way in a dump: the prop changes no box and the highlight is a wash

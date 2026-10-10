@@ -16,6 +16,7 @@
 #import "CoreTextLayout.h"
 
 #include "FontScaling.h"
+#import "RnAppKitView.h"
 #import "RnTextLayout.h"
 
 #include <algorithm>
@@ -1461,5 +1462,87 @@ TEST(appkit_text_vertical_align_a_paragraph_as_tall_as_its_box_does_not_move) {
     CGContextRelease(context);
     EXPECT(topmost >= 0);
     EXPECT(topmost < 10);
+  }
+}
+
+// `padding` on a `<Text>`, which is not the same prop as padding on a <View>
+// and was drawn as if it were zero.
+//
+// React Native's own LogBox is what found it: the inspector's heading is a
+// padded <View> around a <Text> and its message is a `<Text>` with
+// `paddingHorizontal: 12` of its own, so the two lined up on a phone and the
+// message sat flush against the window edge here. Yoga lays the box out with
+// the padding either way, which is why nothing about the frame looked wrong,
+// and React Native offsets an inline view's frame by the same insets in
+// `ParagraphShadowNode::layout` -- so the text also disagreed with the views
+// inside it.
+TEST(appkit_text_padding_moves_the_paragraph_off_its_corner) {
+  @autoreleasepool {
+    const CGSize size = CGSizeMake(200, 80);
+
+    const auto leftmostInk = [&](CGFloat inset) {
+      RnAppKitView *view = [[RnAppKitView alloc] initWithFrame:NSMakeRect(0, 0, 200, 80)];
+      [view setRnTextLayout:layoutFor(@"Inset", 14, 0)];
+      view.rnTextInset = NSEdgeInsetsMake(inset, inset, inset, inset);
+
+      CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width,
+                                                   (size_t)size.height, 8, 0, space,
+                                                   kCGImageAlphaPremultipliedLast);
+      CGColorSpaceRelease(space);
+      CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+      CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+      // A CGBitmapContext counts y from the bottom and the view counts it from
+      // the top; only the flip below makes `drawRect:` land the right way up.
+      CGContextTranslateCTM(context, 0, size.height);
+      CGContextScaleCTM(context, 1, -1);
+      NSGraphicsContext *previous = NSGraphicsContext.currentContext;
+      NSGraphicsContext.currentContext =
+          [NSGraphicsContext graphicsContextWithCGContext:context flipped:YES];
+      [view drawRect:NSMakeRect(0, 0, size.width, size.height)];
+      NSGraphicsContext.currentContext = previous;
+
+      auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+      const size_t stride = CGBitmapContextGetBytesPerRow(context);
+      int leftmost = -1;
+      for (size_t x = 0; x < (size_t)size.width && leftmost < 0; x++) {
+        for (size_t y = 0; y < (size_t)size.height; y++) {
+          if (pixels[y * stride + x * 4] < 200) {  // any ink at all
+            leftmost = (int)x;
+            break;
+          }
+        }
+      }
+      CGContextRelease(context);
+      return leftmost;
+    };
+
+    const int flush = leftmostInk(0);
+    const int padded = leftmostInk(24);
+
+    // Ink at all, or the comparison below would hold for a paragraph that drew
+    // nothing.
+    EXPECT(flush >= 0);
+    // Moved by the padding, give or take the glyph's own left bearing, which is
+    // the same in both and so cancels.
+    EXPECT_EQ((long)(padded - flush), 24L);
+  }
+}
+
+// And the hit test moves with it, or a drag would select the character beside
+// the one under the pointer. Same seam the selection highlight is drawn in.
+TEST(appkit_text_padding_moves_the_hit_test_too) {
+  @autoreleasepool {
+    RnAppKitView *view = [[RnAppKitView alloc] initWithFrame:NSMakeRect(0, 0, 400, 60)];
+    [view setRnTextLayout:layoutFor(@"Select this sentence", 14, 0)];
+
+    const NSInteger withoutPadding = [view rnTextIndexAtPoint:CGPointMake(60, 8)];
+    view.rnTextInset = NSEdgeInsetsMake(12, 24, 12, 24);
+    // The same character, which is now 24 points further into the view and 12
+    // points down it.
+    const NSInteger withPadding = [view rnTextIndexAtPoint:CGPointMake(84, 20)];
+
+    EXPECT(withoutPadding > 0);
+    EXPECT_EQ((long)withPadding, (long)withoutPadding);
   }
 }

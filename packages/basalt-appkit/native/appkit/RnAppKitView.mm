@@ -1312,7 +1312,15 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   if (_textLayout == nil) {
     return -1;
   }
-  return (NSInteger)[_textLayout characterIndexAtPoint:point size:self.bounds.size];
+  // In the paragraph's own coordinates: the view's, minus its padding. The same
+  // move the draw makes, or a drag would select the character beside the one
+  // under the pointer.
+  const CGSize box = self.bounds.size;
+  const CGPoint inText =
+      CGPointMake(point.x - _rnTextInset.left, point.y - _rnTextInset.top);
+  const CGSize content = CGSizeMake(box.width - _rnTextInset.left - _rnTextInset.right,
+                                    box.height - _rnTextInset.top - _rnTextInset.bottom);
+  return (NSInteger)[_textLayout characterIndexAtPoint:inText size:content];
 }
 
 - (void)setRnTextSelectionStart:(NSInteger)start length:(NSInteger)length {
@@ -1447,7 +1455,16 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   // Text sits above the image and below any children, which is the order the
   // GTK side paints in too.
   if (_textLayout != nil) {
-    [_textLayout drawInContext:context size:size];
+    // Inside the padding, in a box the size of the content. See rnTextInset:
+    // the layout draws in a box with a top-left origin, so moving the origin is
+    // the whole of it, and the selection highlight moves with the glyphs
+    // because it is drawn in the same call.
+    const CGSize content = CGSizeMake(size.width - _rnTextInset.left - _rnTextInset.right,
+                                      size.height - _rnTextInset.top - _rnTextInset.bottom);
+    CGContextSaveGState(context);
+    CGContextTranslateCTM(context, _rnTextInset.left, _rnTextInset.top);
+    [_textLayout drawInContext:context size:content];
+    CGContextRestoreGState(context);
   }
 
   // Borders paint over the content, as they do on every other platform.
@@ -3088,6 +3105,14 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   }
   if (self.rnTextVerticalAlign.length > 0) {
     [out appendFormat:@" text-valign=%@", self.rnTextVerticalAlign];
+  }
+  // A <Text>'s own padding and border. Invisible in every other line here --
+  // the frame is the box including the padding, and the string is the same
+  // string -- and it decides where the text is drawn and how wide it wraps.
+  if (_rnTextInset.left != 0 || _rnTextInset.top != 0 || _rnTextInset.right != 0 ||
+      _rnTextInset.bottom != 0) {
+    [out appendFormat:@" text-inset=%g,%g,%g,%g", _rnTextInset.left, _rnTextInset.top,
+                      _rnTextInset.right, _rnTextInset.bottom];
   }
   // `<Text selectable>`, and what is selected in it. Neither can be seen any
   // other way in a dump: the prop changes no box and the highlight is a wash

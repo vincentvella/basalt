@@ -1316,3 +1316,60 @@ TEST(text_a_wavy_underline_is_not_straight) {
   EXPECT(straight <= 1);
   EXPECT(wave >= 3);
 }
+
+// `padding` on a `<Text>`, which is not the same prop as padding on a <View>
+// and was drawn as if it were zero.
+//
+// React Native's own LogBox is what found it: the inspector's heading is a
+// padded <View> around a <Text> and its message is a `<Text>` with
+// `paddingHorizontal: 12` of its own, so the two lined up on a phone and the
+// message sat flush against the window edge here. Yoga lays the box out with
+// the padding either way, which is why nothing about the frame looked wrong,
+// and React Native offsets an inline view's frame by the same insets in
+// `ParagraphShadowNode::layout` -- so the text also disagreed with the views
+// inside it.
+TEST(win32_text_padding_moves_the_paragraph_off_its_corner) {
+  const auto leftmostInk = [](float inset) {
+    auto root = std::make_unique<RnWin32View>(1);
+    root->setFrame(0, 0, 200, 80);
+    root->setTextLayout(paragraph("Inset", 14.0f));
+    root->setTextInset(inset, inset, inset, inset);
+
+    const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+    for (unsigned x = 0; x < pixels.width(); x++) {
+      for (unsigned y = 0; y < pixels.height(); y++) {
+        if (pixels.at(x, y).alpha > 40) {
+          return static_cast<int>(x);
+        }
+      }
+    }
+    return -1;
+  };
+
+  const int flush = leftmostInk(0.0f);
+  const int padded = leftmostInk(24.0f);
+
+  // Ink at all, or the comparison below would hold for a paragraph that drew
+  // nothing.
+  EXPECT(flush >= 0);
+  // Moved by the padding, give or take the glyph's own left bearing, which is
+  // the same in both and so cancels.
+  EXPECT_EQ(padded - flush, 24);
+}
+
+// And the hit test moves with it, or a drag would select the character beside
+// the one under the pointer. Same seam the selection highlight is drawn in.
+TEST(win32_text_padding_moves_the_hit_test_too) {
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 400, 60);
+  root->setTextLayout(paragraph("Select this sentence", 14.0f));
+
+  const int withoutPadding = root->textIndexAtPoint(60.0f, 8.0f);
+  root->setTextInset(24.0f, 12.0f, 24.0f, 12.0f);
+  // The same character, which is now 24 points further into the view and 12
+  // points down it.
+  const int withPadding = root->textIndexAtPoint(84.0f, 20.0f);
+
+  EXPECT(withoutPadding > 0);
+  EXPECT_EQ(withPadding, withoutPadding);
+}

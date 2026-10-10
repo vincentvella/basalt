@@ -5749,6 +5749,79 @@ def test_writing_direction(bundle: Path) -> None:
             raise Failure(f"{why}.\n{matching[0]}")
 
 
+def test_text_padding(bundle: Path) -> str:
+    """`padding` on a `<Text>` reaches the paragraph that has to draw inside it.
+
+    Padding on a <Text> is not the same thing as padding on a <View> around one.
+    Yoga lays the box out with it either way, so the frame looks right on every
+    host; what differs is that the paragraph is drawn by the view layer, and all
+    three drew it at the box's corner -- underneath its own padding -- and
+    wrapped it to the box's width rather than the content's.
+
+    React Native's own LogBox is what found it. The inspector's heading is a
+    padded <View> around a <Text> and its message is a `<Text>` with
+    `paddingHorizontal: 12` of its own, so the two line up on a phone and the
+    message sat flush against the window's edge here. React Native offsets an
+    inline view's frame by the same insets in `ParagraphShadowNode::layout`, so
+    a paragraph drawn at the corner also disagreed with the views inside it.
+
+    What this asserts is the arrival and the number, which is what a tree dump
+    can see: the frame is the box *including* the padding and the string is the
+    same string, so without this line nothing distinguishes a paragraph that
+    honours its padding from one that ignores it. Where the glyphs then land is
+    each host's own suite, against real pixels, all three of them -- and so is
+    the hit test, which has to move with the text or a drag selects the
+    character beside the one under the pointer.
+    """
+
+    app = bundle_app(bundle.parent, "text")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltText"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text(encoding="utf-8")
+
+    padded = [line for line in tree.splitlines() if 'text="Inside its own padding' in line]
+    if len(padded) != 1:
+        raise Failure(
+            f"{len(padded)} paragraphs in the tree say 'Inside its own padding'; "
+            f"e2e/text.tsx has one.\n{tree}"
+        )
+    # The app writes paddingHorizontal: 12 and paddingVertical: 8, and the dump
+    # prints left, top, right, bottom -- Fabric's own order for contentInsets.
+    if "text-inset=12,8,12,8" not in padded[0]:
+        raise Failure(
+            "the padding on a <Text> did not reach the paragraph, so its text is "
+            f"drawn underneath it.\n{padded[0]}"
+        )
+
+    # And only that one, so a host that insetting every paragraph by something
+    # would fail here rather than pass twice over.
+    inset = [line for line in tree.splitlines() if "text-inset=" in line]
+    if len(inset) != 1:
+        raise Failure(
+            f"{len(inset)} paragraphs report padding; e2e/text.tsx puts it on "
+            "one.\n" + "\n".join(inset)
+        )
+
+    return "a padded paragraph reports 12,8,12,8 and the rest report nothing"
+
+
 def test_text_shadow(bundle: Path) -> None:
     """`textShadowColor`, `textShadowOffset` and `textShadowRadius` reach the view.
 
@@ -7627,6 +7700,7 @@ SCENARIOS = [
     ("a font loaded at runtime is the font the paragraph uses", test_runtime_font),
     ("writingDirection and the edge it puts the text against",
      test_writing_direction),
+    ("padding on a Text reaches the paragraph", test_text_padding),
     ("a drag selects a selectable paragraph's text", test_text_selection),
     ("a text shadow reaches the paragraph", test_text_shadow),
     ("a desktop text scale, and the props that refuse it", test_font_scaling),

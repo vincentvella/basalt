@@ -424,6 +424,23 @@ class RnWin32View {
   void setTextLayout(std::shared_ptr<RnWin32TextLayout> layout);
   const std::shared_ptr<RnWin32TextLayout> &textLayout() const { return textLayout_; }
 
+  // Where the paragraph's box ends and its text begins: padding and border,
+  // which Fabric adds up into `layoutMetrics.contentInsets`.
+  //
+  // A <Text> may carry padding of its own, and React Native's own LogBox does:
+  // its message is a `<Text style={{paddingHorizontal: 12}}>` while the heading
+  // above it is a padded <View> around one, so the two lined up on a phone and
+  // did not here. Yoga lays the box out with the padding either way; what was
+  // missing is that the paragraph was drawn at the box's corner rather than at
+  // the content's, and wrapped to the box's width rather than the content's.
+  //
+  // Everything that reads a point against the text uses it: the draw, the
+  // selection highlight drawn with it, the vertical alignment, and
+  // `textIndexAtPoint`. React Native offsets an inline view's frame by the same
+  // insets in `ParagraphShadowNode::layout`, so a paragraph drawn at the corner
+  // also disagreed with the views inside it.
+  void setTextInset(float left, float top, float right, float bottom);
+
   // --- Selecting that text ----------------------------------------------------
   //
   // `<Text selectable>`, which `userSelect` also arrives in. The same four
@@ -800,6 +817,11 @@ class RnWin32View {
   const char *writingDirectionName_ = nullptr;
   const char *textAlignName_ = nullptr;
   const char *textVerticalAlignName_ = nullptr;
+  // The paragraph's padding and border; see setTextInset.
+  float textInsetLeft_ = 0.0f;
+  float textInsetTop_ = 0.0f;
+  float textInsetRight_ = 0.0f;
+  float textInsetBottom_ = 0.0f;
   // `<Text selectable>`; the range itself lives on the layout, which draws it.
   bool textSelectable_ = false;
   std::shared_ptr<RnWin32Image> image_;

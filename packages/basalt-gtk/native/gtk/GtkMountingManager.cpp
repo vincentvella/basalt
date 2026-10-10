@@ -1130,7 +1130,14 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // Measurement already ran through the same builder, with the width Yoga then
   // assigned. Rebuilding it here at that width is what makes the painted lines
   // break where the measured ones did.
-  const float width = static_cast<float>(shadowView.layoutMetrics.frame.size.width);
+  // The *content* box, not the frame: a <Text> may carry padding and a border,
+  // and Yoga measured the paragraph against the width inside them. Building the
+  // painted layout at the frame's width would wrap it wider than the measured
+  // one, which is a line count the box was never sized for. See
+  // rn_view_set_text_inset.
+  const auto &insets = shadowView.layoutMetrics.contentInsets;
+  const float width = static_cast<float>(shadowView.layoutMetrics.frame.size.width -
+                                         insets.left - insets.right);
   // On the main thread, and this is the one assertion the per-thread Pango
   // context rests on. Each thread lays out against its own context and font map,
   // which is what removed the process-wide mutex, and the price is that a layout
@@ -1145,7 +1152,8 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // the text is painted into the box Yoga assigned, which is the box it has to
   // fit. Measuring and painting run the same search through the same builder,
   // which is what keeps the painted size the measured one.
-  const float height = static_cast<float>(shadowView.layoutMetrics.frame.size.height);
+  const float height = static_cast<float>(shadowView.layoutMetrics.frame.size.height -
+                                          insets.top - insets.bottom);
   const basalt::FontFit fit =
       basalt::textFitScale(data.attributedString, data.paragraphAttributes, width, height);
   PangoLayout *layout =
@@ -1182,6 +1190,14 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
           basalt::textVerticalFlushFactor(data.paragraphAttributes.textAlignVertical)));
   rn_view_set_text_valign(
       view, basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical));
+  // The padding and border the paragraph sits inside, which the widget draws
+  // at and hit-tests against. Yoga has already laid the box out with them; this
+  // is what stops the text being drawn underneath its own padding.
+  rn_view_set_text_inset(view,
+                         static_cast<float>(insets.left),
+                         static_cast<float>(insets.top),
+                         static_cast<float>(insets.right),
+                         static_cast<float>(insets.bottom));
 
   // `<Text selectable>`, which `userSelect` also arrives in: React Native's own
   // `Text.js` maps the style onto the prop. From the props rather than the

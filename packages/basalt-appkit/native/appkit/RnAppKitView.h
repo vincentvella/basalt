@@ -708,6 +708,23 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // which core/TextAlignments.h argues.
 @property(nonatomic, copy, nullable) NSString *rnTextVerticalAlign;
 
+// Where the paragraph's box ends and its text begins: padding and border,
+// which Fabric adds up into `layoutMetrics.contentInsets`.
+//
+// A <Text> may carry padding of its own, and React Native's own LogBox does:
+// its message is a `<Text style={{paddingHorizontal: 12}}>` while the heading
+// above it is a padded <View> around one, so the two lined up on a phone and
+// did not here. Yoga lays the box out with the padding either way; what was
+// missing is that the paragraph was drawn at the box's corner rather than at
+// the content's.
+//
+// Everything that reads a point against the text uses it: the draw, the
+// selection highlight that is drawn with it, the vertical alignment, and
+// `rnTextIndexAtPoint:`. React Native offsets an inline view's frame by the
+// same insets in `ParagraphShadowNode::layout`, so a paragraph drawn at the
+// corner also disagreed with the views inside it.
+@property(nonatomic) NSEdgeInsets rnTextInset;
+
 // `spellCheck` and `autoCorrect`, for the tree dump: @"on", @"off" or nil for a
 // field that said nothing, which is the third state rather than a default. What
 // this host does with them is two properties on the NSTextView a field is or

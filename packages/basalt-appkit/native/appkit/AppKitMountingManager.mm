@@ -861,11 +861,17 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   // the text is painted into the box Yoga assigned, which is the box it has to
   // fit. Measuring and painting run the same search through the same builder,
   // which is what keeps the painted size the measured one.
+  // The *content* box, not the frame: a <Text> may carry padding and a border,
+  // and Yoga measured the paragraph against the size inside them. See
+  // RnAppKitView's rnTextInset.
+  const auto &insets = shadowView.layoutMetrics.contentInsets;
   const basalt::FontFit fit =
       basalt::textFitScale(data.attributedString,
                            data.paragraphAttributes,
-                           static_cast<float>(shadowView.layoutMetrics.frame.size.width),
-                           static_cast<float>(shadowView.layoutMetrics.frame.size.height));
+                           static_cast<float>(shadowView.layoutMetrics.frame.size.width -
+                                              insets.left - insets.right),
+                           static_cast<float>(shadowView.layoutMetrics.frame.size.height -
+                                              insets.top - insets.bottom));
   RnTextLayout *layout =
       basalt::buildTextLayout(data.attributedString, data.paragraphAttributes, fit);
 
@@ -886,6 +892,10 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   const char *const verticalAlign =
       basalt::textAlignVerticalName(data.paragraphAttributes.textAlignVertical);
   view.rnTextVerticalAlign = verticalAlign != nullptr ? @(verticalAlign) : nil;
+  // The padding and border the paragraph sits inside, which the view draws at
+  // and hit-tests against. Yoga has already laid the box out with them; this is
+  // what stops the text being drawn underneath its own padding.
+  view.rnTextInset = NSEdgeInsetsMake(insets.top, insets.left, insets.bottom, insets.right);
 
   // `<Text selectable>`, which `userSelect` also arrives in: React Native's own
   // `Text.js` maps the style onto the prop. From the props rather than the

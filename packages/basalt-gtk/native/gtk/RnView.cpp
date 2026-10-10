@@ -234,6 +234,11 @@ struct _RnView {
   const char *text_align;
   // Where the paragraph sits in its box; see rn_view_set_text_vertical_flush.
   float text_vertical_flush;
+  // The paragraph's padding and border; see rn_view_set_text_inset.
+  float text_inset_left;
+  float text_inset_top;
+  float text_inset_right;
+  float text_inset_bottom;
   // And what the app called it, for the dump; see rn_view_set_text_valign.
   const char *text_valign;
   // `<Text selectable>` and what is selected in it, in bytes; see
@@ -824,9 +829,17 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     //
     // The *visible* height is what is aligned, which for a clipped paragraph is
     // the lines that survived rather than all of them.
-    const gboolean aligns_text = self->text_vertical_flush > 0.0f;
-    if (aligns_text) {
-      const graphene_point_t down{0.0f, rn_view_text_offset_y(self)};
+    //
+    // The paragraph's padding is part of the same move: a <Text> with padding
+    // is laid out with it by Yoga and was drawn at the box's corner regardless,
+    // so the text sat under its own padding. One translate for both, which is
+    // also what keeps the selection highlight and the hit test in step -- they
+    // are inside it and read the same two numbers.
+    const float text_x = self->text_inset_left;
+    const float text_y = self->text_inset_top + rn_view_text_offset_y(self);
+    const gboolean moves_text = text_x != 0.0f || text_y != 0.0f;
+    if (moves_text) {
+      const graphene_point_t down{text_x, text_y};
       gtk_snapshot_save(snapshot);
       gtk_snapshot_translate(snapshot, &down);
     }
@@ -903,7 +916,7 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     if (clips_text) {
       gtk_snapshot_pop(snapshot);
     }
-    if (aligns_text) {
+    if (moves_text) {
       gtk_snapshot_restore(snapshot);
     }
   }
@@ -1304,6 +1317,10 @@ static void rn_view_init(RnView *self) {
   self->writing_direction = nullptr;
   self->text_align = nullptr;
   self->text_vertical_flush = 0.0f;
+  self->text_inset_left = 0.0f;
+  self->text_inset_top = 0.0f;
+  self->text_inset_right = 0.0f;
+  self->text_inset_bottom = 0.0f;
   self->text_valign = nullptr;
   self->text_selectable = FALSE;
   self->text_selection_start = 0;
@@ -1557,6 +1574,19 @@ void rn_view_set_text_valign(RnView *self, const char *valign) {
   g_return_if_fail(RN_IS_VIEW(self));
   // A literal from core, like the two above it.
   self->text_valign = valign;
+}
+
+void rn_view_set_text_inset(RnView *self, float left, float top, float right, float bottom) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  if (self->text_inset_left == left && self->text_inset_top == top &&
+      self->text_inset_right == right && self->text_inset_bottom == bottom) {
+    return;
+  }
+  self->text_inset_left = left;
+  self->text_inset_top = top;
+  self->text_inset_right = right;
+  self->text_inset_bottom = bottom;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
 void rn_view_set_text_vertical_flush(RnView *self, float flush) {
@@ -1906,7 +1936,11 @@ static float rn_view_text_offset_y(RnView *self) {
   int text_height = 0;
   pango_layout_get_pixel_size(self->text_layout, nullptr, &text_height);
 
-  const double box = gtk_widget_get_height(GTK_WIDGET(self));
+  // The content box rather than the widget: a paragraph with vertical padding
+  // is centred between its padding, not between its edges.
+  const double box = gtk_widget_get_height(GTK_WIDGET(self)) -
+                     static_cast<double>(self->text_inset_top) -
+                     static_cast<double>(self->text_inset_bottom);
   return static_cast<float>(basalt::textVerticalOffset(
       box,
       clips_text ? clip_height : static_cast<double>(text_height),
@@ -1972,9 +2006,13 @@ int rn_view_text_index_at(RnView *self, double x, double y) {
     return -1;
   }
 
-  // In the paragraph's own coordinates, which are the view's minus wherever
-  // `textAlignVertical` put it.
-  const double text_y = y - rn_view_text_offset_y(self);
+  // In the paragraph's own coordinates, which are the view's minus its padding
+  // and minus wherever `textAlignVertical` put it. The same two numbers the
+  // snapshot translates by, or a drag would select the character next to the
+  // one under the pointer.
+  const double text_x = x - static_cast<double>(self->text_inset_left);
+  const double text_y =
+      y - static_cast<double>(self->text_inset_top) - rn_view_text_offset_y(self);
 
   int index = 0;
   int trailing = 0;
@@ -1982,7 +2020,7 @@ int rn_view_text_index_at(RnView *self, double x, double y) {
   // index, which is what a drag off the end of a line wants: the end of that
   // line rather than nothing at all.
   pango_layout_xy_to_index(self->text_layout,
-                           static_cast<int>(x * PANGO_SCALE),
+                           static_cast<int>(text_x * PANGO_SCALE),
                            static_cast<int>(text_y * PANGO_SCALE),
                            &index,
                            &trailing);
@@ -3239,6 +3277,17 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   }
   if (self->text_valign != nullptr) {
     g_string_append_printf(out, " text-valign=%s", self->text_valign);
+  }
+  // A <Text>'s own padding and border. Invisible in every other line here --
+  // the frame is the box including the padding, and the string is the same
+  // string -- and it decides where the text is drawn and how wide it wraps.
+  if (self->text_inset_left != 0.0f || self->text_inset_top != 0.0f ||
+      self->text_inset_right != 0.0f || self->text_inset_bottom != 0.0f) {
+    g_string_append_printf(out, " text-inset=%g,%g,%g,%g",
+                           static_cast<double>(self->text_inset_left),
+                           static_cast<double>(self->text_inset_top),
+                           static_cast<double>(self->text_inset_right),
+                           static_cast<double>(self->text_inset_bottom));
   }
   // `<Text selectable>`, and what is selected in it. Neither can be seen any
   // other way in a dump: the prop changes no box and the highlight is a wash

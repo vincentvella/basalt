@@ -327,6 +327,21 @@ void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *c
 // Whether this paragraph's text can be selected with a pointer. A view with no
 // paragraph ignores it.
 void rn_view_set_text_selectable(RnView *self, gboolean selectable);
+
+// Where the paragraph's box ends and its text begins: padding and border, which
+// Fabric adds up into `layoutMetrics.contentInsets`.
+//
+// A <Text> may carry padding of its own, and React Native's own LogBox does:
+// its message is a `<Text style={{paddingHorizontal: 12}}>` while the heading
+// above it is a padded <View> around one, so the two lined up on a phone and
+// did not here. Yoga lays the box out with the padding either way; what was
+// missing is that the paragraph was drawn at the box's corner rather than at
+// the content's, and wrapped to the box's width rather than the content's.
+//
+// Everything that reads a point against the text goes through the same two
+// numbers: the draw, the selection highlight, the vertical alignment and
+// `rn_view_text_index_at`.
+void rn_view_set_text_inset(RnView *self, float left, float top, float right, float bottom);
 gboolean rn_view_get_text_selectable(RnView *self);
 
 // The byte offset in the paragraph's text nearest the point (x, y), in the
