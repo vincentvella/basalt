@@ -2,9 +2,10 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (9):**
+**Open (10):**
 
-1. ~~No rendering assertions on GTK~~
+1. ~~No rendering assertions on GTK~~, but one of them flaked on CI once
+2. A GTK blend-mode pixel assertion flaked on CI and is unexplained
 2. Nothing exercises the JS thread and the main thread concurrently
 3. The Fast Refresh scenario is skipped in CI
 4. The GTK `<TextInput>` focus scenario flaked on a Mac, and nothing explains it
@@ -15,6 +16,34 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 9. An app build compiles this repository's test suites
 10. A cancelled job reads as a job that ran
 11. GTK's clipboard paste does not complete under CI's display
+
+- **A GTK blend-mode pixel assertion flaked on CI, once, and nothing explains
+  it yet.** `gtk_paint_a_blend_sees_the_siblings_beneath_it` failed on one of
+  the three Linux shards on 2026-10-10, at commit 553b5ee, whose own changes
+  were entirely Windows and documentation. A re-run of the identical commit
+  passed on all three shards.
+
+  What it measured is worth keeping, because it is not noise-shaped: the pixel
+  was `(128, 0, 0)` where the test expects `(0, 0, 128)`, which is exactly the
+  answer a blend gives when its backdrop is its *parent* rather than everything
+  beneath it. A red parent with a blue sibling under a grey multiplying child
+  comes out half blue when the backdrop is right and half red when the sibling
+  is missing from it. So whatever happened dropped the sibling from the
+  backdrop, which is the bug the test was written for -- and the code it tests
+  did not change.
+
+  Neither renderer reproduces it on the development machine: the GL one passes,
+  and so does the cairo one with the harness forced onto it, on GTK 4.22.4.
+  **CI has GTK 4.14**, so a version difference is the obvious suspect and is
+  untested either way, which makes this inconclusive rather than explained.
+
+  The first thing to check was which renderer had answered, and that was not in
+  the log: `GtkPixels.h` announced it with `g_message`, which did not reach the
+  job's output although the suite's own stdout did. That is fixed -- it is a
+  `printf` now, beside the test names -- so the next occurrence says which
+  renderer it was. The two measurements to take after that are the renderer name
+  and whether GTK 4.14's cairo path gives that pixel, which wants a container
+  rather than this machine.
 
 - **GTK's clipboard paste does not complete under the display CI runs on, and
   the host hung instead. The hangs are explained and fixed; the paste is not.**

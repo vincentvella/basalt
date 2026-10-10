@@ -26,6 +26,7 @@
 
 #include <gtk/gtk.h>
 
+#include <cstdio>
 #include <functional>
 #include <string>
 #include <vector>
@@ -150,11 +151,20 @@ inline RnPixels renderView(RnView *view, int width, int height) {
   }
 
   if (!announced) {
-    // Once per run, into the log a failing CI job prints: which renderer answered
-    // decides what a pixel assertion is allowed to ask about, the cairo one
-    // drawing a transformed subtree unrotated.
+    // Once per run, into the log a failing CI job prints: which renderer
+    // answered decides what a pixel assertion is allowed to ask about, the
+    // cairo one drawing a transformed subtree unrotated.
+    //
+    // Printed rather than logged, and that is the point. This was a `g_message`
+    // until 2026-10-10, when `gtk_paint_a_blend_sees_the_siblings_beneath_it`
+    // failed on one CI shard and passed on a re-run of the same commit -- and
+    // the first thing to check, which renderer had answered, was not in the
+    // log: GLib's message went somewhere that job's output did not carry, while
+    // the suite's own stdout did. So this goes where the test names go.
+    // backlog/testing.md records the flake.
     announced = true;
-    g_message("rendering assertions are using %s", name.c_str());
+    std::printf("rendering assertions are using %s\n", name.c_str());
+    std::fflush(stdout);
   }
 
   graphene_rect_t viewport;
