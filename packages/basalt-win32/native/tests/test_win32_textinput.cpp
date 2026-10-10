@@ -797,7 +797,7 @@ TEST(win32_a_multiline_peer_fills_its_content_box) {
   root->setFrame(0, 0, 800, 600);
   mount(*manager,
         kSurfaceId,
-        makeField(10, 20, 30, 200, 120, {.text = "", .multiline = true, .padding = 8}));
+        makeField(10, 20, 30, 200, 120, {.text = "", .padding = 8, .multiline = true}));
   manager->syncTextInputBounds(root);
 
   HWND control = peerOf(manager->viewForTag(10));
