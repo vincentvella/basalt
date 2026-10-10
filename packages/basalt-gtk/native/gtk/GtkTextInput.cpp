@@ -312,6 +312,11 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
                           basalt::autoCapitalizeName(props->traits.autocapitalizationType),
                           basalt::keyboardTypeName(props->traits.keyboardType));
 
+  // `clearTextOnFocus` and `selectTextOnFocus`, remembered for the moment focus
+  // arrives. See onFocusEnter.
+  entry.clearTextOnFocus = props->traits.clearTextOnFocus;
+  entry.selectTextOnFocus = props->traits.selectTextOnFocus;
+
   rn_peer_set_max_length(
       entry.editable,
       (props->maxLength > 0 && props->maxLength < 1000000) ? props->maxLength : 0);
@@ -552,9 +557,55 @@ void GtkTextInputManager::onSelectionChanged(GObject * /*object*/,
 
 void GtkTextInputManager::onFocusEnter(GtkEventControllerFocus * /*controller*/, gpointer userData) {
   auto *entry = static_cast<Entry *>(userData);
-  const auto emitter = entry->owner->emitterFor(entry->tag);
+  entry->owner->handleFocus(entry->tag);
+}
+
+void GtkTextInputManager::handleFocus(Tag tag) {
+  const auto it = entries_.find(tag);
+  if (it == entries_.end()) {
+    return;
+  }
+  Entry *const entry = &it->second;
+  const auto emitter = emitterFor(entry->tag);
   if (emitter != nullptr) {
-    emitter->onFocus(entry->owner->metricsFor(*entry));
+    emitter->onFocus(metricsFor(*entry));
+  }
+
+  // `clearTextOnFocus` before `selectTextOnFocus`, which is the only order that
+  // means anything: selecting what has just been cleared selects nothing, and
+  // clearing what has just been selected throws the selection away. All three
+  // hosts do them in this order.
+  if (entry->clearTextOnFocus) {
+    char *existing = rn_peer_get_text(entry->editable);
+    const bool hadText = existing != nullptr && *existing != '\0';
+    g_free(existing);
+    if (hadText) {
+      // Reported rather than applied silently, through the same path a
+      // keystroke takes: a controlled field cleared behind JavaScript's back is
+      // a field that puts the old value back on the next unrelated render, with
+      // the user having done nothing.
+      // `gtk_editable_set_text` emits "changed", which is the signal this
+      // manager already reports from, so the clear is reported for free -- and
+      // `onChanged` is called here as well for the same reason the Windows half
+      // does it: it compares against what was last reported, so the belt and
+      // the brace cost one string comparison.
+      rn_peer_set_text(entry->editable, "");
+      onChanged(nullptr, entry);
+    }
+  }
+
+  if (entry->selectTextOnFocus) {
+    // Everything, which `rn_peer_select_region` spells with -1 as its end.
+    //
+    // Selecting text on *this* host is what `grabFocusForAutoFocus` goes out of
+    // its way to avoid, and the reason is worth knowing before anyone moves
+    // this: `gtk_widget_grab_focus` on a GtkText selects all of its text, which
+    // claims the X11 PRIMARY selection, which needs a server timestamp -- and
+    // that round trip hung the host when it happened *inside a mount*. Here it
+    // is a focus-in signal with the main loop already running, which is also
+    // where the controlled `selection` prop selects from, so there is nothing
+    // blocking the reply. See backlog/textinput.md.
+    rn_peer_select_region(entry->editable, 0, -1);
   }
 }
 

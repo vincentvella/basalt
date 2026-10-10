@@ -340,6 +340,11 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
       props->cursorColor ? RnColourOrNil(props->cursorColor) : selectionColour;
   RnPeerSetEditorColours(entry.field, selectionColour, caretColour);
 
+  // `clearTextOnFocus` and `selectTextOnFocus`, remembered for the moment focus
+  // arrives -- which is long after the props do. See `handleFocus`.
+  entry.clearTextOnFocus = props->traits.clearTextOnFocus;
+  entry.selectTextOnFocus = props->traits.selectTextOnFocus;
+
   if (props->placeholder.empty()) {
     RnPeerSetPlaceholder(entry.field, nil);
   } else {
@@ -442,6 +447,13 @@ void AppKitTextInputManager::flushAutoFocus() {
     }
     if (![window makeFirstResponder:it->second.field]) {
       LOG(WARNING) << "autoFocus: tag " << tag << " refused first responder";
+      continue;
+    }
+
+    // A field that asked to select its text on focus keeps what
+    // `becomeFirstResponder` gave it, which is the whole selection: the collapse
+    // below is what `selectTextOnFocus` is the absence of.
+    if (it->second.selectTextOnFocus) {
       continue;
     }
 
@@ -563,6 +575,28 @@ void AppKitTextInputManager::handleFocus(Tag tag) {
   }
   if (const auto emitter = emitterFor(tag)) {
     emitter->onFocus(metricsFor(*entry));
+  }
+
+  // `clearTextOnFocus` before `selectTextOnFocus`, which is the only order that
+  // means anything: selecting what has just been cleared is selecting nothing,
+  // and clearing what has just been selected throws the selection away. Both
+  // hosts do them in this order for that reason.
+  if (entry->clearTextOnFocus && RnPeerText(entry->field).length > 0) {
+    // Reported, not applied silently. A controlled field whose text was cleared
+    // behind JavaScript's back is a field that puts the old value back on the
+    // next unrelated render, with the user having done nothing -- so the clear
+    // goes through the same path a keystroke does.
+    RnPeerSetText(entry->field, @"");
+    handleChanged(tag);
+  }
+
+  if (entry->selectTextOnFocus) {
+    // An NSTextField selects everything on becoming first responder, and this
+    // host collapses that by hand -- see `flushAutoFocus`, where the prop is
+    // the reason not to. An NSTextView does not, so the selection is made here
+    // for both and neither depends on which peer it is.
+    RnPeerSetSelection(entry->field,
+                       NSMakeRange(0, RnPeerText(entry->field).length));
   }
 }
 

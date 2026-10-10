@@ -12,9 +12,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored
    on Windows; done on GTK and AppKit
 7. src/overrides/TextInput
-8. returnKeyType, clearButtonMode, selectTextOnFocus and clearTextOnFocus are
-   ignored, and ~~autoCapitalize, autoCorrect, spellCheck and keyboardType~~ are
-   done on all three
+8. returnKeyType and clearButtonMode are ignored, and ~~autoCapitalize,
+   autoCorrect, spellCheck, keyboardType, selectTextOnFocus and
+   clearTextOnFocus~~ are done on all three
 9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
 10. ~~`TextInputProps` and its traits have no rows on the support page~~
 
@@ -175,9 +175,43 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - `src/overrides/TextInput.js` is a fork of React Native's component, and the only fork
   in the tree. Every prop upstream adds is a prop it will not have.
 - **`autoCapitalize`, `autoCorrect`, `spellCheck` and `keyboardType` are done
-  on GTK and AppKit**, 2026-10-09, **and on Windows 2026-10-10**. The four
-  beside them are still ignored everywhere: `returnKeyType`,
-  `clearButtonMode`, `selectTextOnFocus` and `clearTextOnFocus`.
+  on GTK and AppKit**, 2026-10-09, **and on Windows 2026-10-10**. Of the four
+  beside them, **`selectTextOnFocus` and `clearTextOnFocus` are done on all
+  three, 2026-10-10**; `returnKeyType` and `clearButtonMode` are still ignored
+  everywhere.
+
+  **The two focus props are three calls and one rule.** Each host already had
+  the moment focus arrives -- a `GtkEventControllerFocus`, `becomeFirstResponder`
+  and `EN_SETFOCUS` -- so the work was what to do there: clear the text with the
+  host's own setter, and select everything with `rn_peer_select_region`,
+  `RnPeerSetSelection` or `EM_SETSEL`. The rule is the order, which is the same
+  on all three: **clear before select**, because selecting what has just been
+  cleared selects nothing and clearing what has just been selected throws the
+  selection away.
+
+  The clear is *reported*, through the same path a keystroke takes. A controlled
+  field cleared behind JavaScript's back is a field that puts the old value back
+  on the next unrelated render with the user having done nothing, which is worse
+  than not clearing.
+
+  Two host-specific notes, both of which came out of the earlier `autoFocus`
+  work. On AppKit, `selectTextOnFocus` is **not observable on the user-focus
+  path**: an NSTextField selects everything on becoming first responder whatever
+  the prop says, so a test that focused a field and found it selected passes with
+  the prop removed -- established by sabotage, since the first version of that
+  suite had exactly that test. What the prop changes there is the *programmatic*
+  path, where `flushAutoFocus` collapses the selection on purpose, and that is
+  where the AppKit suite asserts it from both sides. On GTK, selecting text is
+  what `grabFocusForAutoFocus` avoids, because `gtk_widget_grab_focus` on an
+  unmapped GtkText claims the PRIMARY selection and blocks; this runs from the
+  focus-in signal with the main loop already going, which is the same place the
+  controlled `selection` prop selects from.
+
+  Fifteen tests across the three hosts. The GTK ones go through a public
+  `handleFocus(tag)`, which mirrors the AppKit manager's: that suite cannot
+  focus a widget at all -- no realised window -- so the seam is where the
+  behaviour is asserted, and the AppKit suite, which can focus, exercises the
+  same seam from the other end.
 
   What the four took, and what each toolkit really has, is in
   backlog/platform-macos.md: GTK has one input-hint bitmask that needs

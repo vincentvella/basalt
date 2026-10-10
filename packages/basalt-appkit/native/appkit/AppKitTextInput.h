@@ -116,6 +116,14 @@ class AppKitTextInputManager {
     // A multiline field is an NSTextView rather than an NSTextField, so a
     // change here rebuilds the peer exactly as `secure` does.
     bool multiline{false};
+
+    // `clearTextOnFocus` and `selectTextOnFocus`: what happens when the field
+    // takes focus. Kept here because focus arrives long after the props do, and
+    // because the second has to be known in `flushAutoFocus` as well -- a field
+    // that asked to select its text must not have the selection collapsed
+    // behind it.
+    bool clearTextOnFocus{false};
+    bool selectTextOnFocus{false};
     std::string lastReportedText;
 
     // The last `text` prop actually seen, and whether one has been seen at all.

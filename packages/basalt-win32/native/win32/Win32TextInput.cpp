@@ -441,6 +441,11 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
   // which arrives here as 0 too, so the two agree without a special case.
   SendMessage(entry.control, EM_SETLIMITTEXT, static_cast<WPARAM>(std::max(0, props.maxLength)), 0);
 
+  // `clearTextOnFocus` and `selectTextOnFocus`, remembered for the moment focus
+  // arrives. See the EN_SETFOCUS case.
+  entry.clearTextOnFocus = props.traits.clearTextOnFocus;
+  entry.selectTextOnFocus = props.traits.selectTextOnFocus;
+
   applyTextChecking(entry, props);
 }
 
@@ -664,6 +669,29 @@ bool Win32TextInputManager::handleControlCommand(WPARAM wparam, LPARAM lparam) {
     case EN_SETFOCUS:
       if (const auto emitter = emitterFor(entry->tag)) {
         emitter->onFocus(metricsFor(*entry));
+      }
+      // `clearTextOnFocus` before `selectTextOnFocus`, which is the only order
+      // that means anything: selecting what has just been cleared selects
+      // nothing, and clearing what has just been selected throws the selection
+      // away. All three hosts do them in this order.
+      if (entry->clearTextOnFocus && GetWindowTextLength(entry->control) > 0) {
+        // Reported rather than applied silently, through the same path a
+        // keystroke takes: a controlled field cleared behind JavaScript's back
+        // is a field that puts the old value back on the next unrelated render
+        // with the user having done nothing.
+        //
+        // `SetWindowText` sends its own EN_CHANGE, which arrives here and
+        // reports it; the call after is belt to that brace and costs nothing,
+        // `reportChange` comparing against what was last reported.
+        SetWindowText(entry->control, L"");
+        reportChange(*entry);
+      }
+      if (entry->selectTextOnFocus) {
+        // Everything, which is what `EM_SETSEL` with -1 as its end means. A
+        // bare `SetFocus` on an EDIT selects nothing -- it is not
+        // dialog-managed, which is what made `autoFocus` need no fixing here --
+        // so this is the whole of the prop on this host.
+        SendMessage(entry->control, EM_SETSEL, 0, -1);
       }
       return true;
 

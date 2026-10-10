@@ -1089,3 +1089,139 @@ TEST(textinput_a_multiline_field_takes_the_colours_directly) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// --- clearTextOnFocus and selectTextOnFocus ---------------------------------
+//
+// What happens when a field takes focus, which no host read until 2026-10-10.
+// Both are about the moment focus arrives rather than about the props, so both
+// need a real window: an NSTextField has no field editor until it is first
+// responder, and a selection with nowhere to live is not a selection.
+
+TEST(textinput_clear_text_on_focus_empties_the_field) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 10, folly::dynamic::object("text", "keep me")("clearTextOnFocus", true));
+    NSView *field = fieldOf(view);
+    EXPECT([RnPeerText(field) isEqualToString:@"keep me"]);
+
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:manager.getSurfaceRoot(kSurfaceId)];
+    EXPECT([window makeFirstResponder:field]);
+
+    // Empty, and empty where the user can see it rather than only in the props.
+    EXPECT([RnPeerText(field) isEqualToString:@""]);
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// And a field that did not ask keeps its text, which is the control: a host
+// that cleared unconditionally would pass the test above.
+TEST(textinput_a_field_that_did_not_ask_keeps_its_text_on_focus) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("text", "keep me"));
+    NSView *field = fieldOf(view);
+
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:manager.getSurfaceRoot(kSurfaceId)];
+    EXPECT([window makeFirstResponder:field]);
+
+    EXPECT([RnPeerText(field) isEqualToString:@"keep me"]);
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// **`selectTextOnFocus` is not observable on the user-focus path on this host**,
+// and that is worth saying rather than pretending otherwise: an NSTextField
+// selects all of its text on becoming first responder whatever the prop says,
+// so a test that focused a field and found everything selected would pass with
+// the prop removed. It is a sabotage run that establishes that -- the first
+// version of this file had exactly that test, and it survived.
+//
+// What the prop changes is the *programmatic* path, where this host collapses
+// the selection on purpose, so that is where it is asserted: below, both ways
+// round.
+//
+// `autoFocus` with no `selectTextOnFocus` gets a caret at the end, which is
+// what this host goes out of its way to arrange: an NSTextField selects
+// everything on becoming first responder, and `flushAutoFocus` collapses that
+// because putting a caret in a field is what focusing one means. The prop is
+// what turns the collapse off, so this is the other side of the test above --
+// and it needs the window *before* the mount, `flushAutoFocus` having nowhere
+// to focus otherwise.
+TEST(textinput_auto_focus_alone_leaves_a_caret_rather_than_a_selection) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:root];
+
+    RnAppKitView *view =
+        mountField(manager, 10, folly::dynamic::object("text", "select me")("autoFocus", true));
+    NSView *field = fieldOf(view);
+    EXPECT(window.firstResponder == RnPeerEditor(field));
+    EXPECT(RnPeerSelection(field).length == 0);
+
+    // And the same field asking for the prop keeps the whole selection, which
+    // is the one line of difference between the two paths.
+    RnAppKitView *selecting = mountField(
+        manager,
+        11,
+        folly::dynamic::object("text", "select me")("autoFocus", true)("selectTextOnFocus", true));
+    EXPECT(RnPeerSelection(fieldOf(selecting)).length == 9);
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// Both at once, in the order that means something: cleared first, so there is
+// nothing left to select. A host that selected first would leave a selection
+// over text it then threw away.
+TEST(textinput_clearing_and_selecting_at_once_leaves_an_empty_field) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager,
+                                    10,
+                                    folly::dynamic::object("text", "both")("clearTextOnFocus", true)(
+                                        "selectTextOnFocus", true));
+    NSView *field = fieldOf(view);
+
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:manager.getSurfaceRoot(kSurfaceId)];
+    EXPECT([window makeFirstResponder:field]);
+
+    EXPECT([RnPeerText(field) isEqualToString:@""]);
+    EXPECT(RnPeerSelection(field).length == 0);
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}

@@ -978,3 +978,121 @@ TEST(textinput_keyboard_type_becomes_an_input_purpose) {
 
   g_object_unref(view);
 }
+
+// --- clearTextOnFocus and selectTextOnFocus ---------------------------------
+//
+// What happens when a field takes focus, which no host read until 2026-10-10.
+//
+// Through `handleFocus` rather than by focusing a widget, which this suite
+// cannot do: a GtkText needs a realised window to take focus, and focusing an
+// unmapped one is the stall `flushAutoFocus` documents. The signal handler calls
+// exactly this, so what is exercised here is the whole of what the prop does --
+// and the AppKit suite, which *can* focus, asserts the same two props through
+// its own `handleFocus` from the other side.
+
+TEST(textinput_clear_text_on_focus_empties_the_field) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(
+      view,
+      makeTextInput(10, folly::dynamic::object("text", "keep me")("clearTextOnFocus", true)));
+  GtkWidget *editable = rn_view_get_editable(view);
+
+  char *before = rn_peer_get_text(editable);
+  EXPECT(before != nullptr && g_strcmp0(before, "keep me") == 0);
+  g_free(before);
+
+  manager.handleFocus(10);
+
+  char *after = rn_peer_get_text(editable);
+  EXPECT(after != nullptr && *after == '\0');
+  g_free(after);
+
+  g_object_unref(view);
+}
+
+// The control: a field that did not ask keeps its text, so a host that cleared
+// unconditionally would fail here rather than pass the test above twice.
+TEST(textinput_a_field_that_did_not_ask_keeps_its_text_on_focus) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "keep me")));
+  manager.handleFocus(10);
+
+  char *text = rn_peer_get_text(rn_view_get_editable(view));
+  EXPECT(text != nullptr && g_strcmp0(text, "keep me") == 0);
+  g_free(text);
+
+  g_object_unref(view);
+}
+
+TEST(textinput_select_text_on_focus_selects_all_of_it) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(
+      view,
+      makeTextInput(10, folly::dynamic::object("text", "select me")("selectTextOnFocus", true)));
+  GtkWidget *editable = rn_view_get_editable(view);
+
+  manager.handleFocus(10);
+
+  int start = -1;
+  int end = -1;
+  EXPECT(rn_peer_get_selection_bounds(editable, &start, &end));
+  EXPECT_EQ(start, 0);
+  EXPECT_EQ(end, 9);
+
+  g_object_unref(view);
+}
+
+// And a field that did not ask has no selection, which is what makes the prop a
+// difference here rather than a no-op: `gtk_text_grab_focus_without_selecting`
+// is what this host focuses with, for the reason `flushAutoFocus` gives.
+TEST(textinput_a_field_that_did_not_ask_is_not_selected_on_focus) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "select me")));
+  manager.handleFocus(10);
+
+  int start = -1;
+  int end = -1;
+  rn_peer_get_selection_bounds(rn_view_get_editable(view), &start, &end);
+  EXPECT_EQ(start, end);
+
+  g_object_unref(view);
+}
+
+// Both at once, in the order that means something: cleared first, so there is
+// nothing left to select. A host that selected first would leave a selection
+// over text it then threw away.
+TEST(textinput_clearing_and_selecting_at_once_leaves_an_empty_field) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "both")("clearTextOnFocus", true)(
+                                   "selectTextOnFocus", true)));
+  GtkWidget *editable = rn_view_get_editable(view);
+
+  manager.handleFocus(10);
+
+  char *text = rn_peer_get_text(editable);
+  EXPECT(text != nullptr && *text == '\0');
+  g_free(text);
+  int start = -1;
+  int end = -1;
+  rn_peer_get_selection_bounds(editable, &start, &end);
+  EXPECT_EQ(start, end);
+
+  g_object_unref(view);
+}

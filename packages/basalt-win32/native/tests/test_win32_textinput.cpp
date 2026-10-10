@@ -145,6 +145,8 @@ struct FieldOptions {
   int selectionStart{-1};
   int selectionEnd{-1};
   bool multiline{false};
+  bool clearTextOnFocus{false};
+  bool selectTextOnFocus{false};
 };
 
 ShadowView makeField(Tag tag,
@@ -158,7 +160,9 @@ ShadowView makeField(Tag tag,
 
   folly::dynamic raw = folly::dynamic::object("text", options.text)(
       "mostRecentEventCount", options.mostRecentEventCount)("editable", options.editable)(
-      "secureTextEntry", options.secure)("multiline", options.multiline);
+      "secureTextEntry", options.secure)("multiline", options.multiline)(
+      "clearTextOnFocus", options.clearTextOnFocus)("selectTextOnFocus",
+                                                    options.selectTextOnFocus);
   if (!options.placeholder.empty()) {
     raw["placeholder"] = options.placeholder;
   }
@@ -810,6 +814,139 @@ TEST(win32_a_multiline_peer_fills_its_content_box) {
   const RECT placed = rectOf(control);
   EXPECT_EQ(static_cast<long>(placed.top), 38L);
   EXPECT_EQ(static_cast<long>(placed.bottom - placed.top), 104L);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// `clearTextOnFocus` and `selectTextOnFocus`: what happens when the field takes
+// focus, which no host read until 2026-10-10.
+//
+// Focus is real here -- `SetFocus` on the peer, with the suite's window as its
+// parent -- and the notification comes back through the same WM_COMMAND the
+// host forwards, which is what makes this the whole path rather than a call to
+// the handler.
+TEST(win32_clear_text_on_focus_empties_the_field) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 44, {.text = "keep me", .clearTextOnFocus = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  EXPECT_EQ(textOf(control), std::string("keep me"));
+
+  SetFocus(control);
+  EXPECT_EQ(textOf(control), std::string(""));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// The control: a field that did not ask keeps its text, so a host that cleared
+// unconditionally would fail here rather than pass the test above twice.
+TEST(win32_a_field_that_did_not_ask_keeps_its_text_on_focus) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.text = "keep me"}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  SetFocus(control);
+  EXPECT_EQ(textOf(control), std::string("keep me"));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_select_text_on_focus_selects_all_of_it) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 44, {.text = "select me", .selectTextOnFocus = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  DWORD start = 0;
+  DWORD end = 0;
+  SendMessage(control, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+  EXPECT_EQ(static_cast<int>(start), 0);
+  EXPECT_EQ(static_cast<int>(end), 9);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// And a field that did not ask gets a caret rather than a selection, which is
+// what a bare `SetFocus` on an EDIT gives: it is not dialog-managed, which is
+// why `autoFocus` needed no fixing on this host and why this prop is a real
+// difference here rather than a no-op.
+TEST(win32_a_field_that_did_not_ask_gets_a_caret_on_focus) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.text = "select me"}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  DWORD start = 0;
+  DWORD end = 0;
+  SendMessage(control, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+  EXPECT_EQ(static_cast<int>(start), static_cast<int>(end));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// Both at once, in the order that means something: cleared first, so there is
+// nothing left to select. A host that selected first would leave a selection
+// over text it then threw away.
+TEST(win32_clearing_and_selecting_at_once_leaves_an_empty_field) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.text = "both", .clearTextOnFocus = true, .selectTextOnFocus = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  EXPECT_EQ(textOf(control), std::string(""));
+  DWORD start = 0;
+  DWORD end = 0;
+  SendMessage(control, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+  EXPECT_EQ(static_cast<int>(start), static_cast<int>(end));
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

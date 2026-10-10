@@ -207,6 +207,11 @@ class Win32TextInputManager {
 
     bool secure{false};
 
+    // `clearTextOnFocus` and `selectTextOnFocus`: what happens when the field
+    // takes focus, which arrives long after the props do. See EN_SETFOCUS.
+    bool clearTextOnFocus{false};
+    bool selectTextOnFocus{false};
+
     // Which kind of EDIT this is. `ES_MULTILINE` is read when the window is
     // created and cannot be added afterwards, so this is what a change in the
     // prop is compared against: a field that switches has its peer rebuilt.

@@ -66,6 +66,17 @@ class GtkTextInputManager {
   // mapped is focused from its own `map` signal instead.
   void flushAutoFocus();
 
+  // What happens when a field takes focus: the event, and then
+  // `clearTextOnFocus` and `selectTextOnFocus`.
+  //
+  // Public and taking a tag, which mirrors the AppKit manager's `handleFocus`
+  // and is what makes the two props testable at all on this host: focusing a
+  // GtkText needs a realised window, which this suite deliberately does not
+  // have -- see `flushAutoFocus` above for what focusing an unmapped one costs.
+  // The signal handler calls this, so a test that calls it directly exercises
+  // the same code from the same side.
+  void handleFocus(facebook::react::Tag tag);
+
   // focus, blur, and setTextAndSelection. Returns false for anything else.
   bool dispatchCommand(facebook::react::Tag tag,
                        const std::string &name,
@@ -118,6 +129,11 @@ class GtkTextInputManager {
     // uncontrolled one's never does. Found on Windows.
     std::string lastPropText;
     bool sawProps{false};
+
+    // `clearTextOnFocus` and `selectTextOnFocus`: what happens when the field
+    // takes focus, which arrives long after the props do. See onFocusEnter.
+    bool clearTextOnFocus{false};
+    bool selectTextOnFocus{false};
   };
 
   // The sender differs by peer -- the widget for a GtkText, the buffer for a

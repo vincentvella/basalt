@@ -1717,10 +1717,12 @@
       ]
     },
     "TextInputTraits.clearTextOnFocus": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "traits.clearTextOnFocus"
+      ]
     },
     "TextInputTraits.keyboardType": {
       "linux": "yes",
@@ -1743,10 +1745,12 @@
       "why": "ti-ignored"
     },
     "TextInputTraits.selectTextOnFocus": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "traits.selectTextOnFocus"
+      ]
     },
     "TextInputTraits.dataDetectorTypes": {
       "linux": "ignored",
