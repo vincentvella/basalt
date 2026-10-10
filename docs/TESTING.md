@@ -467,6 +467,26 @@ what a hand-maintained list of something the code already states turns into.
 
 What is worth writing down is what is not in the code.
 
+**`BASALT_SNAPSHOT=<path>` writes the window as a PNG**, on all three hosts, on
+the way out and beside the tree dump. Windows had it from the start, since
+Direct2D renders into a WIC bitmap with no window and no display; GTK and
+AppKit grew it on 2026-10-10, each through the renderer its own suite already
+uses -- `gsk_renderer_render_texture` with a NULL surface, and
+`RnAppKitWriteSnapshot` -- so none of the three needs a display server or a
+screenshot permission.
+
+It exists because a tree dump says a view *has* a colour, a frame and a
+transform, and cannot say that any of it reached the screen. The two text bugs
+found on 2026-10-10 were both of that kind, and both were found by looking at a
+picture of React Native's own LogBox rather than by any assertion.
+
+The suite can read the picture back: `Snapshot` in `scripts/integration_test.py`
+decodes a PNG with the standard library alone -- no Pillow and no numpy on three
+CI images -- and answers `at(x, y)`. `a snapshot has each view's colour where
+its frame says` is what that is for, and the pairing is the point: the dump says
+where React put a view, the picture says what is actually painted there, and
+either half alone passes while the other is wrong.
+
 **They read coordinates from each app's own layout.** Most tap fixed points:
 `e2e/index.tsx` for the demo, and its own file for each of the apps written for a
 scenario. Change a demo's spacing and the coordinates need changing too. The

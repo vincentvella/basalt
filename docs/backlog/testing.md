@@ -479,6 +479,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   configuration CI has never been red in and a developer Mac has never been
   green in.
 
+  **2026-10-10 adds one observation, and it narrows the shape rather than the
+  cause.** The scenario failed in three consecutive *whole-suite* runs on the
+  development Mac, and passed in isolation every time directly afterwards,
+  including twice within a minute of a failure. The machine was in use
+  throughout, with other windows being clicked, which fits the backend's own
+  story: on quartz the window server decides, and a whole-suite run is the case
+  where somebody has had twenty minutes to click on something else. CI, which
+  nobody is using, has stayed green. That is still a correlation; what it rules
+  out is "the scenario is wrong", since the same binary passes the same
+  scenario seconds later.
+
 - ~~CI has no rendering assertions, so it cannot catch what the cairo renderer
   did.~~ It has them, on Windows: the job runs `basalt_win32_tests.exe`, and
   `test_win32_paint.cpp`'s fourteen are in it. What CI still cannot catch is

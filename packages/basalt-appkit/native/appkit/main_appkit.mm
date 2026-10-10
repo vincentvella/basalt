@@ -537,6 +537,65 @@ void dumpMenuIfRequested() {
   }
 }
 
+// BASALT_SNAPSHOT: write the window as a PNG on the way out.
+//
+// The tree dump below says a view *has* a colour, a frame and a transform. It
+// cannot say that the right pixels reached the screen, and the two bugs found
+// on 2026-10-10 were both of that kind: `padding` on a `<Text>` laid the box out
+// and drew the text in the corner, and an inline `<View>` stayed where the words
+// used to be. Both were found by looking at a picture of React Native's own
+// LogBox, which is an argument for being able to take one without a camera.
+//
+// One file per surface, the way the dump writes one section per surface: the
+// app's window at the path given, and a second window or the error inspector
+// beside it as `<name>.window<n>.png` and `<name>.logbox.png`. LogBox is a root
+// of its own, and it is the screen most worth looking at -- React Native's own
+// interface, drawn by this platform's text and layout.
+//
+// `RnAppKitWriteSnapshot` is the renderer the demo and the mount harness
+// already use, and it needs no window server: a mounted tree is rendered
+// through its own layer tree, a detached one gets an offscreen window.
+// `/tmp/out.png` and "logbox" become `/tmp/out.logbox.png`. The suffix goes
+// before the extension so the file is still a PNG to everything that looks at
+// its name.
+NSString *snapshotSibling(NSString *path, NSString *suffix) {
+  NSString *extension = path.pathExtension;
+  if (extension.length == 0) {
+    return [path stringByAppendingFormat:@".%@", suffix];
+  }
+  return [[path.stringByDeletingPathExtension stringByAppendingFormat:@".%@", suffix]
+      stringByAppendingPathExtension:extension];
+}
+
+void writeSnapshotOf(RnAppKitView *root, NSString *path) {
+  if (root == nil) {
+    return;
+  }
+  if (RnAppKitWriteSnapshot(root, path)) {
+    NSLog(@"wrote a snapshot to %@", path);
+  } else {
+    NSLog(@"could not write %@", path);
+  }
+}
+
+void snapshotIfRequested() {
+  const char *path = getenv("BASALT_SNAPSHOT");
+  if (path == nullptr) {
+    return;
+  }
+  NSString *base = [NSString stringWithUTF8String:path];
+  writeSnapshotOf(gHost.main().root, base);
+  for (const auto &other : gHost.windows) {
+    if (other->surfaceId == kSurfaceId || other->root == nil) {
+      continue;
+    }
+    writeSnapshotOf(other->root,
+                    snapshotSibling(base, [NSString stringWithFormat:@"window%d",
+                                                                     (int)other->surfaceId]));
+  }
+  writeSnapshotOf(gHost.logBoxRoot, snapshotSibling(base, @"logbox"));
+}
+
 void dumpTreeIfRequested() {
   const char *path = getenv("BASALT_DUMP_TREE");
   if (path == nullptr || gHost.main().root == nil) {
@@ -637,6 +696,7 @@ void endAnyOpenSheets() {
 void shutdown() {
   // Before the surface stops, which tears the tree down.
   dumpTreeIfRequested();
+  snapshotIfRequested();
   dumpMenuIfRequested();
 
   if (gHost.choreographer != nullptr) {

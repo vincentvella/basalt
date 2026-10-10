@@ -1749,11 +1749,119 @@ void dumpTreeIfRequested(Host *host) {
   g_free(description);
 }
 
+// BASALT_SNAPSHOT: write the window as a PNG on the way out.
+//
+// The tree dump beside this says a view *has* a colour, a frame and a
+// transform. It cannot say that the right pixels reached the screen, and the
+// two bugs found on 2026-10-10 were both of that kind: `padding` on a `<Text>`
+// laid the box out and drew the text in the corner, and an inline `<View>`
+// stayed where the words used to be. Both were found by looking at a picture of
+// React Native's own LogBox, which is an argument for being able to take one
+// without a camera.
+//
+// One file per surface, the way the dump writes one section per surface: the
+// app's window at the path given, and a second window or the error inspector
+// beside it as `<name>.window<n>.png` and `<name>.logbox.png`. LogBox is a
+// root of its own, and it is the screen most worth looking at -- React
+// Native's own interface, drawn by this platform's text and layout.
+//
+// Rendered rather than captured: `gsk_renderer_realize` takes a NULL surface,
+// so the node tree the widget would draw is rasterised into a texture with no
+// display server and no screenshot permission. That is the same path
+// tests/GtkPixels.h takes, for the same reason, and it works on a headless CI
+// machine.
+// `/tmp/out.png` and "logbox" become `/tmp/out.logbox.png`. The suffix goes
+// before the extension so the file is still a PNG to everything that looks at
+// its name.
+std::string snapshotSibling(const std::string &path, const std::string &suffix) {
+  const std::size_t dot = path.find_last_of('.');
+  const std::size_t slash = path.find_last_of("/\\");
+  if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) {
+    return path + "." + suffix;
+  }
+  return path.substr(0, dot) + "." + suffix + path.substr(dot);
+}
+
+void writeSnapshotOf(RnView *view, const std::string &path) {
+  if (view == nullptr) {
+    return;
+  }
+  GtkWidget *root = GTK_WIDGET(view);
+  const int width = gtk_widget_get_width(root);
+  const int height = gtk_widget_get_height(root);
+  if (width <= 0 || height <= 0) {
+    g_warning("not writing %s: the root view has no size yet", path.c_str());
+    return;
+  }
+
+  GtkSnapshot *snapshot = gtk_snapshot_new();
+  GTK_WIDGET_GET_CLASS(root)->snapshot(root, snapshot);
+  GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+  if (node == nullptr) {
+    g_warning("not writing %s: the window drew nothing", path.c_str());
+    return;
+  }
+
+  // The GL renderer, which is what a running application uses, falling back to
+  // cairo on a machine with no GL -- the same choice and the same order as the
+  // test helper. They differ on transformed subtrees, which is recorded in
+  // backlog/upstream.md, so a picture is worth knowing the renderer of.
+  GskRenderer *renderer = gsk_gl_renderer_new();
+  if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
+    g_object_unref(renderer);
+    renderer = gsk_cairo_renderer_new();
+    if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
+      g_object_unref(renderer);
+      gsk_render_node_unref(node);
+      g_warning("not writing %s: no GSK renderer would realize", path.c_str());
+      return;
+    }
+  }
+
+  graphene_rect_t viewport;
+  graphene_rect_init(&viewport,
+                     0.0F,
+                     0.0F,
+                     static_cast<float>(width),
+                     static_cast<float>(height));
+  GdkTexture *texture = gsk_renderer_render_texture(renderer, node, &viewport);
+  if (texture != nullptr) {
+    if (gdk_texture_save_to_png(texture, path.c_str())) {
+      g_message("wrote a snapshot to %s", path.c_str());
+    } else {
+      g_warning("could not write %s", path.c_str());
+    }
+    g_object_unref(texture);
+  }
+
+  gsk_renderer_unrealize(renderer);
+  g_object_unref(renderer);
+  gsk_render_node_unref(node);
+}
+
+void snapshotIfRequested(Host *host) {
+  const char *path = g_getenv("BASALT_SNAPSHOT");
+  if (path == nullptr) {
+    return;
+  }
+  writeSnapshotOf(host->main().root, path);
+  for (const auto &other : host->windows) {
+    if (other->surfaceId == kSurfaceId || other->root == nullptr) {
+      continue;
+    }
+    writeSnapshotOf(other->root,
+                    snapshotSibling(path, "window" + std::to_string(
+                                              static_cast<int>(other->surfaceId))));
+  }
+  writeSnapshotOf(host->logBoxRoot, snapshotSibling(path, "logbox"));
+}
+
 void onShutdown(GApplication * /*app*/, gpointer data) {
   auto *host = static_cast<Host *>(data);
 
   // Before the surface stops, which tears the tree down.
   dumpTreeIfRequested(host);
+  snapshotIfRequested(host);
   dumpMenuIfRequested();
 
   if (host->choreographer != nullptr) {

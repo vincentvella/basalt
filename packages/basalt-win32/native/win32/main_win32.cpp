@@ -747,16 +747,50 @@ void dumpTreeIfRequested() {
 // painting only happens when something invalidates. This is offscreen rather
 // than a screen grab, so it works on a machine with no one watching and needs
 // no window to be visible.
-void snapshotIfRequested() {
-  const char *path = std::getenv("BASALT_SNAPSHOT");
-  if (path == nullptr || gHost.main().root == nullptr) {
+//
+// One file per surface, the way the dump writes one section per surface: the
+// app's window at the path given, and a second window or the error inspector
+// beside it as `<name>.window<n>.png` and `<name>.logbox.png`. The other two
+// hosts grew this on 2026-10-10 and write the same names.
+
+// `C:\out.png` and "logbox" become `C:\out.logbox.png`. The suffix goes before
+// the extension so the file is still a PNG to everything that looks at its
+// name.
+std::string snapshotSibling(const std::string &path, const std::string &suffix) {
+  const std::size_t dot = path.find_last_of('.');
+  const std::size_t slash = path.find_last_of("/\\");
+  if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) {
+    return path + "." + suffix;
+  }
+  return path.substr(0, dot) + "." + suffix + path.substr(dot);
+}
+
+void writeSnapshotOf(RnWin32View *root, const std::string &path) {
+  if (root == nullptr) {
     return;
   }
-  if (basalt::win32::writeSnapshot(*gHost.main().root, path)) {
-    std::fprintf(stderr, "wrote snapshot to %s\n", path);
+  if (basalt::win32::writeSnapshot(*root, path)) {
+    std::fprintf(stderr, "wrote snapshot to %s\n", path.c_str());
   } else {
-    std::fprintf(stderr, "could not write %s\n", path);
+    std::fprintf(stderr, "could not write %s\n", path.c_str());
   }
+}
+
+void snapshotIfRequested() {
+  const char *path = std::getenv("BASALT_SNAPSHOT");
+  if (path == nullptr) {
+    return;
+  }
+  writeSnapshotOf(gHost.main().root, path);
+  for (const auto &other : gHost.windows) {
+    if (other->surfaceId == kSurfaceId || other->root == nullptr) {
+      continue;
+    }
+    writeSnapshotOf(other->root,
+                    snapshotSibling(path, "window" + std::to_string(
+                                              static_cast<int>(other->surfaceId))));
+  }
+  writeSnapshotOf(gHost.logBoxRoot, snapshotSibling(path, "logbox"));
 }
 
 // ---------------------------------------------------------------------------

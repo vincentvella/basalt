@@ -7308,6 +7308,202 @@ def test_inline_views(bundle: Path) -> str:
             f"{into:.0f} points down a bottom-aligned box")
 
 
+# --------------------------------------------------------------------------
+# Reading a host's snapshot
+# --------------------------------------------------------------------------
+
+
+class Snapshot:
+    """The pixels of a PNG a host wrote, decoded here rather than by a library.
+
+    No Pillow and no numpy: this suite runs on three CI images and installs
+    nothing, and what is needed is one pixel out of a picture whose format the
+    hosts choose. All three write 8-bit non-interlaced PNGs, truecolour with or
+    without alpha, which is two colour types and five row filters.
+    """
+
+    def __init__(self, data: bytes) -> None:
+        if data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise Failure("the host wrote something that is not a PNG")
+
+        position = 8
+        compressed = b""
+        self.width = 0
+        self.height = 0
+        self.channels = 0
+        while position + 8 <= len(data):
+            length = int.from_bytes(data[position:position + 4], "big")
+            kind = data[position + 4:position + 8]
+            payload = data[position + 8:position + 8 + length]
+            position += 12 + length
+            if kind == b"IHDR":
+                (self.width, self.height, depth, colour, _compression, _filter,
+                 interlace) = struct.unpack(">IIBBBBB", payload)
+                if depth != 8 or colour not in (2, 6) or interlace != 0:
+                    raise Failure(
+                        f"the PNG is depth {depth}, colour type {colour}, "
+                        f"interlace {interlace}; this reads 8-bit truecolour only"
+                    )
+                self.channels = 3 if colour == 2 else 4
+            elif kind == b"IDAT":
+                compressed += payload
+            elif kind == b"IEND":
+                break
+
+        raw = zlib.decompress(compressed)
+        stride = self.width * self.channels
+        self.rows = []
+        previous = bytearray(stride)
+        at = 0
+        for _row in range(self.height):
+            filter_type = raw[at]
+            at += 1
+            line = bytearray(raw[at:at + stride])
+            at += stride
+            if filter_type != 0:
+                self._unfilter(line, previous, filter_type, stride)
+            self.rows.append(line)
+            previous = line
+
+    def _unfilter(self, line: bytearray, previous: bytearray, filter_type: int,
+                  stride: int) -> None:
+        """One row, in place. The five filters PNG defines, as the spec writes them."""
+        channels = self.channels
+        for i in range(stride):
+            left = line[i - channels] if i >= channels else 0
+            up = previous[i]
+            upleft = previous[i - channels] if i >= channels else 0
+            value = line[i]
+            if filter_type == 1:
+                value += left
+            elif filter_type == 2:
+                value += up
+            elif filter_type == 3:
+                value += (left + up) // 2
+            elif filter_type == 4:
+                # Paeth: whichever of the three neighbours the gradient is
+                # nearest, which is the only filter with a decision in it.
+                estimate = left + up - upleft
+                toLeft = abs(estimate - left)
+                toUp = abs(estimate - up)
+                toCorner = abs(estimate - upleft)
+                if toLeft <= toUp and toLeft <= toCorner:
+                    value += left
+                elif toUp <= toCorner:
+                    value += up
+                else:
+                    value += upleft
+            else:
+                raise Failure(f"the PNG uses row filter {filter_type}, which is not one of 0..4")
+            line[i] = value & 0xFF
+
+    def at(self, x: int, y: int):
+        """The colour at a point as (r, g, b), or None when it is off the image."""
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return None
+        row = self.rows[y]
+        start = x * self.channels
+        return (row[start], row[start + 1], row[start + 2])
+
+
+def test_snapshot_pixels(bundle: Path) -> str:
+    """A host's snapshot has the view's colour where the view's frame says.
+
+    The tree dump says a view *has* a colour and a frame. It cannot say that
+    anything reached the screen, which is the gap `docs/BACKLOG.md` has carried
+    since the GTK cairo renderer drew every transform in the demo unrotated and
+    no test noticed. Each host's own suite can draw a view and read the pixels;
+    nothing could do it for a whole app, through React, until all three grew
+    `BASALT_SNAPSHOT`.
+
+    This closes the two together: the dump says where React put the marker
+    inside the bottom-aligned paragraph, and the snapshot says that the marker's
+    colour is actually at that point. Either half alone passes while the other
+    is wrong -- a frame with nothing drawn at it, or paint in the right place
+    from a view in the wrong one.
+
+    The app is e2e/inline.tsx because its boxes are flat colours nothing else in
+    the picture uses, which is what makes a single pixel a safe assertion across
+    two text engines and two renderers.
+    """
+    app = bundle_app(bundle.parent, "inline")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        picture = Path(directory) / "window.png"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        env["BASALT_SNAPSHOT"] = str(picture)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltInline"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        if not picture.exists():
+            raise Failure(
+                "host wrote no snapshot, so BASALT_SNAPSHOT reached nothing. "
+                f"{tail_text(result.stderr)}"
+            )
+        tree = dump.read_text(encoding="utf-8")
+        snapshot = Snapshot(picture.read_bytes())
+
+    # The picture is the window, in React Native's points: the root view's own
+    # frame. A host that wrote its backing store instead would be twice this on
+    # a retina display, and every coordinate below would miss.
+    root = [size for body, _position, size in _views(tree) if body.startswith("view tag=")]
+    if not root:
+        raise Failure(f"no views in the tree at all\n{tree[:800]}")
+    rootWidth, rootHeight = root[0]
+    if (snapshot.width, snapshot.height) != (round(rootWidth), round(rootHeight)):
+        raise Failure(
+            f"the snapshot is {snapshot.width}x{snapshot.height} and the root view "
+            f"is {rootWidth:g}x{rootHeight:g}. The two are the same window."
+        )
+
+    # Each inline view, found by the colour the app gave it, and checked at the
+    # centre of the box the dump reports.
+    wanted = {
+        "2f6fed": ((0x2F, 0x6F, 0xED), "the view between two runs of text"),
+        "e0484d": ((0xE0, 0x48, 0x4D), "the view taller than its line"),
+        "1f9d55": ((0x1F, 0x9D, 0x55), "the view before any text"),
+        "f2c14e": ((0xF2, 0xC1, 0x4E), "the view inside a bottom-aligned paragraph"),
+    }
+    checked = 0
+    for body, (x, y), (width, height) in _views(tree):
+        for colour, (expected, what) in wanted.items():
+            if colour not in body:
+                continue
+            at = (int(x + width / 2), int(y + height / 2))
+            found = snapshot.at(*at)
+            if found is None:
+                raise Failure(f"{what} is at {at}, which is outside the picture")
+            # Exact, not approximate: these are flat fills with no blending over
+            # them, and a tolerance would hide a view drawn at half opacity.
+            if found != expected:
+                raise Failure(
+                    f"{what} reports a frame whose centre {at} is "
+                    f"#{found[0]:02x}{found[1]:02x}{found[2]:02x} in the picture, "
+                    f"and the view is #{colour}. The frame and the paint disagree."
+                )
+            checked += 1
+
+    if checked != len(wanted):
+        raise Failure(
+            f"{checked} of {len(wanted)} inline views were found in the tree"
+        )
+
+    return f"{checked} views are the colour they say, where they say they are"
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -7762,6 +7958,7 @@ SCENARIOS = [
      test_action_sheet),
     ("an inline view inside a Text is given a box and told where it is",
      test_inline_views),
+    ("a snapshot has each view's colour where its frame says", test_snapshot_pixels),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),
