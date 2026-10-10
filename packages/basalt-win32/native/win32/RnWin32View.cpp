@@ -448,6 +448,11 @@ void RnWin32View::setTextChecking(const char *spellCheck, const char *autoCorrec
   autoCorrect_ = autoCorrect != nullptr ? autoCorrect : "";
 }
 
+void RnWin32View::setInputHiding(bool caretHidden, bool contextMenuHidden) {
+  caretHidden_ = caretHidden;
+  contextMenuHidden_ = contextMenuHidden;
+}
+
 void RnWin32View::setInputKinds(const char *autoCapitalize, const char *keyboardType) {
   autoCapitalize_ = autoCapitalize != nullptr ? autoCapitalize : "";
   keyboardType_ = keyboardType != nullptr ? keyboardType : "";
@@ -2553,6 +2558,15 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
   }
   if (!keyboardType_.empty()) {
     appendFormat(out, " keyboard=%s", keyboardType_.c_str());
+  }
+  // `caretHidden` and `contextMenuHidden`, printed only when asked for. Each is
+  // the absence of something -- a blink, a menu -- so there is nothing else for
+  // a test or the cross-host diff to look at.
+  if (caretHidden_) {
+    appendFormat(out, " caret=hidden");
+  }
+  if (contextMenuHidden_) {
+    appendFormat(out, " context-menu=hidden");
   }
 
   // How many DevTools highlights this view is drawing. In the dump because they

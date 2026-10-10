@@ -1096,3 +1096,115 @@ TEST(textinput_clearing_and_selecting_at_once_leaves_an_empty_field) {
 
   g_object_unref(view);
 }
+
+// --- caretHidden and contextMenuHidden ---------------------------------------
+//
+// Two props a field can set that GTK has no property for, and the two go in by
+// different routes: the caret through the same stylesheet the colours use, the
+// menu by claiming the gesture that opens it.
+
+TEST(textinput_caret_hidden_makes_the_caret_transparent) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("caretHidden", true)));
+
+  // Transparent rather than absent: an absent rule is the theme's caret, which
+  // is a caret you can see.
+  const std::string css = cssOf(view);
+  EXPECT(css.find("caret-color: rgba(0,0,0,0)") != std::string::npos);
+  EXPECT(css.find("-gtk-secondary-caret-color: rgba(0,0,0,0)") != std::string::npos);
+
+  g_object_unref(view);
+}
+
+TEST(textinput_caret_hidden_wins_over_a_cursor_colour) {
+  // A field that asked for both means the hidden one: it cannot be both red and
+  // invisible, and "hide it" is the more specific instruction.
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("caretHidden", true)(
+                                   "cursorColor", argb(0xffff0000))));
+
+  const std::string css = cssOf(view);
+  EXPECT(css.find("caret-color: rgba(0,0,0,0)") != std::string::npos);
+  EXPECT(css.find("rgb(255,0,0)") == std::string::npos);
+
+  g_object_unref(view);
+}
+
+TEST(textinput_a_field_that_did_not_ask_keeps_its_caret) {
+  // The control: no rule at all, which is the theme's caret.
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "visible")));
+
+  EXPECT(cssOf(view).find("caret-color") == std::string::npos);
+
+  g_object_unref(view);
+}
+
+TEST(textinput_context_menu_hidden_installs_the_gesture_that_swallows_it) {
+  // What is observable without a display is the gesture: a capture-phase click
+  // controller on the peer, which is what stops GtkText opening its menu. That
+  // the menu then does not open needs a pointer and a window, which is the
+  // end-to-end suite's half.
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("contextMenuHidden", true)));
+  EXPECT(rn_peer_context_menu_hidden(rn_view_get_editable(view)) == TRUE);
+
+  // And it goes away again when the prop does, rather than being a one-way
+  // door: a field that stops asking gets its menu back.
+  manager.update(view, makeTextInput(10, folly::dynamic::object("contextMenuHidden", false)));
+  EXPECT(rn_peer_context_menu_hidden(rn_view_get_editable(view)) == FALSE);
+
+  g_object_unref(view);
+}
+
+// And both are in the tree dump, which is where the cross-host diff reads them:
+// each is the absence of something, so there is nothing else to compare.
+TEST(textinput_the_hiding_props_are_reported_in_the_tree) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("caretHidden", true)(
+                                   "contextMenuHidden", true)));
+  gchar *hiding = rn_view_describe_tree(view);
+  const std::string hidden(hiding);
+  g_free(hiding);
+  EXPECT(hidden.find("caret=hidden") != std::string::npos);
+  EXPECT(hidden.find("context-menu=hidden") != std::string::npos);
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "visible")));
+  gchar *plain = rn_view_describe_tree(view);
+  const std::string shown(plain);
+  g_free(plain);
+  EXPECT(shown.find("caret=hidden") == std::string::npos);
+  EXPECT(shown.find("context-menu=hidden") == std::string::npos);
+
+  g_object_unref(view);
+}
+
+TEST(textinput_a_field_that_did_not_ask_keeps_its_context_menu) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "menu")));
+  EXPECT(rn_peer_context_menu_hidden(rn_view_get_editable(view)) == FALSE);
+
+  g_object_unref(view);
+}

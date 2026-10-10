@@ -1225,3 +1225,149 @@ TEST(textinput_clearing_and_selecting_at_once_leaves_an_empty_field) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// --- caretHidden and contextMenuHidden ---------------------------------------
+//
+// Two props with no AppKit property between them, going in by different routes:
+// the caret through the same remembered colour `cursorColor` uses, the menu by
+// the peer refusing to build one.
+
+TEST(textinput_caret_hidden_asks_for_a_clear_insertion_point) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("caretHidden", true));
+    NSView *field = fieldOf(view);
+
+    // Clear rather than nil: nil means AppKit's own, which is a caret you can
+    // see. An NSTextView draws its insertion point as a filled rectangle, so a
+    // clear one is drawn and invisible.
+    NSColor *const caret = RnPeerCaretColour(field);
+    EXPECT(caret != nil);
+    if (caret != nil) {
+      EXPECT_NEAR([caret colorUsingColorSpace:NSColorSpace.sRGBColorSpace].alphaComponent,
+                  0.0,
+                  0.001);
+    }
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_caret_hidden_wins_over_a_cursor_colour) {
+  @autoreleasepool {
+    // A field that asked for both means the hidden one: it cannot be both red
+    // and invisible, and "hide it" is the more specific instruction.
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 10, folly::dynamic::object("caretHidden", true)("cursorColor", 0xffff0000));
+    NSColor *const caret =
+        [RnPeerCaretColour(fieldOf(view)) colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(caret != nil);
+    if (caret != nil) {
+      EXPECT_NEAR(caret.alphaComponent, 0.0, 0.001);
+    }
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_a_field_that_did_not_ask_keeps_its_caret) {
+  @autoreleasepool {
+    // The control: nothing remembered, so AppKit's own caret.
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("text", "visible"));
+    EXPECT(RnPeerCaretColour(fieldOf(view)) == nil);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+namespace {
+
+// A right-click, which is what `-menuForEvent:` is asked about.
+NSEvent *secondaryClick() {
+  return [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
+                            location:NSMakePoint(10, 10)
+                       modifierFlags:0
+                           timestamp:0
+                        windowNumber:0
+                             context:nil
+                         eventNumber:1
+                          clickCount:1
+                            pressure:1];
+}
+
+} // namespace
+
+// `contextMenuHidden` on a **multiline** field, which is the half of the prop
+// this host can answer: the peer there is this file's own NSTextView subclass,
+// and it is the view the click lands on.
+//
+// A single-line field is the half it cannot, and that is measured rather than
+// assumed -- see the test below.
+TEST(textinput_context_menu_hidden_refuses_to_build_one_on_a_multiline_field) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 10, folly::dynamic::object("multiline", true)("contextMenuHidden", true));
+    NSView *area = fieldOf(view);
+    EXPECT(RnPeerContextMenuHidden(area));
+    // The behaviour rather than the flag: nil is how a view tells AppKit it has
+    // no context menu.
+    EXPECT([area menuForEvent:secondaryClick()] == nil);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_a_multiline_field_that_did_not_ask_keeps_its_context_menu) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("multiline", true));
+    NSView *area = fieldOf(view);
+    EXPECT(!RnPeerContextMenuHidden(area));
+    EXPECT([area menuForEvent:secondaryClick()] != nil);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// And what a single-line field does with the prop, which is carry it: the menu
+// a focused NSTextField shows belongs to the window's shared *field editor*,
+// an NSTextView this file does not own, and that view rebuilds its menu inside
+// `-menuForEvent:` -- assigning `menu = nil` on it does not stop it, which was
+// measured rather than guessed.
+//
+// So the flag reaches the peer and the peer is not the view being asked.
+// backlog/textinput.md names the route that would close it, which is supplying
+// the field editor through `-windowWillReturnFieldEditor:toObject:`.
+// And both are in the tree dump, which is where the cross-host diff reads them:
+// each is the absence of something, so there is nothing else to compare.
+TEST(textinput_the_hiding_props_are_reported_in_the_tree) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 10, folly::dynamic::object("caretHidden", true)("contextMenuHidden", true));
+    const std::string hidden = [view describeTree].UTF8String;
+    EXPECT(hidden.find("caret=hidden") != std::string::npos);
+    EXPECT(hidden.find("context-menu=hidden") != std::string::npos);
+
+    RnAppKitView *plain = mountField(manager, 11, folly::dynamic::object("text", "visible"));
+    const std::string shown = [plain describeTree].UTF8String;
+    EXPECT(shown.find("caret=hidden") == std::string::npos);
+    EXPECT(shown.find("context-menu=hidden") == std::string::npos);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_a_single_line_field_carries_the_prop_it_cannot_act_on) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 10, folly::dynamic::object("contextMenuHidden", true));
+    EXPECT(RnPeerContextMenuHidden(fieldOf(view)));
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}

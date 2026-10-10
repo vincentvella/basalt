@@ -51,9 +51,22 @@ static void RnApplyEditorColours(NSTextView *_Nullable editor,
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
 @property(nonatomic, assign) RnTextChecking rnSpellCheck;
 @property(nonatomic, assign) RnTextChecking rnAutoCorrect;
+// `contextMenuHidden`. A flag rather than a torn-down menu: AppKit builds the
+// menu on demand, through -menuForEvent:, so refusing there is the one place
+// that covers a right-click and a Control-click both.
+@property(nonatomic, assign) BOOL rnContextMenuHidden;
 @end
 
 @implementation RnAppKitTextField
+- (NSMenu *)menuForEvent:(NSEvent *)event {
+  // `contextMenuHidden`: nil is how a view says it has no context menu, and
+  // AppKit then offers none rather than falling back to a default.
+  if (_rnContextMenuHidden) {
+    return nil;
+  }
+  return [super menuForEvent:event];
+}
+
 - (BOOL)becomeFirstResponder {
   const BOOL became = [super becomeFirstResponder];
   if (became) {
@@ -77,9 +90,22 @@ static void RnApplyEditorColours(NSTextView *_Nullable editor,
 @property(nonatomic, weak) id<RnAppKitTextPeerOwner> rnOwner;
 @property(nonatomic, assign) RnTextChecking rnSpellCheck;
 @property(nonatomic, assign) RnTextChecking rnAutoCorrect;
+// `contextMenuHidden`. A flag rather than a torn-down menu: AppKit builds the
+// menu on demand, through -menuForEvent:, so refusing there is the one place
+// that covers a right-click and a Control-click both.
+@property(nonatomic, assign) BOOL rnContextMenuHidden;
 @end
 
 @implementation RnAppKitSecureTextField
+- (NSMenu *)menuForEvent:(NSEvent *)event {
+  // `contextMenuHidden`: nil is how a view says it has no context menu, and
+  // AppKit then offers none rather than falling back to a default.
+  if (_rnContextMenuHidden) {
+    return nil;
+  }
+  return [super menuForEvent:event];
+}
+
 - (BOOL)becomeFirstResponder {
   const BOOL became = [super becomeFirstResponder];
   if (became) {
@@ -104,9 +130,22 @@ static void RnApplyEditorColours(NSTextView *_Nullable editor,
 @property(nonatomic, strong, nullable) NSAttributedString *rnPlaceholder;
 @property(nonatomic, assign) RnTextChecking rnSpellCheck;
 @property(nonatomic, assign) RnTextChecking rnAutoCorrect;
+// `contextMenuHidden`. A flag rather than a torn-down menu: AppKit builds the
+// menu on demand, through -menuForEvent:, so refusing there is the one place
+// that covers a right-click and a Control-click both.
+@property(nonatomic, assign) BOOL rnContextMenuHidden;
 @end
 
 @implementation RnAppKitTextView
+- (NSMenu *)menuForEvent:(NSEvent *)event {
+  // `contextMenuHidden`: nil is how a view says it has no context menu, and
+  // AppKit then offers none rather than falling back to a default.
+  if (_rnContextMenuHidden) {
+    return nil;
+  }
+  return [super menuForEvent:event];
+}
+
 - (BOOL)becomeFirstResponder {
   const BOOL became = [super becomeFirstResponder];
   if (became) {
@@ -377,6 +416,39 @@ RnTextChecking RnPeerAutoCorrect(NSView *peer) {
     return ((RnAppKitTextView *)peer).rnAutoCorrect;
   }
   return RnTextCheckingUnset;
+}
+
+void RnPeerSetContextMenuHidden(NSView *peer, BOOL hidden) {
+  if (peer == nil) {
+    return;
+  }
+  // Every peer class this file makes carries the flag, and they are the only
+  // classes that reach here: a secure field is not an NSTextField subclass of
+  // this one's, so the three are named rather than tested for a common base.
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    ((RnAppKitTextView *)peer).rnContextMenuHidden = hidden;
+    return;
+  }
+  if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    ((RnAppKitSecureTextField *)peer).rnContextMenuHidden = hidden;
+    return;
+  }
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    ((RnAppKitTextField *)peer).rnContextMenuHidden = hidden;
+  }
+}
+
+BOOL RnPeerContextMenuHidden(NSView *peer) {
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    return ((RnAppKitTextView *)peer).rnContextMenuHidden;
+  }
+  if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
+    return ((RnAppKitSecureTextField *)peer).rnContextMenuHidden;
+  }
+  if ([peer isKindOfClass:RnAppKitTextField.class]) {
+    return ((RnAppKitTextField *)peer).rnContextMenuHidden;
+  }
+  return NO;
 }
 
 void RnPeerSetEditable(NSView *peer, BOOL editable) {

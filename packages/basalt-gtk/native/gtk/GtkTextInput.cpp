@@ -264,10 +264,27 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   // tintColor.
   const std::optional<GdkRGBA> placeholderColor = toRgba(props->placeholderTextColor);
   const std::optional<GdkRGBA> selectionColor = toRgba(props->selectionColor);
-  const std::optional<GdkRGBA> cursorColor =
+  std::optional<GdkRGBA> cursorColor =
       props->cursorColor ? toRgba(props->cursorColor) : selectionColor;
+
+  // `caretHidden`, which goes in through the same channel and wins over both of
+  // the above: a caret the app asked to hide is hidden whatever colour it also
+  // asked for. Fully transparent rather than absent -- absent means "the
+  // theme's", which is a visible caret.
+  //
+  // GTK has no property for this and does not need one: `caret-color` takes an
+  // alpha, which is also how a browser hides one.
+  if (props->traits.caretHidden) {
+    cursorColor = GdkRGBA{0.0F, 0.0F, 0.0F, 0.0F};
+  }
   rn_peer_set_colors(
       entry.editable, orNull(placeholderColor), orNull(selectionColor), orNull(cursorColor));
+
+  // `contextMenuHidden`, which GTK has no property for: a capture-phase gesture
+  // claims the secondary click before the peer's own menu sees it. The keyboard
+  // route is not covered on this host; see rn_peer_set_context_menu_hidden.
+  rn_peer_set_context_menu_hidden(entry.editable,
+                                  props->traits.contextMenuHidden ? TRUE : FALSE);
 
   // `editable` is the prop; `readOnly` is the newer spelling of its inverse,
   // and React Native honours both.
@@ -311,6 +328,11 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   rn_view_set_input_kinds(view,
                           basalt::autoCapitalizeName(props->traits.autocapitalizationType),
                           basalt::keyboardTypeName(props->traits.keyboardType));
+  // And the two hiding props, for the dump: each is the absence of something,
+  // so the dump is the only place anything can see that they arrived.
+  rn_view_set_input_hiding(view,
+                           props->traits.caretHidden ? TRUE : FALSE,
+                           props->traits.contextMenuHidden ? TRUE : FALSE);
 
   // `clearTextOnFocus` and `selectTextOnFocus`, remembered for the moment focus
   // arrives. See onFocusEnter.

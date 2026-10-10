@@ -181,6 +181,10 @@
       "text": "the label on a soft keyboard's return key, and no desktop has one",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
+    "ti-context-menu": {
+      "text": "GTK covers the pointer and not the Menu key; AppKit covers a multiline field and not the shared field editor of a single-line one",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
     "ti-ignored": {
       "text": "on the ignored list in that file, with what each would take",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
@@ -1645,10 +1649,13 @@
       ]
     },
     "TextInputTraits.contextMenuHidden": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "yes",
+      "why": "ti-context-menu",
+      "reads": [
+        "traits.contextMenuHidden"
+      ]
     },
     "TextInputTraits.editable": {
       "linux": "yes",
@@ -1680,10 +1687,12 @@
       ]
     },
     "TextInputTraits.caretHidden": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "traits.caretHidden"
+      ]
     },
     "TextInputTraits.clearButtonMode": {
       "linux": "ignored",

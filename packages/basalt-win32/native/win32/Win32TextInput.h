@@ -229,6 +229,12 @@ class Win32TextInputManager {
     // The placeholder itself, held because with a colour this host draws it
     // rather than handing it to `EM_SETCUEBANNER`, which has no colour.
     std::wstring placeholder;
+    // `contextMenuHidden`. Read by the subclass, which swallows WM_CONTEXTMENU.
+    bool contextMenuHidden{false};
+
+    // `caretHidden`, held beside the colour because it arrives through the same
+    // bitmap: see `installCaret`.
+    bool caretHidden{false};
     bool hasCaretColour{false};
     COLORREF caretColour{RGB(0, 0, 0)};
     // The caret's shape, which is how its colour is set: a bitmap, XOR-ed onto

@@ -47,6 +47,16 @@ void RnPeerSetSelection(NSView *_Nullable peer, NSRange range);
 
 void RnPeerSetEditable(NSView *_Nullable peer, BOOL editable);
 
+// `contextMenuHidden`: whether a right-click or a Control-click opens the
+// peer's own editing menu.
+//
+// AppKit builds that menu on demand through `-menuForEvent:`, so the peers
+// refuse there rather than having a menu taken away from them -- which is the
+// one place that covers both gestures, and leaves the menu intact for a field
+// that stops asking.
+void RnPeerSetContextMenuHidden(NSView *_Nullable peer, BOOL hidden);
+BOOL RnPeerContextMenuHidden(NSView *_Nullable peer);
+
 // `spellCheck` and `autoCorrect`, as three states: see core/TextChecking.h for
 // why unset is not false. Mirrored here rather than taken from that header
 // because this one is plain Objective-C and its callers should stay that way.

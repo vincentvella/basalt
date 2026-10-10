@@ -44,6 +44,18 @@ void rn_peer_select_region(GtkWidget *peer, int start, int end);
 
 void rn_peer_set_editable(GtkWidget *peer, gboolean editable);
 
+// `contextMenuHidden`: whether a right-click (or a Control-click, or a
+// middle-click paste on X11) opens the peer's own context menu.
+//
+// GTK has no property for this, so it is done by claiming the gesture before
+// the widget's own sees it -- which is what a capture-phase GtkGestureClick is
+// for. The keyboard route is *not* covered, and cannot be from out here: the
+// Menu key and Shift+F10 are bound inside GtkText and GtkTextView to an action
+// this has no handle on. backlog/textinput.md records that, which is why the
+// support row for the prop is `partial` on this host.
+void rn_peer_set_context_menu_hidden(GtkWidget *peer, gboolean hidden);
+gboolean rn_peer_context_menu_hidden(GtkWidget *peer);
+
 // `spellCheck`, as GTK has it: an input *hint*, which is a suggestion to the
 // input method rather than an instruction to a checker. Three states, because
 // unset is not false; see core/TextChecking.h.

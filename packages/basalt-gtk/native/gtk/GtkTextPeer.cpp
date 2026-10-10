@@ -355,6 +355,67 @@ void rn_peer_set_editable(GtkWidget *peer, gboolean editable) {
   gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(peer), editable);
 }
 
+// ---------------------------------------------------------------------------
+// contextMenuHidden
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The gesture is remembered on the widget so the prop can be turned back on,
+// and so that a controlled field re-sending identical props does not install a
+// second one on every keystroke.
+constexpr const char *kContextMenuGesture = "rn-context-menu-gesture";
+
+// Claiming the sequence in the capture phase is the whole trick: a claimed
+// sequence is cancelled for every other gesture on the way down, including the
+// one GtkText uses to open its menu. Returning without claiming would let the
+// menu open as usual.
+void swallow_secondary_click(GtkGestureClick *gesture,
+                             int /*n_press*/,
+                             double /*x*/,
+                             double /*y*/,
+                             gpointer /*data*/) {
+  gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+}
+
+} // namespace
+
+void rn_peer_set_context_menu_hidden(GtkWidget *peer, gboolean hidden) {
+  if (peer == nullptr) {
+    return;
+  }
+  GtkEventController *installed =
+      GTK_EVENT_CONTROLLER(g_object_get_data(G_OBJECT(peer), kContextMenuGesture));
+  if (!hidden) {
+    if (installed != nullptr) {
+      gtk_widget_remove_controller(peer, installed);
+      g_object_set_data(G_OBJECT(peer), kContextMenuGesture, nullptr);
+    }
+    return;
+  }
+  if (installed != nullptr) {
+    return;
+  }
+
+  GtkGesture *gesture = gtk_gesture_click_new();
+  // The secondary button only: the primary one places the caret and must go on
+  // doing that.
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), GDK_BUTTON_SECONDARY);
+  gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(gesture), GTK_PHASE_CAPTURE);
+  g_signal_connect(gesture, "pressed", G_CALLBACK(swallow_secondary_click), nullptr);
+  gtk_widget_add_controller(peer, GTK_EVENT_CONTROLLER(gesture));
+  // Unowned: the widget owns the controller now, and this is only a note that
+  // one is there.
+  g_object_set_data(G_OBJECT(peer), kContextMenuGesture, gesture);
+}
+
+gboolean rn_peer_context_menu_hidden(GtkWidget *peer) {
+  if (peer == nullptr) {
+    return FALSE;
+  }
+  return g_object_get_data(G_OBJECT(peer), kContextMenuGesture) != nullptr ? TRUE : FALSE;
+}
+
 GObject *rn_peer_signal_source(GtkWidget *peer) {
   if (peer == nullptr) {
     return nullptr;

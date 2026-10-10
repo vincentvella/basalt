@@ -336,8 +336,17 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
   // the pair the same way, and on iOS both are the view's tintColor.
   NSColor *const selectionColour =
       RnColourOrNil(props->selectionColor);
-  NSColor *const caretColour =
+  NSColor *caretColour =
       props->cursorColor ? RnColourOrNil(props->cursorColor) : selectionColour;
+
+  // `caretHidden`, through the same channel and winning over both of the above:
+  // a caret the app asked to hide is hidden whatever colour it also asked for.
+  // Clear rather than nil, nil meaning "AppKit's own" -- which is a visible
+  // caret. An NSTextView draws its insertion point as a filled rectangle, so a
+  // clear one is drawn and invisible.
+  if (props->traits.caretHidden) {
+    caretColour = NSColor.clearColor;
+  }
   RnPeerSetEditorColours(entry.field, selectionColour, caretColour);
 
   // `clearTextOnFocus` and `selectTextOnFocus`, remembered for the moment focus
@@ -367,6 +376,9 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
                          [[NSAttributedString alloc] initWithString:placeholder
                                                          attributes:placeholderAttributes]);
   }
+
+  // `contextMenuHidden`, which the peers answer from `-menuForEvent:`.
+  RnPeerSetContextMenuHidden(entry.field, props->traits.contextMenuHidden);
 
   // `editable` is the prop; `readOnly` is the newer spelling of its inverse,
   // and React Native honours both.
@@ -403,6 +415,10 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
   // exist, and the GTK host honours both.
   entry.view.rnAutoCapitalize = @(basalt::autoCapitalizeName(props->traits.autocapitalizationType));
   entry.view.rnKeyboardType = @(basalt::keyboardTypeName(props->traits.keyboardType));
+  // And the two hiding props, for the dump: each is the absence of something,
+  // so the dump is the only place anything can see that they arrived.
+  entry.view.rnCaretHidden = props->traits.caretHidden;
+  entry.view.rnContextMenuHidden = props->traits.contextMenuHidden;
 
   // Zero means no limit, and so does the absurd default React Native uses when
   // the prop is absent.

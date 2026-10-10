@@ -438,6 +438,15 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
     entry.caretColour = toColorRef(rgba);
   }
 
+  // `caretHidden`, which this platform gets from the same XOR the colour uses:
+  // a caret whose bitmap is all zeroes leaves every pixel it is drawn over
+  // exactly as it was, because anything XOR zero is itself. So "hidden" is a
+  // caret of black bits, and `installCaret` has the one branch for it.
+  entry.caretHidden = props.traits.caretHidden;
+
+  // `contextMenuHidden`, acted on in the subclass: see the WM_CONTEXTMENU case.
+  entry.contextMenuHidden = props.traits.contextMenuHidden;
+
   entry.hasPlaceholderColour = static_cast<bool>(props.placeholderTextColor);
   if (entry.hasPlaceholderColour) {
     const auto components =
@@ -492,7 +501,7 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
   // the WM_SETFOCUS it would have been installed from, and a controlled field
   // is re-rendered constantly -- so the shape is replaced now. Nothing happens
   // for a field that is not focused: it has no caret to replace.
-  if (entry.hasCaretColour && GetFocus() == entry.control) {
+  if ((entry.hasCaretColour || entry.caretHidden) && GetFocus() == entry.control) {
     installCaret(entry);
   }
 
@@ -532,6 +541,7 @@ void Win32TextInputManager::applyTextChecking(Entry &entry, const TextInputProps
   if (entry.view != nullptr) {
     entry.view->setTextChecking(basalt::textCheckingName(spellCheck),
                                 basalt::textCheckingName(autoCorrect));
+    entry.view->setInputHiding(props.traits.caretHidden, props.traits.contextMenuHidden);
     entry.view->setInputKinds(basalt::autoCapitalizeName(props.traits.autocapitalizationType),
                               basalt::keyboardTypeName(props.traits.keyboardType));
   }
@@ -841,7 +851,7 @@ void Win32TextInputManager::drawPlaceholder(const Entry &entry, HDC deviceContex
 }
 
 void Win32TextInputManager::installCaret(Entry &entry) {
-  if (entry.control == nullptr || !entry.hasCaretColour) {
+  if (entry.control == nullptr || (!entry.hasCaretColour && !entry.caretHidden)) {
     return;
   }
   releaseCaret(entry);
@@ -862,7 +872,13 @@ void Win32TextInputManager::installCaret(Entry &entry) {
   // caret rather than a shortcut taken here.
   const COLORREF ground =
       entry.hasBackground ? entry.backgroundColor : GetSysColor(COLOR_WINDOW);
-  const COLORREF bits = entry.caretColour ^ ground;
+  //
+  // Zero for `caretHidden`, which is less a special case than the arithmetic's
+  // own answer: a bitmap of zeroes XOR-ed onto the field changes nothing, so
+  // the caret is installed and invisible. Which is also why hiding one by
+  // giving it the background's colour would not work over the text it crosses
+  // -- the XOR is per pixel, not per field.
+  const COLORREF bits = entry.caretHidden ? 0 : (entry.caretColour ^ ground);
 
   DWORD width = 0;
   if (SystemParametersInfo(SPI_GETCARETWIDTH, 0, &width, 0) == FALSE || width == 0) {
@@ -1078,6 +1094,14 @@ LRESULT CALLBACK Win32TextInputManager::editProc(
     if (character == L'\x1b' || character == L'\t') {
       return 0;
     }
+  }
+
+  // `contextMenuHidden`: swallowed rather than emptied, and before the control
+  // sees it. WM_CONTEXTMENU is the one message to catch -- a right-click, the
+  // Menu key and Shift+F10 all arrive as it -- so unlike the other two hosts
+  // this covers the keyboard route as well as the pointer.
+  if (message == WM_CONTEXTMENU && entry != nullptr && entry->contextMenuHidden) {
+    return 0;
   }
 
   if (message == WM_NCDESTROY) {

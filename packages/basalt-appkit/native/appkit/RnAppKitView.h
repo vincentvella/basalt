@@ -689,6 +689,14 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 @property(nonatomic, copy, nullable) NSString *rnAutoCapitalize;
 @property(nonatomic, copy, nullable) NSString *rnKeyboardType;
 
+// `caretHidden` and `contextMenuHidden`, for the tree dump. What this host
+// *does* with them is a clear insertion point and a peer that refuses to build
+// a menu; see AppKitTextPeer.h, which also records the half of the second one a
+// single-line field cannot answer. Printed because each is the absence of
+// something -- a blink, a menu -- so nothing else can see that they arrived.
+@property(nonatomic, assign) BOOL rnCaretHidden;
+@property(nonatomic, assign) BOOL rnContextMenuHidden;
+
 // The `cursor` style property, as the CSS keyword React Native uses: "pointer",
 // "text", "grab", "ns-resize" and the rest. Nil or empty leaves the cursor to
 // whatever encloses this view, which is what `cursor: 'auto'` means.

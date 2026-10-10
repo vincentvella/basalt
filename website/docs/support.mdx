@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 182 of 279 | 183 of 279 | 178 of 279 |
+| Done | 183 of 279 | 184 of 279 | 180 of 279 |
 | | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `█████████████░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -399,12 +399,12 @@ Written on the element itself, as `<View onLayout={...} />`.
 | --- | --- | --- | --- | --- |
 | `autoCapitalize` <sub>`autocapitalizationType`</sub> | ✅ | ✅ | ◐ | [ES_UPPERCASE covers `characters`; an EDIT cannot find a word or a sentence](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `autoCorrect` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `contextMenuHidden` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `contextMenuHidden` | ◐ | ◐ | ✅ | [GTK covers the pointer and not the Menu key; AppKit covers a multiline field and not the shared field editor of a single-line one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `editable` | ✅ | ✅ | ✅ |  |
 | `enablesReturnKeyAutomatically` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `keyboardAppearance` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `spellCheck` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `caretHidden` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `caretHidden` | ✅ | ✅ | ✅ |  |
 | `clearButtonMode` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `scrollEnabled` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `secureTextEntry` | ✅ | ✅ | ✅ |  |

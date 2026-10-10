@@ -576,6 +576,13 @@ void rn_view_set_input_kinds(RnView *self,
                              const char *auto_capitalize,
                              const char *keyboard_type);
 
+// `caretHidden` and `contextMenuHidden`, for the tree dump. What this host
+// *does* with them is a transparent `caret-color` and a gesture that claims the
+// secondary click; see GtkTextPeer.h. Printed because neither is otherwise
+// visible to anything: a hidden caret is the absence of a blink and a suppressed
+// menu is the absence of a menu, and the cross-host diff can compare neither.
+void rn_view_set_input_hiding(RnView *self, gboolean caret_hidden, gboolean context_menu_hidden);
+
 // The view's `nativeID`, verbatim.
 //
 // Only the hidden title bar reads it, to find the regions an app marked with

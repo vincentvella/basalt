@@ -562,6 +562,13 @@ class RnWin32View {
   void setTextChecking(const char *spellCheck, const char *autoCorrect);
   void setInputKinds(const char *autoCapitalize, const char *keyboardType);
 
+  // `caretHidden` and `contextMenuHidden`, for the tree dump. What this host
+  // *does* with them is a caret bitmap of zeroes and a swallowed
+  // WM_CONTEXTMENU; see Win32TextInput.cpp. Printed because neither is
+  // otherwise visible to anything: a hidden caret is the absence of a blink and
+  // a suppressed menu the absence of a menu.
+  void setInputHiding(bool caretHidden, bool contextMenuHidden);
+
   // `accessibilityLabelledBy`, resolved to views by `core/LabelRegistry.h`:
   // other views whose text names this one.
   //
@@ -734,6 +741,11 @@ class RnWin32View {
   bool showsFocusRing_ = false;
   float scrollX_ = 0.0f;
   float scrollY_ = 0.0f;
+  // `caretHidden` and `contextMenuHidden`, for the dump. What the peer does
+  // about them is in Win32TextInput.cpp.
+  bool caretHidden_ = false;
+  bool contextMenuHidden_ = false;
+
   float indicatorVerticalOffset_ = 0.0f;
   float indicatorVerticalLength_ = 0.0f;
   float indicatorHorizontalOffset_ = 0.0f;

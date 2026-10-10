@@ -163,6 +163,8 @@ struct FieldOptions {
   bool multiline{false};
   bool clearTextOnFocus{false};
   bool selectTextOnFocus{false};
+  bool caretHidden{false};
+  bool contextMenuHidden{false};
   // The colours, as React Native sends them: 0xAARRGGBB, and 0 for "the app
   // sent none" -- which is the distinction the host has to keep, since
   // `SharedColor`'s unset value is zero and transparent black is a colour an
@@ -185,8 +187,9 @@ ShadowView makeField(Tag tag,
   folly::dynamic raw = folly::dynamic::object("text", options.text)(
       "mostRecentEventCount", options.mostRecentEventCount)("editable", options.editable)(
       "secureTextEntry", options.secure)("multiline", options.multiline)(
-      "clearTextOnFocus", options.clearTextOnFocus)("selectTextOnFocus",
-                                                    options.selectTextOnFocus);
+      "clearTextOnFocus", options.clearTextOnFocus)(
+      "selectTextOnFocus", options.selectTextOnFocus)("caretHidden", options.caretHidden)(
+      "contextMenuHidden", options.contextMenuHidden);
   if (!options.placeholder.empty()) {
     raw["placeholder"] = options.placeholder;
   }
@@ -1326,6 +1329,131 @@ TEST(win32_a_caret_bitmap_goes_when_the_field_loses_focus) {
 
   SetFocus(testHostWindow());
   EXPECT(manager->textInputCaretBitmap(10) == nullptr);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// --- caretHidden and contextMenuHidden ---------------------------------------
+//
+// Two more props an `EDIT` has no property for, and on this host both are
+// reachable: the caret because its colour is a bitmap XOR-ed onto the field, so
+// a bitmap of zeroes changes nothing; the menu because WM_CONTEXTMENU is one
+// message and the subclass can swallow it.
+
+TEST(win32_a_hidden_caret_is_a_bitmap_of_nothing) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 44, {.caretHidden = true, .backgroundColor = 0xffffffff}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  const HBITMAP caret = manager->textInputCaretBitmap(10);
+  // A caret is installed -- the control's own would be visible -- and its bits
+  // are all zero, which XOR-ed onto the field leaves every pixel as it was.
+  EXPECT(caret != nullptr);
+  EXPECT_EQ(caretColourOf(caret), RGB(0, 0, 0));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_a_hidden_caret_wins_over_a_cursor_colour) {
+  // A field that asked for both means the hidden one: it cannot be both red and
+  // invisible, and "hide it" is the more specific instruction.
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.caretHidden = true,
+                   .backgroundColor = 0xffffffff,
+                   .cursorColor = 0xffff0000}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  const HBITMAP caret = manager->textInputCaretBitmap(10);
+  EXPECT(caret != nullptr);
+  // Not the cyan a red caret over white would be: see
+  // win32_a_cursor_colour_installs_a_caret_of_that_colour.
+  EXPECT_EQ(caretColourOf(caret), RGB(0, 0, 0));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_context_menu_hidden_swallows_the_message) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.contextMenuHidden = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  // Zero is "handled, and nothing follows". An EDIT that had seen the message
+  // would have shown its menu and answered zero as well -- so the assertion
+  // that means something is the one below, where the unhidden field hands the
+  // message on to DefWindowProc and the parent answers.
+  EXPECT_EQ(SendMessage(control, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(control), 0), 0);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// And both are in the tree dump, which is where the cross-host diff reads them:
+// a hidden caret is the absence of a blink and a suppressed menu the absence of
+// a menu, so there is nothing else to compare.
+//
+// It is also as far as this suite can go for the menu. Sending WM_CONTEXTMENU
+// to a field that does *not* hide it would run the EDIT's own handler, which
+// calls `TrackPopupMenu` -- a nested message loop that does not return until
+// somebody dismisses the menu, so the control case would hang the run rather
+// than fail it. backlog/textinput.md records that.
+TEST(win32_the_hiding_props_are_reported_in_the_tree) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 44, {.caretHidden = true, .contextMenuHidden = true}));
+
+  const std::string described = manager->viewForTag(10)->describeTree();
+  EXPECT(described.find("caret=hidden") != std::string::npos);
+  EXPECT(described.find("context-menu=hidden") != std::string::npos);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_a_field_that_hides_nothing_says_nothing) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.text = "visible"}));
+
+  const std::string described = manager->viewForTag(10)->describeTree();
+  EXPECT(described.find("caret=hidden") == std::string::npos);
+  EXPECT(described.find("context-menu=hidden") == std::string::npos);
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

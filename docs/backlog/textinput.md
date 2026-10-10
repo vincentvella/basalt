@@ -299,10 +299,53 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   end-to-end scenario now reads on all three hosts.
 
   The support page added a row per trait on 2026-10-09, which is how the rest of
-  this list stopped being a sentence: `contextMenuHidden`, `caretHidden`,
+  this list stopped being a sentence: ~~`contextMenuHidden`~~, ~~`caretHidden`~~,
   `scrollEnabled`, `submitBehavior`, `onKeyPressSync`, `onChangeSync` and
   `acceptDragAndDropTypes` are the ones that read "not yet" there rather than
-  "deliberately not", and each is a desktop question nobody has answered.
+  "deliberately not", and each was a desktop question nobody had answered.
+
+  **The first two are answered, 2026-10-10**, and they went in by three
+  different routes each, which is the useful part.
+
+  `caretHidden` is done everywhere. GTK already had the stylesheet the three
+  colour props use, so it is a `caret-color` with a zero alpha -- transparent
+  rather than absent, an absent rule being the theme's visible caret. AppKit
+  already had a remembered caret colour for the field editor, so it is
+  `NSColor.clearColor` through the same channel. **Windows gets it from the
+  arithmetic**: a caret's colour there is a bitmap the system XOR-es onto the
+  field, and anything XOR zero is itself -- so a caret of black bits is
+  installed and invisible. On all three the hiding wins over `cursorColor`, a
+  field having asked for the more specific thing, and each has a test for that.
+
+  `contextMenuHidden` is `partial` on two of the three, and the limits were
+  measured rather than guessed.
+
+  - **Windows is complete.** A right-click, the Menu key and Shift+F10 all
+    arrive as `WM_CONTEXTMENU`, so the subclass swallows one message and covers
+    every route.
+  - **GTK covers the pointer and not the keyboard.** A capture-phase
+    `GtkGestureClick` on the secondary button claims the sequence before
+    GtkText's own gesture sees it, which is the documented way to stop another
+    gesture. The Menu key and Shift+F10 are bound *inside* GtkText and
+    GtkTextView to an action nothing outside them has a handle on.
+  - **AppKit covers a multiline field and not a single-line one.** The multiline
+    peer is this project's own `NSTextView` subclass, so `-menuForEvent:`
+    returning nil is the whole of it. A single-line field is different: the menu
+    belongs to the window's shared *field editor*, which is a plain `NSTextView`
+    nobody here subclasses, and it rebuilds its menu inside `-menuForEvent:` --
+    assigning `menu = nil` on it does not stop it, which a probe test
+    established before the comment was written. What would close it is supplying
+    the field editor through `-windowWillReturnFieldEditor:toObject:`, which is
+    the documented hook for exactly that and is a window-level change rather
+    than a prop-level one.
+
+  Both are in each host's tree dump, as `caret=hidden` and
+  `context-menu=hidden`, which is the only thing the cross-host diff can read:
+  each prop is the absence of something. That is also as far as the Windows unit
+  suite goes for the menu -- sending `WM_CONTEXTMENU` to a field that does *not*
+  hide it would run the EDIT's own handler, and `TrackPopupMenu` is a nested
+  message loop that does not return until somebody dismisses the menu, so the
+  control case would hang the run rather than fail it.
   `enablesReturnKeyAutomatically`, `keyboardAppearance`, `clearButtonMode`,
   `dataDetectorTypes`, `textContentType`, `passwordRules`, `smartInsertDelete`,
   `inputAccessoryViewID` and `disableKeyboardShortcuts` are iOS's own, and

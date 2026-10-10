@@ -3035,6 +3035,15 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (self.rnKeyboardType.length > 0) {
     [out appendFormat:@" keyboard=%@", self.rnKeyboardType];
   }
+  // `caretHidden` and `contextMenuHidden`, printed only when asked for. Each is
+  // the absence of something -- a blink, a menu -- so there is nothing else for
+  // a test or the cross-host diff to look at.
+  if (self.rnCaretHidden) {
+    [out appendString:@" caret=hidden"];
+  }
+  if (self.rnContextMenuHidden) {
+    [out appendString:@" context-menu=hidden"];
+  }
   // The paragraph's text shadow, spelled as GTK spells it: no other line can
   // show it, a shadowed paragraph having the same text, colour and box. The
   // standard deviation React Native parsed, which is also what this context was

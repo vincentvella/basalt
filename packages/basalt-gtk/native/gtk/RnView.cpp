@@ -200,6 +200,10 @@ struct _RnView {
   // until something says otherwise, which is what every list that never set the
   // prop gets.
   GdkRGBA indicator_colour;
+  // `caretHidden` and `contextMenuHidden`, for the dump. What the peer does
+  // about them is in GtkTextPeer.cpp.
+  gboolean caret_hidden;
+  gboolean context_menu_hidden;
   gboolean has_image_tint;
   float image_blur;
   GdkRGBA image_tint;
@@ -1236,6 +1240,8 @@ static void rn_view_init(RnView *self) {
   self->labelled_by = nullptr;
   self->accessibility_order = nullptr;
   self->last_announcement = nullptr;
+  self->caret_hidden = FALSE;
+  self->context_menu_hidden = FALSE;
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
@@ -1431,6 +1437,16 @@ void rn_view_set_accessible_text(RnView *self, const char *label, const char *de
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, description, -1);
   }
+}
+
+void rn_view_set_input_hiding(RnView *self,
+                              gboolean caret_hidden,
+                              gboolean context_menu_hidden) {
+  if (!RN_IS_VIEW(self)) {
+    return;
+  }
+  self->caret_hidden = caret_hidden;
+  self->context_menu_hidden = context_menu_hidden;
 }
 
 void rn_view_set_input_kinds(RnView *self, const char *auto_capitalize, const char *keyboard_type) {
@@ -2997,6 +3013,15 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   // compare: AppKit can act on neither and says the same words.
   if (self->auto_capitalize != nullptr) {
     g_string_append_printf(out, " autocapitalize=%s", self->auto_capitalize);
+  }
+  // `caretHidden` and `contextMenuHidden`, printed only when asked for. Each is
+  // the absence of something -- a blink, a menu -- so there is nothing else for
+  // a test or the cross-host diff to look at.
+  if (self->caret_hidden) {
+    g_string_append(out, " caret=hidden");
+  }
+  if (self->context_menu_hidden) {
+    g_string_append(out, " context-menu=hidden");
   }
   if (self->keyboard_type != nullptr) {
     g_string_append_printf(out, " keyboard=%s", self->keyboard_type);
