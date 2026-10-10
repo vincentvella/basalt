@@ -211,10 +211,22 @@ class Win32TextInputManager {
     // a family substitution changes it, and this is what the control's height
     // is set to so that the text sits in the middle of the field.
     LONG lineHeight{0};
+
+    // The input scope last installed for `keyboardType`, and whether one has
+    // been. `SetInputScope` replaces the window's whole scope list, so it is
+    // called on a change rather than on every props update -- a controlled
+    // field re-sends identical props on every keystroke.
+    int inputScope{0};
+    bool sawInputScope{false};
   };
 
   Entry *entryForControl(HWND control);
   void applyProps(Entry &entry, const facebook::react::TextInputProps &props);
+  // `spellCheck`, `autoCorrect`, `autoCapitalize` and `keyboardType`: the four
+  // the three hosts honour different subsets of. Separate from `applyProps`
+  // because what this host can act on is one and a half of them and the comment
+  // explaining which is longer than the code.
+  void applyTextChecking(Entry &entry, const facebook::react::TextInputProps &props);
 
   // Remembers the content box and the line height, which is what `syncBounds`
   // needs to place the control and cannot work out from the view alone.

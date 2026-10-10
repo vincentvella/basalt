@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 174 of 279 | 172 of 279 | 161 of 279 |
+| Done | 174 of 279 | 172 of 279 | 162 of 279 |
 | | `████████████░░░░░░░░` | `████████████░░░░░░░░` | `████████████░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -397,19 +397,19 @@ Written on the element itself, as `<View onLayout={...} />`.
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
-| `autoCapitalize` <sub>`autocapitalizationType`</sub> | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `autoCorrect` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `autoCapitalize` <sub>`autocapitalizationType`</sub> | ✅ | ✅ | ◐ | [ES_UPPERCASE covers `characters`; an EDIT cannot find a word or a sentence](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `autoCorrect` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `contextMenuHidden` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `editable` | ✅ | ✅ | ✅ |  |
 | `enablesReturnKeyAutomatically` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `keyboardAppearance` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `spellCheck` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `spellCheck` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `caretHidden` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `clearButtonMode` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `scrollEnabled` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `secureTextEntry` | ✅ | ✅ | ✅ |  |
 | `clearTextOnFocus` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `keyboardType` | ✅ | ✅ | ✖ | [the Win32 EDIT peer does not read it yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `keyboardType` | ✅ | ✅ | ✅ |  |
 | `showSoftInputOnFocus` | – | – | – | [a soft keyboard, which a desktop does not have](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `returnKeyType` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `selectTextOnFocus` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |

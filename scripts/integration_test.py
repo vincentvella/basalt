@@ -5299,24 +5299,22 @@ def test_runtime_font(bundle: Path) -> None:
 def test_text_checking(bundle: Path) -> None:
     """`spellCheck` and `autoCorrect` reach the field.
 
-    The pair a search box turns off, and neither host read either until
-    2026-10-09. Each toolkit has a different half of it: GTK has an input hint
-    for spell checking and nothing at all for autocorrection, AppKit has both as
-    properties of the NSTextView a field is or borrows. So the dump carries what
-    the app asked for, in both hosts' words, and each host's own suite asserts
-    what its toolkit did with it.
+    The pair a search box turns off, and no host read either until 2026-10-09.
+    Each toolkit has a different share of it: GTK has an input hint for spell
+    checking and nothing at all for autocorrection, AppKit has both as
+    properties of the NSTextView a field is or borrows, and a Win32 EDIT has
+    neither -- Windows keeps spell checking in `ISpellChecker`, which checks
+    strings and draws nothing. So the dump carries what the app asked for, in
+    every host's words, and each host's own suite asserts what its toolkit did
+    with it.
 
     Asserting arrival is this scenario's job and it is not a formality: a
     TextInput prop reaches C++ only if `RCTTextInputViewConfig.js` declares it,
     and this platform learned that the hard way with `accessibilityViewIsModal`,
     which ReactCommon parses for everyone and only iOS declares.
 
-    `e2e/input.tsx` carries the field. Windows mounts it too and reads neither
-    prop, so it is skipped by name there.
+    `e2e/input.tsx` carries the field.
     """
-    if PLATFORM == "windows":
-        raise Skipped("the Win32 field reads neither prop; an edit control has no spell check")
-
     app = bundle_app(bundle.parent, "input")
 
     env = dict(os.environ)
@@ -5355,8 +5353,10 @@ def test_text_checking(bundle: Path) -> None:
         )
 
     # `autoCapitalize` and `keyboardType` ride along on the same field, and are
-    # the other way round: GTK honours both and AppKit can honour neither, so
-    # both hosts *report* them and the support page carries the difference.
+    # the other way round: GTK honours both, Windows honours the keyboard as an
+    # input scope and capitalisation only for `characters`, and AppKit can
+    # honour neither -- so every host *reports* them and the support page
+    # carries the difference.
     # Every field reports these two, both props being plain enums with React
     # Native's own defaults rather than optionals.
     if "autocapitalize=none" not in asked[0] or "keyboard=email-address" not in asked[0]:

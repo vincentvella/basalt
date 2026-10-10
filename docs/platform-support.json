@@ -201,6 +201,14 @@
       "text": "AppKit paints the system colours through a borrowed field editor, and a Win32 EDIT has no form of them at all",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
+    "win-upper-only": {
+      "text": "ES_UPPERCASE covers `characters`; an EDIT cannot find a word or a sentence",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
+    "win-no-spellcheck": {
+      "text": "carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
     "win-textinput": {
       "text": "the Win32 EDIT peer does not read it yet",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -1636,8 +1644,8 @@
     "TextInputTraits.autocapitalizationType": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textinput",
+      "windows": "partial",
+      "why": "win-upper-only",
       "reads": [
         "traits.autocapitalizationType"
       ]
@@ -1645,8 +1653,8 @@
     "TextInputTraits.autoCorrect": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textinput",
+      "windows": "partial",
+      "why": "win-no-spellcheck",
       "reads": [
         "traits.autoCorrect"
       ]
@@ -1680,8 +1688,8 @@
     "TextInputTraits.spellCheck": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textinput",
+      "windows": "partial",
+      "why": "win-no-spellcheck",
       "reads": [
         "traits.spellCheck"
       ]
@@ -1724,8 +1732,7 @@
     "TextInputTraits.keyboardType": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-textinput",
+      "windows": "yes",
       "reads": [
         "traits.keyboardType"
       ]

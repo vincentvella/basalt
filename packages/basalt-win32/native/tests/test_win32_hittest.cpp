@@ -15,6 +15,7 @@
 
 #include "RnWin32View.h"
 #include "Win32Cursors.h"
+#include "Win32InputScopes.h"
 
 #include <memory>
 #include <sstream>
@@ -656,4 +657,73 @@ TEST(cursor_a_keyword_windows_has_nothing_for_leaves_the_pointer_alone) {
     EXPECT(answer.cursor == nullptr);
     EXPECT(!answer.hidden);
   }
+}
+
+// ---------------------------------------------------------------------------
+// `keyboardType` as a Windows input scope. See Win32InputScopes.h.
+//
+// A table, so a table test: what is worth asserting is that each name lands on
+// the scope that means the same thing, and that the ones Windows draws no
+// distinction between are the ones that share a scope. Here rather than in the
+// <TextInput> suite because the mapping carries no React Native, which is also
+// why it is keyed on the name core prints rather than on the enum.
+// ---------------------------------------------------------------------------
+
+TEST(input_scope_follows_the_keyboard_type_a_field_asked_for) {
+  const auto scope = [](const char *name) {
+    return basalt::win32::inputScopeForKeyboardType(name);
+  };
+
+  EXPECT_EQ(static_cast<int>(scope("email-address")),
+            static_cast<int>(IS_EMAIL_SMTPEMAILADDRESS));
+  EXPECT_EQ(static_cast<int>(scope("url")), static_cast<int>(IS_URL));
+  EXPECT_EQ(static_cast<int>(scope("phone-pad")),
+            static_cast<int>(IS_TELEPHONE_FULLTELEPHONENUMBER));
+  // A number that may carry a separator against digits and nothing else, which
+  // is the one distinction in this table that is not just a rename.
+  EXPECT_EQ(static_cast<int>(scope("numeric")), static_cast<int>(IS_NUMBER));
+  EXPECT_EQ(static_cast<int>(scope("decimal-pad")), static_cast<int>(IS_NUMBER));
+  EXPECT_EQ(static_cast<int>(scope("number-pad")), static_cast<int>(IS_DIGITS));
+  EXPECT(scope("numeric") != scope("number-pad"));
+
+  // `default` and the names that are iOS's own vocabulary: ordinary text, which
+  // is more useful than refusing to answer and is what the comment there says.
+  EXPECT_EQ(static_cast<int>(scope("default")), static_cast<int>(IS_DEFAULT));
+  EXPECT_EQ(static_cast<int>(scope("twitter")), static_cast<int>(IS_DEFAULT));
+  EXPECT_EQ(static_cast<int>(scope("ascii-capable")), static_cast<int>(IS_DEFAULT));
+  // And a name this table has never heard of, which is what a future React
+  // Native adding one looks like.
+  EXPECT_EQ(static_cast<int>(scope("something-new")), static_cast<int>(IS_DEFAULT));
+}
+
+// What a field asked for about its text reaches the tree dump, which is where
+// an app can see that a prop arrived on a host that cannot act on it -- and
+// what the end-to-end scenario reads on all three.
+TEST(input_kinds_and_text_checking_are_reported_in_the_tree) {
+  Tree tree;
+  RnWin32View *view = tree.box(1, 0, 0, 100, 40);
+
+  // Nothing said: nothing printed. Unset spelling is a third state rather than
+  // off, and a host that resolved it to false would mark every field.
+  EXPECT(view->describeTree().find("spellcheck=") == std::string::npos);
+  EXPECT(view->describeTree().find("autocorrect=") == std::string::npos);
+  EXPECT(view->describeTree().find("keyboard=") == std::string::npos);
+
+  view->setTextChecking("off", "off");
+  view->setInputKinds("none", "email-address");
+  const std::string dump = view->describeTree();
+  EXPECT(dump.find("spellcheck=off") != std::string::npos);
+  EXPECT(dump.find("autocorrect=off") != std::string::npos);
+  EXPECT(dump.find("autocapitalize=none") != std::string::npos);
+  EXPECT(dump.find("keyboard=email-address") != std::string::npos);
+
+  // And taken away again, which is what a field that stops saying anything
+  // means: core answers a null name for an unset flag.
+  view->setTextChecking(nullptr, nullptr);
+  const std::string quiet = view->describeTree();
+  EXPECT(quiet.find("spellcheck=") == std::string::npos);
+  EXPECT(quiet.find("autocorrect=") == std::string::npos);
+  // The other two are plain enums with React Native's own defaults, so they
+  // stay: a field always has a capitalisation and a keyboard.
+  EXPECT(quiet.find("autocapitalize=none") != std::string::npos);
 }

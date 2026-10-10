@@ -539,6 +539,19 @@ class RnWin32View {
   void setAccessibleInfo(const RnAccessibleInfo &info);
   const RnAccessibleInfo &accessibleInfo() const { return accessible_; }
 
+  // What a `<TextInput>` asked for about spelling and about the kind of text it
+  // holds, as React Native's own words.
+  //
+  // Reported rather than acted on, and that is the point: a classic `EDIT` has
+  // no spell checker and no autocorrection at all, so the dump is where an app
+  // can see that the prop arrived and the support page is where it says what
+  // this platform did with it. The two other hosts report the same four words
+  // for the same reason -- each honours a different subset. `nullptr` for
+  // spelling means the app said nothing, which is a third state rather than
+  // off; the other two are plain enums with React Native's own defaults.
+  void setTextChecking(const char *spellCheck, const char *autoCorrect);
+  void setInputKinds(const char *autoCapitalize, const char *keyboardType);
+
   // `accessibilityLabelledBy`, resolved to views by `core/LabelRegistry.h`:
   // other views whose text names this one.
   //
@@ -741,6 +754,10 @@ class RnWin32View {
   size_t imageFrame_ = 0;
   double imageElapsedMs_ = 0.0;
   Filters filters_;
+  std::string spellCheck_;
+  std::string autoCorrect_;
+  std::string autoCapitalize_;
+  std::string keyboardType_;
   std::string cursor_;
   std::vector<Gradient> gradients_;
   std::vector<BoxShadow> boxShadows_;

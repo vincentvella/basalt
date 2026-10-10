@@ -311,6 +311,11 @@ if(TARGET basalt_core)
   # IShellLink that writes the Start Menu shortcut, propsys for the property
   # store that puts the AppUserModelID on it.
   target_link_libraries(basalt_win32_mounting PUBLIC shell32 comctl32 ole32 propsys)
+  # msctf for `SetInputScope`, which is what a <TextInput>'s `keyboardType`
+  # becomes: the function is declared in InputScope.h and exported by
+  # msctf.dll, text services being where Windows keeps the idea of "what kind
+  # of text is this". Another of the libraries only a linker tells you about.
+  target_link_libraries(basalt_win32_mounting PUBLIC msctf)
   # dwmapi for the title bar's colours and dark mode.
   target_link_libraries(basalt_win32_mounting PUBLIC dwmapi)
 

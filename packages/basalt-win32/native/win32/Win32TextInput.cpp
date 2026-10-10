@@ -1,6 +1,8 @@
 #include "Win32TextInput.h"
 
 #include "DirectWriteLayout.h"
+#include "TextChecking.h"
+#include "Win32InputScopes.h"
 #include "Win32Strings.h"
 
 #include <react/renderer/components/iostextinput/TextInputProps.h>
@@ -375,6 +377,72 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
   // 0 means no limit, and React Native spells "no limit" as an absent prop --
   // which arrives here as 0 too, so the two agree without a special case.
   SendMessage(entry.control, EM_SETLIMITTEXT, static_cast<WPARAM>(std::max(0, props.maxLength)), 0);
+
+  applyTextChecking(entry, props);
+}
+
+// `spellCheck`, `autoCorrect`, `autoCapitalize` and `keyboardType`: what a
+// field asked for about its text, of which this platform can honour one and a
+// half.
+//
+// **`keyboardType` becomes an input scope**, which is the Windows equivalent of
+// GTK's input purpose: `SetInputScope` tells the touch keyboard and any
+// text-services IME what kind of text is expected, so a Surface typing into an
+// `email-address` field gets the keyboard with the @ on it. AppKit has nothing
+// of the kind and reports the prop instead. The table is `Win32InputScopes.h`,
+// keyed on the name core prints so that it carries no React Native.
+//
+// **`autoCapitalize` becomes `ES_UPPERCASE`, and only for `characters`.** That
+// style forces every character typed or pasted into upper case, which is
+// exactly what iOS's `characters` does; `words` and `sentences` need to know
+// where a word or a sentence begins, which an `EDIT` does not and no style bit
+// offers. Those two are reported and not approximated: upper-casing everything
+// for `sentences` would be worse than leaving the text alone.
+//
+// **`spellCheck` and `autoCorrect` have nothing here at all.** A classic `EDIT`
+// has no spell checker and no autocorrection; the Windows spell-checking API is
+// `ISpellChecker`, which checks strings and draws nothing, so honouring either
+// prop would mean drawing the squiggles and offering the menu -- a text editor
+// rather than a prop. backlog/platform-windows.md records that, and both props
+// reach the tree dump so an app can see they arrived.
+void Win32TextInputManager::applyTextChecking(Entry &entry, const TextInputProps &props) {
+  // The dump first, because it happens whether or not there is a control: the
+  // four words are what the three hosts compare, and `core/TextChecking.h`
+  // decides that an unset spelling prop is a third state rather than off.
+  const auto spellCheck = basalt::textCheckingFlag(props.traits.spellCheck);
+  const auto autoCorrect = basalt::textCheckingFlag(props.traits.autoCorrect);
+  if (entry.view != nullptr) {
+    entry.view->setTextChecking(basalt::textCheckingName(spellCheck),
+                                basalt::textCheckingName(autoCorrect));
+    entry.view->setInputKinds(basalt::autoCapitalizeName(props.traits.autocapitalizationType),
+                              basalt::keyboardTypeName(props.traits.keyboardType));
+  }
+
+  if (entry.control == nullptr) {
+    return;
+  }
+
+  // The input scope, set only when it changes: `SetInputScope` replaces the
+  // window's whole scope list, and a controlled field re-sending identical
+  // props would otherwise reinstall it on every keystroke.
+  const InputScope scope =
+      inputScopeForKeyboardType(basalt::keyboardTypeName(props.traits.keyboardType));
+  if (!entry.sawInputScope || scope != entry.inputScope) {
+    entry.sawInputScope = true;
+    entry.inputScope = scope;
+    SetInputScope(entry.control, scope);
+  }
+
+  // And the one style bit, applied the way the alignment above is.
+  const bool upperCase =
+      props.traits.autocapitalizationType == facebook::react::AutocapitalizationType::Characters;
+  const LONG_PTR style = GetWindowLongPtr(entry.control, GWL_STYLE);
+  const LONG_PTR wantedStyle =
+      upperCase ? (style | ES_UPPERCASE) : (style & ~static_cast<LONG_PTR>(ES_UPPERCASE));
+  if (wantedStyle != style) {
+    SetWindowLongPtr(entry.control, GWL_STYLE, wantedStyle);
+    InvalidateRect(entry.control, nullptr, TRUE);
+  }
 }
 
 void Win32TextInputManager::destroyPeer(Entry &entry) {

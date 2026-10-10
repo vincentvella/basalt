@@ -152,9 +152,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - `src/overrides/TextInput.js` is a fork of React Native's component, and the only fork
   in the tree. Every prop upstream adds is a prop it will not have.
 - **`autoCapitalize`, `autoCorrect`, `spellCheck` and `keyboardType` are done
-  on GTK and AppKit**, 2026-10-09, and the four beside them are still ignored:
-  `returnKeyType`, `clearButtonMode`, `selectTextOnFocus` and
-  `clearTextOnFocus`. Windows reads none of the eight.
+  on GTK and AppKit**, 2026-10-09, **and on Windows 2026-10-10**. The four
+  beside them are still ignored everywhere: `returnKeyType`,
+  `clearButtonMode`, `selectTextOnFocus` and `clearTextOnFocus`.
 
   What the four took, and what each toolkit really has, is in
   backlog/platform-macos.md: GTK has one input-hint bitmask that needs
@@ -162,6 +162,21 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `continuousSpellCheckingEnabled` and `automaticSpellingCorrectionEnabled` on
   the text view a field borrows, and no form of `keyboardType` at all, which is
   reported in the tree rather than pretended.
+
+  **Windows honours one and a half of the four**, which is the most that host
+  has, and the support page says which. `keyboardType` becomes an *input
+  scope*: `SetInputScope` is the Windows equivalent of GTK's input purpose, read
+  by the touch keyboard and by any text-services IME, so an `email-address`
+  field gets the keyboard with the @ on it. `autoCapitalize` becomes
+  `ES_UPPERCASE` and only for `characters`, which that style does exactly;
+  `words` and `sentences` need to know where a word or a sentence begins, which
+  an `EDIT` does not, and upper-casing everything for `sentences` would be worse
+  than leaving the text alone. `spellCheck` and `autoCorrect` have nothing at
+  all there: Windows keeps spell checking in `ISpellChecker`, which checks
+  strings and draws nothing, so honouring either would mean drawing the
+  squiggles and offering the menu -- a text editor rather than a prop. Both are
+  carried into the tree dump so an app can see they arrived, which is what the
+  end-to-end scenario now reads on all three hosts.
 
   The support page added a row per trait on 2026-10-09, which is how the rest of
   this list stopped being a sentence: `contextMenuHidden`, `caretHidden`,

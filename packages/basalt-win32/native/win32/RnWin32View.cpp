@@ -436,6 +436,16 @@ IRawElementProviderSimple *RnWin32View::createAccessibleProvider() const {
   return basalt::win32::createAccessibleProvider(accessible_);
 }
 
+void RnWin32View::setTextChecking(const char *spellCheck, const char *autoCorrect) {
+  spellCheck_ = spellCheck != nullptr ? spellCheck : "";
+  autoCorrect_ = autoCorrect != nullptr ? autoCorrect : "";
+}
+
+void RnWin32View::setInputKinds(const char *autoCapitalize, const char *keyboardType) {
+  autoCapitalize_ = autoCapitalize != nullptr ? autoCapitalize : "";
+  keyboardType_ = keyboardType != nullptr ? keyboardType : "";
+}
+
 void RnWin32View::setLabelledBy(std::vector<RnWin32View *> labels) {
   labelledBy_ = std::move(labels);
 }
@@ -2501,6 +2511,26 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     if (GetFocus() == editablePeer_) {
       out += " focused";
     }
+  }
+
+  // What a field asked for about spelling. Neither word appears for a field
+  // that said nothing, which is the third state rather than a default; what
+  // each host then did with it is in its own suite and on the support page.
+  // This one can honour neither: a classic EDIT has no spell checker.
+  if (!spellCheck_.empty()) {
+    appendFormat(out, " spellcheck=%s", spellCheck_.c_str());
+  }
+  if (!autoCorrect_.empty()) {
+    appendFormat(out, " autocorrect=%s", autoCorrect_.c_str());
+  }
+  // `autoCapitalize` and `keyboardType`, printed as the app wrote them so the
+  // three dumps compare. This host turns the second into an input scope and the
+  // first into a style bit for `characters` only; see Win32TextInput.cpp.
+  if (!autoCapitalize_.empty()) {
+    appendFormat(out, " autocapitalize=%s", autoCapitalize_.c_str());
+  }
+  if (!keyboardType_.empty()) {
+    appendFormat(out, " keyboard=%s", keyboardType_.c_str());
   }
 
   // How many DevTools highlights this view is drawing. In the dump because they
