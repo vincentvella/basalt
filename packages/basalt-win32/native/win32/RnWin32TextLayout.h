@@ -222,6 +222,15 @@ class RnWin32TextLayout {
   // Draws at the target's current origin, into a box `width` by `height`.
   void draw(ID2D1RenderTarget *target, float width, float height) const;
 
+  // How far down a box this tall the paragraph is drawn: zero unless
+  // `setVerticalFlush` said otherwise, and the number the draw and the hit test
+  // both work from.
+  //
+  // Public because an inline `<View>` has to move with the text it sits in:
+  // React Native places an attachment from the top of the content box and knows
+  // nothing about `textAlignVertical`.
+  float verticalOffsetFor(float width, float height) const;
+
   // --- Selecting that text ----------------------------------------------------
   //
   // `<Text selectable>`, which `userSelect` also arrives in. The two questions
@@ -266,7 +275,11 @@ class RnWin32TextLayout {
   // that fit, so FAR would align against the trimmed box rather than the view's
   // and a `numberOfLines` paragraph would not move at all. The draw origin is
   // the same arithmetic the other two hosts do, over the box this is given.
-  void setVerticalFlush(float flush) { verticalFlush_ = flush; }
+  void setVerticalFlush(float flush) {
+    verticalFlush_ = flush;
+    // The cached offset was computed against the old flush.
+    offsetWidth_ = -1.0f;
+  }
 
   // Where each inline box landed, in the order the attachment runs were given,
   // laid out at `maxWidth` -- the same width `measure` would be asked, so the
@@ -312,6 +325,14 @@ class RnWin32TextLayout {
   // layer hands over an ID2D1RenderTarget, and this asks it for one. See
   // `draw`.
   float verticalFlush_ = 0.0f;
+  // The last answer `verticalOffsetFor` gave, and the box it was asked about.
+  // A hit test asks once per view it walks into and a paint once per frame, and
+  // answering means building a DirectWrite layout -- which is the expensive
+  // half of moving a pointer across a paragraph. Mutable because the question
+  // is const and the memory of it is not.
+  mutable float offsetWidth_ = -1.0f;
+  mutable float offsetHeight_ = -1.0f;
+  mutable float offsetValue_ = 0.0f;
   unsigned selectionStart_ = 0;
   unsigned selectionLength_ = 0;
 

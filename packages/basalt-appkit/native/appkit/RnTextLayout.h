@@ -102,6 +102,14 @@ NS_ASSUME_NONNULL_BEGIN
 // a substring rather than a pair of offsets.
 - (nullable NSString *)selectedText;
 
+// How far down a box `size` the paragraph is drawn: 0 unless `verticalFlush`
+// says otherwise, and the number the draw and the hit test both use.
+//
+// Public because an inline `<View>` has to move with the text it sits in: React
+// Native places an attachment from the top of the content box and knows nothing
+// about `textAlignVertical`.
+- (CGFloat)verticalOffsetForSize:(CGSize)size;
+
 // Draws into `context`, top-left origin, in a box `size` wide and tall.
 - (void)drawInContext:(CGContextRef)context size:(CGSize)size;
 

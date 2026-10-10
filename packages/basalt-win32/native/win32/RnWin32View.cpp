@@ -352,6 +352,14 @@ int RnWin32View::textIndexAtPoint(float x, float y) const {
                                                         textInsetBottom_));
 }
 
+float RnWin32View::textVerticalOffset() const {
+  if (textLayout_ == nullptr) {
+    return 0.0f;
+  }
+  return textLayout_->verticalOffsetFor(frame_.width - textInsetLeft_ - textInsetRight_,
+                                        frame_.height - textInsetTop_ - textInsetBottom_);
+}
+
 void RnWin32View::setTextInset(float left, float top, float right, float bottom) {
   // No repaint request here, for the reason `setImage` makes none: this host
   // invalidates once per mounted transaction, and this is only ever set during
@@ -657,7 +665,12 @@ bool RnWin32View::pageToLocal(const RnWin32View *root,
     // A scrolled ancestor moves its children by its offset, which is not part
     // of any child's own placement -- the same offset `paintChildren`
     // subtracts and `hitTest` adds back.
-    const float scroll[6] = {1.0f, 0.0f, 0.0f, 1.0f, -parent->scrollX(), -parent->scrollY()};
+    const float scroll[6] = {1.0f,
+                             0.0f,
+                             0.0f,
+                             1.0f,
+                             -parent->scrollX(),
+                             -parent->scrollY() + parent->textVerticalOffset()};
     compose(toPage, scroll, toPage);
     node = parent;
   }
@@ -2013,10 +2026,16 @@ void RnWin32View::paintChildren(ID2D1RenderTarget *target,
 
   // A ScrollView's offset moves its children and nothing else, so it belongs
   // between this view's transform and theirs.
-  const D2D1::Matrix3x2F childTransform = scrollX_ != 0.0f || scrollY_ != 0.0f
-      ? D2D1::Matrix3x2F::Translation(-scrollX_, -scrollY_) * worldTransform
+  //
+  // A paragraph's vertical alignment moves the views inline in it for the same
+  // reason and in the same place: see textVerticalOffset.
+  const float inlineOffset = textVerticalOffset();
+  const bool movesChildren =
+      scrollX_ != 0.0f || scrollY_ != 0.0f || inlineOffset != 0.0f;
+  const D2D1::Matrix3x2F childTransform = movesChildren
+      ? D2D1::Matrix3x2F::Translation(-scrollX_, -scrollY_ + inlineOffset) * worldTransform
       : worldTransform;
-  if (scrollX_ != 0.0f || scrollY_ != 0.0f) {
+  if (movesChildren) {
     target->SetTransform(childTransform);
   }
 
@@ -2160,7 +2179,7 @@ void RnWin32View::blendChildIntoLayer(ID2D1BitmapRenderTarget *layer,
     // on with the scroll offset off, as it does in paintChildren, and the
     // layer's own transform is what that offset was applied to.
     const D2D1::Matrix3x2F unscrolled =
-        D2D1::Matrix3x2F::Translation(scrollX_, scrollY_) * transform;
+        D2D1::Matrix3x2F::Translation(scrollX_, scrollY_ - textVerticalOffset()) * transform;
     top->SetTransform(unscrolled);
     const ScopedGeometryClip clip(clipsChildren_ ? top.Get() : nullptr,
                                   D2D1::RectF(0.0f, 0.0f, frame_.width, frame_.height),
@@ -2276,7 +2295,7 @@ RnWin32View *hitTest(RnWin32View *root, float x, float y) {
   // nothing in this function knowing what a ScrollView is -- the same offset
   // `paintChildren` subtracts, from the same two fields.
   const float contentX = x + root->scrollX();
-  const float contentY = y + root->scrollY();
+  const float contentY = y + root->scrollY() - root->textVerticalOffset();
 
   // Backwards: the last child painted is the topmost, and the topmost is what a
   // press should land on.
@@ -2351,11 +2370,17 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     out += "  ";
   }
 
+  // The y a paragraph moved this view to, when it is inline in one: the frame
+  // is what React Native decided and `textAlignVertical` is the host's own
+  // answer to a box taller than its text, so the two differ there and the other
+  // hosts print the same number.
+  const float dumpY =
+      frame_.y + (parent_ != nullptr ? parent_->textVerticalOffset() : 0.0f);
   appendFormat(out,
                "view tag=%d frame=(%g,%g %gx%g)",
                tag_,
                static_cast<double>(frame_.x),
-               static_cast<double>(frame_.y),
+               static_cast<double>(dumpY),
                static_cast<double>(frame_.width),
                static_cast<double>(frame_.height));
 

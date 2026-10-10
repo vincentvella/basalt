@@ -1373,3 +1373,48 @@ TEST(win32_text_padding_moves_the_hit_test_too) {
   EXPECT(withoutPadding > 0);
   EXPECT_EQ(withPadding, withoutPadding);
 }
+
+// An inline `<View>` moves with the text it sits in.
+//
+// React Native measures an attachment against the content box and places it
+// from the top -- `ParagraphShadowNode::layout` adds the content insets and
+// nothing else -- so it knows nothing about `textAlignVertical`, which is each
+// host's own answer to a box taller than its text. A marker inside a
+// bottom-aligned sentence therefore stayed at the top of its box while the
+// words went to the bottom, on all three hosts.
+//
+// Asserted through the hit test, which is where it can be: this host draws its
+// children through a transform, so a press is the only observable that says
+// where the view ended up.
+TEST(win32_text_an_inline_view_is_hit_where_its_text_was_moved_to) {
+  auto parent = std::make_unique<RnWin32View>(1);
+  parent->setFrame(0, 0, 200, 90);
+  auto layout = paragraph("grounded marker", 16.0f);
+  // `textAlignVertical: 'bottom'`, which core/TextAlignments.h turns into a
+  // flush of one.
+  layout->setVerticalFlush(1.0f);
+  parent->setTextLayout(std::move(layout));
+
+  auto child = std::make_unique<RnWin32View>(2);
+  // Where React Native put it: the top of the content box, because that is
+  // where the line was measured.
+  child->setFrame(40.0f, 0.0f, 20.0f, 20.0f);
+  parent->insertChild(child.get(), 0);
+
+  const float offset = parent->textVerticalOffset();
+  // A 90 point box holding one line of 16 point text leaves most of itself
+  // below the line, and the text is against the bottom of it.
+  EXPECT(offset > 40.0f);
+
+  // The tag under a point, or -1, so a failure says what it found rather than
+  // dereferencing nothing.
+  const auto tagAt = [](RnWin32View *root, float x, float y) {
+    RnWin32View *hit = basalt::win32::hitTest(root, x, y);
+    return hit == nullptr ? -1 : hit->tag();
+  };
+
+  // Where React Native put the marker is now the paragraph and nothing else...
+  EXPECT_EQ(tagAt(parent.get(), 45.0f, 5.0f), 1);
+  // ...and where the text actually is, the marker.
+  EXPECT_EQ(tagAt(parent.get(), 45.0f, offset + 5.0f), 2);
+}

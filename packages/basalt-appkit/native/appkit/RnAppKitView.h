@@ -281,6 +281,18 @@ typedef NS_ENUM(NSInteger, RnAppKitImageFit) {
 // coordinates.
 - (NSInteger)rnTextIndexAtPoint:(CGPoint)point;
 
+// How far down its box this view's paragraph is drawn, which is zero for every
+// view that draws no text and for every paragraph that says nothing about
+// `textAlignVertical`.
+//
+// The inline views inside a paragraph are moved by it. React Native measures an
+// attachment against the content box and places it from the top --
+// `ParagraphShadowNode::layout` adds the content insets and nothing else -- so
+// it knows nothing about a box taller than its text, which is what
+// `textAlignVertical` is about. Without this a marker inside a bottom-aligned
+// sentence stayed at the top while the words went to the bottom.
+- (CGFloat)rnTextVerticalOffset;
+
 - (void)setRnTextSelectionStart:(NSInteger)start length:(NSInteger)length;
 - (NSInteger)rnTextSelectionStart;
 - (NSInteger)rnTextSelectionLength;

@@ -342,6 +342,19 @@ void rn_view_set_text_selectable(RnView *self, gboolean selectable);
 // numbers: the draw, the selection highlight, the vertical alignment and
 // `rn_view_text_index_at`.
 void rn_view_set_text_inset(RnView *self, float left, float top, float right, float bottom);
+
+// How far down its box this view's paragraph is drawn, in a box `box_height`
+// tall. Zero for a view that draws no text, and for one whose paragraph sits at
+// the top -- which is every paragraph that says nothing about
+// `textAlignVertical`.
+//
+// Public because an inline `<View>` has to move with the text it sits in.
+// React Native measures an attachment against the content box and places it
+// from the top (`ParagraphShadowNode::layout` adds only the content insets), so
+// it knows nothing about `textAlignVertical`, which is this platform's answer
+// to a box taller than its text. Without this a marker inside a bottom-aligned
+// sentence stayed at the top of the box while the words went to the bottom.
+float rn_view_text_offset(RnView *self, double box_height);
 gboolean rn_view_get_text_selectable(RnView *self);
 
 // The byte offset in the paragraph's text nearest the point (x, y), in the

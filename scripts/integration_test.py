@@ -623,6 +623,10 @@ def _views(tree: str):
     indentation, so the absolute position is the sum down the path. Transforms
     and scroll offsets are not applied -- a tap target inside a rotated or
     scrolled view would need them, and nothing here taps one.
+
+    One thing is applied, on all three hosts: a view inline in a paragraph that
+    `textAlignVertical` moved is reported where it was moved to, because that
+    is where it is. See backlog/text.md.
     """
     origins = {-1: (0.0, 0.0)}
     for line in tree.splitlines():
@@ -7214,6 +7218,7 @@ def test_inline_views(bundle: Path) -> str:
         "2f6fed": ("the view between two runs of text", 48.0, 24.0),
         "e0484d": ("the view taller than its line", 24.0, 64.0),
         "1f9d55": ("the view before any text", 32.0, 16.0),
+        "f2c14e": ("the view inside a bottom-aligned paragraph", 20.0, 20.0),
     }
     found = {}
     for body, (x, y), (width, height) in _views(tree):
@@ -7274,8 +7279,33 @@ def test_inline_views(bundle: Path) -> str:
             f"should offset it.\n{tree[-1200:]}"
         )
 
+    # And the one that has to move with its text. React Native measures an
+    # attachment against the content box and places it from the top --
+    # `ParagraphShadowNode::layout` adds the content insets and nothing else --
+    # so it knows nothing about `textAlignVertical`, which is each host's own
+    # answer to a box taller than its text. A marker inside a bottom-aligned
+    # sentence therefore stayed at the top of its 90 point box while the words
+    # went to the bottom, on all three hosts.
+    grounded = [(body, position, size) for body, position, size in _views(tree)
+                if "text-valign=bottom" in body]
+    if len(grounded) != 1:
+        raise Failure(
+            f"{len(grounded)} paragraphs are aligned to the bottom of their box; "
+            f"e2e/inline.tsx has one.\n{tree[-1200:]}"
+        )
+    _body, (_groundedX, groundedY), (_groundedWidth, groundedHeight) = grounded[0]
+    markerY = found["f2c14e"][1]
+    into = markerY - groundedY
+    if into < groundedHeight / 2:
+        raise Failure(
+            f"the inline marker sits {into:.0f} points into a {groundedHeight:.0f} "
+            "point box whose text is against the bottom, so it did not move with "
+            f"the text it is part of.\n{tree[-1200:]}"
+        )
+
     return (f"inline views {midX - left:.0f} and {tallX - left:.0f} points into "
-            "their lines, and the third at the start of its own")
+            f"their lines, the third at the start of its own, and a fourth "
+            f"{into:.0f} points down a bottom-aligned box")
 
 
 def test_displays(bundle: Path) -> None:

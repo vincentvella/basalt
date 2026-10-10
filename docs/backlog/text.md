@@ -20,6 +20,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 10. ~~`verticalAlign` reaches ReactCommon under a name it does not read~~
 11. ~~`userSelect` has no ReactCommon field at all~~
 12. ~~`padding` on a `<Text>` lays the box out and the text ignores it~~
+13. ~~An inline `<View>` stays at the top of a paragraph `textAlignVertical`
+    moved~~
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -749,6 +751,50 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   view, and that exactly one paragraph in the app reports one -- a dump is the
   only thing that can see this, the frame being the box including the padding
   and the string being the same string either way.
+
+- ~~**An inline `<View>` stays at the top of a paragraph `textAlignVertical`
+  moved.**~~ Fixed on all three on 2026-10-10, and found by asking the question
+  the padding fix above raised: if a paragraph's text is drawn somewhere other
+  than its box's corner, what happens to the views inside it?
+
+  Measured before it was fixed, which is the only reason it is worth recording
+  as a bug rather than as a feature: a 20 point marker inline in a
+  `textAlignVertical: 'bottom'` paragraph 90 points tall reported `frame=(74,0)`
+  on AppKit and `frame=(56,0)` on GTK, while the words it was part of were 66
+  points further down.
+
+  The cause is a seam rather than an oversight. React Native measures an
+  attachment against the content box and places it from the top:
+  `ParagraphShadowNode::layout` adds `contentInsets.left` and
+  `contentInsets.top` to the frame its text engine reported and nothing else.
+  Vertical alignment in a box taller than the text is this platform's own
+  answer, applied while drawing, because the box is only known then -- so React
+  Native cannot know about it, and the host has to move the views too.
+
+  Each host moves them where it already moves children for the other reason it
+  has to, which is scrolling: GTK in `rn_layout_allocate`, beside the scroll
+  offset and against the height being allocated rather than the widget's
+  current one; AppKit by placing each inline subview at the origin React Native
+  gave it plus the offset, re-applied when the layout or the box changes; and
+  Windows by folding the offset into the same child transform `paintChildren`
+  uses for a scroll, with `pageToLocal` and `hitTest` taking it back off.
+
+  **What the dump prints had to change with it**, and that is the part that
+  makes this testable. A child's line used to print its stored frame on GTK and
+  Windows and `self.frame` on AppKit, which agreed until the three started
+  moving children. All three now print where the view *is*: AppKit's frame is
+  the moved one, Windows adds its parent's offset, and GTK asks
+  `gtk_widget_compute_point` rather than computing it -- deliberately, because a
+  computed number agrees with itself whether or not the allocation ever ran, and
+  the end-to-end scenario is then unable to fail.
+
+  Proved by that scenario, which asserts the marker sits more than half way
+  down a bottom-aligned box, and sabotaged on both hosts that can be: removing
+  the term from GTK's allocation and from AppKit's placement each reports "the
+  inline marker sits 0 points into a 90 point box". Windows has a unit test
+  instead, because a dump cannot see a Direct2D transform: a press where React
+  Native put the marker lands on the paragraph, and a press where the text
+  actually is lands on the marker.
 
 - ~~**`userSelect` has no ReactCommon field at all.**~~ The grep was right and
   the conclusion was wrong, corrected on 2026-10-10. No field is *named*

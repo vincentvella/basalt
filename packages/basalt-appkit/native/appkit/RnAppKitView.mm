@@ -430,6 +430,9 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   std::vector<float> _highlights;
   std::vector<bool> _highlightFilled;
   NSString *_roleName;
+  // The origin React Native gave this view, which is not where the view sits
+  // when its paragraph moved its text. See setRnFrameX:y:width:height:.
+  NSPoint _rnOrigin;
   RnTextLayout *_textLayout;
   // `<Text selectable>`; the range itself lives on the layout, which is what
   // draws it. See setRnTextSelectable.
@@ -541,6 +544,7 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 - (instancetype)initWithFrame:(NSRect)frame {
   self = [super initWithFrame:frame];
   if (self != nil) {
+    _rnOrigin = frame.origin;
     _opacity = 1.0;
     _filterOpacity = 1.0;
     _imageFit = RnAppKitImageFitCover;
@@ -562,7 +566,15 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 }
 
 - (void)setRnFrameX:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height {
-  self.frame = NSMakeRect(x, y, width, height);
+  // What React Native decided, kept because the view may not sit there: a view
+  // inline in a paragraph is moved by whatever `textAlignVertical` did to the
+  // text, and when that changes it has to be placed again from this rather
+  // than from where it currently is. See rnPlaceInlineChildren.
+  _rnOrigin = NSMakePoint(x, y);
+  self.frame = NSMakeRect(x, y + [self rnParentTextOffset], width, height);
+  // A box that changed height changes where a bottom- or middle-aligned
+  // paragraph sits, and therefore where the views inline in it sit.
+  [self rnPlaceInlineChildren];
   // A mask layer is built against the bounds, so a resize invalidates it. The
   // uniform case is a plain cornerRadius and needs nothing.
   if (self.layer.mask != nil) {
@@ -1288,6 +1300,9 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   // only redraws when told. Without this the first paragraph appears and no
   // later one ever does.
   self.needsDisplay = YES;
+  // A new layout can be a new text height, and a bottom- or middle-aligned
+  // paragraph then sits somewhere else -- so the views inline in it do too.
+  [self rnPlaceInlineChildren];
 }
 
 - (void)setRnTextSelectable:(BOOL)selectable {
@@ -1306,6 +1321,51 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
 
 - (BOOL)rnTextSelectable {
   return _textSelectable;
+}
+
+- (CGFloat)rnTextVerticalOffset {
+  if (_textLayout == nil) {
+    return 0;
+  }
+  const CGSize box = self.bounds.size;
+  return [_textLayout verticalOffsetForSize:CGSizeMake(box.width - _rnTextInset.left -
+                                                           _rnTextInset.right,
+                                                       box.height - _rnTextInset.top -
+                                                           _rnTextInset.bottom)];
+}
+
+// How far this view's parent moved its text, which is how far this view has to
+// move with it. Only the vertical alignment: an attachment's frame already
+// carries the paragraph's padding, React Native having added the content insets
+// to it in `ParagraphShadowNode::layout`.
+- (CGFloat)rnParentTextOffset {
+  RnAppKitView *parent = [self.superview isKindOfClass:[RnAppKitView class]]
+      ? (RnAppKitView *)self.superview
+      : nil;
+  return parent == nil ? 0 : [parent rnTextVerticalOffset];
+}
+
+// Puts every inline view back where this paragraph's text now is. Called when
+// anything that can move the text changes: the layout itself, and the box.
+- (void)rnPlaceInlineChildren {
+  if (_textLayout == nil || _textLayout.verticalFlush <= 0) {
+    // Nothing to move, and nothing was: a paragraph at the top of its box
+    // leaves its children where React Native put them.
+    return;
+  }
+  const CGFloat offset = [self rnTextVerticalOffset];
+  for (NSView *child in self.subviews) {
+    if (![child isKindOfClass:[RnAppKitView class]]) {
+      continue;
+    }
+    RnAppKitView *inlineChild = (RnAppKitView *)child;
+    const NSRect frame = inlineChild.frame;
+    const CGFloat wanted = inlineChild->_rnOrigin.y + offset;
+    if (frame.origin.y != wanted) {
+      inlineChild.frame =
+          NSMakeRect(frame.origin.x, wanted, frame.size.width, frame.size.height);
+    }
+  }
 }
 
 - (NSInteger)rnTextIndexAtPoint:(CGPoint)point {
@@ -2734,9 +2794,15 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (index >= (NSInteger)children.count) {
     [self addSubview:child];
     [self rnRaiseIndicators];
+    [self rnPlaceInlineChildren];
     return;
   }
   [self addSubview:child positioned:NSWindowBelow relativeTo:children[(NSUInteger)index]];
+  // A view inline in a paragraph is given its frame before it is inserted --
+  // the mounting walk creates a view, applies its props and only then attaches
+  // it -- so at that moment it has no parent to ask where the text went. This
+  // is where it finds out.
+  [self rnPlaceInlineChildren];
 }
 
 // A child added at or past the end lands above the overlay, so put it back on
@@ -2762,6 +2828,10 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     [out appendString:@"  "];
   }
   const NSRect frame = self.frame;
+  // Where the view sits, which for one inline in a paragraph is not the origin
+  // React Native gave it: `textAlignVertical` is the host's own answer to a box
+  // taller than its text, and the other two hosts print the same number. See
+  // rnPlaceInlineChildren.
   [out appendFormat:@"view tag=%ld frame=(%g,%g %gx%g)",
                     (long)self.rnTag,
                     frame.origin.x,

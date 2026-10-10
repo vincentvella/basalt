@@ -1167,6 +1167,35 @@ std::string RnWin32TextLayout::selectedText() const {
   return narrow(utf16_.substr(start, end - start));
 }
 
+float RnWin32TextLayout::verticalOffsetFor(float width, float height) const {
+  if (verticalFlush_ <= 0.0f) {
+    // The common case, answered without building a layout: this is asked once
+    // per inline view per mutation.
+    return 0.0f;
+  }
+
+  if (width == offsetWidth_ && height == offsetHeight_) {
+    return offsetValue_;
+  }
+
+  Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
+  layout.Attach(buildLayout(width, height));
+  if (!layout) {
+    return 0.0f;
+  }
+  applyLineLimit(layout.Get());
+
+  DWRITE_TEXT_METRICS metrics{};
+  if (FAILED(layout->GetMetrics(&metrics))) {
+    return 0.0f;
+  }
+  offsetWidth_ = width;
+  offsetHeight_ = height;
+  offsetValue_ = static_cast<float>(
+      basalt::textVerticalOffset(height, metrics.height, verticalFlush_));
+  return offsetValue_;
+}
+
 void RnWin32TextLayout::drawSelection(ID2D1RenderTarget *target,
                                       IDWriteTextLayout *layout,
                                       float verticalOffset) const {

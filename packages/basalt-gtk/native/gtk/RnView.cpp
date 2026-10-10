@@ -56,8 +56,15 @@ static void rn_layout_allocate(GtkLayoutManager * /*manager*/,
   // offset here, once, keeps it out of every child's stored frame.
   double scroll_x = 0.0;
   double scroll_y = 0.0;
+  // An inline <View> inside a paragraph moves with the text. Read here for the
+  // same reason the scroll offset is -- once, rather than from every child's
+  // frame -- and against the height being allocated rather than the widget's
+  // current one, which during an allocation is still the old size. See
+  // rn_view_text_offset.
+  double text_offset_y = 0.0;
   if (RN_IS_VIEW(widget)) {
     rn_view_scroll_offset(RN_VIEW(widget), &scroll_x, &scroll_y);
+    text_offset_y = rn_view_text_offset(RN_VIEW(widget), height);
   }
 
   for (GtkWidget *child = gtk_widget_get_first_child(widget); child != nullptr;
@@ -113,7 +120,8 @@ static void rn_layout_allocate(GtkLayoutManager * /*manager*/,
 
     graphene_point_t origin;
     origin.x = frame.origin.x - static_cast<float>(scroll_x);
-    origin.y = frame.origin.y - static_cast<float>(scroll_y);
+    origin.y = frame.origin.y - static_cast<float>(scroll_y) +
+               static_cast<float>(text_offset_y);
 
     GskTransform *transform = gsk_transform_translate(nullptr, &origin);
 
@@ -1926,7 +1934,8 @@ void rn_view_set_text_shadow(
 // test both need and the snapshot used to compute inline. The *visible* height
 // is what is aligned: for a paragraph `numberOfLines` cut, the lines that
 // survived rather than all of them. See core/TextVerticalAlign.h.
-static float rn_view_text_offset_y(RnView *self) {
+float rn_view_text_offset(RnView *self, double box_height) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0.0f);
   if (self->text_layout == nullptr || self->text_vertical_flush <= 0.0f) {
     return 0.0f;
   }
@@ -1938,13 +1947,19 @@ static float rn_view_text_offset_y(RnView *self) {
 
   // The content box rather than the widget: a paragraph with vertical padding
   // is centred between its padding, not between its edges.
-  const double box = gtk_widget_get_height(GTK_WIDGET(self)) -
-                     static_cast<double>(self->text_inset_top) -
+  const double box = box_height - static_cast<double>(self->text_inset_top) -
                      static_cast<double>(self->text_inset_bottom);
   return static_cast<float>(basalt::textVerticalOffset(
       box,
       clips_text ? clip_height : static_cast<double>(text_height),
       self->text_vertical_flush));
+}
+
+// The same number for the box the widget currently has, which is what the draw
+// and the hit test want and what the allocation cannot use -- during allocate
+// the widget is still the size it was.
+static float rn_view_text_offset_y(RnView *self) {
+  return rn_view_text_offset(self, gtk_widget_get_height(GTK_WIDGET(self)));
 }
 
 void rn_view_set_text_layout(RnView *self, PangoLayout *layout, const GdkRGBA *color) {
@@ -2920,11 +2935,47 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
     g_string_append(out, "  ");
   }
 
+  // Where the widget actually sits in its parent, asked of GTK rather than
+  // taken from the frame.
+  //
+  // The two differ for a view inline in a paragraph: the frame is what React
+  // Native decided, and `textAlignVertical` is the host's own answer to a box
+  // taller than its text, applied when the children are allocated. Asking the
+  // toolkit is what makes this line able to fail -- a computed number would
+  // agree with itself whether or not the allocation ever moved.
+  //
+  // `gtk_widget_compute_point` answers FALSE for widgets that share no root,
+  // which is every widget in a unit test that never entered a window; the
+  // frame is the right answer there, those having no allocation to report.
+  double dump_y = static_cast<double>(self->frame.origin.y);
+  GtkWidget *dump_parent = gtk_widget_get_parent(GTK_WIDGET(self));
+  // Only when the parent is a paragraph that moved its text, which keeps the
+  // rest of this line exactly what it was: a frame as React Native decided it,
+  // with no transform and no scrolling in it. `gtk_widget_compute_point`
+  // carries both, and a rotated card would otherwise start reporting a
+  // position neither of the other hosts does.
+  if (dump_parent != nullptr && RN_IS_VIEW(dump_parent) &&
+      rn_view_text_offset(RN_VIEW(dump_parent), gtk_widget_get_height(dump_parent)) !=
+          0.0f) {
+    const graphene_point_t origin{0.0f, 0.0f};
+    graphene_point_t placed{0.0f, 0.0f};
+    if (gtk_widget_compute_point(GTK_WIDGET(self), dump_parent, &origin, &placed)) {
+      // Minus the scrolling, which the allocation also carries and which this
+      // line has never reported: a <ScrollView>'s children are where React
+      // Native put them whatever the user has scrolled past, and the other two
+      // hosts print it that way -- AppKit scrolls by moving its bounds rather
+      // than its subviews, and Windows by a transform.
+      double scrolled_x = 0.0;
+      double scrolled_y = 0.0;
+      rn_view_scroll_offset(RN_VIEW(dump_parent), &scrolled_x, &scrolled_y);
+      dump_y = static_cast<double>(placed.y) + scrolled_y;
+    }
+  }
   g_string_append_printf(out,
                          "view tag=%d frame=(%g,%g %gx%g)",
                          self->tag,
                          static_cast<double>(self->frame.origin.x),
-                         static_cast<double>(self->frame.origin.y),
+                         dump_y,
                          static_cast<double>(self->frame.size.width),
                          static_cast<double>(self->frame.size.height));
 

@@ -441,6 +441,18 @@ class RnWin32View {
   // also disagreed with the views inside it.
   void setTextInset(float left, float top, float right, float bottom);
 
+  // How far down its box this view's paragraph is drawn, which is zero for every
+  // view that draws no text and for every paragraph that says nothing about
+  // `textAlignVertical`.
+  //
+  // The views inline in a paragraph are moved by it, the way a ScrollView's
+  // offset moves its children: React Native measures an attachment against the
+  // content box and places it from the top -- `ParagraphShadowNode::layout`
+  // adds the content insets and nothing else -- so it knows nothing about a box
+  // taller than its text. Without this a marker inside a bottom-aligned
+  // sentence stayed at the top while the words went to the bottom.
+  float textVerticalOffset() const;
+
   // --- Selecting that text ----------------------------------------------------
   //
   // `<Text selectable>`, which `userSelect` also arrives in. The same four

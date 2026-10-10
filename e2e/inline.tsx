@@ -33,6 +33,8 @@ const styles = StyleSheet.create({
   mid: {width: 48, height: 24, backgroundColor: '#2f6fed'},
   tall: {width: 24, height: 64, backgroundColor: '#e0484d'},
   leading: {width: 32, height: 16, backgroundColor: '#1f9d55'},
+  grounded: {fontSize: 16, color: '#111827', height: 90, textAlignVertical: 'bottom'},
+  marker: {width: 20, height: 20, backgroundColor: '#f2c14e'},
 });
 
 function App() {
@@ -46,6 +48,9 @@ function App() {
       </Text>
       <Text style={styles.line}>
         <View style={styles.leading} /> trailing text
+      </Text>
+      <Text style={styles.grounded}>
+        grounded <View style={styles.marker} /> marker
       </Text>
     </View>
   );

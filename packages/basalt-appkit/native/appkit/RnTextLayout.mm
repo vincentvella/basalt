@@ -233,6 +233,17 @@
   return (CGFloat)basalt::textVerticalOffset(size.height, textHeight, self.verticalFlush);
 }
 
+- (CGFloat)verticalOffsetForSize:(CGSize)size {
+  if (self.verticalFlush <= 0) {
+    // The common case, and worth answering without breaking the text into lines
+    // to do it: this is asked once per inline view per layout.
+    return 0;
+  }
+  NSMutableArray *lines = [NSMutableArray array];
+  [self linesForWidth:size.width outLines:lines];
+  return [self verticalOffsetForSize:size lines:lines];
+}
+
 - (NSUInteger)characterIndexAtPoint:(CGPoint)point size:(CGSize)size {
   NSMutableArray *lines = [NSMutableArray array];
   [self linesForWidth:size.width outLines:lines];

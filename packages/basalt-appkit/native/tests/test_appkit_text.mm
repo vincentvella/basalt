@@ -1546,3 +1546,41 @@ TEST(appkit_text_padding_moves_the_hit_test_too) {
     EXPECT_EQ((long)withPadding, (long)withoutPadding);
   }
 }
+
+// An inline `<View>` moves with the text it sits in.
+//
+// React Native measures an attachment against the content box and places it
+// from the top -- `ParagraphShadowNode::layout` adds the content insets and
+// nothing else -- so it knows nothing about `textAlignVertical`, which is each
+// host's own answer to a box taller than its text. A marker inside a
+// bottom-aligned sentence therefore stayed at the top of its box while the
+// words went to the bottom, on all three hosts.
+TEST(appkit_text_an_inline_view_follows_its_paragraph) {
+  @autoreleasepool {
+    RnAppKitView *paragraph = [[RnAppKitView alloc] initWithFrame:NSMakeRect(0, 0, 200, 90)];
+    RnTextLayout *layout = layoutFor(@"grounded marker", 16, 0);
+    // `textAlignVertical: 'bottom'`, which core/TextAlignments.h turns into a
+    // flush of one.
+    layout.verticalFlush = 1.0;
+    [paragraph setRnTextLayout:layout];
+
+    RnAppKitView *marker = [[RnAppKitView alloc] initWithFrame:NSZeroRect];
+    [paragraph addSubview:marker];
+    // Where React Native put it: the top of the content box, because that is
+    // where the line was measured.
+    [marker setRnFrameX:40 y:0 width:20 height:20];
+
+    const CGFloat offset = [paragraph rnTextVerticalOffset];
+    // A 90 point box holding one line of 16 point text leaves most of itself
+    // below the line, and the text is against the bottom of it.
+    EXPECT(offset > 40);
+    EXPECT_NEAR(marker.frame.origin.y, offset, 0.01);
+
+    // And a paragraph that moves again takes the marker with it: a box that
+    // changed height is a new offset, with nothing new from React Native.
+    [paragraph setRnFrameX:0 y:0 width:200 height:140];
+    const CGFloat taller = [paragraph rnTextVerticalOffset];
+    EXPECT(taller > offset);
+    EXPECT_NEAR(marker.frame.origin.y, taller, 0.01);
+  }
+}
