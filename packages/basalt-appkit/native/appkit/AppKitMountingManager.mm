@@ -16,6 +16,7 @@
 #include "Filters.h"
 #include "Gradients.h"
 #include "ExpoImageComponent.h"
+#include "ImageProgress.h"
 #ifdef BASALT_HAS_SKIA
 #include "AppKitSkiaPeer.h"
 #endif
@@ -573,6 +574,27 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
     emitter->onLoadStart();
   }
 
+  // `<Image onProgress>`, for an http source: the bytes as they arrive, from
+  // the fetching thread. The emitter is looked up *here*, on the main thread,
+  // and captured -- `eventEmitterForTag` reads a map only this thread may touch
+  // (see core/MountingWalk.h), and a progress tick arrives on another.
+  //
+  // Which ticks become events is core/ImageProgress.h's: all three hosts gate
+  // them the same way, and the arithmetic is testable where the lambda is not.
+  // expo-image has no progress event, so its branch reports nothing.
+  basalt::ImageProgress reportProgress;
+  if (!isExpoImage) {
+    if (auto emitter =
+            std::dynamic_pointer_cast<const ImageEventEmitter>(eventEmitterForTag(tag))) {
+      auto ticker = std::make_shared<basalt::ImageProgressTicker>();
+      reportProgress = [emitter, ticker](long long loaded, long long total) {
+        if (const auto progress = ticker->tick(loaded, total)) {
+          emitter->onProgress(*progress, loaded, total);
+        }
+      };
+    }
+  }
+
   imageLoader_->load(uri, [this, tag, fit, source, isExpoImage](CGImageRef image,
                                                               const std::string &error) {
     // The view may have been deleted while the image was in flight, which is
@@ -609,12 +631,26 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
       return;
     }
     if (image != nullptr) {
-      emitter->onLoad(source);
+      // The decoded size, which the props do not carry for a remote image:
+      // `onLoad`'s payload is `source.size` times `source.scale`, so a source
+      // that arrived as `{uri}` and nothing else reported zero by zero on
+      // every host. iOS fills it in the same place and the same way, from the
+      // image it has just decoded -- `RCTImageComponentView`'s
+      // `didReceiveImage:` assigns `imageSource.size` before emitting.
+      //
+      // Divided by the scale because the payload multiplies by it: the event
+      // reports pixels, and a 2x asset is half as many points.
+      facebook::react::ImageSource loaded = source;
+      const double scale = loaded.scale > 0 ? loaded.scale : 1.0;
+      loaded.size = {static_cast<facebook::react::Float>(CGImageGetWidth(image) / scale),
+                     static_cast<facebook::react::Float>(CGImageGetHeight(image) / scale)};
+      emitter->onLoad(loaded);
     } else {
       emitter->onError(facebook::react::ImageErrorInfo{.error = error});
     }
     emitter->onLoadEnd();
-  });
+  },
+                     std::move(reportProgress));
 }
 
 void AppKitMountingManager::updateView(RnAppKitView *view, const ShadowView &shadowView) {

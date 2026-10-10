@@ -463,9 +463,17 @@ class MountingWalk {
   // in a later transaction.
   void create(const ShadowView &shadowView) {
     ViewRef view = platform().createView(shadowView);
+    // The emitter before the props, which is not the obvious order and is the
+    // one an apply needs: `updateView` is where a platform acts on what it was
+    // given, and acting on some props means sending an event at once.
+    // `<Image onLoadStart>` is the case that found this -- it fires when a load
+    // begins, a load begins on the mount that first carries the source, and
+    // `eventEmitterForTag` answered null for every one of them because the map
+    // was filled two lines further down. The event went nowhere, silently, on
+    // all three hosts.
+    rememberEventEmitter(shadowView);
     platform().updateView(view, shadowView);
     registry_[shadowView.tag] = view;
-    rememberEventEmitter(shadowView);
   }
 
   void destroy(Tag tag) {

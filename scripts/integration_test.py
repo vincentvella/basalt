@@ -51,6 +51,8 @@ without taking over the machine's cursor.
 
 import argparse
 import bisect
+import hashlib
+import http.server
 import json
 import os
 import re
@@ -59,11 +61,14 @@ import shutil
 import subprocess
 import sys
 import socket
+import struct
 import tempfile
 import shutil
+import threading
 import time
 import urllib.error
 import urllib.request
+import zlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -4164,6 +4169,235 @@ def test_image_tint_and_blur(bundle: Path) -> None:
         )
 
 
+# --------------------------------------------------------------------------
+# An image served slowly, for <Image>'s load events
+# --------------------------------------------------------------------------
+
+# Not METRO_PORT, and not 8081 either: this one is listening while a host runs,
+# and a scenario that silently talked to somebody else's server would prove
+# nothing about either.
+IMAGE_PORT = 8097
+
+
+def noise_png(width: int, height: int) -> bytes:
+    """A PNG of pseudo-random noise, which is a PNG that does not compress.
+
+    The point is the size of the *transfer*: `onProgress` reports bytes off the
+    wire, so an image that squeezed into two kilobytes would arrive in one chunk
+    and fire one event at a hundred percent -- which a stub that reports
+    completion and nothing else would also do.
+
+    Deterministic, from a chained SHA-256 rather than `random`, so a failure is
+    the same failure on the next run and the bytes are the same on every host.
+    """
+    pixels = width * height * 3
+    digest = hashlib.sha256(b"basalt")
+    noise = bytearray()
+    while len(noise) < pixels:
+        digest = hashlib.sha256(digest.digest())
+        noise += digest.digest()
+
+    # One filter byte per row, filter 0, which is the whole of the format this
+    # needs: nothing here is trying to compress well.
+    raw = bytearray()
+    for row in range(height):
+        start = row * width * 3
+        raw += b"\x00" + noise[start:start + width * 3]
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return (struct.pack(">I", len(payload)) + kind + payload +
+                struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF))
+
+    # 8 bits a channel, colour type 2 (truecolour), no interlacing: the plainest
+    # PNG there is, which gdk-pixbuf, ImageIO and WIC all decode.
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) +
+            chunk(b"IDAT", zlib.compress(bytes(raw), 1)) + chunk(b"IEND", b""))
+
+
+class ImageServer:
+    """One image, served in chunks with a pause between them.
+
+    The pauses are the whole mechanism. A local socket will hand over a hundred
+    and eighty kilobytes faster than libcurl's progress callback can be called
+    twice, so without them the scenario could not tell a host that reports every
+    chunk from one that reports the end of the download.
+
+    `Content-Length` is sent, which is what gives the event a `total` to be a
+    fraction of -- and is the case an app showing a bar needs. The chunked case,
+    where there is no total, is core/ImageProgress.h's and is unit-tested there:
+    it cannot be asserted from here, because what an app sees is bytes with no
+    denominator and nothing in the log would distinguish it from a bug.
+    """
+
+    def __init__(self, body: bytes, chunk: int = 8192, pause: float = 0.02) -> None:
+        self.body = body
+        self.chunk = chunk
+        self.pause = pause
+        self.server = None
+        self.thread = None
+
+    def __enter__(self) -> "ImageServer":
+        if is_port_taken(IMAGE_PORT, "127.0.0.1"):
+            raise Failure(
+                f"something is already listening on port {IMAGE_PORT}.\n"
+                "This scenario serves its own image there, and a stranger's "
+                "server would be answering for it."
+            )
+
+        body, chunk, pause = self.body, self.chunk, self.pause
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            # Keep-alive and a real Content-Length, which is what libcurl needs
+            # to report a total at all. The default here is HTTP/1.0, which
+            # closes the connection and leaves the length to the close.
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self) -> None:  # noqa: N802 - the stdlib's spelling
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                for start in range(0, len(body), chunk):
+                    try:
+                        self.wfile.write(body[start:start + chunk])
+                        self.wfile.flush()
+                    except OSError:
+                        # The host gave up or exited mid-download. Its problem,
+                        # and the scenario's assertions say so far better than a
+                        # traceback from a server thread would.
+                        return
+                    time.sleep(pause)
+
+            def log_message(self, *arguments) -> None:
+                # Silent: one line per chunk on stderr would bury the host's own
+                # output, which is what every failure here is read from.
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", IMAGE_PORT), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_) -> None:
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+        if self.thread is not None:
+            self.thread.join(timeout=5)
+
+
+def test_image_load_events(bundle: Path) -> str:
+    """The events an `<Image>` fires while it loads, `onProgress` included.
+
+    Five of them -- `onLoadStart`, `onProgress`, `onLoad`, `onError`,
+    `onLoadEnd` -- and when this was written every host was missing at least
+    one: `onProgress` was emitted by none of them, and the Windows host
+    dispatched no image event at all, so an app that showed a spinner until
+    `onLoad` showed it forever there. Nothing in a tree dump can see any of
+    this, which is why the app logs each one.
+
+    The image comes from a server this scenario starts, and it arrives in
+    chunks with a pause between them. That is what makes `onProgress` an
+    assertion rather than a formality: the numbers have to grow, they have to
+    be the real byte counts of the body served, and there have to be several of
+    them. A host that emitted one event at the end would satisfy "it fired".
+
+    The failure half runs in the same app deliberately: `onError` and `onLoad`
+    are the two branches of one callback on every host, and a host that called
+    the wrong one would pass a scenario that only ever loads an image that
+    exists.
+    """
+    app = bundle_app(bundle.parent, "imageload")
+
+    body = noise_png(300, 200)
+
+    env = dict(os.environ)
+    # Longer than the usual three seconds: the server dribbles the image out
+    # over about half a second, and the host has to start, bundle-load, mount
+    # and then wait for it.
+    env["BASALT_QUIT_AFTER_MS"] = "8000"
+    # No proxy for a loopback address. Nothing sets these on a CI runner, and a
+    # developer who does would otherwise watch this scenario fail for a reason
+    # that has nothing to do with images.
+    env["no_proxy"] = "*"
+    env["NO_PROXY"] = "*"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with ImageServer(body):
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltImageLoad"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    logged = result.stdout + result.stderr
+
+    if "slow image: load start" not in logged:
+        raise Failure(
+            "onLoadStart never fired. Nothing at all means this host "
+            f"dispatches no image events.\n{tail_text(logged)}"
+        )
+
+    ticks = [
+        (int(match.group(1)), int(match.group(2)))
+        for match in re.finditer(r"slow image: progress (\d+)/(\d+)", logged)
+    ]
+    if len(ticks) < 3:
+        raise Failure(
+            f"onProgress fired {len(ticks)} times for an image served in "
+            f"{-(-len(body) // 8192)} chunks; a bar needs more than the end of "
+            f"the download.\n{tail_text(logged)}"
+        )
+    if any(total != len(body) for _, total in ticks):
+        raise Failure(
+            "onProgress reported a total that is not the image's size "
+            f"({len(body)} bytes): {ticks}\n{tail_text(logged)}"
+        )
+    loaded = [count for count, _ in ticks]
+    if loaded != sorted(set(loaded)):
+        raise Failure(
+            f"onProgress did not count up: {loaded}\n{tail_text(logged)}"
+        )
+    # Within one chunk of the whole, rather than exactly it: whether libcurl
+    # makes a final call once the last byte is in is libcurl's business, and the
+    # assertion that matters is that the count reached the end of the image
+    # rather than stopping somewhere in the middle.
+    if loaded[-1] < len(body) - 8192:
+        raise Failure(
+            f"onProgress stopped at {loaded[-1]} of {len(body)} bytes, so the "
+            f"last part of the download was never reported.\n{tail_text(logged)}"
+        )
+
+    # The decoded size, which the props do not carry for a remote image: every
+    # host reported zero by zero until each filled it in from the image it had
+    # just decoded, as iOS does.
+    if "slow image: loaded 300x200" not in logged:
+        raise Failure(
+            "onLoad did not report the image's size. `loaded 0x0` means the "
+            "event fired with the props' source, which carries no size for a "
+            f"remote uri.\n{tail_text(logged)}"
+        )
+    if "slow image: load end" not in logged:
+        raise Failure(f"onLoadEnd never fired\n{tail_text(logged)}")
+
+    if "missing image: loaded" in logged:
+        raise Failure(
+            "onLoad fired for a file that does not exist.\n" + tail_text(logged)
+        )
+    if "missing image: error" not in logged:
+        raise Failure(
+            "onError never fired for a missing file, so an app cannot tell a "
+            f"broken image from one that is still loading.\n{tail_text(logged)}"
+        )
+
+    return (f"{len(ticks)} progress events over {len(body)} bytes, "
+            "and a missing file reported an error")
+
+
 def test_border_style(bundle: Path) -> None:
     """`borderStyle: 'dashed'` and `'dotted'` reach the view.
 
@@ -7375,6 +7609,7 @@ SCENARIOS = [
     ("Image.getSize answers, and a missing file rejects", test_image_get_size),
     ("an animated GIF is animated", test_animated_image),
     ("tintColor and blurRadius reach the view", test_image_tint_and_blur),
+    ("the events an <Image> fires while it loads", test_image_load_events),
     ("borderStyle reaches the view, dashed and dotted", test_border_style),
     ("the cursor style property reaches the view", test_cursor_style),
     ("boxShadow reaches the view, inset and all", test_box_shadow),

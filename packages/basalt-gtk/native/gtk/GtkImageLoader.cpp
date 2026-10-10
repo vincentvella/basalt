@@ -15,6 +15,9 @@ struct GtkImageLoader::Pending {
   std::string bytes;
   std::string error;
   Callback callback;
+  // Called from the worker thread as the bytes arrive, rather than from
+  // `deliver` below: see the header.
+  basalt::ImageProgress onProgress;
 };
 
 GtkImageLoader::GtkImageLoader() = default;
@@ -93,7 +96,9 @@ gboolean GtkImageLoader::deliver(gpointer data) {
   return G_SOURCE_REMOVE;
 }
 
-void GtkImageLoader::load(const std::string &uri, Callback &&callback) {
+void GtkImageLoader::load(const std::string &uri,
+                          Callback &&callback,
+                          basalt::ImageProgress onProgress) {
   if (uri.empty()) {
     callback(nullptr, "empty source uri");
     return;
@@ -105,12 +110,12 @@ void GtkImageLoader::load(const std::string &uri, Callback &&callback) {
     return;
   }
 
-  auto *pending = new Pending{this, uri, {}, {}, std::move(callback)};
+  auto *pending = new Pending{this, uri, {}, {}, std::move(callback), std::move(onProgress)};
 
   std::thread([pending]() {
     // The fetch is in core, shared with the AppKit loader: a URI means the same
     // thing on both, and only the decode below differs.
-    fetchImageBytes(pending->uri, &pending->bytes, &pending->error);
+    fetchImageBytes(pending->uri, &pending->bytes, &pending->error, pending->onProgress);
     g_idle_add_full(G_PRIORITY_DEFAULT, deliver, pending, nullptr);
   }).detach();
 }

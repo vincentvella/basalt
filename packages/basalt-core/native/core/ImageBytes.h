@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 
 namespace basalt {
@@ -22,8 +23,23 @@ namespace basalt {
 //   bare paths    treated as file paths, which is what a `require()`d asset
 //                 looks like once Metro has resolved it in a release bundle
 //
+// How much of an http fetch has arrived, which is what `<Image onProgress>`
+// reports. `total` is zero when the server sent no `Content-Length`, which is
+// not an error and is why it is passed on rather than turned into a fraction
+// here: an app showing a bar needs to know the difference between "half way"
+// and "no idea".
+//
+// Called from the fetching thread, repeatedly, and never after the fetch has
+// returned. Only an http or https URI reports anything: a file or a data URI
+// arrives whole, and inventing a 0% and a 100% for them would be reporting
+// progress that never existed.
+using ImageProgress = std::function<void(long long loaded, long long total)>;
+
 // Blocking, so call it off the thread that draws. Returns false and fills
 // `error` on failure, in which case `out` is left empty.
-bool fetchImageBytes(const std::string &uri, std::string *out, std::string *error);
+bool fetchImageBytes(const std::string &uri,
+                     std::string *out,
+                     std::string *error,
+                     const ImageProgress &onProgress = {});
 
 } // namespace basalt

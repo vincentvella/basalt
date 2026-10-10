@@ -2,12 +2,12 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (4):**
 
 1. overlayColor, fadeDuration and progressiveRenderingEnabled are ignored; blurRadius is done
 2. Assets are never fetched over the network, so a dev server's assets do not wor
 3. Nothing caches a downloaded asset, which is right for a local file and will no
-4. onProgress and onPartialLoad are never emitted
+4. ~~onProgress and onPartialLoad are never emitted~~ onProgress is done; onPartialLoad is recorded
 5. ~~`ImageProps` and `<Image>`'s own style names have no rows on the support page~~
 6. `defaultSource` and `loadingIndicatorSource` draw no placeholder
 
@@ -133,7 +133,104 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   is right for a local asset and will not be right for a remote one.
 - Nothing caches a downloaded asset, which is right for a local file and will
   not be for a remote one.
-- `onProgress` and `onPartialLoad` are never emitted.
+- ~~**`onProgress` and `onPartialLoad` are never emitted.**~~ `onProgress` is
+  done on all three as of 2026-10-10. `onPartialLoad` is not, and the call that
+  would do it is named below.
+
+  The fetch already ran on a worker thread, so the prop is libcurl's
+  `CURLOPT_XFERINFOFUNCTION` wired in `core/ImageBytes.h` behind an optional
+  `basalt::ImageProgress` callback -- optional because turning progress on for
+  every image would be work for the overwhelming majority of them, which are
+  small and local. `XFERINFOFUNCTION` rather than `PROGRESSFUNCTION`, which is
+  the same callback with doubles and has been deprecated since 7.32.
+
+  **Which ticks become events is `core/ImageProgress.h`**, shared by the three
+  hosts and the part a test can hold on to. libcurl calls its progress function
+  about once per socket read, and every call would otherwise be a Fabric event,
+  a JavaScript call and a React render; the gate is whole percentages, which is
+  a hundred events over a download and finer than a bar can draw. Measured:
+  180,318 bytes served in 8KB chunks produced 23 events on GTK and 24 on
+  AppKit, against the 23 chunks it was sent in.
+
+  Two cases that are not a percentage and both are real. A chunked response has
+  no `Content-Length`, so `total` is zero: the event carries the bytes anyway
+  and the fraction is the only thing that cannot be answered, because inventing
+  a denominator would read as a bar that is always nearly full. And libcurl
+  calls once before the response headers arrive, with nothing loaded and
+  nothing known, which is not an event -- an app would show a zero-of-zero bar
+  before the request had been answered.
+
+  Each host's half is a lookup and a lambda: the emitter is found on the main
+  thread, because `eventEmitterForTag` reads a map only that thread may touch
+  (see `core/MountingWalk.h`), and captured, because the tick arrives on the
+  fetch thread. It is deliberately not marshalled back: a progress tick that
+  had to queue behind the main loop would arrive after the image it is about.
+
+  **Three things this found, and none of them were about progress.**
+
+  **The event emitter was registered after the props were applied**, so any
+  event a mount wanted to send went nowhere. `MountingWalk::create` called
+  `platform().updateView(...)` and *then* `rememberEventEmitter(...)`, and a
+  load starts on the mount that first carries the source -- so `onLoadStart`
+  never fired on any host, ever, and the progress callback was never installed
+  for the load that was starting. The fix is the two lines in the other order.
+  It was found by writing the scenario below: the first run reported no
+  `onLoadStart` and no progress at all, while `onLoad` and `onError` arrived
+  normally, because those fire from the completion, by which time the walk has
+  finished and the map is filled.
+
+  **Windows emitted no image event at all.** `onLoadStart`, `onLoad`,
+  `onError` and `onLoadEnd` were wired on GTK and AppKit and nothing in
+  `Win32MountingManager` had ever dispatched one, so an app that showed a
+  spinner until `onLoad` showed it forever there. Nothing noticed because the
+  only end-to-end check that mounted a broken image asserted the picture rather
+  than the callback. All five are there now, in the same places and the same
+  order as the other two hosts.
+
+  **`onLoad` reported `0x0` everywhere.** The payload is `source.size` times
+  `source.scale`, and the props' `ImageSource` carries no size for a remote
+  uri -- so an app sizing itself to an image it had just loaded was told
+  nothing. iOS fills it in the same place, from the image it has just decoded
+  (`RCTImageComponentView`'s `didReceiveImage:` assigns `imageSource.size`
+  before emitting), and all three hosts now do the same, dividing by the scale
+  because the payload multiplies by it: the event reports pixels.
+
+  **The test is a server that answers slowly**, which is the only way this is
+  an assertion rather than a formality. `e2e/imageload.tsx` mounts one remote
+  image and one missing file; the harness serves 180KB of incompressible noise
+  on port 8097 in 8KB chunks with a 20ms pause between them, because a local
+  socket hands over 180KB faster than libcurl's callback can be called twice,
+  and a host that fired one event at the end would otherwise pass. The scenario
+  asserts that the counts grow, that every `total` is the body's real length,
+  that the last tick reached the end of the image, that `onLoad` reported
+  300x200, and that the missing file reported an error rather than a load. The
+  gate's arithmetic is in `test_image_progress.cpp`, including the opening tick
+  and a server that sends more than it promised.
+
+  Each half was sabotaged: removing the percent gate fails
+  `image_progress_says_nothing_twice`; passing no progress callback to the
+  loader fails the scenario with "onProgress fired 0 times for an image served
+  in 23 chunks"; and emitting the props' source rather than the decoded one
+  fails it with "`loaded 0x0` means the event fired with the props' source".
+
+  **`onPartialLoad` is still never emitted**, and it is a decode rather than a
+  fetch: iOS fires it for a progressive JPEG, where the bytes so far can be
+  drawn as a blurry whole image. Every host here decodes once, at the end, from
+  a complete buffer. What each would need is its incremental decoder:
+  `GdkPixbufLoader` with `gdk_pixbuf_loader_write` per chunk and the
+  `area-updated` signal on GTK; `CGImageSourceCreateIncremental` with
+  `CGImageSourceUpdateData` and a `CGImageSourceCreateImageAtIndex` that
+  answers a partial image on AppKit; and on Windows an `IWICBitmapDecoder`
+  created `WICDecodeMetadataCacheOnDemand` over a stream still being filled,
+  or `IWICProgressiveLevelControl` for the format it actually matters for.
+  Each is a second decode path beside the one every image goes through, which
+  is the cost; the prize is a placeholder for slow images, which is also what
+  entry 6's `defaultSource` would give and at a fraction of the work.
+
+  Worth recording about the page rather than the props: `scripts/scrape_props.py`
+  reads prop structs, and events come from the view config's `directEventTypes`
+  rather than from `ImageProps`, so none of these five has a row on the support
+  page and none of them was ever counted as missing.
 - ~~`IImageLoader` itself is still unimplemented, so `Image.getSize` and
   `Image.prefetch` do nothing.~~ Done on all three. Each host's image loader
   now *is* an `IImageLoader`, so a size asked for something already on screen

@@ -30,6 +30,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "ImageBytes.h"
 #include "ImageCache.h"
 
 #include <react/io/IImageLoader.h>
@@ -55,7 +56,17 @@ class GtkImageLoader : public facebook::react::IImageLoader {
   GtkImageLoader(GtkImageLoader &&) = delete;
   GtkImageLoader &operator=(GtkImageLoader &&) = delete;
 
-  void load(const std::string &uri, Callback &&callback);
+  // `onProgress` is optional and is `basalt::ImageProgress`: how much of an
+  // http fetch has arrived, called from the fetching thread. Only an http URI
+  // reports anything; see core/ImageBytes.h.
+  //
+  // Not marshalled to the main thread, unlike the callback above, and that is
+  // the point of it: a Fabric event emitter may be dispatched from any thread,
+  // and a progress tick that had to wait for the main loop would arrive after
+  // the image it is about.
+  void load(const std::string &uri,
+            Callback &&callback,
+            basalt::ImageProgress onProgress = {});
 
   // The animation behind an animated image, or null.
   //

@@ -28,7 +28,9 @@ void Win32ImageLoader::clearCache() {
   state_->policy.clear();
 }
 
-void Win32ImageLoader::load(const std::string &uri, Callback callback) {
+void Win32ImageLoader::load(const std::string &uri,
+                            Callback callback,
+                            basalt::ImageProgress onProgress) {
   if (!callback) {
     return;
   }
@@ -55,11 +57,12 @@ void Win32ImageLoader::load(const std::string &uri, Callback callback) {
 
   // Fetch and decode, and where they run depends on whether there is anywhere
   // to come back to.
-  const auto work = [uri](std::shared_ptr<RnWin32Image> &image,
-                          RnWin32ImageFrames &frames,
-                          std::string &error) {
+  const auto work = [uri, onProgress = std::move(onProgress)](
+                        std::shared_ptr<RnWin32Image> &image,
+                        RnWin32ImageFrames &frames,
+                        std::string &error) {
     std::string bytes;
-    if (!fetchImageBytes(uri, &bytes, &error)) {
+    if (!fetchImageBytes(uri, &bytes, &error, onProgress)) {
       if (error.empty()) {
         error = "could not fetch " + uri;
       }

@@ -33,6 +33,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "ImageBytes.h"
 #include "ImageCache.h"
 
 #include <react/io/IImageLoader.h>
@@ -59,7 +60,17 @@ class Win32ImageLoader : public facebook::react::IImageLoader {
   Win32ImageLoader(const Win32ImageLoader &) = delete;
   Win32ImageLoader &operator=(const Win32ImageLoader &) = delete;
 
-  void load(const std::string &uri, Callback callback);
+  // `onProgress` is optional and is `basalt::ImageProgress`: how much of an
+  // http fetch has arrived, called from the thread doing the fetch. Only an
+  // http URI reports anything; see core/ImageBytes.h.
+  //
+  // Not posted to the UI thread, unlike the callback above, and that is the
+  // point of it: a Fabric event emitter may be dispatched from any thread, and
+  // a progress tick that had to queue behind the message loop would arrive
+  // after the image it is about.
+  void load(const std::string &uri,
+            Callback callback,
+            basalt::ImageProgress onProgress = {});
 
   // The frames of an animated image, or an empty result.
   //

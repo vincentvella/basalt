@@ -24,6 +24,9 @@ struct AppKitImageLoader::Pending {
   unsigned loopCount;
   std::string error;
   Callback callback;
+  // Called from the worker thread as the bytes arrive, rather than from the
+  // main-queue delivery below: see the header.
+  basalt::ImageProgress onProgress;
 };
 
 AppKitImageLoader::AppKitImageLoader() = default;
@@ -261,7 +264,9 @@ void AppKitImageLoader::remember(const std::string &uri, CGImageRef image) {
   }
 }
 
-void AppKitImageLoader::load(const std::string &uri, Callback &&callback) {
+void AppKitImageLoader::load(const std::string &uri,
+                             Callback &&callback,
+                             basalt::ImageProgress onProgress) {
   if (uri.empty()) {
     callback(nullptr, "empty source uri");
     return;
@@ -273,14 +278,15 @@ void AppKitImageLoader::load(const std::string &uri, Callback &&callback) {
     return;
   }
 
-  auto *pending = new Pending{this, uri, nullptr, {}, {}, 0U, {}, std::move(callback)};
+  auto *pending = new Pending{this,      uri, nullptr,            {}, {}, 0U, {},
+                              std::move(callback), std::move(onProgress)};
 
   std::thread([pending]() {
     std::string bytes;
     // Both the fetch and the decode run here. A CGImage is immutable and
     // thread-safe, so unlike the GTK side there is nothing that has to wait for
     // the main thread except the delivery itself.
-    if (fetchImageBytes(pending->uri, &bytes, &pending->error)) {
+    if (fetchImageBytes(pending->uri, &bytes, &pending->error, pending->onProgress)) {
       pending->image = decode(bytes, &pending->error, &pending->frames, &pending->delaysMs,
                               &pending->loopCount);
     }

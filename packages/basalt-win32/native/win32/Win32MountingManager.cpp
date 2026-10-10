@@ -11,6 +11,7 @@
 #include "WritingDirections.h"
 #include "TextAlignments.h"
 #include "ImageBytes.h"
+#include "ImageProgress.h"
 #include "PlatformServices.h"
 #include "UIManagerAccess.h"
 
@@ -18,6 +19,7 @@
 #include "Win32SkiaPeer.h"
 #endif
 
+#include <react/renderer/components/image/ImageEventEmitter.h>
 #include <react/renderer/components/image/ImageProps.h>
 #include <react/renderer/components/text/ParagraphProps.h>
 #include <react/renderer/components/text/ParagraphState.h>
@@ -849,8 +851,11 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   }
 
   const RnImageFit fit = toImageFit(props->resizeMode);
-  const std::string uri =
-      props->sources.empty() ? std::string{} : props->sources.front().uri;
+  // The whole source rather than only its uri: `onLoad` reports it back, which
+  // is what an app reading `event.nativeEvent.source` is given.
+  const facebook::react::ImageSource source =
+      props->sources.empty() ? facebook::react::ImageSource{} : props->sources.front();
+  const std::string uri = source.uri;
 
   // `tintColor`, applied before the load rather than in its callback: the tint
   // is a prop and the image is a loader's answer, and either can arrive first.
@@ -905,6 +910,42 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   // the change did not take.
   view->setImage(nullptr, fit);
 
+  // `<Image>`'s load events, which this host emitted none of until 2026-10-10:
+  // `onLoadStart`, `onProgress`, `onLoad`, `onError` and `onLoadEnd` all
+  // reached JavaScript on the other two hosts and nothing here ever dispatched
+  // one, so an app that showed a spinner until `onLoad` showed it forever on
+  // Windows.
+  //
+  // Always, rather than only when `shouldNotifyLoadEvents` is set: that prop is
+  // Android's signal and never arrives, because a platform that is neither
+  // Android nor iOS takes `ImageViewNativeComponent`'s iOS branch, whose
+  // `validAttributes` has no such field. iOS emits unconditionally and lets the
+  // emitter be the thing that knows whether anybody is listening, which is both
+  // correct and what the lookup below already does -- it answers null when
+  // nothing is.
+  if (auto emitter = std::dynamic_pointer_cast<const facebook::react::ImageEventEmitter>(
+          eventEmitterForTag(shadowView.tag))) {
+    emitter->onLoadStart();
+  }
+
+  // `<Image onProgress>`, for an http source: the bytes as they arrive, from
+  // the fetching thread. The emitter is looked up *here*, on the UI thread, and
+  // captured -- `eventEmitterForTag` reads a map only this thread may touch
+  // (see core/MountingWalk.h), and a progress tick arrives on another.
+  //
+  // Which ticks become events is core/ImageProgress.h's: all three hosts gate
+  // them the same way, and the arithmetic is testable where the lambda is not.
+  basalt::ImageProgress reportProgress;
+  if (auto emitter = std::dynamic_pointer_cast<const facebook::react::ImageEventEmitter>(
+          eventEmitterForTag(shadowView.tag))) {
+    auto ticker = std::make_shared<basalt::ImageProgressTicker>();
+    reportProgress = [emitter, ticker](long long loaded, long long total) {
+      if (const auto progress = ticker->tick(loaded, total)) {
+        emitter->onProgress(*progress, loaded, total);
+      }
+    };
+  }
+
   // The fetch is in the shared half, which knows file, data: and http URIs --
   // a URI means the same thing on every desktop -- and the loader puts both it
   // and the decode on a worker thread.
@@ -916,34 +957,60 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   // loader is a member and cannot outlive the manager -- and the loader itself
   // guards the case where the manager goes first.
   const Tag tag = shadowView.tag;
-  imageLoader_->load(uri, [this, tag, uri, fit, applyAnimation](
-                              std::shared_ptr<win32::RnWin32Image> image,
-                              const std::string &error) {
-    (void)error;
-    RnWin32View *target = viewForTag(tag);
-    if (target == nullptr) {
-      // Deleted while loading. Not an error, and not worth logging: scrolling a
-      // list past an image faster than it arrives does exactly this.
-      return;
-    }
-    // And the source may have changed *again* while this one was loading, in
-    // which case a later load owns the view and this result is stale.
-    const auto current = imageUris_.find(tag);
-    if (current == imageUris_.end() || current->second != uri) {
-      return;
-    }
-    target->setImage(std::move(image), fit);
-    applyAnimation(target, uri);
-    // The screen is stale and no transaction is coming: the bytes arrived on
-    // their own clock, after the mount that asked for them. On GTK and AppKit
-    // the view is a widget and queues its own draw; here only the host has the
-    // HWND, and `onDidMount_` is the way to say so -- which also starts the
-    // animation timer, without which an animated GIF would hold its frames and
-    // never advance.
-    if (onDidMount_) {
-      onDidMount_();
-    }
-  });
+  imageLoader_->load(
+      uri,
+      [this, tag, uri, fit, source, applyAnimation](
+          std::shared_ptr<win32::RnWin32Image> image, const std::string &error) {
+        // The pixels first, then the events. A view may have been deleted or
+        // re-sourced while its bytes were in flight, and neither stops the load
+        // that finished from being worth reporting -- the other two hosts emit
+        // for the request rather than for the view, and an app listening for
+        // `onLoadEnd` to take a spinner down needs it either way.
+        RnWin32View *target = viewForTag(tag);
+        const auto current = imageUris_.find(tag);
+        const bool stillWanted =
+            target != nullptr && current != imageUris_.end() && current->second == uri;
+        if (stillWanted) {
+          target->setImage(image, fit);
+          applyAnimation(target, uri);
+          // The screen is stale and no transaction is coming: the bytes arrived
+          // on their own clock, after the mount that asked for them. On GTK and
+          // AppKit the view is a widget and queues its own draw; here only the
+          // host has the HWND, and `onDidMount_` is the way to say so -- which
+          // also starts the animation timer, without which an animated GIF
+          // would hold its frames and never advance.
+          if (onDidMount_) {
+            onDidMount_();
+          }
+        }
+
+        auto emitter = std::dynamic_pointer_cast<const facebook::react::ImageEventEmitter>(
+            eventEmitterForTag(tag));
+        if (emitter == nullptr) {
+          return;
+        }
+        if (image != nullptr) {
+          // The decoded size, which the props do not carry for a remote image:
+          // `onLoad`'s payload is `source.size` times `source.scale`, so a source
+          // that arrived as `{uri}` and nothing else reported zero by zero on
+          // every host. iOS fills it in the same place and the same way, from the
+          // image it has just decoded -- `RCTImageComponentView`'s
+          // `didReceiveImage:` assigns `imageSource.size` before emitting.
+          //
+          // Divided by the scale because the payload multiplies by it: the event
+          // reports pixels, and a 2x asset is half as many points.
+          facebook::react::ImageSource loaded = source;
+          const double scale = loaded.scale > 0 ? loaded.scale : 1.0;
+          loaded.size = {
+              static_cast<facebook::react::Float>(image->width() / scale),
+              static_cast<facebook::react::Float>(image->height() / scale)};
+          emitter->onLoad(loaded);
+        } else {
+          emitter->onError(facebook::react::ImageErrorInfo{.error = error});
+        }
+        emitter->onLoadEnd();
+      },
+      std::move(reportProgress));
 }
 
 namespace {

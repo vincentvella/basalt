@@ -101,7 +101,10 @@ bool readFile(const std::string &path, std::string *out, std::string *error) {
 
 } // namespace
 
-bool fetchImageBytes(const std::string &uri, std::string *out, std::string *error) {
+bool fetchImageBytes(const std::string &uri,
+                     std::string *out,
+                     std::string *error,
+                     const ImageProgress &onProgress) {
   out->clear();
 
   if (uri.empty()) {
@@ -143,6 +146,30 @@ bool fetchImageBytes(const std::string &uri, std::string *out, std::string *erro
     // Without this, libcurl installs a SIGALRM-based resolver timeout that is
     // not safe to use off the main thread.
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+
+    // `<Image onProgress>`. Only wired when somebody asked: libcurl's default
+    // is no progress callback at all, and turning it on for every fetch would
+    // be work for the overwhelming majority of images, which are small and
+    // local.
+    //
+    // XFERINFOFUNCTION rather than PROGRESSFUNCTION, which is the same callback
+    // with doubles and deprecated since 7.32. Returning non-zero aborts the
+    // transfer, so this returns zero whatever the callback does.
+    if (onProgress) {
+      curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
+      curl_easy_setopt(handle, CURLOPT_XFERINFODATA, &onProgress);
+      curl_easy_setopt(
+          handle,
+          CURLOPT_XFERINFOFUNCTION,
+          +[](void *data, curl_off_t total, curl_off_t now, curl_off_t, curl_off_t) -> int {
+            const auto *report = static_cast<const ImageProgress *>(data);
+            if (report != nullptr && *report) {
+              (*report)(static_cast<long long>(now), static_cast<long long>(total));
+            }
+            return 0;
+          });
+    }
+
     const CURLcode result = curl_easy_perform(handle);
     long status = 0;
     curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
