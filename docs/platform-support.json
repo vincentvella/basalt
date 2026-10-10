@@ -185,6 +185,10 @@
       "text": "a soft keyboard, which a desktop does not have",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
+    "ti-return-key": {
+      "text": "the label on a soft keyboard's return key, and no desktop has one",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
     "ti-ignored": {
       "text": "on the ignored list in that file, with what each would take",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
@@ -1739,10 +1743,10 @@
       "why": "ti-soft-keyboard"
     },
     "TextInputTraits.returnKeyType": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-return-key"
     },
     "TextInputTraits.selectTextOnFocus": {
       "linux": "yes",

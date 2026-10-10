@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (6):**
+**Open (5):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
@@ -12,9 +12,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored
    on Windows; done on GTK and AppKit
 7. src/overrides/TextInput
-8. returnKeyType and clearButtonMode are ignored, and ~~autoCapitalize,
-   autoCorrect, spellCheck, keyboardType, selectTextOnFocus and
-   clearTextOnFocus~~ are done on all three
+8. ~~returnKeyType, clearButtonMode, selectTextOnFocus and clearTextOnFocus are
+   ignored~~: the last two are done on all three hosts, and the first two are
+   recorded as deliberately not -- a soft keyboard's label and a control iOS
+   draws. ~~autoCapitalize, autoCorrect, spellCheck and keyboardType~~ are done
+   on all three as well
 9. ~~`autoFocus` selected the field's text, on two hosts, for the same reason~~
 10. ~~`TextInputProps` and its traits have no rows on the support page~~
 
@@ -241,14 +243,21 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   The support page added a row per trait on 2026-10-09, which is how the rest of
   this list stopped being a sentence: `contextMenuHidden`, `caretHidden`,
-  `scrollEnabled`, `selectTextOnFocus`, `clearTextOnFocus`, `returnKeyType`,
-  `submitBehavior`, `onKeyPressSync`, `onChangeSync` and
+  `scrollEnabled`, `submitBehavior`, `onKeyPressSync`, `onChangeSync` and
   `acceptDragAndDropTypes` are the ones that read "not yet" there rather than
   "deliberately not", and each is a desktop question nobody has answered.
   `enablesReturnKeyAutomatically`, `keyboardAppearance`, `clearButtonMode`,
   `dataDetectorTypes`, `textContentType`, `passwordRules`, `smartInsertDelete`,
   `inputAccessoryViewID` and `disableKeyboardShortcuts` are iOS's own, and
   `showSoftInputOnFocus` wants a soft keyboard a desktop does not have.
+
+  **`returnKeyType` moved from "not yet" to "deliberately not" on 2026-10-10**,
+  which is a decision rather than work: it is the *label* on a soft keyboard's
+  return key -- Go, Search, Send -- and no desktop has a soft keyboard to label.
+  What the key itself does is already honoured everywhere, `onSubmitEditing`
+  firing on Return and `submitBehavior`'s multiline default inserting a newline
+  instead. A row saying "not yet" invited somebody to look for the call, and
+  there is none to find on any of the three.
 
 - ~~**`autoFocus` selected the field's text, on two hosts, for the same
   reason.**~~ Fixed 2026-10-07, after the fix above and separately from it.
