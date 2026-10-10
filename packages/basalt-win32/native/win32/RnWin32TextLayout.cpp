@@ -209,16 +209,26 @@ class RnInlineObject final : public IDWriteInlineObject {
   float height_ = 0.0f;
 };
 
-// The baseline of the line a text position falls on, measured from that line's
-// own top -- which is what `HitTestTextPosition` answers as its Y.
+// Where the baseline of the line a text position falls on is, measured from the
+// top of the whole paragraph.
+//
+// From the line metrics alone rather than from the hit test, which is the one
+// decision in here worth stating: `HitTestTextPosition` also answers a Y, and
+// what that Y is relative to is not a thing to be wrong about silently -- the
+// first version of this added a line's baseline to it and put a short box below
+// the paragraph, which the baseline test caught. Line metrics are unambiguous:
+// each line has a height and a baseline measured from its own top, so the sum of
+// the heights before a line plus that line's baseline is where the baseline is.
 float baselineForPosition(const std::vector<DWRITE_LINE_METRICS> &lines, unsigned position) {
   unsigned at = 0;
+  float top = 0.0f;
   for (size_t index = 0; index < lines.size(); index++) {
     const unsigned end = at + lines[index].length;
     if (position < end || index + 1 == lines.size()) {
-      return lines[index].baseline;
+      return top + lines[index].baseline;
     }
     at = end;
+    top += lines[index].height;
   }
   return 0.0f;
 }
@@ -478,11 +488,11 @@ RnTextSize RnWin32TextLayout::measure(float maxWidth) const {
 // aligned and how a right-to-left run is ordered, and an attachment moves with
 // all three.
 //
-// `HitTestTextPosition` answers the leading edge of a character and the top of
-// the line it is on. The inline object's own baseline is its height, so the box
-// hangs above the line's baseline -- which is the line's top plus its baseline
-// offset, and not the same as the line's top whenever the text is taller than
-// the view.
+// `HitTestTextPosition` answers the leading edge of a character, which is the
+// horizontal half. The vertical half is the line metrics: the inline object's
+// own baseline is its height, so the box hangs above the baseline of its line,
+// and that baseline is the heights of the lines before it plus its own baseline
+// offset.
 std::vector<RnAttachmentBox> RnWin32TextLayout::attachmentBoxes(float maxWidth) const {
   std::vector<RnAttachmentBox> boxes;
   const bool any = std::any_of(runs_.begin(), runs_.end(), [](const ResolvedRun &run) {
@@ -522,13 +532,17 @@ std::vector<RnAttachmentBox> RnWin32TextLayout::attachmentBoxes(float maxWidth) 
     box.width = run.inlineBox->width;
     box.height = run.inlineBox->height;
 
+    // The hit test for the horizontal position, which it is the only answer to:
+    // where along the line the box landed depends on the text before it, the
+    // alignment and the reading direction. The vertical comes from the line
+    // metrics; see `baselineForPosition`.
     float pointX = 0.0f;
     float pointY = 0.0f;
     DWRITE_HIT_TEST_METRICS metrics{};
     if (SUCCEEDED(layout->HitTestTextPosition(run.start, FALSE, &pointX, &pointY, &metrics))) {
       box.x = pointX;
-      box.y = pointY + baselineForPosition(lines, run.start) - run.inlineBox->height;
     }
+    box.y = baselineForPosition(lines, run.start) - run.inlineBox->height;
     boxes.push_back(box);
   }
   return boxes;
