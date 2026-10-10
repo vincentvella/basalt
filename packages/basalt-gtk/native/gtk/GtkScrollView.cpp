@@ -95,6 +95,21 @@ void GtkScrollViewManager::update(RnView *view, const ShadowView &shadowView) {
     // `centerContent`, applied below once the content size is known.
     entry.centerContent = props->centerContent;
 
+    // `indicatorStyle`, resolved to a colour by core so that all three hosts
+    // draw the same thumb for the same prop.
+    switch (props->indicatorStyle) {
+      case facebook::react::ScrollViewIndicatorStyle::White:
+        entry.indicatorStyle = ScrollIndicatorStyle::White;
+        break;
+      case facebook::react::ScrollViewIndicatorStyle::Black:
+        entry.indicatorStyle = ScrollIndicatorStyle::Black;
+        break;
+      case facebook::react::ScrollViewIndicatorStyle::Default:
+      default:
+        entry.indicatorStyle = ScrollIndicatorStyle::Default;
+        break;
+    }
+
     entry.snap.snapToStart = props->snapToStart;
     entry.snap.snapToEnd = props->snapToEnd;
     entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
@@ -569,6 +584,8 @@ void GtkScrollViewManager::updateIndicators(const Entry &entry) {
                                                           horizontalInsets(entry.indicatorInset))
                                      : ScrollIndicator{};
 
+  const ScrollIndicatorColour thumb = scrollIndicatorColourFor(entry.indicatorStyle);
+  rn_view_set_scroll_indicator_colour(entry.view, thumb.red, thumb.green, thumb.blue, thumb.alpha);
   rn_view_set_scroll_indicators(
       entry.view, vertical.offset, vertical.length, horizontal.offset, horizontal.length);
 }

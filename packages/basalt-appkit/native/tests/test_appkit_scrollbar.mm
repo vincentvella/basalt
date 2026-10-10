@@ -73,7 +73,87 @@ bool inkAt(NSView *view, CGSize size, int atX, int atY) {
   return marked;
 }
 
+// The red channel at a point, drawn over mid-grey rather than white.
+//
+// Grey because this is what tells the thumb's *colour* apart rather than its
+// presence: a black thumb at core's alpha darkens grey and a white one lightens
+// it, where over white only one of the two shows up at all.
+int greyAt(NSView *view, CGSize size, int atX, int atY) {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height, 8,
+                                               0, space, kCGImageAlphaPremultipliedLast);
+  CGColorSpaceRelease(space);
+  CGContextSetRGBFillColor(context, 0.5, 0.5, 0.5, 1);
+  CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+  CGContextTranslateCTM(context, 0, size.height);
+  CGContextScaleCTM(context, 1, -1);
+
+  NSGraphicsContext *previous = NSGraphicsContext.currentContext;
+  NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithCGContext:context
+                                                                             flipped:YES];
+  [view drawRect:NSMakeRect(0, 0, size.width, size.height)];
+  NSGraphicsContext.currentContext = previous;
+
+  auto *pixels = static_cast<unsigned char *>(CGBitmapContextGetData(context));
+  const size_t stride = CGBitmapContextGetBytesPerRow(context);
+  const int red = pixels[(size_t)atY * stride + (size_t)atX * 4];
+  CGContextRelease(context);
+  return red;
+}
+
 } // namespace
+
+// `indicatorStyle`, which is the thumb's colour: black over light content and
+// white over dark, as core resolves it. The colour is held on the scroll view
+// rather than on the overlay because the overlay comes and goes with the
+// content size, which the second half of this asserts.
+TEST(appkit_scrollbar_draws_in_the_colour_it_was_given) {
+  RnAppKitView *view = scrollViewWithIndicators(100, 100);
+  NSView *indicators = indicatorViewOf(view);
+  EXPECT(indicators != nil);
+
+  const CGSize size = CGSizeMake(100, 100);
+  const int grey = 128;
+  // The default: darker than the ground it sits on.
+  EXPECT(greyAt(indicators, size, 95, 10) < grey - 20);
+
+  const basalt::ScrollIndicatorColour white =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::White);
+  [view setRnScrollIndicatorColourRed:white.red
+                                green:white.green
+                                 blue:white.blue
+                                alpha:white.alpha];
+  // And white: lighter than the same ground, which is the whole point of the
+  // prop -- over dark content a black thumb is not there.
+  EXPECT(greyAt(indicatorViewOf(view), size, 95, 10) > grey + 20);
+}
+
+TEST(appkit_scrollbar_keeps_its_colour_across_an_overlay_it_lost) {
+  // The overlay is destroyed when everything fits and built again when it does
+  // not, so a colour kept only there would go back to black the first time a
+  // list shrank inside its viewport.
+  RnAppKitView *view = scrollViewWithIndicators(100, 100);
+  const basalt::ScrollIndicatorColour white =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::White);
+  [view setRnScrollIndicatorColourRed:white.red
+                                green:white.green
+                                 blue:white.blue
+                                alpha:white.alpha];
+
+  [view setRnScrollIndicatorVerticalOffset:0
+                            verticalLength:0
+                          horizontalOffset:0
+                          horizontalLength:0];
+  EXPECT(indicatorViewOf(view) == nil);
+
+  [view setRnScrollIndicatorVerticalOffset:0
+                            verticalLength:24
+                          horizontalOffset:0
+                          horizontalLength:0];
+  NSView *rebuilt = indicatorViewOf(view);
+  EXPECT(rebuilt != nil);
+  EXPECT(greyAt(rebuilt, CGSizeMake(100, 100), 95, 10) > 148);
+}
 
 // The thumb exists, and it is the last subview -- which is the one AppKit draws
 // on top of the others.

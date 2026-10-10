@@ -27,6 +27,7 @@
 #include <react/renderer/components/scrollview/ScrollViewState.h>
 
 #include <memory>
+#include <string>
 #include <sstream>
 
 using facebook::react::LayoutMetrics;
@@ -54,7 +55,9 @@ ShadowView makeScrollView(Tag tag,
                           float decelerationRate = 0,
                           bool pagingEnabled = false,
                           Point contentOffset = Point{0, 0},
-                          bool centerContent = false) {
+                          bool centerContent = false,
+                          facebook::react::ScrollViewIndicatorStyle indicatorStyle =
+                              facebook::react::ScrollViewIndicatorStyle::Default) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = width, .height = height}};
 
@@ -63,6 +66,7 @@ ShadowView makeScrollView(Tag tag,
   props->pagingEnabled = pagingEnabled;
   props->contentOffset = contentOffset;
   props->centerContent = centerContent;
+  props->indicatorStyle = indicatorStyle;
 
   ScrollViewState data;
   // Seeded from the prop, which is what ScrollViewShadowNode does for real:
@@ -98,7 +102,9 @@ struct Scroller {
            float decelerationRate = 0,
            bool pagingEnabled = false,
            Point contentOffset = Point{0, 0},
-           bool centerContent = false)
+           bool centerContent = false,
+           facebook::react::ScrollViewIndicatorStyle indicatorStyle =
+               facebook::react::ScrollViewIndicatorStyle::Default)
       : manager([](Tag) { return facebook::react::EventEmitter::Shared{}; }),
         view(rn_view_new(static_cast<int>(tag))),
         tag(tag) {
@@ -113,7 +119,8 @@ struct Scroller {
                                   decelerationRate,
                                   pagingEnabled,
                                   contentOffset,
-                                  centerContent));
+                                  centerContent,
+                                  indicatorStyle));
   }
 
   ~Scroller() {
@@ -374,4 +381,29 @@ TEST(scrollview_centred_content_stays_centred_when_it_grows) {
       scroller.view,
       makeScrollView(33, 400, 300, 400, 4000, 0, false, Point{0, 0}, /*centerContent=*/true));
   EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
+}
+
+// `indicatorStyle`: the prop reaching the thumb's colour. What the colour then
+// draws as is tests/test_gtk_paint.cpp's question; this is the wiring.
+TEST(scrollview_indicator_style_reaches_the_thumb) {
+  Scroller plain(40, 4000);
+  gchar *blackDump = rn_view_describe_tree(plain.view);
+  const std::string black(blackDump);
+  g_free(blackDump);
+  // A default thumb prints no colour at all, like every other field that is at
+  // its default.
+  EXPECT(black.find("scrollbar-v=") != std::string::npos);
+  EXPECT(black.find("scrollbar-colour") == std::string::npos);
+
+  Scroller white(41,
+                 4000,
+                 0,
+                 false,
+                 Point{0, 0},
+                 false,
+                 facebook::react::ScrollViewIndicatorStyle::White);
+  gchar *whiteDump = rn_view_describe_tree(white.view);
+  const std::string reported(whiteDump);
+  g_free(whiteDump);
+  EXPECT(reported.find("scrollbar-colour=(1,1,1,0.35)") != std::string::npos);
 }

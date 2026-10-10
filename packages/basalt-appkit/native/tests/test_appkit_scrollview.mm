@@ -13,6 +13,7 @@
 #include "TestHarness.h"
 
 #include "AppKitScrollView.h"
+#include "ScrollIndicator.h"
 
 #import "RnAppKitView.h"
 
@@ -48,13 +49,16 @@ constexpr SurfaceId kSurfaceId = 1;
 ShadowView makeScrollView(Tag tag,
                           float contentHeight,
                           RnPoint contentOffset = RnPoint{0, 0},
-                          bool centerContent = false) {
+                          bool centerContent = false,
+                          facebook::react::ScrollViewIndicatorStyle indicatorStyle =
+                              facebook::react::ScrollViewIndicatorStyle::Default) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 400, .height = 300}};
 
   auto props = std::make_shared<ScrollViewProps>();
   props->contentOffset = contentOffset;
   props->centerContent = centerContent;
+  props->indicatorStyle = indicatorStyle;
 
   ScrollViewState data;
   // The prop and the state carry the same value, which is what React Native
@@ -87,12 +91,16 @@ struct Scroller {
   Scroller(Tag tag,
            float contentHeight,
            RnPoint contentOffset = RnPoint{0, 0},
-           bool centerContent = false)
+           bool centerContent = false,
+           facebook::react::ScrollViewIndicatorStyle indicatorStyle =
+               facebook::react::ScrollViewIndicatorStyle::Default)
       : manager([](Tag) { return EventEmitter::Shared{}; }),
         view([RnAppKitView viewWithTag:static_cast<int>(tag)]),
         tag(tag) {
     [view setRnFrameX:0 y:0 width:400 height:300];
-    manager.update(view, makeScrollView(tag, contentHeight, contentOffset, centerContent));
+    manager.update(
+        view,
+        makeScrollView(tag, contentHeight, contentOffset, centerContent, indicatorStyle));
   }
 
   ~Scroller() { manager.remove(tag); }
@@ -176,5 +184,47 @@ TEST(appkit_scrollview_center_content_does_nothing_to_a_list_that_scrolls) {
   @autoreleasepool {
     Scroller scroller(22, 4000, RnPoint{0, 0}, /*centerContent=*/true);
     EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
+  }
+}
+
+// --- indicatorStyle ---------------------------------------------------------
+//
+// The prop reaching the thumb's colour. What that colour draws as is
+// tests/test_appkit_scrollbar.mm's question, where the overlay is rasterised;
+// this is the wiring, and the colour is readable straight off the view.
+
+TEST(appkit_scrollview_indicator_style_reaches_the_thumb) {
+  @autoreleasepool {
+    Scroller white(30,
+                   4000,
+                   RnPoint{0, 0},
+                   false,
+                   facebook::react::ScrollViewIndicatorStyle::White);
+    NSColor *const colour =
+        [white.view.rnScrollIndicatorColour colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(colour != nil);
+    if (colour == nil) {
+      return;
+    }
+    EXPECT_NEAR(colour.redComponent, 1.0, 0.001);
+    EXPECT_NEAR(colour.greenComponent, 1.0, 0.001);
+    EXPECT_NEAR(colour.blueComponent, 1.0, 0.001);
+    EXPECT_NEAR(colour.alphaComponent, basalt::kScrollIndicatorAlpha, 0.001);
+  }
+}
+
+TEST(appkit_scrollview_a_default_indicator_is_black) {
+  @autoreleasepool {
+    // Black rather than nothing: the manager answers the prop on every update,
+    // so a list that never set it still has a colour -- core's.
+    Scroller plain(31, 4000);
+    NSColor *const colour =
+        [plain.view.rnScrollIndicatorColour colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    EXPECT(colour != nil);
+    if (colour == nil) {
+      return;
+    }
+    EXPECT_NEAR(colour.redComponent, 0.0, 0.001);
+    EXPECT_NEAR(colour.alphaComponent, basalt::kScrollIndicatorAlpha, 0.001);
   }
 }

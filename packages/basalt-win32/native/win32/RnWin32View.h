@@ -51,6 +51,10 @@
 // Nothing heavy: each forward-declares its own Windows types.
 #include "RnWin32Accessible.h"
 #include "RnWin32Image.h"
+// For the thumb's default colour, which core decides so the three hosts cannot
+// drift. Header-only, which is the constraint this library is under: it links
+// no core.
+#include "ScrollIndicator.h"
 
 // Direct2D's interfaces are structs, so the paint entry point can be declared
 // without dragging <d2d1.h> -- and windows.h behind it -- into every
@@ -130,6 +134,12 @@ class RnWin32View {
                            float verticalLength,
                            float horizontalOffset,
                            float horizontalLength);
+
+  // `indicatorStyle`, arriving as the colour `core/ScrollIndicator.h` resolved
+  // it to rather than as the enum: the mapping is the same on all three
+  // desktops and belongs in one place, and this layer knows nothing about React
+  // Native's vocabulary.
+  void setScrollIndicatorColour(float red, float green, float blue, float alpha);
 
   // --- Appearance ----------------------------------------------------------
 
@@ -728,6 +738,12 @@ class RnWin32View {
   float indicatorVerticalLength_ = 0.0f;
   float indicatorHorizontalOffset_ = 0.0f;
   float indicatorHorizontalLength_ = 0.0f;
+  // The thumb's colour. Core's default rather than a spelled one, so the three
+  // hosts cannot drift: black and translucent.
+  float indicatorColour_[4] = {0.0f,
+                               0.0f,
+                               0.0f,
+                               basalt::kScrollIndicatorAlpha};
 
   bool hidden_ = false;
   bool hidesBackFace_ = false;

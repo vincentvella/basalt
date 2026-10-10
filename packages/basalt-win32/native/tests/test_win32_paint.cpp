@@ -1710,3 +1710,52 @@ TEST(win32_describe_prints_a_gradient_as_the_other_hosts_do) {
              "gradient=(radial (40,20) 40x20,2 stops,at=(0,0 80x40),tile=(0,0 80x40))")
          != std::string::npos);
 }
+
+// --- The overlay scrollbar's colour, which is `indicatorStyle` ---------------
+//
+// The Win32 half of the one prop in that group a picture can answer: a white
+// thumb, which is what a list over dark content asks for and what a black one
+// would be invisible against. Core decides the colour and every host draws it.
+namespace {
+
+// Where the vertical thumb is in a view `width` wide: inset from the trailing
+// edge by core's own two numbers, so this moves if those do.
+unsigned thumbColumn(float width) {
+  return static_cast<unsigned>(width - basalt::kScrollIndicatorInset
+                               - basalt::kScrollIndicatorThickness / 2.0);
+}
+
+} // namespace
+
+TEST(win32_paint_an_indicator_is_black_by_default) {
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 100, 100);
+  root->setScrollIndicators(0.0f, 50.0f, 0.0f, 0.0f);
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  const auto pixel = pixels.at(thumbColumn(100), 20);
+  EXPECT_NEAR(pixel.red, 0, 3);
+  EXPECT_NEAR(pixel.green, 0, 3);
+  EXPECT_NEAR(pixel.blue, 0, 3);
+  // Translucent, so the thumb sits over content rather than hiding it: 0.35 of
+  // 255, which is the alpha core names.
+  EXPECT_NEAR(pixel.alpha, 89, 3);
+}
+
+TEST(win32_paint_an_indicator_takes_the_colour_it_was_given) {
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 100, 100);
+  root->setScrollIndicators(0.0f, 50.0f, 0.0f, 0.0f);
+  const basalt::ScrollIndicatorColour white =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::White);
+  root->setScrollIndicatorColour(white.red, white.green, white.blue, white.alpha);
+
+  const basalt::win32::RnPixels pixels = basalt::win32::renderToPixels(*root);
+  const auto pixel = pixels.at(thumbColumn(100), 20);
+  EXPECT_NEAR(pixel.red, 255, 3);
+  EXPECT_NEAR(pixel.green, 255, 3);
+  EXPECT_NEAR(pixel.blue, 255, 3);
+  EXPECT_NEAR(pixel.alpha, 89, 3);
+  // And nowhere else: the colour is the thumb's, not the view's.
+  EXPECT_EQ(static_cast<int>(pixels.at(20, 20).alpha), 0);
+}

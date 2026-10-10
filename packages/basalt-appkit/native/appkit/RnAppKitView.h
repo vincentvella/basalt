@@ -792,6 +792,18 @@ typedef NS_ENUM(NSInteger, RnAppKitControlKind) {
 // job is to have one covering it. That view is not an RnAppKitView, so it stays
 // out of the paint order, out of hit testing and out of `describeTree`'s
 // children -- the numbers are reported on the ScrollView's own line instead.
+// `indicatorStyle`, arriving as the colour `core/ScrollIndicator.h` resolved it
+// to rather than as the enum: the mapping is the same on all three desktops and
+// belongs in one place, and this layer knows nothing about React Native's
+// vocabulary.
+- (void)setRnScrollIndicatorColourRed:(CGFloat)red
+                                green:(CGFloat)green
+                                 blue:(CGFloat)blue
+                                alpha:(CGFloat)alpha;
+// What that colour is now, for the test suite: the thumb is drawn into a layer
+// a test can rasterise, but reading the colour back is the cheaper assertion.
+- (NSColor *)rnScrollIndicatorColour;
+
 - (void)setRnScrollIndicatorVerticalOffset:(CGFloat)verticalOffset
                             verticalLength:(CGFloat)verticalLength
                           horizontalOffset:(CGFloat)horizontalOffset

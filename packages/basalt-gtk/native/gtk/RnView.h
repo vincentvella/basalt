@@ -439,6 +439,16 @@ void rn_view_set_scroll_indicators(RnView *self,
                                    double vertical_length,
                                    double horizontal_offset,
                                    double horizontal_length);
+
+// `indicatorStyle`, arriving as the colour `core/ScrollIndicator.h` resolved it
+// to rather than as the enum: the mapping is the same on all three desktops and
+// belongs in one place, and this layer knows nothing about React Native's
+// vocabulary.
+void rn_view_set_scroll_indicator_colour(RnView *self,
+                                         float red,
+                                         float green,
+                                         float blue,
+                                         float alpha);
 void rn_view_get_scroll_offset(RnView *self, double *offset_x, double *offset_y);
 
 // A textual description of the widget tree rooted here, one indented line per

@@ -194,6 +194,13 @@ void RnWin32View::setScrollIndicators(float verticalOffset,
   indicatorHorizontalLength_ = horizontalLength;
 }
 
+void RnWin32View::setScrollIndicatorColour(float red, float green, float blue, float alpha) {
+  indicatorColour_[0] = red;
+  indicatorColour_[1] = green;
+  indicatorColour_[2] = blue;
+  indicatorColour_[3] = alpha;
+}
+
 // --- Appearance ------------------------------------------------------------
 
 void RnWin32View::setBackgroundColor(float red,
@@ -1757,9 +1764,13 @@ void RnWin32View::paintScrollIndicators(ID2D1RenderTarget *target) const {
   const float inset = static_cast<float>(basalt::kScrollIndicatorInset);
 
   ComPtr<ID2D1SolidColorBrush> brush;
-  // Neutral and translucent, so it reads over light and dark content alike --
-  // the same colour the GTK and AppKit hosts use.
-  if (FAILED(target->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f),
+  // Neutral and translucent, so it reads over light and dark content alike, and
+  // white instead when `indicatorStyle` asked for it. Core decides which, so
+  // the GTK and AppKit hosts answer the prop with the same colour.
+  if (FAILED(target->CreateSolidColorBrush(D2D1::ColorF(indicatorColour_[0],
+                                                        indicatorColour_[1],
+                                                        indicatorColour_[2],
+                                                        indicatorColour_[3]),
                                            brush.GetAddressOf()))) {
     return;
   }
@@ -2412,6 +2423,17 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
                  " scrollbar-h=(%g,%g)",
                  static_cast<double>(indicatorHorizontalOffset_),
                  static_cast<double>(indicatorHorizontalLength_));
+  }
+  // The thumb's colour, printed only when it is not the default black: a white
+  // one is `indicatorStyle` having arrived, and the colour is the only part of
+  // that a tree dump can see.
+  if (indicatorColour_[0] != 0.0f || indicatorColour_[1] != 0.0f || indicatorColour_[2] != 0.0f) {
+    appendFormat(out,
+                 " scrollbar-colour=(%g,%g,%g,%g)",
+                 static_cast<double>(indicatorColour_[0]),
+                 static_cast<double>(indicatorColour_[1]),
+                 static_cast<double>(indicatorColour_[2]),
+                 static_cast<double>(indicatorColour_[3]));
   }
   // Printed only when it is not the default, like every other field here.
   // Worth printing at all because it is invisible: a view with

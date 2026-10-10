@@ -196,6 +196,10 @@ struct _RnView {
   double indicator_v_length;
   double indicator_h_offset;
   double indicator_h_length;
+  // `indicatorStyle`, as the colour core resolved it to. Black and translucent
+  // until something says otherwise, which is what every list that never set the
+  // prop gets.
+  GdkRGBA indicator_colour;
   gboolean has_image_tint;
   float image_blur;
   GdkRGBA image_tint;
@@ -926,8 +930,10 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   if (self->indicator_v_length > 0.0 || self->indicator_h_length > 0.0) {
     const float thickness = static_cast<float>(basalt::kScrollIndicatorThickness);
     const float inset = static_cast<float>(basalt::kScrollIndicatorInset);
-    // Neutral and translucent, so it reads over light and dark content alike.
-    const GdkRGBA thumb{0.0F, 0.0F, 0.0F, 0.35F};
+    // Neutral and translucent, so it reads over light and dark content alike,
+    // and white instead when `indicatorStyle` asked for it -- core decides
+    // which, so all three hosts answer the prop with the same colour.
+    const GdkRGBA thumb = self->indicator_colour;
 
     if (self->indicator_v_length > 0.0) {
       const graphene_rect_t bar =
@@ -1233,6 +1239,11 @@ static void rn_view_init(RnView *self) {
   self->clips_children = FALSE;
   self->scroll_x = 0.0;
   self->scroll_y = 0.0;
+  // The thumb's colour, which `indicatorStyle` replaces. Core's own default,
+  // asked for rather than spelled, so the three hosts cannot drift.
+  const basalt::ScrollIndicatorColour thumb =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Default);
+  self->indicator_colour = GdkRGBA{thumb.red, thumb.green, thumb.blue, thumb.alpha};
   for (int i = 0; i < 4; i++) {
     self->border_radii[i] = graphene_size_t{0.0f, 0.0f};
     self->border_widths[i] = 0.0f;
@@ -2531,6 +2542,22 @@ void rn_view_set_clips_children(RnView *self, gboolean clips) {
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
+void rn_view_set_scroll_indicator_colour(RnView *self,
+                                         float red,
+                                         float green,
+                                         float blue,
+                                         float alpha) {
+  if (!RN_IS_VIEW(self)) {
+    return;
+  }
+  const GdkRGBA wanted{red, green, blue, alpha};
+  if (gdk_rgba_equal(&self->indicator_colour, &wanted)) {
+    return;
+  }
+  self->indicator_colour = wanted;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
 void rn_view_set_scroll_indicators(RnView *self,
                                    double vertical_offset,
                                    double vertical_length,
@@ -2759,6 +2786,18 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   if (self->indicator_h_length > 0.0) {
     g_string_append_printf(
         out, " scrollbar-h=(%g,%g)", self->indicator_h_offset, self->indicator_h_length);
+  }
+  // The thumb's colour, printed only when it is not the default black: a white
+  // one is `indicatorStyle` having arrived, and the colour is the only part of
+  // that the cross-host diff can see. Pure paint otherwise, like the two above.
+  if (self->indicator_colour.red != 0.0F || self->indicator_colour.green != 0.0F ||
+      self->indicator_colour.blue != 0.0F) {
+    g_string_append_printf(out,
+                           " scrollbar-colour=(%g,%g,%g,%g)",
+                           static_cast<double>(self->indicator_colour.red),
+                           static_cast<double>(self->indicator_colour.green),
+                           static_cast<double>(self->indicator_colour.blue),
+                           static_cast<double>(self->indicator_colour.alpha));
   }
   // Printed only when it is not the default, like every other field here.
   // Worth printing at all because it is invisible: a view with

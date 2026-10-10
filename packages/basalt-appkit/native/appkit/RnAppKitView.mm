@@ -358,6 +358,9 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 @property(nonatomic) CGFloat rnVerticalLength;
 @property(nonatomic) CGFloat rnHorizontalOffset;
 @property(nonatomic) CGFloat rnHorizontalLength;
+// `indicatorStyle`, as the colour core resolved it to. Black and translucent
+// until something says otherwise.
+@property(nonatomic) NSColor *rnThumbColour;
 @end
 
 @implementation RnAppKitScrollIndicatorView
@@ -391,9 +394,17 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   const NSSize size = self.bounds.size;
   const CGFloat thickness = basalt::kScrollIndicatorThickness;
   const CGFloat inset = basalt::kScrollIndicatorInset;
-  // Neutral and translucent, so it reads over light and dark content alike --
-  // the same colour the GTK and Win32 hosts use.
-  CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 0.35);
+  // Neutral and translucent, so it reads over light and dark content alike, and
+  // white instead when `indicatorStyle` asked for it. Core decides which, so
+  // the GTK and Win32 hosts answer the prop with the same colour.
+  NSColor *const thumb = _rnThumbColour != nil
+      ? _rnThumbColour
+      : [NSColor colorWithSRGBRed:0.0 green:0.0 blue:0.0 alpha:basalt::kScrollIndicatorAlpha];
+  CGContextSetRGBFillColor(context,
+                           thumb.redComponent,
+                           thumb.greenComponent,
+                           thumb.blueComponent,
+                           thumb.alphaComponent);
 
   if (_rnVerticalLength > 0.0) {
     [self rnFillPill:NSMakeRect(size.width - thickness - inset,
@@ -493,6 +504,11 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   NSTrackingArea *_rnHoverTrackingArea;
   // Only a ScrollView with something to indicate has one.
   RnAppKitScrollIndicatorView *_indicators;
+  // `indicatorStyle`'s colour, held here because the overlay above is made and
+  // thrown away as the content grows past the viewport and shrinks back inside
+  // it. Nil until a prop says otherwise, which the drawing reads as the
+  // default.
+  NSColor *_rnIndicatorColour;
 }
 
 + (instancetype)viewWithTag:(NSInteger)tag {
@@ -919,6 +935,7 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
 
   if (_indicators == nil) {
     _indicators = [[RnAppKitScrollIndicatorView alloc] initWithFrame:self.bounds];
+    _indicators.rnThumbColour = _rnIndicatorColour;
     [self addSubview:_indicators positioned:NSWindowAbove relativeTo:nil];
   }
 
@@ -938,6 +955,24 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   _indicators.rnHorizontalOffset = horizontalOffset;
   _indicators.rnHorizontalLength = horizontalLength;
   _indicators.needsDisplay = YES;
+}
+
+- (void)setRnScrollIndicatorColourRed:(CGFloat)red
+                                green:(CGFloat)green
+                                 blue:(CGFloat)blue
+                                alpha:(CGFloat)alpha {
+  // Held on this view rather than only on the overlay, because the overlay is
+  // made and thrown away as the content grows past the viewport and shrinks
+  // back inside it -- a colour kept only there would be lost each time.
+  _rnIndicatorColour = [NSColor colorWithSRGBRed:red green:green blue:blue alpha:alpha];
+  if (_indicators != nil && ![_indicators.rnThumbColour isEqual:_rnIndicatorColour]) {
+    _indicators.rnThumbColour = _rnIndicatorColour;
+    _indicators.needsDisplay = YES;
+  }
+}
+
+- (NSColor *)rnScrollIndicatorColour {
+  return _rnIndicatorColour;
 }
 
 static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {
@@ -2794,6 +2829,18 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     [out appendFormat:@" scrollbar-h=(%g,%g)",
                       _indicators.rnHorizontalOffset,
                       _indicators.rnHorizontalLength];
+  }
+  // The thumb's colour, printed only when it is not the default black: a white
+  // one is `indicatorStyle` having arrived, and the colour is the only part of
+  // that a tree dump can see.
+  if (_rnIndicatorColour != nil
+      && (_rnIndicatorColour.redComponent != 0.0 || _rnIndicatorColour.greenComponent != 0.0
+          || _rnIndicatorColour.blueComponent != 0.0)) {
+    [out appendFormat:@" scrollbar-colour=(%g,%g,%g,%g)",
+                      _rnIndicatorColour.redComponent,
+                      _rnIndicatorColour.greenComponent,
+                      _rnIndicatorColour.blueComponent,
+                      _rnIndicatorColour.alphaComponent];
   }
   // Printed only when it is not the default, like every other field here.
   // Worth printing at all because it is invisible: a view with

@@ -9,8 +9,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
 5. ~~`ScrollViewProps` has no rows on the support page~~
-6. Two `<ScrollView>` props are a desktop question nobody has answered;
-   ~~snapping's three, contentOffset and centerContent~~ are done
+6. maintainVisibleContentPosition is a desktop question nobody has answered;
+   ~~snapping's three, contentOffset, centerContent and indicatorStyle~~ are
+   done
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -124,10 +125,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than trusting this file, which is how the `<TextInput>` rows found two
   stale claims in backlog/textinput.md on the day they were added.
 
-- **Two `<ScrollView>` props are a desktop question nobody has answered.**
-  Seven of them were, until 2026-10-10; the three about snapping,
-  `contentOffset` and `centerContent` are done, and the entry keeps the
-  others. Surfaced on 2026-10-09 by giving every prop a row,
+- **One `<ScrollView>` prop is a desktop question nobody has answered.**
+  Seven of them were, until 2026-10-10. Snapping's three, `contentOffset` and
+  `centerContent` are done, `indicatorStyle` is as done as these hosts draw, and
+  what is left is `maintainVisibleContentPosition`. Surfaced on 2026-10-09 by giving every prop a row,
   which is the point of the rows: each of these is a thing an app can write that
   no host reads, and none of them is somebody else's platform.
 
@@ -214,9 +215,29 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `RCTScrollViewComponentView` skips that prop entirely while `centerContent` is
   set, the two being the same channel.
 
-  `indicatorStyle` asks for a light or dark indicator, which these hosts draw
-  themselves from `core/ScrollIndicator.h` and could colour from the prop. Worth
-  knowing before starting: iOS's `default` and `black` differ only by a white
-  border around the thumb, which these hosts do not draw, so two of the three
-  values would draw the same thing and the row would be `partial` rather than
-  done.
+  ~~`indicatorStyle`~~ is `partial` as of 2026-10-10, and partial is the honest
+  answer rather than a half-finished one. The three values arrive and
+  `core/ScrollIndicator.h` resolves each to a colour, which every host now draws
+  instead of its own hardcoded black -- so `white` is white, which is the whole
+  use of the prop: a list over dark content had an invisible thumb.
+
+  What it does not have is the difference between `default` and `black`. On iOS
+  that is `UIScrollViewIndicatorStyleDefault` being "black with a white border"
+  against `.black` being black alone, so the two differ by a border these hosts
+  do not draw and both map to the same colour here. Drawing the border is what
+  would close it: a second rounded rectangle a point larger behind the thumb, in
+  each of the three paint paths.
+
+  The colour reaches the view layer as four floats rather than as the enum,
+  which is the division those layers are built on: each is compiled and tested
+  with nothing but its toolkit, so the mapping lives in core and the view knows
+  only what colour it was handed. That also made `scrollIndicatorColourFor`
+  `inline` -- a view layer links no core at all.
+
+  It is also reported, as `scrollbar-colour=(r,g,b,a)` beside the two geometry
+  lines and only when it is not the default black, because the colour is pure
+  paint and a tree dump is all `compare_hosts.sh` can see. Eleven tests: the
+  mapping in core, a pixel per host for the thumb actually drawing in that
+  colour, the dump line, and -- on AppKit -- that the colour survives the
+  overlay being thrown away and rebuilt, which happens whenever content grows
+  past the viewport and shrinks back inside it.

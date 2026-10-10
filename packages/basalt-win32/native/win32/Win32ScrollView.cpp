@@ -112,6 +112,21 @@ void Win32ScrollViewManager::update(RnWin32View *view, const ShadowView &shadowV
     // `centerContent`, applied below once the content size is known.
     entry.centerContent = props->centerContent;
 
+    // `indicatorStyle`, resolved to a colour by core so that all three hosts
+    // draw the same thumb for the same prop.
+    switch (props->indicatorStyle) {
+      case facebook::react::ScrollViewIndicatorStyle::White:
+        entry.indicatorStyle = ScrollIndicatorStyle::White;
+        break;
+      case facebook::react::ScrollViewIndicatorStyle::Black:
+        entry.indicatorStyle = ScrollIndicatorStyle::Black;
+        break;
+      case facebook::react::ScrollViewIndicatorStyle::Default:
+      default:
+        entry.indicatorStyle = ScrollIndicatorStyle::Default;
+        break;
+    }
+
     entry.snap.snapToStart = props->snapToStart;
     entry.snap.snapToEnd = props->snapToEnd;
     entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
@@ -419,6 +434,8 @@ void Win32ScrollViewManager::updateIndicators(const Entry &entry) {
                                horizontalInsets(entry.indicatorInset))
           : ScrollIndicator{};
 
+  const ScrollIndicatorColour thumb = scrollIndicatorColourFor(entry.indicatorStyle);
+  entry.view->setScrollIndicatorColour(thumb.red, thumb.green, thumb.blue, thumb.alpha);
   entry.view->setScrollIndicators(static_cast<float>(vertical.offset),
                                   static_cast<float>(vertical.length),
                                   static_cast<float>(horizontal.offset),

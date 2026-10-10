@@ -168,6 +168,11 @@ class Win32ScrollViewManager {
     double offsetX{0};
     double offsetY{0};
 
+    // `indicatorStyle`: which colour the overlay thumb is drawn in. Held as
+    // core's enum rather than React Native's, the view layer below knowing
+    // nothing about either.
+    ScrollIndicatorStyle indicatorStyle{ScrollIndicatorStyle::Default};
+
     // `centerContent`: whether content smaller than the container is centred in
     // it. Acted on through the content inset, which is how iOS does it too --
     // see `update`.

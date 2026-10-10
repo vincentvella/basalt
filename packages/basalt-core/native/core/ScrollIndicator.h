@@ -38,6 +38,50 @@ inline constexpr double kScrollIndicatorInset = 2.0;
 // Below this a thumb stops reading as a position and starts reading as a dot.
 inline constexpr double kScrollIndicatorMinimumLength = 24.0;
 
+// `indicatorStyle`, as React Native's three values.
+//
+// Two of them draw the same thing here, and that is iOS's doing rather than a
+// shortcut: `UIScrollViewIndicatorStyleDefault` is "black with a white border"
+// and `.black` is black alone, so the difference is a border these hosts do not
+// draw. `.white` is the one that matters -- it is what a list over dark content
+// asks for, and a black thumb there is invisible. backlog/scrollview.md records
+// the border, which is why the support row is `partial` rather than done.
+enum class ScrollIndicatorStyle {
+  Default,
+  Black,
+  White,
+};
+
+// Straight sRGB with alpha, which all three toolkits take in that form.
+struct ScrollIndicatorColour {
+  float red{0.0F};
+  float green{0.0F};
+  float blue{0.0F};
+  float alpha{0.0F};
+};
+
+// Translucent, so the thumb reads over whatever it sits on rather than hiding
+// it. One number for both colours: a white thumb that was more opaque than the
+// black one would read as a different control.
+inline constexpr float kScrollIndicatorAlpha = 0.35F;
+
+// `inline` rather than a function in the .cpp, and not for speed: the three
+// view layers link no core at all -- each is built and tested with nothing but
+// its toolkit, which is what lets the Win32 suite run on a box with a compiler
+// and the SDK -- so anything they take from here has to be a header. The view
+// layers need this one to spell their own default thumb, and the managers need
+// it to answer the prop.
+inline ScrollIndicatorColour scrollIndicatorColourFor(ScrollIndicatorStyle style) {
+  if (style == ScrollIndicatorStyle::White) {
+    return ScrollIndicatorColour{
+        .red = 1.0F, .green = 1.0F, .blue = 1.0F, .alpha = kScrollIndicatorAlpha};
+  }
+  // `Default` and `Black` both: see above for why those two are one answer
+  // here.
+  return ScrollIndicatorColour{
+      .red = 0.0F, .green = 0.0F, .blue = 0.0F, .alpha = kScrollIndicatorAlpha};
+}
+
 struct ScrollIndicator {
   // False when everything fits: a scrollbar for content that cannot scroll is
   // noise, and every list shorter than its container would grow one.

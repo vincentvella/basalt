@@ -147,3 +147,47 @@ TEST(indicator_content_that_fits_but_can_be_pulled_still_has_a_bar) {
       basalt::scrollIndicatorFor(100.0, 100.0, 0.0, basalt::ScrollAxisInsets{50.0, 0.0});
   EXPECT(indicator.visible);
 }
+
+// --- indicatorStyle ----------------------------------------------------------
+//
+// The colour the thumb is drawn in, decided here so that the three hosts cannot
+// answer the same prop differently -- each one used to spell its own black.
+
+TEST(indicator_white_is_white) {
+  const basalt::ScrollIndicatorColour white =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::White);
+  EXPECT_NEAR(white.red, 1.0, 0.0001);
+  EXPECT_NEAR(white.green, 1.0, 0.0001);
+  EXPECT_NEAR(white.blue, 1.0, 0.0001);
+}
+
+TEST(indicator_the_default_is_black) {
+  const basalt::ScrollIndicatorColour black =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Default);
+  EXPECT_NEAR(black.red, 0.0, 0.0001);
+  EXPECT_NEAR(black.green, 0.0, 0.0001);
+  EXPECT_NEAR(black.blue, 0.0, 0.0001);
+}
+
+TEST(indicator_default_and_black_are_the_same_colour_here) {
+  // Deliberate, and the reason the support row is `partial`: on iOS the two
+  // differ by a white border around the thumb, which these hosts do not draw,
+  // so the colour is all there is to tell them apart by and it is the same.
+  const basalt::ScrollIndicatorColour fallback =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Default);
+  const basalt::ScrollIndicatorColour black =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Black);
+  EXPECT_NEAR(fallback.red, black.red, 0.0001);
+  EXPECT_NEAR(fallback.alpha, black.alpha, 0.0001);
+}
+
+TEST(indicator_both_colours_are_equally_translucent) {
+  // A white thumb more opaque than the black one would read as a different
+  // control rather than the same one in another colour.
+  EXPECT_NEAR(basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::White).alpha,
+              basalt::kScrollIndicatorAlpha,
+              0.0001);
+  EXPECT_NEAR(basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Black).alpha,
+              basalt::kScrollIndicatorAlpha,
+              0.0001);
+}

@@ -30,6 +30,7 @@
 #include <react/renderer/components/view/ViewProps.h>
 
 #include <memory>
+#include <string>
 
 using basalt::Win32MountingManager;
 using basalt::Win32ScrollViewManager;
@@ -81,7 +82,9 @@ ShadowView makeScrollView(Tag tag,
                           float contentHeight,
                           bool scrollEnabled = true,
                           Point initialOffset = Point{0, 0},
-                          bool centerContent = false) {
+                          bool centerContent = false,
+                          facebook::react::ScrollViewIndicatorStyle indicatorStyle =
+                              facebook::react::ScrollViewIndicatorStyle::Default) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = x, .y = y}, .size = {.width = width, .height = height}};
 
@@ -93,6 +96,7 @@ ShadowView makeScrollView(Tag tag,
   // not produce.
   props->contentOffset = initialOffset;
   props->centerContent = centerContent;
+  props->indicatorStyle = indicatorStyle;
 
   ScrollViewState data;
   data.contentOffset = initialOffset;
@@ -481,6 +485,43 @@ TEST(win32_center_content_does_nothing_to_a_list_that_scrolls) {
   // would have allowed.
   manager.scrollAt(root, 200, 150, 0, -50);
   EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 0.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// `indicatorStyle`: the prop reaching the thumb's colour, and the dump line
+// that is the only part of it a cross-host diff can see. What the colour draws
+// as is a pixel question, which test_win32_paint.cpp answers.
+TEST(win32_indicator_style_reaches_the_thumb) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mount(manager, kSurfaceId, makeScrollView(10, 0, 0, 400, 300, 400, 4000));
+
+  const std::string black = manager.viewForTag(10)->describeTree();
+  EXPECT(black.find("scrollbar-v=") != std::string::npos);
+  // A default thumb prints no colour, like every other field at its default.
+  EXPECT(black.find("scrollbar-colour") == std::string::npos);
+
+  ShadowViewMutationList mutations;
+  mutations.push_back(ShadowViewMutation::UpdateMutation(
+      makeScrollView(10, 0, 0, 400, 300, 400, 4000),
+      makeScrollView(10,
+                     0,
+                     0,
+                     400,
+                     300,
+                     400,
+                     4000,
+                     true,
+                     Point{0, 0},
+                     false,
+                     facebook::react::ScrollViewIndicatorStyle::White),
+      kSurfaceId));
+  apply(manager, std::move(mutations));
+
+  const std::string white = manager.viewForTag(10)->describeTree();
+  EXPECT(white.find("scrollbar-colour=(1,1,1,0.35)") != std::string::npos);
 
   manager.destroySurfaceRoot(kSurfaceId);
 }

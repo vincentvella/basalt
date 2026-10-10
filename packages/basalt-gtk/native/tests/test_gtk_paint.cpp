@@ -17,8 +17,13 @@
 
 #include "GtkPixels.h"
 #include "RnView.h"
+// For the thumb's geometry and the colour the style resolves to: the test asks
+// core for both rather than spelling them, so a change there moves the test
+// with it.
+#include "ScrollIndicator.h"
 
 #include <sstream>
+#include <string>
 
 using basalt::testing::RnPixel;
 using basalt::testing::RnPixels;
@@ -941,4 +946,73 @@ TEST(gtk_paint_a_background_can_repeat_in_one_axis_only) {
   // repeat as well.
   EXPECT_TRANSPARENT(pixels, 10, 10);
   EXPECT_TRANSPARENT(pixels, 90, 90);
+}
+
+// --- The overlay scrollbar's colour, which is `indicatorStyle` ---------------
+//
+// `core/ScrollIndicator.h` decides the colour and every host draws it, so this
+// is the GTK half of the one prop in that group a picture can answer: a white
+// thumb over dark content, which a black one would be invisible against.
+//
+// Against pixels rather than the dump line, although there is one of those too:
+// the colour reaching the view and the colour reaching the thumb are different
+// claims, and only the second is what an app sees.
+namespace {
+
+// Where the vertical thumb is in a view `width` wide: inset from the trailing
+// edge by core's own two numbers, so this moves if those do.
+int thumbColumn(float width) {
+  return static_cast<int>(width - basalt::kScrollIndicatorInset
+                          - basalt::kScrollIndicatorThickness / 2.0);
+}
+
+} // namespace
+
+TEST(gtk_paint_an_indicator_is_black_by_default) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  rn_view_set_scroll_indicators(root, 0.0, 50.0, 0.0, 0.0);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  const RnPixel pixel = pixels.at(static_cast<unsigned>(thumbColumn(100)), 20);
+  EXPECT_NEAR(pixel.red, 0, kTolerance);
+  EXPECT_NEAR(pixel.green, 0, kTolerance);
+  EXPECT_NEAR(pixel.blue, 0, kTolerance);
+  // Translucent: the thumb sits over content rather than hiding it. 0.35 of 255.
+  EXPECT_NEAR(pixel.alpha, 89, kTolerance);
+}
+
+TEST(gtk_paint_an_indicator_takes_the_colour_it_was_given) {
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  rn_view_set_scroll_indicators(root, 0.0, 50.0, 0.0, 0.0);
+  const basalt::ScrollIndicatorColour white =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::White);
+  rn_view_set_scroll_indicator_colour(root, white.red, white.green, white.blue, white.alpha);
+
+  const RnPixels pixels = renderView(root, 100, 100);
+  const RnPixel pixel = pixels.at(static_cast<unsigned>(thumbColumn(100)), 20);
+  EXPECT_NEAR(pixel.red, 255, kTolerance);
+  EXPECT_NEAR(pixel.green, 255, kTolerance);
+  EXPECT_NEAR(pixel.blue, 255, kTolerance);
+  EXPECT_NEAR(pixel.alpha, 89, kTolerance);
+  // And nowhere else: the colour is the thumb's, not the view's.
+  EXPECT_TRANSPARENT(pixels, 20, 20);
+}
+
+TEST(gtk_paint_an_indicator_colour_is_reported_in_the_tree) {
+  // The cross-host half: the colour is pure paint, so the dump line is the only
+  // thing `compare_hosts.sh` can see it through.
+  Tree tree;
+  RnView *root = tree.root(1, 100, 100);
+  rn_view_set_scroll_indicators(root, 0.0, 50.0, 0.0, 0.0);
+
+  gchar *plain = rn_view_describe_tree(root);
+  EXPECT(std::string(plain).find("scrollbar-colour") == std::string::npos);
+  g_free(plain);
+
+  rn_view_set_scroll_indicator_colour(root, 1.0F, 1.0F, 1.0F, 0.35F);
+  gchar *white = rn_view_describe_tree(root);
+  EXPECT(std::string(white).find("scrollbar-colour=(1,1,1,0.35)") != std::string::npos);
+  g_free(white);
 }
