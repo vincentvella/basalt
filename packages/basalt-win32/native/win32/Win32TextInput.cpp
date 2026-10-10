@@ -10,8 +10,10 @@
 #include <commctrl.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cwctype>
 #include <cmath>
+#include <vector>
 
 // Visual styles, which an EDIT needs for two things: the cue banner that backs
 // `placeholder` is a comctl32 v6 message and silently does nothing without it,
@@ -414,14 +416,54 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
     }
   }
 
+  // The three colours React Native has for a field: the placeholder's, the
+  // selection's and the caret's. None of them is a property of an EDIT.
+  //
+  // `cursorColor` falls back to `selectionColor`, which is React Native's
+  // documented contract rather than an invention here -- `selectionColor` is
+  // "the highlight, selection handle and cursor color of the text input" and
+  // `cursorColor` overrides the caret alone -- and is how both other hosts read
+  // the pair.
+  //
+  // **`selectionColor` colours the caret and nothing else on this host.** The
+  // selection highlight of a classic EDIT is `COLOR_HIGHLIGHT` and there is no
+  // message that changes it; backlog/textinput.md records what would, which is
+  // hosting a windowless RichEdit and answering `ITextHost::TxGetSysColor`.
+  const facebook::react::SharedColor caret =
+      props.cursorColor ? props.cursorColor : props.selectionColor;
+  entry.hasCaretColour = static_cast<bool>(caret);
+  if (entry.hasCaretColour) {
+    const auto components = facebook::react::colorComponentsFromColor(caret);
+    const float rgba[4] = {components.red, components.green, components.blue, components.alpha};
+    entry.caretColour = toColorRef(rgba);
+  }
+
+  entry.hasPlaceholderColour = static_cast<bool>(props.placeholderTextColor);
+  if (entry.hasPlaceholderColour) {
+    const auto components =
+        facebook::react::colorComponentsFromColor(props.placeholderTextColor);
+    const float rgba[4] = {components.red, components.green, components.blue, components.alpha};
+    entry.placeholderColour = toColorRef(rgba);
+  }
+
   // The cue banner, which is Windows' placeholder and needs visual styles --
   // see the manifest at the top of this file. TRUE keeps it visible while the
   // field has focus and no text, which is what both other desktops do.
-  const std::wstring placeholder = widen(props.placeholder);
+  //
+  // Asked for only when the app named no colour. `EM_SETCUEBANNER` has none --
+  // it is drawn in the system's grey, with no message to change it -- so a
+  // field that asked for a red placeholder is drawn by `drawPlaceholder`
+  // instead, and the banner is cleared so the two do not overlap.
+  entry.placeholder = widen(props.placeholder);
   SendMessage(entry.control,
               EM_SETCUEBANNER,
               TRUE,
-              reinterpret_cast<LPARAM>(placeholder.c_str()));
+              reinterpret_cast<LPARAM>(entry.hasPlaceholderColour ? L"" : entry.placeholder.c_str()));
+  if (entry.hasPlaceholderColour) {
+    // The control does not know its own appearance changed, and an empty field
+    // showing a stale banner is what a missing invalidation looks like.
+    InvalidateRect(entry.control, nullptr, TRUE);
+  }
 
   // `editable` is the prop; `readOnly` is the newer spelling of its inverse,
   // and React Native honours both.
@@ -445,6 +487,14 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
   // arrives. See the EN_SETFOCUS case.
   entry.clearTextOnFocus = props.traits.clearTextOnFocus;
   entry.selectTextOnFocus = props.traits.selectTextOnFocus;
+
+  // A caret colour that arrives while the field already has focus has missed
+  // the WM_SETFOCUS it would have been installed from, and a controlled field
+  // is re-rendered constantly -- so the shape is replaced now. Nothing happens
+  // for a field that is not focused: it has no caret to replace.
+  if (entry.hasCaretColour && GetFocus() == entry.control) {
+    installCaret(entry);
+  }
 
   applyTextChecking(entry, props);
 }
@@ -540,6 +590,10 @@ void Win32TextInputManager::destroyPeer(Entry &entry) {
     DeleteObject(entry.backgroundBrush);
     entry.backgroundBrush = nullptr;
   }
+  // After the window, so the caret it may have owned is gone: the control
+  // destroys its caret while handling WM_KILLFOCUS, which DestroyWindow
+  // provokes, and a bitmap must outlive the caret it is the shape of.
+  releaseCaret(entry);
 }
 
 void Win32TextInputManager::remove(Tag tag) {
@@ -727,6 +781,151 @@ HBRUSH Win32TextInputManager::controlColor(HDC deviceContext, HWND control) {
   // gets visibly wrong, and the fix is a background prop.
   SetBkColor(deviceContext, GetSysColor(COLOR_WINDOW));
   return GetSysColorBrush(COLOR_WINDOW);
+}
+
+// ---------------------------------------------------------------------------
+// The three colours
+//
+// React Native gives a field a `placeholderTextColor`, a `selectionColor` and a
+// `cursorColor`. A classic EDIT has a property for none of them: the cue banner
+// is drawn in the system's grey, the selection in `COLOR_HIGHLIGHT`, and the
+// caret is a shape rather than a colour. Two of the three are reachable anyway,
+// and the third is written down in backlog/textinput.md with the route that
+// would reach it.
+// ---------------------------------------------------------------------------
+
+void Win32TextInputManager::drawPlaceholder(const Entry &entry, HDC deviceContext) const {
+  if (entry.control == nullptr || deviceContext == nullptr || entry.placeholder.empty()) {
+    return;
+  }
+  // Only while the field is empty, which is the whole of what a placeholder is.
+  if (GetWindowTextLength(entry.control) > 0) {
+    return;
+  }
+
+  // The formatting rectangle rather than the client area: an EDIT insets its
+  // text by a margin of its own, and a placeholder that ignored it would not
+  // start where the text it stands in for starts. `EM_GETRECT` answers for a
+  // single-line control too -- it is `EM_SETRECT` that is documented
+  // multiline-only and silently does nothing here, which `insets` exists
+  // because of.
+  RECT box{};
+  SendMessage(entry.control, EM_GETRECT, 0, reinterpret_cast<LPARAM>(&box));
+  if (IsRectEmpty(&box)) {
+    GetClientRect(entry.control, &box);
+  }
+
+  const int saved = SaveDC(deviceContext);
+  if (entry.font != nullptr) {
+    // The control's own font, so a placeholder in a 20pt field is not 13pt --
+    // the same rule the AppKit host spells by styling its placeholder like its
+    // text.
+    SelectObject(deviceContext, entry.font);
+  }
+  SetTextColor(deviceContext, entry.placeholderColour);
+  // Transparent, so what the control painted stays: the background is the app's
+  // own `backgroundColor`, answered from WM_CTLCOLOREDIT, and an opaque text
+  // background here would paint a box of the system's colour over it.
+  SetBkMode(deviceContext, TRANSPARENT);
+  const UINT format = entry.multiline
+      ? static_cast<UINT>(DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX)
+      : static_cast<UINT>(DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+  DrawTextW(deviceContext,
+            entry.placeholder.c_str(),
+            static_cast<int>(entry.placeholder.size()),
+            &box,
+            format);
+  if (saved != 0) {
+    RestoreDC(deviceContext, saved);
+  }
+}
+
+void Win32TextInputManager::installCaret(Entry &entry) {
+  if (entry.control == nullptr || !entry.hasCaretColour) {
+    return;
+  }
+  releaseCaret(entry);
+
+  // **The caret is XOR-ed onto the field.** `CreateCaret` says so -- "the caret
+  // is drawn to the screen via the XOR operation" -- which is how a caret with
+  // no colour at all is visible against any background, and why one with a
+  // colour cannot simply be asked for.
+  //
+  // So the bitmap carries the asked-for colour XOR the ground it will be drawn
+  // against, and the system's XOR cancels the ground back out. The ground is
+  // known: it is the `backgroundColor` the control is painted with, or the
+  // window's own when the field asked for none, which is the same pair
+  // `controlColor` answers WM_CTLCOLOREDIT with.
+  //
+  // Where the caret crosses a glyph the XOR gives something else, exactly as
+  // the system's own caret does over text. That is the shape of this platform's
+  // caret rather than a shortcut taken here.
+  const COLORREF ground =
+      entry.hasBackground ? entry.backgroundColor : GetSysColor(COLOR_WINDOW);
+  const COLORREF bits = entry.caretColour ^ ground;
+
+  DWORD width = 0;
+  if (SystemParametersInfo(SPI_GETCARETWIDTH, 0, &width, 0) == FALSE || width == 0) {
+    width = 1;
+  }
+  const LONG height = entry.lineHeight > 0 ? entry.lineHeight : 16;
+
+  // 32 bits per pixel through an explicit DIB header rather than `CreateBitmap`
+  // with a device-dependent buffer: the whole point is a known colour, and
+  // "device-dependent format" is not one. `CreateCaret` accepts a
+  // `CreateDIBitmap` bitmap by name.
+  const std::uint32_t pixel = static_cast<std::uint32_t>(GetBValue(bits))
+      | (static_cast<std::uint32_t>(GetGValue(bits)) << 8)
+      | (static_cast<std::uint32_t>(GetRValue(bits)) << 16);
+  std::vector<std::uint32_t> pixels(static_cast<size_t>(width) * static_cast<size_t>(height),
+                                    pixel);
+
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = static_cast<LONG>(width);
+  // Negative for top-down, which costs nothing to be explicit about even though
+  // every row of this bitmap is the same.
+  info.bmiHeader.biHeight = -height;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+
+  const HDC screen = GetDC(nullptr);
+  if (screen == nullptr) {
+    return;
+  }
+  entry.caret = CreateDIBitmap(
+      screen, &info.bmiHeader, CBM_INIT, pixels.data(), &info, DIB_RGB_COLORS);
+  ReleaseDC(nullptr, screen);
+  if (entry.caret == nullptr) {
+    return;
+  }
+
+  // `CreateCaret` destroys whatever shape came before, which is the EDIT's own:
+  // it creates a solid caret while handling WM_SETFOCUS, so this has to run
+  // after that and does. The width and height are ignored for a bitmap, which
+  // defines its own.
+  if (CreateCaret(entry.control, entry.caret, 0, 0) != FALSE) {
+    ShowCaret(entry.control);
+  }
+}
+
+void Win32TextInputManager::releaseCaret(Entry &entry) {
+  if (entry.caret == nullptr) {
+    return;
+  }
+  // No `DestroyCaret` here, deliberately. There is one caret per queue, so
+  // destroying it from a field that has just lost focus would destroy the one
+  // whatever took the focus has already created. The EDIT destroys its own
+  // caret while handling WM_KILLFOCUS, and this runs after that; the only other
+  // caller is `installCaret`, where `CreateCaret` replaces the shape itself.
+  DeleteObject(entry.caret);
+  entry.caret = nullptr;
+}
+
+HBITMAP Win32TextInputManager::caretBitmapFor(Tag tag) const {
+  const auto it = entries_.find(tag);
+  return it == entries_.end() ? nullptr : it->second.caret;
 }
 
 void Win32TextInputManager::reportChange(Entry &entry) {
@@ -918,6 +1117,45 @@ LRESULT CALLBACK Win32TextInputManager::editProc(
       case EM_SETSEL:
         entry->owner->reportSelectionIfChanged(*entry);
         break;
+      default:
+        break;
+    }
+
+    // The placeholder and the caret, both after the control has had the
+    // message: the placeholder goes on top of what the EDIT painted, and the
+    // caret replaces the one the EDIT creates for itself on focus.
+    switch (message) {
+      case WM_PAINT:
+        if (entry->hasPlaceholderColour) {
+          // Its own DC rather than BeginPaint: the control's WM_PAINT has
+          // finished and validated the update region, so there is nothing left
+          // to begin.
+          if (const HDC painted = GetDC(hwnd)) {
+            entry->owner->drawPlaceholder(*entry, painted);
+            ReleaseDC(hwnd, painted);
+          }
+        }
+        break;
+
+      // The same drawing into a device context somebody else owns, which is
+      // how a control is rendered anywhere but the screen. It is also the only
+      // way anything can read the pixels of a field on this host: the Direct2D
+      // snapshot cannot see a child window at all, which is its own backlog
+      // entry.
+      case WM_PRINTCLIENT:
+        if (entry->hasPlaceholderColour) {
+          entry->owner->drawPlaceholder(*entry, reinterpret_cast<HDC>(wparam));
+        }
+        break;
+
+      case WM_SETFOCUS:
+        entry->owner->installCaret(*entry);
+        break;
+
+      case WM_KILLFOCUS:
+        entry->owner->releaseCaret(*entry);
+        break;
+
       default:
         break;
     }

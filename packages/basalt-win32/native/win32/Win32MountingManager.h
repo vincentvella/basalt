@@ -136,6 +136,12 @@ class Win32MountingManager final : public facebook::react::IMountingManager,
   bool handleControlCommand(WPARAM wparam, LPARAM lparam);
   HBRUSH controlColor(HDC deviceContext, HWND control);
 
+  // The bitmap a field's caret is currently shaped by, which is where
+  // `cursorColor` ends up on this host. Only the test suite asks: Windows has
+  // no way to read a caret back, so the installed bitmap is the only thing
+  // about it that can be measured. See Win32TextInput.h.
+  HBITMAP textInputCaretBitmap(facebook::react::Tag tag) const;
+
   // BASALT_TEST_TYPE: real WM_CHARs into whichever field has focus.
   bool typeIntoFocusedTextInput(const std::string &text);
 

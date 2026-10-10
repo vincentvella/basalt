@@ -27,7 +27,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | --- | --- | --- |
 | [Input](backlog/input.md) | 4 | Multi-touch is not modelled, Wayland input is unverified, `setIsJSResponder` is a no-op. |
 | [Text](backlog/text.md) | 7 | Measurement and layout gaps. |
-| [TextInput](backlog/textinput.md) | 5 | The colours on Windows, a controlled value applied by heuristic, and the forked component. |
+| [TextInput](backlog/textinput.md) | 4 | A controlled value applied by heuristic, the forked component, and the Windows selection highlight. |
 | [Image](backlog/image.md) | 5 | Decorative props, and assets over the network: fetching, caching, progress. |
 | [ScrollView](backlog/scrollview.md) | 5 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |

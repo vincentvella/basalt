@@ -126,6 +126,15 @@ class Win32TextInputManager {
   // that is dark text on dark, the same trap GtkText has.
   HBRUSH controlColor(HDC deviceContext, HWND control);
 
+  // The bitmap currently installed as the caret for `tag`, or null.
+  //
+  // Only the test suite asks, and it asks because Windows offers no way to read
+  // the caret back: `CreateCaret` hands a bitmap to the system and there is no
+  // `GetCaret`. So the only thing that can be measured is the bitmap this
+  // installed, which is why this is here rather than private -- see
+  // `win32_a_cursor_colour_installs_a_caret_of_that_colour`.
+  HBITMAP caretBitmapFor(facebook::react::Tag tag) const;
+
   // True when the control is one of this manager's peers, which is how the host
   // tells a key meant for a field from one meant for the window.
   bool ownsControl(HWND control) const;
@@ -207,6 +216,28 @@ class Win32TextInputManager {
 
     bool secure{false};
 
+    // The three colours React Native has for a field, none of which a plain
+    // EDIT has a property for. See `applyProps`, `drawPlaceholder` and
+    // `installCaret`.
+    //
+    // Each is held with a flag rather than a sentinel colour, because
+    // `SharedColor`'s unset value is zero: a field that asked for nothing would
+    // otherwise get a black caret and a transparent placeholder, which is the
+    // bug both other hosts had to be careful of for the same reason.
+    bool hasPlaceholderColour{false};
+    COLORREF placeholderColour{RGB(0, 0, 0)};
+    // The placeholder itself, held because with a colour this host draws it
+    // rather than handing it to `EM_SETCUEBANNER`, which has no colour.
+    std::wstring placeholder;
+    bool hasCaretColour{false};
+    COLORREF caretColour{RGB(0, 0, 0)};
+    // The caret's shape, which is how its colour is set: a bitmap, XOR-ed onto
+    // the field by the system. Created when the field takes focus, because the
+    // colour it has to carry depends on the background it will be XOR-ed
+    // against, and destroyed when it loses it -- the documented contract for a
+    // caret is that the window owning it has the focus.
+    HBITMAP caret{nullptr};
+
     // `clearTextOnFocus` and `selectTextOnFocus`: what happens when the field
     // takes focus, which arrives long after the props do. See EN_SETFOCUS.
     bool clearTextOnFocus{false};
@@ -250,6 +281,22 @@ class Win32TextInputManager {
   void measureShape(Entry &entry, const facebook::react::LayoutMetrics &metrics);
 
   void destroyPeer(Entry &entry);
+
+  // The placeholder, drawn by this host rather than by the control.
+  //
+  // `EM_SETCUEBANNER` is Windows' placeholder and takes no colour, so a field
+  // that asked for one is drawn here instead: the control's own font, the
+  // asked-for colour, inside the formatting rectangle the control reports. Used
+  // from both WM_PAINT and WM_PRINTCLIENT, which is what lets a test render a
+  // field into a memory DC and read the pixels back.
+  void drawPlaceholder(const Entry &entry, HDC deviceContext) const;
+
+  // The caret, whose colour is a bitmap XOR-ed onto the field.
+  //
+  // Called after the control has handled WM_SETFOCUS, because an EDIT creates
+  // its own caret there and `CreateCaret` replaces whatever shape came before.
+  void installCaret(Entry &entry);
+  void releaseCaret(Entry &entry);
 
   // Enter, and the keys an EDIT would otherwise beep at. Installed with
   // SetWindowSubclass rather than SetWindowLongPtr so that a later subclass by

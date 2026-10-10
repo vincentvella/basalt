@@ -1147,6 +1147,10 @@ bool Win32MountingManager::handleControlCommand(WPARAM wparam, LPARAM lparam) {
   return textInputs_.handleControlCommand(wparam, lparam);
 }
 
+HBITMAP Win32MountingManager::textInputCaretBitmap(Tag tag) const {
+  return textInputs_.caretBitmapFor(tag);
+}
+
 HBRUSH Win32MountingManager::controlColor(HDC deviceContext, HWND control) {
   return textInputs_.controlColor(deviceContext, control);
 }

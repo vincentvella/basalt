@@ -2,15 +2,15 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (4):**
 
 1. ~~`autoFocus` does nothing, and nothing had ever asked it to~~
 2. A controlled field's value is applied by heuristic rather than from state
 3. The synthetic typing instruments cannot observe either event on GTK
 4. No shared focus registry: TextInput
 5. ~~`blur` grabs focus for the window rather than dropping it~~
-6. placeholderTextColor, selectionColor and cursorColor are parsed and ignored
-   on Windows; done on GTK and AppKit
+6. ~~placeholderTextColor, selectionColor and cursorColor are parsed and
+   ignored~~ on all three hosts, except the Windows selection highlight
 7. src/overrides/TextInput
 8. ~~returnKeyType, clearButtonMode, selectTextOnFocus and clearTextOnFocus are
    ignored~~: the last two are done on all three hosts, and the first two are
@@ -116,8 +116,9 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `focus_blur_drops_focus_instead_of_handing_it_to_the_window` asserts
   `gtk_window_get_focus` is NULL after the command, in a real window, and fails
   on the old behaviour.
-- `placeholderTextColor`, `selectionColor` and `cursorColor` are parsed and
-  ignored **on Windows**. Done on GTK 2026-10-07 and **on AppKit 2026-10-10**.
+- ~~`placeholderTextColor`, `selectionColor` and `cursorColor` are parsed and
+  ignored **on Windows**~~. Done on GTK 2026-10-07, **on AppKit 2026-10-10**,
+  and **on Windows the same day** for two of the three.
 
   **This entry said AppKit already honoured the placeholder colour, and that was
   wrong**, found on 2026-10-09 when every `TextInput` prop got a row on the
@@ -170,10 +171,66 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   because `RnTextView::snapshot` draws the placeholder itself, so the colour is
   held as a value and used there. Selection and caret still arrive by CSS.
 
-  Windows is the harder half and is untouched. A plain `EDIT` has no CSS,
-  `EM_SETCUEBANNER` gives no colour control, the selection is the system
-  highlight unless the control is owner-drawn or swapped for a RichEdit, and the
-  caret is a bitmap you install yourself.
+  **Windows was the harder half, and two of the three are done**, 2026-10-10.
+  The shape of it is that an `EDIT` has a property for none of them, so each one
+  is either drawn by this host or arranged out of something else.
+
+  **The placeholder is drawn here.** `EM_SETCUEBANNER` is Windows' placeholder
+  and takes no colour, so a field that named one is given an empty banner and
+  the subclass draws the text itself: the control's own font, the asked-for
+  colour, `SetBkMode(TRANSPARENT)` so the background stays the app's, inside the
+  rectangle `EM_GETRECT` reports -- the formatting rectangle rather than the
+  client area, because an `EDIT` insets its text by a margin of its own and a
+  placeholder that ignored it would not start where the text it stands in for
+  starts. A field that named no colour keeps the banner, which is the system's
+  grey and the right answer for an app that asked for nothing.
+
+  Drawn from `WM_PRINTCLIENT` as well as `WM_PAINT`, which is what makes it
+  testable: `BASALT_SNAPSHOT` cannot see a `<TextInput>` on this host at all,
+  the Direct2D snapshot rendering views rather than child windows, so the test
+  renders the control into a memory DC the documented way and counts the red
+  pixels. That is also a hint for the snapshot entry above.
+
+  **The caret is a bitmap, and the colour is arithmetic.** `CreateCaret` says
+  "the caret is drawn to the screen via the XOR operation", which is how a caret
+  nobody coloured is visible against any background and why one that *was*
+  coloured cannot simply be asked for. So the bitmap carries the asked-for
+  colour XOR the ground it will be drawn against, and the system's XOR cancels
+  the ground back out; the ground is known, being the same `backgroundColor` or
+  `COLOR_WINDOW` that `controlColor` answers `WM_CTLCOLOREDIT` with. Installed
+  from `WM_SETFOCUS` *after* the control has had it, because an `EDIT` creates
+  its own caret there and `CreateCaret` replaces whatever shape came before.
+  Where the caret crosses a glyph the XOR gives a third colour, exactly as the
+  system's own caret does, so that is the platform's caret rather than a
+  shortcut taken here.
+
+  The one thing no test here can answer is what that looks like on a screen:
+  these run headless and nothing can read a caret back -- there is no
+  `GetCaret`. What is asserted is the bitmap the manager installed, read out of
+  GDI with `GetDIBits`, and the XOR is the documented behaviour rather than a
+  measurement of this repository's. A pair of eyes on a real desktop is what
+  would close that, and nothing in CI can stand in for it.
+
+  **`selectionColor` is the one left**, and it is `partial` rather than `no`
+  because it does colour the caret: React Native's contract is that
+  `selectionColor` is "the highlight, selection handle and cursor color" and
+  `cursorColor` overrides the caret alone, so a field that named only the first
+  gets a caret of it, as on both other hosts. What it does not get is the
+  highlight. A classic `EDIT` draws its selection in `COLOR_HIGHLIGHT` and no
+  message changes that; it is not owner-drawable either, there being no
+  `ES_OWNERDRAW`.
+
+  What would reach it is a **windowless RichEdit**: `CreateTextServices` hands
+  back an `ITextServices` that draws into a device context of the host's, and
+  the host implements `ITextHost`, whose `TxGetSysColor(int)` the editor asks
+  for the colours it draws with -- documented as taking any `GetSysColor` index
+  and as being allowed to answer differently from the system, with a warning
+  about Accessibility for exactly that reason. Whether msftedit asks for
+  `COLOR_HIGHLIGHT` specifically is not something this repository has measured,
+  and the documentation does not enumerate the indices, so that is the thing to
+  check first rather than the thing to assume. It is also a much larger change
+  than a colour: a windowless editor has no HWND, which is most of the three
+  consequences `Win32TextInput.h` opens with, and would want its own entry.
 - `src/overrides/TextInput.js` is a fork of React Native's component, and the only fork
   in the tree. Every prop upstream adds is a prop it will not have.
 - **`autoCapitalize`, `autoCorrect`, `spellCheck` and `keyboardType` are done

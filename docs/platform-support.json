@@ -194,7 +194,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "ti-colours": {
-      "text": "a Win32 EDIT has no form of them: no CSS, no colour on EM_SETCUEBANNER, the system highlight unless it is owner-drawn",
+      "text": "a Win32 EDIT draws its selection in COLOR_HIGHLIGHT, which no message changes: it wants a windowless RichEdit",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "win-upper-only": {
@@ -1486,19 +1486,17 @@
     "BaseTextInputProps.placeholderTextColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "ti-colours"
+      "windows": "yes"
     },
     "BaseTextInputProps.cursorColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "ti-colours"
+      "windows": "yes"
     },
     "BaseTextInputProps.selectionColor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
+      "windows": "partial",
       "why": "ti-colours"
     },
     "BaseTextInputProps.selectionHandleColor": {

@@ -27,9 +27,15 @@
 #include <react/renderer/core/RawProps.h>
 #include <react/renderer/core/RawPropsParser.h>
 
+// EM_GETCUEBANNER, which is comctl32's rather than USER32's -- the same
+// requirement the manager's manifest comment explains for setting one.
+#include <commctrl.h>
+
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 using basalt::Win32MountingManager;
 using basalt::win32::narrow;
@@ -67,6 +73,16 @@ LRESULT CALLBACK testHostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpa
   if (message == WM_COMMAND && gCurrentManager != nullptr &&
       gCurrentManager->handleControlCommand(wparam, lparam)) {
     return 0;
+  }
+  // And the colours, which an EDIT asks its parent for. Forwarded for the same
+  // reason WM_COMMAND is: a field printed into a device context with the
+  // system's colours instead of the app's is not the field the app described.
+  if ((message == WM_CTLCOLOREDIT || message == WM_CTLCOLORSTATIC)
+      && gCurrentManager != nullptr) {
+    if (HBRUSH brush = gCurrentManager->controlColor(reinterpret_cast<HDC>(wparam),
+                                                     reinterpret_cast<HWND>(lparam))) {
+      return reinterpret_cast<LRESULT>(brush);
+    }
   }
   return DefWindowProc(hwnd, message, wparam, lparam);
 }
@@ -147,6 +163,14 @@ struct FieldOptions {
   bool multiline{false};
   bool clearTextOnFocus{false};
   bool selectTextOnFocus{false};
+  // The colours, as React Native sends them: 0xAARRGGBB, and 0 for "the app
+  // sent none" -- which is the distinction the host has to keep, since
+  // `SharedColor`'s unset value is zero and transparent black is a colour an
+  // app could mean.
+  unsigned int backgroundColor{0};
+  unsigned int placeholderTextColor{0};
+  unsigned int selectionColor{0};
+  unsigned int cursorColor{0};
 };
 
 ShadowView makeField(Tag tag,
@@ -172,6 +196,15 @@ ShadowView makeField(Tag tag,
   if (options.selectionStart >= 0) {
     raw["selection"] =
         folly::dynamic::object("start", options.selectionStart)("end", options.selectionEnd);
+  }
+  for (const auto &[name, colour] :
+       {std::pair<const char *, unsigned int>{"backgroundColor", options.backgroundColor},
+        {"placeholderTextColor", options.placeholderTextColor},
+        {"selectionColor", options.selectionColor},
+        {"cursorColor", options.cursorColor}}) {
+    if (colour != 0) {
+      raw[name] = static_cast<int64_t>(colour);
+    }
   }
 
   RawProps rawProps{std::move(raw)};
@@ -947,6 +980,352 @@ TEST(win32_clearing_and_selecting_at_once_leaves_an_empty_field) {
   DWORD end = 0;
   SendMessage(control, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
   EXPECT_EQ(static_cast<int>(start), static_cast<int>(end));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// --- The three colours a field has ------------------------------------------
+//
+// `placeholderTextColor`, `selectionColor` and `cursorColor`, which this host
+// read none of until 2026-10-10 because a classic EDIT has a property for none
+// of them: the cue banner is drawn in the system's grey, the selection in
+// COLOR_HIGHLIGHT, and the caret is a *shape* rather than a colour.
+//
+// Two of the three are reachable anyway and are asserted here. The selection
+// highlight is not, and backlog/textinput.md records the route that would reach
+// it rather than this suite pretending otherwise.
+namespace {
+
+// The control's own pixels, which is not something this host could otherwise
+// produce: the Direct2D snapshot renders the view tree and a peer is a child
+// window, invisible to it. WM_PRINTCLIENT is the documented way to render a
+// control into a device context of the caller's, and the subclass draws the
+// placeholder there as well as on screen for exactly this reason.
+//
+// White to begin with, so that "nothing was drawn" and "something was drawn in
+// black" are different answers.
+int pixelsMatchingInPrintedField(HWND control,
+                                 bool (*matches)(int red, int green, int blue)) {
+  RECT client{};
+  GetClientRect(control, &client);
+  const int width = client.right - client.left;
+  const int height = client.bottom - client.top;
+  if (width <= 0 || height <= 0) {
+    return -1;
+  }
+
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = width;
+  info.bmiHeader.biHeight = -height;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+
+  void *bits = nullptr;
+  const HDC screen = GetDC(nullptr);
+  const HDC memory = CreateCompatibleDC(screen);
+  const HBITMAP surface = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+  ReleaseDC(nullptr, screen);
+  if (memory == nullptr || surface == nullptr || bits == nullptr) {
+    if (surface != nullptr) {
+      DeleteObject(surface);
+    }
+    if (memory != nullptr) {
+      DeleteDC(memory);
+    }
+    return -1;
+  }
+
+  const HGDIOBJ previous = SelectObject(memory, surface);
+  RECT whole{0, 0, width, height};
+  FillRect(memory, &whole, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+  SendMessage(control, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(memory), PRF_CLIENT);
+  GdiFlush();
+
+  int matching = 0;
+  const auto *pixels = static_cast<const std::uint32_t *>(bits);
+  for (int index = 0; index < width * height; index++) {
+    const std::uint32_t pixel = pixels[index];
+    if (matches(static_cast<int>((pixel >> 16) & 0xFF),
+                static_cast<int>((pixel >> 8) & 0xFF),
+                static_cast<int>(pixel & 0xFF))) {
+      matching++;
+    }
+  }
+
+  SelectObject(memory, previous);
+  DeleteObject(surface);
+  DeleteDC(memory);
+  return matching;
+}
+
+bool reddish(int red, int green, int blue) {
+  return red > 200 && green < 80 && blue < 80;
+}
+
+// What the field's cue banner is now, which is the other half of the
+// placeholder: a field that asked for a colour must not have one, or Windows
+// draws its grey placeholder underneath the one drawn here.
+std::wstring cueBannerOf(HWND control) {
+  constexpr size_t kLimit = 64;
+  wchar_t buffer[kLimit] = {};
+  SendMessage(control,
+              EM_GETCUEBANNER,
+              reinterpret_cast<WPARAM>(buffer),
+              static_cast<LPARAM>(kLimit));
+  return std::wstring(buffer);
+}
+
+// The colour of the caret bitmap the manager installed, read back out of GDI.
+//
+// Nothing can ask the system what the caret looks like -- there is no GetCaret
+// -- so the bitmap is the measurable artefact, which is why the manager hands
+// it over.
+COLORREF caretColourOf(HBITMAP bitmap) {
+  BITMAP described{};
+  if (bitmap == nullptr || GetObject(bitmap, sizeof(described), &described) == 0) {
+    return CLR_INVALID;
+  }
+
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = described.bmWidth;
+  info.bmiHeader.biHeight = -described.bmHeight;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+
+  std::vector<std::uint32_t> pixels(
+      static_cast<size_t>(described.bmWidth) * static_cast<size_t>(described.bmHeight), 0);
+  const HDC screen = GetDC(nullptr);
+  const int rows = GetDIBits(screen,
+                             bitmap,
+                             0,
+                             static_cast<UINT>(described.bmHeight),
+                             pixels.data(),
+                             &info,
+                             DIB_RGB_COLORS);
+  ReleaseDC(nullptr, screen);
+  if (rows == 0 || pixels.empty()) {
+    return CLR_INVALID;
+  }
+  const std::uint32_t pixel = pixels.front();
+  return RGB((pixel >> 16) & 0xFF, (pixel >> 8) & 0xFF, pixel & 0xFF);
+}
+
+} // namespace
+
+TEST(win32_a_placeholder_colour_is_drawn_by_this_host) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.placeholder = "Search",
+                   .backgroundColor = 0xffffffff,
+                   .placeholderTextColor = 0xffff0000}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  // Drawn here, in the colour the app asked for. `EM_SETCUEBANNER` could not
+  // have produced this: it has no colour parameter at all.
+  const int red = pixelsMatchingInPrintedField(control, reddish);
+  EXPECT(red > 0);
+
+  // And the banner is empty, so Windows is not drawing a grey placeholder
+  // underneath this one.
+  EXPECT(cueBannerOf(control).empty());
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// The negative control, and the other behaviour: a field that named no colour
+// keeps Windows' own placeholder, which is the cue banner.
+TEST(win32_a_placeholder_with_no_colour_keeps_the_system_banner) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 44, {.placeholder = "Search", .backgroundColor = 0xffffffff}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  EXPECT_EQ(narrow(cueBannerOf(control)), std::string("Search"));
+  EXPECT_EQ(pixelsMatchingInPrintedField(control, reddish), 0);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// A field with text has no placeholder to draw, which is a thing the drawing
+// has to check for itself: the cue banner hides itself and this does not.
+TEST(win32_a_placeholder_is_not_drawn_over_text) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.text = "typed",
+                   .placeholder = "Search",
+                   .backgroundColor = 0xffffffff,
+                   .placeholderTextColor = 0xffff0000}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  EXPECT_EQ(pixelsMatchingInPrintedField(control, reddish), 0);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// `cursorColor`, which is a bitmap because a caret is a shape.
+//
+// The bitmap carries the asked-for colour XOR the field's background, because
+// CreateCaret's documentation says "the caret is drawn to the screen via the
+// XOR operation" -- so red over white is a cyan bitmap, and the system's XOR
+// turns it back into red. Asserting the cyan rather than the red is what makes
+// this a test of the arithmetic the platform needs rather than of a value being
+// remembered.
+TEST(win32_a_cursor_colour_installs_a_caret_of_that_colour) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.backgroundColor = 0xffffffff, .cursorColor = 0xffff0000}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  // Nothing before focus: a window that does not have the focus should not own
+  // a caret, which is the documented contract and not a shortcut.
+  EXPECT(manager->textInputCaretBitmap(10) == nullptr);
+
+  SetFocus(control);
+  const HBITMAP caret = manager->textInputCaretBitmap(10);
+  EXPECT(caret != nullptr);
+  EXPECT_EQ(caretColourOf(caret), RGB(0, 255, 255));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// The control: a field that asked for nothing keeps the system's caret, which
+// is a solid XOR of the background and needs no bitmap at all.
+TEST(win32_a_field_with_no_cursor_colour_keeps_the_system_caret) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.backgroundColor = 0xffffffff}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  EXPECT(manager->textInputCaretBitmap(10) == nullptr);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// `cursorColor` falls back to `selectionColor`, which is React Native's
+// contract rather than an invention here: `selectionColor` is "the highlight,
+// selection handle and cursor color" and `cursorColor` overrides the caret
+// alone. Both other hosts read the pair the same way.
+//
+// Green over white is a magenta bitmap, by the same XOR.
+TEST(win32_a_cursor_with_no_colour_of_its_own_follows_the_selection) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.backgroundColor = 0xffffffff, .selectionColor = 0xff00ff00}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  const HBITMAP caret = manager->textInputCaretBitmap(10);
+  EXPECT(caret != nullptr);
+  EXPECT_EQ(caretColourOf(caret), RGB(255, 0, 255));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// And the shape goes when the focus does. Not housekeeping: there is one caret
+// per queue, so a field that kept its bitmap around would be holding the shape
+// of whatever has the focus now.
+TEST(win32_a_caret_bitmap_goes_when_the_field_loses_focus) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  44,
+                  {.backgroundColor = 0xffffffff, .cursorColor = 0xffff0000}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  EXPECT(manager->textInputCaretBitmap(10) != nullptr);
+
+  SetFocus(testHostWindow());
+  EXPECT(manager->textInputCaretBitmap(10) == nullptr);
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

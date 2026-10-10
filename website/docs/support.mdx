@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 176 of 279 | 177 of 279 | 170 of 279 |
+| Done | 176 of 279 | 177 of 279 | 172 of 279 |
 | | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `████████████░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -338,9 +338,9 @@ Written on the element itself, as `<View onLayout={...} />`.
 | --- | --- | --- | --- | --- |
 | `defaultValue` | △ | △ | △ | [TextInput.js folds it into `text` before a host sees anything](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `placeholder` | ✅ | ✅ | ✅ |  |
-| `placeholderTextColor` | ✅ | ✅ | ✖ | [a Win32 EDIT has no form of them: no CSS, no colour on EM_SETCUEBANNER, the system highlight unless it is owner-drawn](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `cursorColor` | ✅ | ✅ | ✖ | [a Win32 EDIT has no form of them: no CSS, no colour on EM_SETCUEBANNER, the system highlight unless it is owner-drawn](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `selectionColor` | ✅ | ✅ | ✖ | [a Win32 EDIT has no form of them: no CSS, no colour on EM_SETCUEBANNER, the system highlight unless it is owner-drawn](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `placeholderTextColor` | ✅ | ✅ | ✅ |  |
+| `cursorColor` | ✅ | ✅ | ✅ |  |
+| `selectionColor` | ✅ | ✅ | ◐ | [a Win32 EDIT draws its selection in COLOR_HIGHLIGHT, which no message changes: it wants a windowless RichEdit](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `selectionHandleColor` | – | – | – | [Android's own](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `underlineColorAndroid` | – | – | – | [Android's own](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `maxLength` | ✅ | ✅ | ✅ |  |
