@@ -474,3 +474,108 @@ TEST(accessibility_an_announcement_is_remembered_and_an_empty_one_is_not_made) {
   view->announce("Saved twice", true);
   EXPECT_EQ(view->lastAnnouncement(), std::string("Saved twice"));
 }
+
+// ---------------------------------------------------------------------------
+// `accessibilityValue`: a range, a position in it, and a text form.
+//
+// Four independent optionals, and the whole difficulty is that an absent part
+// has to stay absent: a view that never said what its range is must not be
+// announced as sitting at the bottom of one. GTK resets a property per part and
+// AppKit leaves its attribute nil; UIA has the RangeValue properties and a
+// separate Value one for the text, so each is answered or left VT_EMPTY.
+// ---------------------------------------------------------------------------
+
+TEST(accessibility_value_answers_the_range_and_the_position) {
+  RnAccessibleInfo info;
+  info.role = "slider";
+  info.value.min = 0;
+  info.value.max = 10;
+  info.value.now = 7;
+
+  const auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  if (!provider) {
+    return;
+  }
+
+  const auto number = [&provider](PROPERTYID id) {
+    VARIANT value;
+    VariantInit(&value);
+    if (FAILED(provider->GetPropertyValue(id, &value))) {
+      return -1.0;
+    }
+    const double result = value.vt == VT_R8 ? value.dblVal : -1.0;
+    VariantClear(&value);
+    return result;
+  };
+
+  EXPECT_NEAR(number(UIA_RangeValueMinimumPropertyId), 0.0, 0.001);
+  EXPECT_NEAR(number(UIA_RangeValueMaximumPropertyId), 10.0, 0.001);
+  EXPECT_NEAR(number(UIA_RangeValueValuePropertyId), 7.0, 0.001);
+  // Read-only, because nothing here lets a client change it: the pattern that
+  // would is `IRangeValueProvider`, and React Native expresses "you may change
+  // this" as an accessibility action.
+  EXPECT_EQ(propertyType(provider, UIA_RangeValueIsReadOnlyPropertyId), VT_BOOL);
+  // And no text form was given, so none is claimed.
+  EXPECT_EQ(propertyType(provider, UIA_ValueValuePropertyId), VT_EMPTY);
+}
+
+TEST(accessibility_value_leaves_a_part_nobody_mentioned_unset) {
+  RnAccessibleInfo info;
+  info.role = "progressbar";
+  // Only the position, which is what a progress bar with no declared range
+  // looks like. The other two parts must stay absent rather than become zeros.
+  info.value.now = 3;
+
+  const auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  if (!provider) {
+    return;
+  }
+  EXPECT_EQ(propertyType(provider, UIA_RangeValueValuePropertyId), VT_R8);
+  EXPECT_EQ(propertyType(provider, UIA_RangeValueMinimumPropertyId), VT_EMPTY);
+  EXPECT_EQ(propertyType(provider, UIA_RangeValueMaximumPropertyId), VT_EMPTY);
+
+  // A view with no value at all says nothing about any of them, and does not
+  // claim to be read-only either.
+  RnAccessibleInfo plain;
+  plain.role = "button";
+  const auto bare = providerFor(plain);
+  EXPECT(bare != nullptr);
+  if (bare) {
+    EXPECT_EQ(propertyType(bare, UIA_RangeValueValuePropertyId), VT_EMPTY);
+    EXPECT_EQ(propertyType(bare, UIA_RangeValueIsReadOnlyPropertyId), VT_EMPTY);
+  }
+}
+
+TEST(accessibility_value_text_is_its_own_property) {
+  RnAccessibleInfo info;
+  info.role = "adjustable";
+  info.value.now = 1530;
+  info.value.text = "half past three";
+
+  const auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  if (!provider) {
+    return;
+  }
+  // The text a screen reader reads instead of the number, which UIA keeps in
+  // the Value pattern rather than RangeValue -- so both are answered and
+  // neither replaces the other.
+  EXPECT_EQ(stringProperty(provider, UIA_ValueValuePropertyId),
+            std::string("half past three"));
+  EXPECT_EQ(propertyType(provider, UIA_RangeValueValuePropertyId), VT_R8);
+}
+
+// A value on its own makes a view worth reporting, which is the one change this
+// made to what counts as an accessibility element: a <View> that says where it
+// is in a range means to be heard, even if it named no role.
+TEST(accessibility_a_value_alone_is_enough_to_be_an_element) {
+  RnAccessibleInfo info;
+  info.value.now = 2;
+  info.value.max = 5;
+  EXPECT(basalt::win32::isAccessibilityElement(info));
+
+  RnAccessibleInfo scaffolding;
+  EXPECT(!basalt::win32::isAccessibilityElement(scaffolding));
+}

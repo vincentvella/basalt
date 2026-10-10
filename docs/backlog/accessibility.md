@@ -45,9 +45,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   Compared against the widget rather than against remembered state, since GTK
   already knows what it was built as and a second copy of that could disagree.
-- `accessibilityLiveRegion`, `accessibilityLabelledBy` and
-  `accessibilityActions` are ignored. **`accessibilityValue` is done**, on both
-  hosts, 2026-10-07.
+- ~~`accessibilityLiveRegion`~~, ~~`accessibilityLabelledBy`~~ and
+  `accessibilityActions`: the first two are done on all three hosts, the third
+  is still ignored. **`accessibilityValue` is done**, on GTK
+  and AppKit 2026-10-07 and on Windows 2026-10-10.
 
   Its four parts are independent optionals in React Native, a range and a
   position in it plus a text form a screen reader prefers over the number, and
@@ -266,6 +267,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   version guard, the end-to-end scenario asserting what every host carries.
 
   **And one wrong claim, found the same day.** The support page said
-  `accessibilityValue` worked on Windows. It does not: nothing in the Win32 host
-  reads it. The page's own check now catches that class of mistake, because every
-  row names the prop its column claims.
+  `accessibilityValue` worked on Windows. It did not: nothing in the Win32 host
+  read it. The page's own check now catches that class of mistake, because every
+  row names the prop its column claims -- and it caught a second one on
+  2026-10-10, when that host recorded `experimental_accessibilityOrder` in a
+  registry nothing reads while its row said it ignored the prop.
+
+  **`accessibilityValue` is done on Windows as of 2026-10-10.** UIA has the
+  parts exactly: `UIA_RangeValueMinimumPropertyId`, `Maximum` and `Value` for
+  the range and the position, and `UIA_ValueValuePropertyId` for the text form,
+  which it keeps in a different pattern -- so the text and the number are
+  independent there as they are in React Native. Each absent part is left
+  VT_EMPTY rather than answered with a zero, which is the same rule as the other
+  two hosts and the whole difficulty of the prop. `RangeValueIsReadOnly` is true
+  whenever there is a range, because nothing here lets a client change the
+  value: that would be `IRangeValueProvider::SetValue`, a pattern rather than a
+  property, and React Native says "you may change this" with an accessibility
+  action instead.
+
+  One consequence worth naming: a value alone now makes a view an accessibility
+  element on that host, where before it needed a role, a label or a hint. A
+  `<View>` that says where it is in a range means to be heard.

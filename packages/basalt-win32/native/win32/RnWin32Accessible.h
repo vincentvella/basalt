@@ -24,6 +24,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 struct IRawElementProviderSimple;
@@ -38,6 +39,22 @@ enum class RnAccessibleFlag {
   Unset,
   False,
   True,
+};
+
+// `accessibilityValue`: a range, a position in it, and a text form a screen
+// reader prefers over the number. Four independent optionals, which is the whole
+// difficulty: an absent part has to stay absent, because a view that never said
+// what its range is must not be announced as sitting at the bottom of one. Both
+// other hosts make the same distinction and for the same reason.
+struct RnAccessibleValue {
+  std::optional<int> min;
+  std::optional<int> max;
+  std::optional<int> now;
+  std::optional<std::string> text;
+
+  bool empty() const {
+    return !min.has_value() && !max.has_value() && !now.has_value() && !text.has_value();
+  }
 };
 
 struct RnAccessibleState {
@@ -68,6 +85,7 @@ struct RnAccessibleInfo {
   // behaviour ARIA's `aria-modal` and AppKit's `accessibilityModal` ask for.
   bool modal = false;
   RnAccessibleState state;
+  RnAccessibleValue value;
   // accessible={false} and accessibilityElementsHidden.
   bool hidden = false;
   // `accessibilityLabelledBy`, resolved: the view whose text names this one.

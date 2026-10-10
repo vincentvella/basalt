@@ -53,10 +53,6 @@
       "text": "DirectWrite is given it",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
-    "win-a11y": {
-      "text": "the UIA provider",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "mac-dropshadow": {
       "text": "macOS draws the first of a list",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md"
@@ -522,8 +518,7 @@
     "AccessibilityProps.accessibilityValue": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-a11y"
+      "windows": "yes"
     },
     "AccessibilityProps.accessibilityActions": {
       "linux": "no",

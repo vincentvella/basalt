@@ -11,6 +11,8 @@
 
 #include <uiautomation.h>
 
+#include <optional>
+
 #include <atomic>
 #include <unordered_map>
 
@@ -209,6 +211,51 @@ class AccessibleProvider final : public IRawElementProviderSimple {
         }
         return S_OK;
 
+      case UIA_RangeValueMinimumPropertyId:
+      case UIA_RangeValueMaximumPropertyId:
+      case UIA_RangeValueValuePropertyId: {
+        // `accessibilityValue`'s range and position, as the property mirrors of
+        // UIA's RangeValue pattern -- so they are answerable before the pattern
+        // exists, the same arrangement the toggle and selection states use.
+        //
+        // Each part is left unset when the app did not give it: VT_EMPTY is
+        // "no opinion", where VT_R8 zero is the claim that a slider sits at the
+        // bottom of a range nobody mentioned. GTK resets its property and
+        // AppKit leaves its attribute nil for the same reason.
+        const std::optional<int> &part = property == UIA_RangeValueMinimumPropertyId
+            ? info_.value.min
+            : (property == UIA_RangeValueMaximumPropertyId ? info_.value.max : info_.value.now);
+        if (part.has_value()) {
+          value->vt = VT_R8;
+          value->dblVal = static_cast<double>(*part);
+        }
+        return S_OK;
+      }
+
+      case UIA_RangeValueIsReadOnlyPropertyId:
+        // Read-only whenever there is a range at all: nothing here lets a client
+        // change the value. What would is `IRangeValueProvider::SetValue`, which
+        // is a pattern rather than a property and lands with the fragment root,
+        // and React Native expresses "you may change this" as an accessibility
+        // *action*, which no host implements yet.
+        if (info_.value.min.has_value() || info_.value.max.has_value()
+            || info_.value.now.has_value()) {
+          value->vt = VT_BOOL;
+          value->boolVal = VARIANT_TRUE;
+        }
+        return S_OK;
+
+      case UIA_ValueValuePropertyId:
+        // The text form, which a screen reader reads in place of the number:
+        // "half past three" rather than 1530. UIA keeps it in the Value pattern
+        // rather than RangeValue, so it is its own property and independent of
+        // the range, exactly as React Native has it.
+        if (info_.value.text.has_value() && !info_.value.text->empty()) {
+          value->vt = VT_BSTR;
+          value->bstrVal = toBstr(*info_.value.text);
+        }
+        return S_OK;
+
       case UIA_LabeledByPropertyId:
         // `accessibilityLabelledBy`: a relation rather than a copied string, so
         // a caption that changes its text does not leave a stale name behind.
@@ -280,7 +327,10 @@ bool isAccessibilityElement(const RnAccessibleInfo &info) {
   if (info.hidden || roleIsPresentational(info.role)) {
     return false;
   }
-  return !info.role.empty() || !info.label.empty() || !info.hint.empty();
+  // A value counts, beside a role, a label and a hint: a view that says what
+  // its position in a range is means to be reported, and dropping it because it
+  // named no role would be the quiet kind of gap.
+  return !info.role.empty() || !info.label.empty() || !info.hint.empty() || !info.value.empty();
 }
 
 IRawElementProviderSimple *createAccessibleProvider(const RnAccessibleInfo &info) {

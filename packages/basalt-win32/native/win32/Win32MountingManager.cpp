@@ -987,6 +987,16 @@ void Win32MountingManager::applyAccessibility(RnWin32View *view, const ShadowVie
     }
   }
 
+  // `accessibilityValue`: a range, a position in it and a text form, each
+  // independent. Carried as it arrived, optionals and all, because an absent
+  // part has to stay absent all the way to the provider -- a view that said
+  // nothing about its range must not be announced as sitting at the bottom of
+  // one. Both other hosts keep the same distinction; see RnWin32Accessible.h.
+  info.value.min = props->accessibilityValue.min;
+  info.value.max = props->accessibilityValue.max;
+  info.value.now = props->accessibilityValue.now;
+  info.value.text = props->accessibilityValue.text;
+
   // accessible={false} and accessibilityElementsHidden both mean "not for a
   // screen reader".
   info.hidden = !props->accessible ||
