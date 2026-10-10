@@ -150,7 +150,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
     },
     "image-placeholder": {
-      "text": "no host draws a placeholder while an image loads",
+      "text": "React Native drops both between Android's JavaScript and iOS's view config, before any host sees them",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
     },
     "image-events": {

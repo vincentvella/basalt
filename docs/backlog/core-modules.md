@@ -75,6 +75,18 @@ so anything importing them dies at startup.
   And read it rather than guessing from the name: `ActionSheetIOS.js` is as
   iOS-named as a file gets and has no branch at all, so the module alone was
   enough for it. The two shapes are not told apart by anything but the file.
+
+  **A seventh instance, and the worst shape of it: the two halves can come from
+  different platforms.** `<Image>`'s JavaScript is Android's -- `Image.js` is a
+  self-importing shim and resolves to `Image.android.js` -- and its view config
+  is iOS's, because `ImageViewNativeComponent.js` branches on `Platform.OS ===
+  'android'` and a third platform takes the else. Android's half sends
+  `defaultSource` as a string; iOS's half declares it with
+  `process: resolveAssetSource`, which answers null for anything that is not an
+  object or an asset id. So the prop is dropped between two files that are each
+  correct on their own platform, and no host is at fault or can tell. See
+  [image.md](image.md), which traces it; the fix is the fork
+  `BaseViewConfig.js` already is.
 - **Notifications on macOS need a person.** The implementation is real:
   `UNUserNotificationCenter`, behind the bundle check that keeps an unbundled
   host from raising `bundleProxyForCurrentProcess is nil`, and the first send

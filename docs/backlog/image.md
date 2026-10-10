@@ -196,10 +196,62 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Then the hand-written section can go, and the page's claim can stop having an
   exception in it.
 
-- **`defaultSource` and `loadingIndicatorSource` draw no placeholder.** Both are
-  read by nobody on any host, which the support page says as of 2026-10-09 and
-  nothing said before: an `<Image>` whose source is still loading draws its
-  background and nothing else.
+- **`defaultSource` and `loadingIndicatorSource` draw no placeholder**, and
+  neither can reach a host at all. An `<Image>` whose source is still loading
+  draws its background and nothing else.
+
+  Traced on 2026-10-10, and the answer is the shape of this platform rather than
+  a missing implementation: **the JavaScript comes from Android and the view
+  config comes from iOS**, and the two disagree about what `defaultSource` is.
+
+  `Image.js` is one of the self-importing shims, so it resolves to
+  `Image.android.js` -- see the top of `packages/basalt-core/metro-config.ts` for
+  why Android's implementation is the one that matches what is implemented here.
+  That file resolves the prop and then sends a *string*:
+
+      if (defaultSource_ != null && defaultSource_.uri != null) {
+        nativeProps.defaultSource = defaultSource_.uri;
+      }
+      if (loadingIndicatorSource_ != null && loadingIndicatorSource_.uri != null) {
+        nativeProps.loadingIndicatorSrc = loadingIndicatorSource_.uri;
+      }
+
+  `ImageViewNativeComponent.js` then branches on `Platform.OS === 'android'`,
+  and a third platform takes the iOS branch -- the same branch that cost this
+  project `shouldNotifyLoadEvents`. That branch declares
+  `defaultSource: {process: resolveAssetSource}` and no
+  `loadingIndicatorSrc` at all. `resolveAssetSource` returns its argument
+  unchanged for an object and looks a *number* up in the asset registry
+  otherwise, so a string answers `null`: the prop is processed into nothing. The
+  other one is not in `validAttributes`, so React never sends it.
+
+  ReactCommon would have taken either: `fromRawValue(..., ImageSource &)` accepts
+  a plain string as a remote uri, which is exactly what Android's JavaScript
+  sends. So both props are dropped between two files of React Native's, neither
+  of which is wrong on its own platform.
+
+  **What would fix it** is the fork `BaseViewConfig.js` already is: add
+  `ImageViewNativeComponent.js` to `PLATFORM_OVERRIDES` as React Native's own
+  file with `defaultSource: true` -- no `process`, the JavaScript above having
+  already resolved it -- and `loadingIndicatorSrc: true` in the iOS branch.
+  Then the placeholder itself is a second texture per view: each host's image
+  loader already answers by uri, so it is a load request for the placeholder, a
+  field beside the main texture, and a draw that prefers the main one when it
+  has arrived. iOS keeps the default source visible when a load *fails*, which
+  is the behaviour to copy.
+
+  Not done, and the reason is the cost of the fork rather than the work after
+  it: `ImageViewNativeComponent.js` is two hundred lines with two branches and a
+  comment about `src` and `source` both being sent, and every line of it would
+  then be this project's to track. `BaseViewConfig.js` was worth that for three
+  pointer props that broke right-clicking; a placeholder image is a smaller
+  prize. Worth doing the day a second prop in that file is needed, which would
+  halve the cost and is likely: `capInsets`, `resizeMethod` and
+  `progressiveRenderingEnabled` are all in the same two branches.
+
+  There is no app-side workaround, which is worth saying because the shape
+  invites one: passing `defaultSource={{uri}}` as an object does not help, since
+  Android's JavaScript takes `.uri` off it before the view config sees it.
 
   The work is small and the decision is not. `defaultSource` is an image to
   draw until the real one arrives, which means the loader has to answer twice
