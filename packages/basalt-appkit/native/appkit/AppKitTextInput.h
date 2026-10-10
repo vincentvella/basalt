@@ -73,7 +73,10 @@ class AppKitTextInputManager {
   // Called by the Objective-C delegate. Public because the trampoline has to
   // reach them; not part of anything a caller would use.
   void handleChanged(facebook::react::Tag tag);
-  void handleSubmit(facebook::react::Tag tag);
+  // Return. What it does is `submitBehavior`'s to say: report a submit, report
+  // one and give up focus, or insert a newline. Returns true when the key was
+  // used up, which is what tells AppKit whether to insert the newline itself.
+  bool handleSubmit(facebook::react::Tag tag);
   void handleFocus(facebook::react::Tag tag);
   void handleBlur(facebook::react::Tag tag);
 
@@ -113,6 +116,13 @@ class AppKitTextInputManager {
     bool applying{false};
 
     bool secure{false};
+    // `submitBehavior`, already resolved: React Native's `Default` means
+    // `newline` for a multiline field and `blurAndSubmit` for a single-line
+    // one, and `getNonDefaultSubmitBehavior()` is what says so. Read where
+    // Return arrives, which is a delegate callback on both peers.
+    facebook::react::SubmitBehavior submitBehavior{
+        facebook::react::SubmitBehavior::BlurAndSubmit};
+
     // A multiline field is an NSTextView rather than an NSTextField, so a
     // change here rebuilds the peer exactly as `secure` does.
     bool multiline{false};

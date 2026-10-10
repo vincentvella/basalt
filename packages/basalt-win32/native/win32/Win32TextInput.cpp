@@ -444,6 +444,10 @@ void Win32TextInputManager::applyProps(Entry &entry, const TextInputProps &props
   // caret of black bits, and `installCaret` has the one branch for it.
   entry.caretHidden = props.traits.caretHidden;
 
+  // `submitBehavior`, resolved by React Native rather than here: `Default` is
+  // `newline` for a multiline field and `blurAndSubmit` for a single-line one.
+  entry.submitBehavior = props.getNonDefaultSubmitBehavior();
+
   // `contextMenuHidden`, acted on in the subclass: see the WM_CONTEXTMENU case.
   entry.contextMenuHidden = props.traits.contextMenuHidden;
 
@@ -944,6 +948,12 @@ HBITMAP Win32TextInputManager::caretBitmapFor(Tag tag) const {
   return it == entries_.end() ? nullptr : it->second.caret;
 }
 
+void Win32TextInputManager::moveFocusToHost() {
+  if (host_ != nullptr) {
+    SetFocus(host_);
+  }
+}
+
 void Win32TextInputManager::reportChange(Entry &entry) {
   if (entry.applying) {
     // A prop being applied, not the user typing.
@@ -1078,16 +1088,33 @@ LRESULT CALLBACK Win32TextInputManager::editProc(
     // nothing on this platform implements a tab order for the second to reach.
     const auto character = typed;
     if (character == L'\r' || character == L'\n') {
-      // A multiline field takes the newline instead, which is React Native's
-      // default `submitBehavior` for one -- 'newline' there, 'blurAndSubmit'
-      // for a single line -- and is why the beep below does not apply: a
-      // multiline EDIT has somewhere to put it. The key press was already
-      // reported above, so an app watching `onKeyPress` sees the Enter either
-      // way; what it does not get is a submit, which is the prop's contract.
-      if (!entry->multiline) {
+      // **`submitBehavior` decides what Enter does**, already resolved to one of
+      // the three: `newline` inserts one, `submit` reports a submit, and
+      // `blurAndSubmit` reports one and gives up focus. React Native's default
+      // is the last for a single-line field and the first for a multiline one,
+      // so a field that never set the prop behaves as it does on iOS.
+      //
+      // The key press was already reported above, so an app watching
+      // `onKeyPress` sees the Enter whichever of the three it is.
+      const bool newline =
+          entry->submitBehavior == facebook::react::SubmitBehavior::Newline;
+      if (!newline) {
         if (const auto emitter = entry->owner->emitterFor(entry->tag)) {
           emitter->onSubmitEditing(entry->owner->metricsFor(*entry));
         }
+        if (entry->submitBehavior == facebook::react::SubmitBehavior::BlurAndSubmit) {
+          // The same move the `blur` command makes, and for the same reason it
+          // gives: Win32 has no "nothing is focused" inside an active window,
+          // and taking focus away from the process is not what blur means. The
+          // control still sees EN_KILLFOCUS, so JavaScript sees onBlur.
+          entry->owner->moveFocusToHost();
+        }
+        return 0;
+      }
+      // `newline` in a single-line field is a newline there is nowhere to put.
+      // Swallowed rather than passed on, which is the difference between doing
+      // nothing and beeping.
+      if (!entry->multiline) {
         return 0;
       }
     }
@@ -1214,7 +1241,7 @@ bool Win32TextInputManager::dispatchCommand(Tag tag,
     // keyboard input away from the process entirely, which is not what blur
     // means. The control still sees EN_KILLFOCUS, so JavaScript sees onBlur.
     if (entry.control != nullptr && GetFocus() == entry.control) {
-      SetFocus(host_);
+      moveFocusToHost();
     }
     return true;
   }

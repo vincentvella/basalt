@@ -1579,10 +1579,12 @@
       ]
     },
     "BaseTextInputProps.submitBehavior": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "getNonDefaultSubmitBehavior("
+      ]
     },
     "BaseTextInputProps.multiline": {
       "linux": "yes",

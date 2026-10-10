@@ -165,6 +165,10 @@ struct FieldOptions {
   bool selectTextOnFocus{false};
   bool caretHidden{false};
   bool contextMenuHidden{false};
+  // `submitBehavior`, as React Native spells it: "submit", "blurAndSubmit" or
+  // "newline". Empty leaves the prop unset, which is the `Default` the host
+  // resolves per `multiline`.
+  std::string submitBehavior{};
   // The colours, as React Native sends them: 0xAARRGGBB, and 0 for "the app
   // sent none" -- which is the distinction the host has to keep, since
   // `SharedColor`'s unset value is zero and transparent black is a colour an
@@ -190,6 +194,9 @@ ShadowView makeField(Tag tag,
       "clearTextOnFocus", options.clearTextOnFocus)(
       "selectTextOnFocus", options.selectTextOnFocus)("caretHidden", options.caretHidden)(
       "contextMenuHidden", options.contextMenuHidden);
+  if (!options.submitBehavior.empty()) {
+    raw["submitBehavior"] = options.submitBehavior;
+  }
   if (!options.placeholder.empty()) {
     raw["placeholder"] = options.placeholder;
   }
@@ -1454,6 +1461,135 @@ TEST(win32_a_field_that_hides_nothing_says_nothing) {
   const std::string described = manager->viewForTag(10)->describeTree();
   EXPECT(described.find("caret=hidden") == std::string::npos);
   EXPECT(described.find("context-menu=hidden") == std::string::npos);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// --- submitBehavior ----------------------------------------------------------
+//
+// What Enter does. React Native resolves the default itself --
+// `getNonDefaultSubmitBehavior()` answers `blurAndSubmit` for a single-line
+// field and `newline` for a multiline one -- and this host used to submit and
+// keep focus whatever the prop said, which is `submit` for every field.
+//
+// A real WM_CHAR through the control, which is the path a keystroke takes: the
+// subclass sees it before the EDIT does.
+namespace {
+
+void pressEnter(HWND control) {
+  SendMessage(control, WM_CHAR, static_cast<WPARAM>(L'\r'), 1);
+}
+
+} // namespace
+
+TEST(win32_enter_gives_up_focus_by_default) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.text = "query"}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  EXPECT(GetFocus() == control);
+
+  pressEnter(control);
+
+  // React Native's default for a single-line field is `blurAndSubmit`, and the
+  // blur is the observable half here: the event emitter a hand-built ShadowView
+  // carries goes nowhere, which the file header explains.
+  EXPECT(GetFocus() != control);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_submit_behavior_submit_keeps_the_focus) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 44, {.text = "query", .submitBehavior = "submit"}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  pressEnter(control);
+
+  // The distinction the prop exists for: a field that submits without giving up
+  // focus, which is what a search box wants.
+  EXPECT(GetFocus() == control);
+  // And the Enter was still swallowed rather than reaching the EDIT, which has
+  // nowhere to put a newline and beeps at one.
+  EXPECT_EQ(textOf(control), std::string("query"));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_submit_behavior_newline_puts_a_newline_in_a_multiline_field) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 80, {.text = "a", .multiline = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  pressEnter(control);
+
+  // `newline` is React Native's default for a multiline field, and the newline
+  // is what reaching the EDIT looks like. A `\r\n`, which is what an EDIT
+  // inserts and what `GetWindowText` gives back.
+  EXPECT_EQ(textOf(control), std::string("a\r\n"));
+  EXPECT(GetFocus() == control);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_submit_behavior_submit_on_a_multiline_field_inserts_nothing) {
+  // The other half of the multiline case, and the one that needs the key to be
+  // swallowed: a field that asked to submit must not also gain a newline.
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10,
+                  20,
+                  30,
+                  200,
+                  80,
+                  {.text = "a", .multiline = true, .submitBehavior = "submit"}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+
+  SetFocus(control);
+  pressEnter(control);
+
+  EXPECT_EQ(textOf(control), std::string("a"));
+  EXPECT(GetFocus() == control);
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

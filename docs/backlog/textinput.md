@@ -300,7 +300,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   The support page added a row per trait on 2026-10-09, which is how the rest of
   this list stopped being a sentence: ~~`contextMenuHidden`~~, ~~`caretHidden`~~,
-  `scrollEnabled`, `submitBehavior`, `onKeyPressSync`, `onChangeSync` and
+  `scrollEnabled`, ~~`submitBehavior`~~, `onKeyPressSync`, `onChangeSync` and
   `acceptDragAndDropTypes` are the ones that read "not yet" there rather than
   "deliberately not", and each was a desktop question nobody had answered.
 
@@ -358,6 +358,41 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   firing on Return and `submitBehavior`'s multiline default inserting a newline
   instead. A row saying "not yet" invited somebody to look for the call, and
   there is none to find on any of the three.
+
+- ~~**`submitBehavior` was the toolkit's decision rather than the prop's.**~~
+  Done on all three hosts, 2026-10-10, and the shape of the bug is worth
+  keeping: each host did what its toolkit does on Enter and the comments *said
+  so*. "GtkText keeps focus on activate, so only the submit is reported"; "an
+  NSTextField keeps focus on Return, so only the submit is reported here". Both
+  were accurate descriptions of a prop being ignored -- every field behaved as
+  `submit`, including the ones that had asked for `newline`.
+
+  React Native resolves the default itself, which is the part that makes this
+  cheap: `getNonDefaultSubmitBehavior()` answers `blurAndSubmit` for a
+  single-line field and `newline` for a multiline one, so no host has to know
+  the rule. What each host does with the answer is three lines and one call it
+  already had:
+
+  - **GTK.** `activate` for a GtkText; the capture-phase key controller for a
+    GtkTextView, which inserts the newline itself and so has to be stopped
+    before it does. The blur is `gtk_window_set_focus(window, nullptr)`, which
+    is what the `blur` command already used -- now shared, rather than spelled
+    twice.
+  - **AppKit.** `control:textView:doCommandBySelector:` for the field, and a new
+    `textView:doCommandBySelector:` for the multiline peer, which had no hook at
+    all: a `submit` on a multiline field would otherwise have inserted a newline
+    *and* reported nothing. Returning YES is what refuses the insertion. The
+    blur hands focus back to the window, as the `blur` command does.
+  - **Windows.** The WM_CHAR the subclass already watched for, which is where
+    Enter was being swallowed. `newline` in a single-line field is still
+    swallowed -- there is nowhere to put it, and letting it through is the
+    difference between doing nothing and beeping.
+
+  Twelve tests. The pair that matters is `submit` against `blurAndSubmit`: both
+  report, so the event cannot tell them apart and the focus is what does -- a
+  real window on GTK and AppKit, `GetFocus()` on Windows. The default is pinned
+  separately, so a field that names nothing is shown to resolve to the iOS
+  answer rather than to this project's old one.
 
 - ~~**`autoFocus` selected the field's text, on two hosts, for the same
   reason.**~~ Fixed 2026-10-07, after the fix above and separately from it.

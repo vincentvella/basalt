@@ -152,8 +152,23 @@ static NSInteger RnTagOf(id object) {
     doCommandBySelector:(SEL)selector {
   (void)textView;
   if (selector == @selector(insertNewline:) && _manager != nullptr) {
-    _manager->handleSubmit(static_cast<facebook::react::Tag>(RnTagOf(control)));
-    return YES;
+    // YES means "used up", which is what stops AppKit inserting a newline --
+    // and for `submitBehavior: 'newline'` on a single-line field there is
+    // nothing to insert anyway, so either answer looks the same.
+    return _manager->handleSubmit(static_cast<facebook::react::Tag>(RnTagOf(control))) ? YES
+                                                                                      : NO;
+  }
+  return NO;
+}
+
+// The same key on the multiline peer, which is an NSTextView and posts through
+// NSTextViewDelegate rather than NSControl's. Without this a `submitBehavior`
+// of `submit` on a multiline field would insert a newline *and* report
+// nothing: the field's own insertion is what has to be refused.
+- (BOOL)textView:(NSTextView *)textView doCommandBySelector:(SEL)selector {
+  if (selector == @selector(insertNewline:) && _manager != nullptr) {
+    return _manager->handleSubmit(static_cast<facebook::react::Tag>(RnTagOf(textView))) ? YES
+                                                                                       : NO;
   }
   return NO;
 }
@@ -353,6 +368,10 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
   // arrives -- which is long after the props do. See `handleFocus`.
   entry.clearTextOnFocus = props->traits.clearTextOnFocus;
   entry.selectTextOnFocus = props->traits.selectTextOnFocus;
+
+  // `submitBehavior`, resolved by React Native rather than here: `Default` is
+  // `newline` for a multiline field and `blurAndSubmit` for a single-line one.
+  entry.submitBehavior = props->getNonDefaultSubmitBehavior();
 
   if (props->placeholder.empty()) {
     RnPeerSetPlaceholder(entry.field, nil);
@@ -574,14 +593,35 @@ void AppKitTextInputManager::handleChanged(Tag tag) {
   }
 }
 
-void AppKitTextInputManager::handleSubmit(Tag tag) {
+bool AppKitTextInputManager::handleSubmit(Tag tag) {
   Entry *entry = entryFor(tag);
   if (entry == nullptr) {
-    return;
+    return false;
+  }
+  // **`submitBehavior` decides what Return does**, already resolved to one of
+  // the three: `newline` inserts one, `submit` reports a submit, and
+  // `blurAndSubmit` reports one and gives up focus. React Native's default is
+  // the last for a single-line field and the first for a multiline one, so a
+  // field that never set the prop behaves as it does on iOS -- where this host
+  // used to keep focus whatever the prop said, because an NSTextField does.
+  if (entry->submitBehavior == facebook::react::SubmitBehavior::Newline) {
+    // Not used up: a multiline peer inserts the newline, and a single-line one
+    // has nowhere to put it and does nothing.
+    return false;
   }
   if (const auto emitter = emitterFor(tag)) {
     emitter->onSubmitEditing(metricsFor(*entry));
   }
+  if (entry->submitBehavior == facebook::react::SubmitBehavior::BlurAndSubmit) {
+    // Handing focus back to the window is the closest thing AppKit has to
+    // "unfocus this", which the `blur` command says at more length. It ends the
+    // edit, so the delegate reports a blur and JavaScript sees onBlur.
+    NSWindow *window = entry->view.window;
+    if (window != nil && window.firstResponder != window) {
+      [window makeFirstResponder:window];
+    }
+  }
+  return true;
 }
 
 void AppKitTextInputManager::handleFocus(Tag tag) {

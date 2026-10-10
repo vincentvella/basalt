@@ -1208,3 +1208,116 @@ TEST(textinput_a_field_that_did_not_ask_keeps_its_context_menu) {
 
   g_object_unref(view);
 }
+
+// --- submitBehavior ----------------------------------------------------------
+//
+// What Enter does. React Native resolves the default itself --
+// `getNonDefaultSubmitBehavior()` answers `blurAndSubmit` for a single-line
+// field and `newline` for a multiline one -- and this host used to leave it to
+// the toolkit instead: GtkText keeps focus on `activate`, so every field
+// behaved as `submit` whatever the prop said.
+//
+// The submit is observable through the recorder; the focus is observable
+// through the widget, but only inside a real window, so these assert the event
+// and the dropped focus is `textinput_submit_behavior_gives_up_focus` below.
+
+TEST(textinput_enter_submits_by_default) {
+  basalt::testing::EventRecorder recorder;
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeRecordedManager(recorder);
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "query")));
+
+  // `activate` is what GtkText emits for Enter, and the signal the manager
+  // connected to: entering through it rather than through a synthesised key is
+  // the honest seam here, a real key needing a window and a display.
+  g_signal_emit_by_name(rn_view_get_editable(view), "activate");
+
+  const auto seen = recorder.seen();
+  EXPECT_EQ(seen.size(), 1U);
+  EXPECT_EQ(seen.empty() ? std::string{} : seen[0], std::string("topSubmitEditing"));
+
+  g_object_unref(view);
+}
+
+TEST(textinput_submit_behavior_newline_reports_nothing) {
+  // `newline` on a single-line field is a newline with nowhere to go, and the
+  // point of the prop is that it does *not* submit: a chat input that inserts
+  // newlines must not send a message on Enter.
+  basalt::testing::EventRecorder recorder;
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeRecordedManager(recorder);
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "query")(
+                                   "submitBehavior", "newline")));
+
+  g_signal_emit_by_name(rn_view_get_editable(view), "activate");
+
+  EXPECT(recorder.seen().empty());
+
+  g_object_unref(view);
+}
+
+TEST(textinput_submit_behavior_submit_keeps_the_focus) {
+  // The distinction the prop exists for: `submit` reports and keeps focus,
+  // `blurAndSubmit` reports and gives it up. Both report, so the event alone
+  // cannot tell them apart -- the focus is what does, and this is the half that
+  // needs a window.
+  basalt::testing::EventRecorder recorder;
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeRecordedManager(recorder);
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "query")(
+                                   "submitBehavior", "submit")));
+
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(view));
+  gtk_widget_grab_focus(rn_view_get_editable(view));
+  EXPECT(gtk_window_get_focus(GTK_WINDOW(window)) != nullptr);
+
+  g_signal_emit_by_name(rn_view_get_editable(view), "activate");
+
+  // The last event, not the only one: focusing the field inside a real window
+  // reports a focus and a selection first, which is the price of needing a
+  // window to ask about focus at all.
+  const auto seen = recorder.seen();
+  EXPECT(!seen.empty());
+  EXPECT_EQ(seen.empty() ? std::string{} : seen.back(), std::string("topSubmitEditing"));
+  // Still focused, which is the whole of `submit`.
+  EXPECT(gtk_window_get_focus(GTK_WINDOW(window)) != nullptr);
+
+  gtk_window_set_child(GTK_WINDOW(window), nullptr);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
+TEST(textinput_submit_behavior_blur_and_submit_gives_up_focus) {
+  basalt::testing::EventRecorder recorder;
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeRecordedManager(recorder);
+  // Named rather than left to the default, so this test says what it is about
+  // -- and `textinput_enter_submits_by_default` is what pins that a field
+  // which named nothing resolves to this.
+  manager.update(view,
+                 makeTextInput(10,
+                               folly::dynamic::object("text", "query")(
+                                   "submitBehavior", "blurAndSubmit")));
+
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(view));
+  gtk_widget_grab_focus(rn_view_get_editable(view));
+  EXPECT(gtk_window_get_focus(GTK_WINDOW(window)) != nullptr);
+
+  g_signal_emit_by_name(rn_view_get_editable(view), "activate");
+
+  // Dropped, not moved: nothing is focused afterwards, which is what `blur`
+  // means everywhere else in this file.
+  EXPECT(gtk_window_get_focus(GTK_WINDOW(window)) == nullptr);
+
+  gtk_window_set_child(GTK_WINDOW(window), nullptr);
+  gtk_window_destroy(GTK_WINDOW(window));
+}

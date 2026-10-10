@@ -134,12 +134,30 @@ class GtkTextInputManager {
     // takes focus, which arrives long after the props do. See onFocusEnter.
     bool clearTextOnFocus{false};
     bool selectTextOnFocus{false};
+
+    // `submitBehavior`, already resolved: React Native's `Default` means
+    // `newline` for a multiline field and `blurAndSubmit` for a single-line
+    // one, and `getNonDefaultSubmitBehavior()` is what says so. Read where
+    // Enter arrives -- `onActivate` for a GtkText, `onKeyPressed` for the
+    // GtkTextView, which inserts the newline itself.
+    facebook::react::SubmitBehavior submitBehavior{
+        facebook::react::SubmitBehavior::BlurAndSubmit};
+
+    bool multiline{false};
   };
 
   // The sender differs by peer -- the widget for a GtkText, the buffer for a
   // GtkTextView -- so it arrives untyped and goes unused.
   static void onChanged(GObject *source, gpointer userData);
   static void onActivate(GtkText *editable, gpointer userData);
+  // What Enter does, which `submitBehavior` decides: report a submit, report
+  // one and give up focus, or insert a newline. Shared by the two peers'
+  // different routes to the same key.
+  void handleSubmitKey(Entry &entry);
+  // Focus dropped rather than moved, which is what `blur` means everywhere
+  // else; the `blur` command says why at more length. Used by that command and
+  // by `submitBehavior`'s `blurAndSubmit`.
+  static void dropFocus(Entry &entry);
   static gboolean onKeyPressed(GtkEventControllerKey *controller,
                                guint keyval,
                                guint keycode,

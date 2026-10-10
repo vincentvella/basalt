@@ -229,6 +229,13 @@ class Win32TextInputManager {
     // The placeholder itself, held because with a colour this host draws it
     // rather than handing it to `EM_SETCUEBANNER`, which has no colour.
     std::wstring placeholder;
+    // `submitBehavior`, already resolved: React Native's `Default` means
+    // `newline` for a multiline field and `blurAndSubmit` for a single-line
+    // one, and `getNonDefaultSubmitBehavior()` is what says so. Read in the
+    // subclass, where Enter arrives.
+    facebook::react::SubmitBehavior submitBehavior{
+        facebook::react::SubmitBehavior::BlurAndSubmit};
+
     // `contextMenuHidden`. Read by the subclass, which swallows WM_CONTEXTMENU.
     bool contextMenuHidden{false};
 
@@ -309,6 +316,11 @@ class Win32TextInputManager {
   // anything else still chains correctly.
   static LRESULT CALLBACK
   editProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR id, DWORD_PTR data);
+
+  // Focus back to the host window, which is this platform's "nothing is
+  // focused": see the `blur` command, which says why. Used by that command and
+  // by `submitBehavior`'s `blurAndSubmit`.
+  void moveFocusToHost();
 
   void reportChange(Entry &entry);
   facebook::react::TextInputEventEmitter::Metrics metricsFor(const Entry &entry) const;

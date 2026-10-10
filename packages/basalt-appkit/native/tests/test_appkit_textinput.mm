@@ -1371,3 +1371,135 @@ TEST(textinput_a_single_line_field_carries_the_prop_it_cannot_act_on) {
     manager.destroySurfaceRoot(kSurfaceId);
   }
 }
+
+// --- submitBehavior ----------------------------------------------------------
+//
+// What Return does. React Native resolves the default itself --
+// `getNonDefaultSubmitBehavior()` answers `blurAndSubmit` for a single-line
+// field and `newline` for a multiline one -- and this host used to leave it to
+// AppKit instead: an NSTextField keeps focus on Return, so every field behaved
+// as `submit` whatever the prop said.
+//
+// Entered through the delegate callback AppKit uses, which is the seam the
+// manager is wired to: a real Return needs a window, a key window and a run
+// loop, and what it would reach is this method.
+namespace {
+
+// Return, as AppKit delivers it to a single-line field's delegate. Answers
+// whether the key was used up, which is what tells AppKit to insert nothing.
+bool pressReturn(basalt::AppKitMountingManager &manager, NSView *field) {
+  id<NSTextFieldDelegate> delegate = ((NSTextField *)field).delegate;
+  (void)manager;
+  // The field editor is the `textView` AppKit passes, and the manager ignores
+  // it -- which the cast here makes explicit rather than passing nil, since the
+  // parameter is declared non-null.
+  NSTextView *editor = (NSTextView *)((NSTextField *)field).currentEditor;
+  if (editor == nil) {
+    editor = [[NSTextView alloc] initWithFrame:NSZeroRect];
+  }
+  return [delegate control:(NSControl *)field
+                        textView:editor
+             doCommandBySelector:@selector(insertNewline:)] == YES;
+}
+
+} // namespace
+
+TEST(textinput_return_submits_by_default) {
+  @autoreleasepool {
+    basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager,
+                                    90,
+                                    folly::dynamic::object("text", "query"),
+                                    recorder.emitter<TextInputEventEmitter>());
+
+    EXPECT(pressReturn(manager, fieldOf(view)));
+
+    const auto seen = recorder.seen();
+    EXPECT(!seen.empty());
+    EXPECT_EQ(seen.empty() ? std::string{} : seen.front(), std::string{"topSubmitEditing"});
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_submit_behavior_newline_reports_nothing) {
+  @autoreleasepool {
+    // The point of the prop: a chat input that inserts newlines must not send a
+    // message on Return. And the key is *not* used up, which is what lets a
+    // multiline field insert the newline itself.
+    basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager,
+                   91,
+                   folly::dynamic::object("text", "query")("submitBehavior", "newline"),
+                   recorder.emitter<TextInputEventEmitter>());
+
+    EXPECT(!pressReturn(manager, fieldOf(view)));
+    EXPECT(recorder.seen().empty());
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_submit_behavior_submit_reports_and_stays) {
+  @autoreleasepool {
+    basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager,
+                   92,
+                   folly::dynamic::object("text", "query")("submitBehavior", "submit"),
+                   recorder.emitter<TextInputEventEmitter>());
+
+    EXPECT(pressReturn(manager, fieldOf(view)));
+
+    // One event and no blur: `submit` is the half of the prop that keeps focus,
+    // and a blur would arrive as `topBlur` and `topEndEditing` through the
+    // delegate -- which is what the `blurAndSubmit` test below sees.
+    const auto seen = recorder.seen();
+    EXPECT_EQ(seen.size(), 1u);
+    EXPECT_EQ(seen.empty() ? std::string{} : seen[0], std::string{"topSubmitEditing"});
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_submit_behavior_blur_and_submit_gives_up_focus) {
+  @autoreleasepool {
+    // A real window, because giving up focus is a window's business: the field
+    // is made first responder and the key is what has to take that away.
+    basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager,
+                   93,
+                   folly::dynamic::object("text", "query")("submitBehavior", "blurAndSubmit"),
+                   recorder.emitter<TextInputEventEmitter>());
+
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                  styleMask:NSWindowStyleMaskTitled
+                                                    backing:NSBackingStoreBuffered
+                                                      defer:NO];
+    [window.contentView addSubview:view];
+    [window makeKeyAndOrderFront:nil];
+    NSView *field = fieldOf(view);
+    [window makeFirstResponder:field];
+    EXPECT(window.firstResponder != window);
+
+    EXPECT(pressReturn(manager, field));
+
+    // Focus handed back to the window, which is this host's "nothing is
+    // focused" -- the same move the `blur` command makes.
+    EXPECT(window.firstResponder == window);
+
+    // Among the events rather than the first: making the field first
+    // responder in a real window reports a focus and a selection on the way,
+    // which is the price of needing a window to ask about focus at all.
+    const auto seen = recorder.seen();
+    EXPECT(std::find(seen.begin(), seen.end(), std::string{"topSubmitEditing"}) != seen.end());
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}

@@ -339,6 +339,11 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
   entry.clearTextOnFocus = props->traits.clearTextOnFocus;
   entry.selectTextOnFocus = props->traits.selectTextOnFocus;
 
+  // `submitBehavior`, resolved by React Native rather than here: `Default` is
+  // `newline` for a multiline field and `blurAndSubmit` for a single-line one.
+  entry.submitBehavior = props->getNonDefaultSubmitBehavior();
+  entry.multiline = props->multiline;
+
   rn_peer_set_max_length(
       entry.editable,
       (props->maxLength > 0 && props->maxLength < 1000000) ? props->maxLength : 0);
@@ -492,12 +497,43 @@ void GtkTextInputManager::onChanged(GObject * /*source*/, gpointer userData) {
 
 void GtkTextInputManager::onActivate(GtkText * /*editable*/, gpointer userData) {
   auto *entry = static_cast<Entry *>(userData);
-  const auto emitter = entry->owner->emitterFor(entry->tag);
-  if (emitter != nullptr) {
-    // Enter. React Native calls this submitEditing, and follows it with
-    // endEditing on platforms where the field also gives up focus; GtkText
-    // keeps focus on activate, so only the submit is reported.
-    emitter->onSubmitEditing(entry->owner->metricsFor(*entry));
+  if (entry == nullptr || entry->owner == nullptr) {
+    return;
+  }
+  // Enter in a single-line field. GtkText keeps focus on activate, so whether
+  // the field gives it up is `submitBehavior`'s to say rather than the
+  // toolkit's -- which is what this used to leave to the toolkit.
+  entry->owner->handleSubmitKey(*entry);
+}
+
+void GtkTextInputManager::dropFocus(Entry &entry) {
+  if (entry.editable == nullptr) {
+    return;
+  }
+  GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(entry.editable));
+  if (GTK_IS_WINDOW(root)) {
+    gtk_window_set_focus(GTK_WINDOW(root), nullptr);
+  } else if (root != nullptr) {
+    // Not in a window: a surface root during a test, or a widget not yet shown.
+    // Moving focus to the root is the only thing left.
+    gtk_widget_grab_focus(GTK_WIDGET(root));
+  }
+}
+
+void GtkTextInputManager::handleSubmitKey(Entry &entry) {
+  // **`submitBehavior` decides what Enter does**, already resolved to one of the
+  // three: `newline` inserts one, `submit` reports a submit, and
+  // `blurAndSubmit` reports one and gives up focus. React Native's default is
+  // the last for a single-line field and the first for a multiline one, so a
+  // field that never set the prop behaves as it does on iOS.
+  if (entry.submitBehavior == facebook::react::SubmitBehavior::Newline) {
+    return;
+  }
+  if (const auto emitter = emitterFor(entry.tag)) {
+    emitter->onSubmitEditing(metricsFor(entry));
+  }
+  if (entry.submitBehavior == facebook::react::SubmitBehavior::BlurAndSubmit) {
+    dropFocus(entry);
   }
 }
 
@@ -544,8 +580,18 @@ gboolean GtkTextInputManager::onKeyPressed(GtkEventControllerKey * /*controller*
     emitter->onKeyPress(metrics);
   }
 
-  // Never handled here: this observes the key on its way to GtkText, which
-  // still has to do the editing.
+  // Enter in a *multiline* field, which is the one case this controller has to
+  // act on rather than observe: a GtkTextView inserts the newline itself, so
+  // `submit` and `blurAndSubmit` have to stop the key here. A GtkText reaches
+  // the same code through `activate`, which is a signal rather than a key.
+  if (key == "Enter" && entry->multiline
+      && entry->submitBehavior != facebook::react::SubmitBehavior::Newline) {
+    entry->owner->handleSubmitKey(*entry);
+    return GDK_EVENT_STOP;
+  }
+
+  // Otherwise never handled here: this observes the key on its way to the peer,
+  // which still has to do the editing.
   return GDK_EVENT_PROPAGATE;
 }
 
@@ -675,14 +721,7 @@ bool GtkTextInputManager::dispatchCommand(Tag tag,
     //
     // Either way the focus controller reports a leave, so JavaScript sees onBlur,
     // which is why the old behaviour looked right from the app's side.
-    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(entry.editable));
-    if (GTK_IS_WINDOW(root)) {
-      gtk_window_set_focus(GTK_WINDOW(root), nullptr);
-    } else if (root != nullptr) {
-      // Not in a window: a surface root during a test, or a widget not yet shown.
-      // Moving focus to the root is the old behaviour and the only thing left.
-      gtk_widget_grab_focus(GTK_WIDGET(root));
-    }
+    dropFocus(entry);
     return true;
   }
 
