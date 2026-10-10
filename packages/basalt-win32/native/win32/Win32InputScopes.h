@@ -18,14 +18,21 @@
 //
 // `IS_DEFAULT` means "no particular kind", which is what an unmapped keyboard
 // type and the default one both are.
+//
+// ## Why the call is looked up rather than linked
+//
+// `SetInputScope` lives in msctf.dll and the Windows SDK ships no `msctf.lib`
+// to import it from -- measured, by a linker that could not open one. So it is
+// resolved once with `GetProcAddress`, which is what Windows code generally
+// does with this function and has the useful property that a system without it
+// simply gets no scope rather than failing to start.
 
 #pragma once
 
 #include <windows.h>
 
-// `SetInputScope` and the `IS_` family. Its own header rather than part of
-// windows.h, and it is the text-services one: the function lives in msctf and
-// needs InputScope.h for the enum.
+// The `IS_` family. Its own header rather than part of windows.h: input scopes
+// belong to text services.
 #include <inputscope.h>
 
 #include <string>
@@ -61,6 +68,25 @@ inline InputScope inputScopeForKeyboardType(const std::string &name) {
   // `default`, `ascii-capable`, `twitter`, `visible-password` and anything a
   // future React Native adds: ordinary text.
   return IS_DEFAULT;
+}
+
+// Tells `control` what kind of text it holds. Does nothing when the system has
+// no `SetInputScope`, which no supported Windows is missing but a linker cannot
+// promise.
+inline void applyInputScope(HWND control, InputScope scope) {
+  using SetInputScopeFn = HRESULT(WINAPI *)(HWND, InputScope);
+  // Resolved once. The module is deliberately not freed: msctf is loaded in
+  // every process with text services in it, and releasing a handle this did not
+  // really acquire is worse than keeping one.
+  static const SetInputScopeFn setInputScope = [] {
+    const HMODULE module = LoadLibraryW(L"msctf.dll");
+    return module == nullptr
+        ? nullptr
+        : reinterpret_cast<SetInputScopeFn>(GetProcAddress(module, "SetInputScope"));
+  }();
+  if (setInputScope != nullptr && control != nullptr) {
+    setInputScope(control, scope);
+  }
 }
 
 } // namespace basalt::win32

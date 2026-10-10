@@ -493,7 +493,7 @@ void Win32TextInputManager::applyTextChecking(Entry &entry, const TextInputProps
   if (!entry.sawInputScope || scope != entry.inputScope) {
     entry.sawInputScope = true;
     entry.inputScope = scope;
-    SetInputScope(entry.control, scope);
+    win32::applyInputScope(entry.control, scope);
   }
 
   // And the one style bit, applied the way the alignment above is.

@@ -173,7 +173,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   has, and the support page says which. `keyboardType` becomes an *input
   scope*: `SetInputScope` is the Windows equivalent of GTK's input purpose, read
   by the touch keyboard and by any text-services IME, so an `email-address`
-  field gets the keyboard with the @ on it. `autoCapitalize` becomes
+  field gets the keyboard with the @ on it. The call is resolved with
+  `GetProcAddress` rather than linked, because the Windows SDK ships no
+  `msctf.lib` to import it from -- measured by a linker that could not open
+  one -- which also means a system without the export gets no scope rather than
+  failing to start. `autoCapitalize` becomes
   `ES_UPPERCASE` and only for `characters`, which that style does exactly;
   `words` and `sentences` need to know where a word or a sentence begins, which
   an `EDIT` does not, and upper-casing everything for `sentences` would be worse
