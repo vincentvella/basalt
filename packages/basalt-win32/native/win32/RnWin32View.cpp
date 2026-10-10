@@ -9,6 +9,9 @@
 #include "Win32Clip.h"
 #include "Win32Strings.h"
 
+// Which frame an animated image is showing, shared with the other two hosts.
+#include "ImageAnimation.h"
+
 // Before d2d1.h, which wants the base Windows types and does not pull them in
 // itself. NOMINMAX and WIN32_LEAN_AND_MEAN come from the package's CMakeLists;
 // without the first, windows.h defines `min` and `max` as macros and breaks
@@ -25,6 +28,7 @@
 #include <chrono>
 #include <utility>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 
 using Microsoft::WRL::ComPtr;
@@ -324,8 +328,79 @@ void RnWin32View::setImageBlur(float radius) {
 }
 
 void RnWin32View::setImage(std::shared_ptr<RnWin32Image> image, RnImageFit fit) {
-  image_ = std::move(image);
   imageFit_ = fit;
+  // An animation owns `image_`, and the mounting manager re-applies the first
+  // frame on every mutation that touched this view, a layout-only one included.
+  // Taking it would restart the GIF on every resize, so the fit is all that is
+  // taken here.
+  if (imageFrames_.size() > 1 && image == imageFrames_.front()) {
+    return;
+  }
+  image_ = std::move(image);
+}
+
+void RnWin32View::setImageFrames(std::vector<std::shared_ptr<RnWin32Image>> frames,
+                                 std::vector<unsigned> delaysMs,
+                                 unsigned loopCount) {
+  const bool same = frames.size() == imageFrames_.size() && !frames.empty()
+      && frames.front() == imageFrames_.front() && loopCount == imageLoopCount_;
+  if (same) {
+    // The same animation again, which is what a layout-only mutation produces:
+    // the loader hands back the vector it cached, so this compares the first
+    // frame and keeps the animation's place rather than starting over.
+    return;
+  }
+
+  imageFrames_ = std::move(frames);
+  imageDelays_ = std::move(delaysMs);
+  imageLoopCount_ = loopCount;
+  imageFrame_ = 0;
+  imageElapsedMs_ = 0.0;
+  if (imageFrames_.size() < 2 || imageDelays_.size() != imageFrames_.size()) {
+    imageFrames_.clear();
+    imageDelays_.clear();
+    return;
+  }
+  image_ = imageFrames_.front();
+}
+
+double RnWin32View::advanceImageAnimation(double milliseconds) {
+  if (imageFrames_.size() < 2) {
+    return 0.0;
+  }
+  if (milliseconds > 0.0) {
+    imageElapsedMs_ += milliseconds;
+  }
+
+  const basalt::ImageAnimationStep step = basalt::imageAnimationStep(
+      imageDelays_, imageLoopCount_, static_cast<std::uint64_t>(imageElapsedMs_));
+  if (step.frame != imageFrame_ && step.frame < imageFrames_.size()) {
+    imageFrame_ = step.frame;
+    image_ = imageFrames_[step.frame];
+  }
+  return step.nextInMs;
+}
+
+bool RnWin32View::advanceImageAnimations(double milliseconds) {
+  bool animating = advanceImageAnimation(milliseconds) > 0.0;
+  for (RnWin32View *child : children_) {
+    if (child != nullptr && child->advanceImageAnimations(milliseconds)) {
+      animating = true;
+    }
+  }
+  return animating;
+}
+
+bool RnWin32View::hasAnimatedImage() const {
+  if (imageFrames_.size() > 1) {
+    return true;
+  }
+  for (const RnWin32View *child : children_) {
+    if (child != nullptr && child->hasAnimatedImage()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void RnWin32View::setPainter(std::shared_ptr<RnWin32Painter> painter) {
@@ -693,21 +768,6 @@ void RnWin32View::setOutline(float width,
   outlineStyle_ = style;
 }
 
-// CSS's outline, outside the box and over everything.
-//
-// **Nothing clips it, and that is the decision rather than an oversight.** CSS
-// does not clip an element's own outline for `overflow: hidden`, so a ring
-// drawn inside the clip would vanish on exactly the views that most often carry
-// one. Here that is free: `paintChildren` scopes its own clip, so by the time
-// this runs the clip is already popped. GTK gets it the same way, by appending
-// after the children; AppKit has to move the ring into the parent's layer.
-//
-// Stroked rather than filled like the border, for the two reasons
-// backlog/correctness.md records: a stroke takes a dash pattern, so dotted and
-// dashed need no second mechanism, and it takes an arbitrary path, so
-// elliptical radii need no special case. A stroke straddles its path, so the
-// path is the ring's centre line: offset plus half the width out from the
-// border edge, which is where the other two hosts put theirs.
 void RnWin32View::setFilters(const Filters &filters) {
   filters_ = filters;
 }
@@ -829,6 +889,21 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
   context->DrawImage(source.Get(), D2D1::Point2F(0.0f, 0.0f));
 }
 
+// CSS's outline, outside the box and over everything.
+//
+// **Nothing clips it, and that is the decision rather than an oversight.** CSS
+// does not clip an element's own outline for `overflow: hidden`, so a ring
+// drawn inside the clip would vanish on exactly the views that most often carry
+// one. Here that is free: `paintChildren` scopes its own clip, so by the time
+// this runs the clip is already popped. GTK gets it the same way, by appending
+// after the children; AppKit has to move the ring into the parent's layer.
+//
+// Stroked rather than filled like the border, for the two reasons
+// backlog/correctness.md records: a stroke takes a dash pattern, so dotted and
+// dashed need no second mechanism, and it takes an arbitrary path, so
+// elliptical radii need no special case. A stroke straddles its path, so the
+// path is the ring's centre line: offset plus half the width out from the
+// border edge, which is where the other two hosts put theirs.
 void RnWin32View::paintOutline(ID2D1RenderTarget *target) const {
   if (outlineWidth_ <= 0.0f || outlineColour_[3] <= 0.0f) {
     return;
@@ -1532,6 +1607,14 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
     // every other field of this dump and different on screen.
     appendFormat(out, " texture=%ux%u", image_->width(), image_->height());
     appendFormat(out, " fit=%s", imageFitName(imageFit_));
+    // That this image moves, which no other line can show: an animated GIF and
+    // its first frame are the same size and the same picture in a snapshot. Not
+    // which frame, deliberately: the three hosts tick on their own clocks, so a
+    // cross-host diff of that would be a race, and each suite asserts the
+    // frames itself.
+    if (imageFrames_.size() > 1) {
+      out += " animated=1";
+    }
     // And the blur, spelled as the other two hosts spell it. Invisible in this
     // dump otherwise: a blurred image has the same frame, the same texture and
     // the same fit as a sharp one.

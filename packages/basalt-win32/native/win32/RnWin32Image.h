@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 struct ID2D1RenderTarget;
 struct IWICBitmap;
@@ -37,6 +38,27 @@ enum class RnImageFit {
 
 const char *imageFitName(RnImageFit fit);
 
+class RnWin32Image;
+
+// Every frame of an animated image, with the delay each is shown for and how
+// many times round.
+//
+// The frames are composited: a GIF's frames are often smaller than its canvas
+// and carry a disposal method, where ImageIO and gdk-pixbuf hand over whole
+// frames, so this host does that work itself and hands over whole frames too.
+// The delays are the file's own, unclamped, because `core/ImageAnimation.h`
+// owns the clamp for all three hosts.
+struct RnWin32ImageFrames {
+  std::vector<std::shared_ptr<RnWin32Image>> frames;
+  std::vector<unsigned> delaysMs;
+  // Zero is forever, which is what a looping GIF's NETSCAPE2.0 extension says.
+  // A file with no extension at all plays once, which is what ImageIO reports
+  // for the same bytes and what the other two hosts do.
+  unsigned loopCount = 1;
+
+  bool animated() const { return frames.size() > 1 && delaysMs.size() == frames.size(); }
+};
+
 class RnWin32Image {
  public:
   // Straight from pixels, premultiplied BGRA with a stride of width * 4. What
@@ -47,6 +69,12 @@ class RnWin32Image {
   // Decodes PNG, JPEG, GIF, BMP, TIFF and anything else WIC has a codec for.
   // Null if the bytes are not an image WIC understands.
   static std::shared_ptr<RnWin32Image> fromEncodedBytes(const uint8_t *data, size_t size);
+
+  // The same bytes as an animation, or an empty result for a file with one
+  // frame. Decoded separately from `fromEncodedBytes` and not instead of it:
+  // every still image goes through that one, and a second decode costs only
+  // the frames a still image does not have.
+  static RnWin32ImageFrames framesFromEncodedBytes(const uint8_t *data, size_t size);
 
   ~RnWin32Image();
 

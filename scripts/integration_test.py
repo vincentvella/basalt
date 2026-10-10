@@ -3983,25 +3983,18 @@ def test_hit_slop(bundle: Path) -> None:
 def test_animated_image(bundle: Path) -> None:
     """An animated GIF is animated rather than painted as a still.
 
-    Both hosts decoded frame zero and stopped, which is a reasonable thing to do
+    Every host decoded frame zero and stopped, which is a reasonable thing to do
     until there is an animator and was still what every spinner and every
     reaction GIF looked like. Each host's own suite asserts the frames against
     real pixels, red then blue then red; what only an app can show is that the
     props path recognises the file at all, since being animated is something the
     *loader* notices and the mounting manager has to pass on.
 
-    `animated=1` rather than which frame: the two hosts tick on their own
+    `animated=1` rather than which frame: the three hosts tick on their own
     clocks, so a cross-host diff of a frame index would be a race. Exactly one
     image in e2e/image.tsx is animated, so a host that claimed it for every
     <Image> would fail here rather than pass twice over.
-
-    Windows has no animator: WIC decodes one frame through
-    `IWICBitmapDecoder::GetFrame`, and docs/backlog/platform-windows.md names
-    the calls the rest would take. Skipped by name there.
     """
-    if PLATFORM == "windows":
-        raise Skipped("the Win32 host decodes one frame; see backlog/platform-windows.md")
-
     app = bundle_app(bundle.parent, "image")
 
     env = dict(os.environ)

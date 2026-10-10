@@ -577,18 +577,35 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   // every unit test still passed; see the scenario that caught it.
   view->setImageBlur(static_cast<float>(props->blurRadius));
 
+  // The frames of an animated image, asked of the loader rather than carried in
+  // the load callback: being animated is a property of the file, and the
+  // callback's job is the pixels. Applied on every mutation like the fit, and
+  // the view compares the first frame so a re-apply does not restart it.
+  const auto applyAnimation = [this](RnWin32View *target, const std::string &forUri) {
+    if (target == nullptr) {
+      return;
+    }
+    win32::RnWin32ImageFrames frames = forUri.empty()
+        ? win32::RnWin32ImageFrames{}
+        : imageLoader_->animation(forUri);
+    target->setImageFrames(
+        std::move(frames.frames), std::move(frames.delaysMs), frames.loopCount);
+  };
+
   // A mutation that changed only layout must not restart the load, or an
   // <Image> flickers whenever its parent resizes. The fit is applied every time
   // regardless, because changing it is cheap and does not touch the pixels.
   const auto previous = imageUris_.find(shadowView.tag);
   if (previous != imageUris_.end() && previous->second == uri) {
     view->setImage(view->image(), fit);
+    applyAnimation(view, uri);
     return;
   }
   imageUris_[shadowView.tag] = uri;
 
   if (uri.empty()) {
     view->setImage(nullptr, fit);
+    applyAnimation(view, uri);
     return;
   }
 
@@ -608,8 +625,9 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   // loader is a member and cannot outlive the manager -- and the loader itself
   // guards the case where the manager goes first.
   const Tag tag = shadowView.tag;
-  imageLoader_->load(uri, [this, tag, uri, fit](std::shared_ptr<win32::RnWin32Image> image,
-                                               const std::string &error) {
+  imageLoader_->load(uri, [this, tag, uri, fit, applyAnimation](
+                              std::shared_ptr<win32::RnWin32Image> image,
+                              const std::string &error) {
     (void)error;
     RnWin32View *target = viewForTag(tag);
     if (target == nullptr) {
@@ -624,6 +642,16 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
       return;
     }
     target->setImage(std::move(image), fit);
+    applyAnimation(target, uri);
+    // The screen is stale and no transaction is coming: the bytes arrived on
+    // their own clock, after the mount that asked for them. On GTK and AppKit
+    // the view is a widget and queues its own draw; here only the host has the
+    // HWND, and `onDidMount_` is the way to say so -- which also starts the
+    // animation timer, without which an animated GIF would hold its frames and
+    // never advance.
+    if (onDidMount_) {
+      onDidMount_();
+    }
   });
 }
 

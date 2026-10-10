@@ -61,6 +61,18 @@ class Win32ImageLoader : public facebook::react::IImageLoader {
 
   void load(const std::string &uri, Callback callback);
 
+  // The frames of an animated image, or an empty result.
+  //
+  // Separate from `load` because being animated is a property of the file
+  // rather than of the request: `load` answers with the first frame, which is
+  // what a still <Image> paints and what an animated one starts on, and this
+  // says whether there is more. Both come out of the same decode.
+  //
+  // The frames are the loader's and are the same objects each time, which is
+  // what lets a view tell a re-mount from a new animation. Good until the next
+  // load, since an eviction can take them away.
+  RnWin32ImageFrames animation(const std::string &uri);
+
   // --- IImageLoader ----------------------------------------------------------
   //
   // The same decode as `load`, reporting the size rather than the pixels. It
@@ -89,6 +101,12 @@ class Win32ImageLoader : public facebook::react::IImageLoader {
     // braces, and it costs a hash lookup's worth of nothing.
     std::mutex mutex;
     std::unordered_map<std::string, std::shared_ptr<RnWin32Image>> cache;
+    // Only the files that turned out to have more than one frame, so a still
+    // image costs nothing. Keyed by the same URI and dropped by the same
+    // eviction, and accounted for by the same policy: every frame is a decoded
+    // bitmap, and counting one of sixty would let the cache hold far more than
+    // it was told to.
+    std::unordered_map<std::string, RnWin32ImageFrames> animations;
     // Which URI goes next, and when. Shared with the other two hosts; the
     // images are this loader's. See core/ImageCache.h. Guarded by the mutex
     // beside it, like the cache it decides for.

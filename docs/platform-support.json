@@ -2068,11 +2068,7 @@
           "feature": "Animated images",
           "linux": "yes",
           "macos": "yes",
-          "windows": "no",
-          "why": {
-            "text": "WIC decodes one frame; the calls for the rest are named",
-            "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-          }
+          "windows": "yes"
         }
       ]
     }

@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (13):**
+**Open (12):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -26,7 +26,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 19. ~~No text decoration~~, except the styles DirectWrite has no form of
 20. ~~`fontVariant` and a fragment's `opacity` are not read~~
 21. ~~`writingDirection` is not read~~, and `start` and `end` are relative here
-22. An animated GIF is painted as a still
+22. ~~An animated GIF is painted as a still~~
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -544,28 +544,52 @@ and none of it is a missing half.
   that is no shadow, and the dump. The end-to-end scenario now reads
   `text-shadow=(2,3,4,#4d8cf2ff)` on all three hosts.
 
-- **An animated GIF is painted as a still.** The other two hosts play one as of
-  2026-10-09: the frames and their delays come from each platform's decoder and
-  the pacing is shared, in `core/ImageAnimation.h`, which clamps a delay of 10ms
-  or less to 100 the way every browser does and answers which frame an elapsed
-  time lands on. So the arithmetic and the policy are already here; what is
-  missing is the decode and a timer.
+- ~~**An animated GIF is painted as a still.**~~ It plays as of 2026-10-09, so
+  all three hosts animate one, and the pacing is `core/ImageAnimation.h`'s on
+  every one of them: a delay of 10ms or less becomes 100 the way every browser
+  does, and `imageAnimationStep` answers which frame an elapsed time lands on.
+  What this host added is the decode, which WIC does not do by itself, and a
+  clock.
 
-  `RnWin32Image` decodes through WIC, and the frames are a few calls away:
-  `IWICBitmapDecoder::GetFrameCount` says how many,
-  `IWICBitmapDecoder::GetFrame(i)` hands over each one, and
-  `IWICBitmapFrameDecode::GetMetadataQueryReader` plus
-  `GetMetadataByName(L"/grctlext/Delay")` is the per-frame delay in hundredths
-  of a second. The loop count is on the decoder's own reader, under
-  `/appext/application` and `/appext/data` for the NETSCAPE2.0 extension. A GIF
-  whose frames are smaller than the canvas needs the disposal method
-  (`/grctlext/Disposal`) and a composite onto a persistent surface, which is
-  the part ImageIO and gdk-pixbuf both do invisibly and WIC does not.
+  **The decode is `RnWin32Image::framesFromEncodedBytes`**, a second decode
+  beside `fromEncodedBytes` rather than a replacement for it: every still
+  `<Image>` goes through that one and must not change, and a file with one frame
+  costs this one a header read. `GetFrameCount` says how many, `GetFrame(i)`
+  hands over each, and each frame's `GetMetadataQueryReader` answers
+  `/grctlext/Delay` in hundredths of a second and `/grctlext/Disposal`. The loop
+  count is the decoder's own reader, `/appext/application` plus `/appext/data`
+  for the NETSCAPE2.0 extension; a file with no extension at all plays once,
+  which is what ImageIO reports for the same bytes.
 
-  The timer is the other half, and this host already has the shape of it: the
-  choreographer is a 16ms timer (entry 5), so a frame due in 80ms is a counter
-  rather than a new mechanism. The view would hold the frames and ask
-  `imageAnimationStep` on each tick, which is what `RnAppKitView` does.
+  **The compositing is the part the other two decoders do invisibly.** A GIF
+  frame is only the rectangle that changed, at `/imgdesc/Left` and
+  `/imgdesc/Top` inside the logical screen `/logscrdesc/Width` and
+  `/logscrdesc/Height` give, and its transparent pixels mean "leave what is
+  under them". So the frames are built onto a persistent canvas, with disposal 2
+  clearing that frame's rectangle afterwards and disposal 3 putting back what
+  was there before. Each composited canvas becomes one `RnWin32Image`, which is
+  why a frame is the size of the screen rather than of the rectangle.
 
-  The end-to-end scenario is skipped here by name, and each of the other two
-  hosts asserts its own frames against real pixels.
+  **The clock is the host's, and the window's own timer rather than the
+  choreographer's.** `main_win32.cpp` already started and stopped a 16ms timer
+  for an `<ActivityIndicator>`, for the reason entry 5 gives about not waking a
+  laptop sixty times a second forever; that timer now also runs when
+  `hasAnimatedImage()` and advances every animated image by a measured delta
+  before invalidating. Measured rather than counted, because a GIF's delays are
+  hundredths of a second and the tick is 16ms, so counting ticks would quantise
+  every delay and a busy process would run the animation slow.
+
+  The loader keeps the frames, asked for separately through
+  `Win32ImageLoader::animation(uri)` rather than carried in the load callback:
+  being animated is a property of the file and the callback's job is the pixels.
+  Every frame counts against `core/ImageCache.h`'s budget, since every frame is
+  a held bitmap, and an eviction drops the frames with the still image.
+
+  Nine tests, against pixels rather than against the frame index: the frames
+  decode with the file's own delays, red then blue then red as it is advanced,
+  what is left until the next frame, a GIF that asks for no delay paced at 100
+  (and the raw delay read as zero, which is what says the clamp is doing it here
+  rather than WIC), the dump line, a re-apply of the props keeping the
+  animation's place, a file that does not loop stopping on its last frame, a
+  still PNG that is not an animation, and the loader handing back the same
+  frames twice. The end-to-end scenario runs on all three hosts now.

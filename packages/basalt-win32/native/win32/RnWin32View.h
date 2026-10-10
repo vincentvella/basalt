@@ -340,6 +340,28 @@ class RnWin32View {
   // other two hosts measured. Zero or less is no blur.
   void setImageBlur(float radius);
   float imageBlur() const { return imageBlur_; }
+
+  // The frames of an animated image, their delays as the file carried them,
+  // and how many times round. Fewer than two frames clears any animation.
+  //
+  // The view shows frame zero and advances no further by itself: the host's
+  // timer calls `advanceImageAnimations` on the tree, which is what keeps a
+  // test about frames deterministic. Both other hosts are split the same way.
+  //
+  // Passing the same frames again is a no-op, so the re-apply on every
+  // mutation does not restart the animation; the loader keeps one vector per
+  // URI for exactly that.
+  void setImageFrames(std::vector<std::shared_ptr<RnWin32Image>> frames,
+                      std::vector<unsigned> delaysMs,
+                      unsigned loopCount);
+  // Moves this view's animation on and shows the frame that lands on,
+  // answering with how long until the next one, or zero when nothing more is
+  // due.
+  double advanceImageAnimation(double milliseconds);
+  // The same for this view and everything inside it, which is what the host
+  // calls. Answers true while anything is still animating.
+  bool advanceImageAnimations(double milliseconds);
+  bool hasAnimatedImage() const;
   const std::shared_ptr<RnWin32Image> &image() const { return image_; }
   RnImageFit imageFit() const { return imageFit_; }
 
@@ -569,6 +591,13 @@ class RnWin32View {
   bool hasImageTint_ = false;
   float imageTint_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   float imageBlur_ = 0.0f;
+  // An animated image. `image_` is whichever frame is showing, so everything
+  // that draws an image stays unchanged.
+  std::vector<std::shared_ptr<RnWin32Image>> imageFrames_;
+  std::vector<unsigned> imageDelays_;
+  unsigned imageLoopCount_ = 0;
+  size_t imageFrame_ = 0;
+  double imageElapsedMs_ = 0.0;
   Filters filters_;
   RnAccessibleInfo accessible_;
   bool hasTransform_ = false;

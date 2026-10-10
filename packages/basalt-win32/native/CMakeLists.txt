@@ -357,6 +357,11 @@ if(TARGET basalt_core)
     # The image loader: the cache, the failure paths, and the two lifetimes.
     # In the RN-dependent set because the fetch is core/ImageBytes.cpp.
     tests/test_win32_imageloader.cpp
+    # Animated GIFs: the frames WIC decodes and the pacing core shares. Here
+    # for the same reason as the loader's own tests -- the fixtures are `data:`
+    # URIs, read by core/ImageBytes.cpp -- even though most of the file is the
+    # view layer's.
+    tests/test_win32_animated_image.cpp
     # The touch state machine and the gesture handover, asking what
     # tests/test_appkit_input.mm asks of AppKit.
     tests/test_win32_input.cpp

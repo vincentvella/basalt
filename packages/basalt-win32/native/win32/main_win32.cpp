@@ -118,6 +118,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cwchar>
@@ -361,53 +362,87 @@ void requestRepaint() {
   }
 }
 
-// After every transaction, and after every scroll. Both move views, and a
-// <TextInput>'s peer is a child window that does not move with one: nothing in
-// the view tree owns an HWND, so its placement is recomputed from the tree
-// rather than following it. GTK and AppKit need no equivalent, because there a
-// text field is a widget inside the widget that is the view.
-// Whether the window has to keep repainting because a spinner is turning, and
-// the timer that makes it.
+// Whether the window has to keep repainting because something in it moves by
+// itself, and the timer that makes it.
 //
-// An <ActivityIndicator> is painted here rather than mounted -- Windows has no
-// spinner control; see RnWin32View.h -- so nothing invalidates the window
-// between mounts, and without this a spinner is a still picture. GtkSpinner and
-// NSProgressIndicator each drive their own redraw, which is why neither other
-// host needs an equivalent.
+// Two things do. An <ActivityIndicator> is painted here rather than mounted --
+// Windows has no spinner control; see RnWin32View.h -- so nothing invalidates
+// the window between mounts, and without this a spinner is a still picture.
+// And an animated <Image> holds its frames in the view and shows whichever one
+// it was last moved to, so this is what moves it on.
+//
+// Neither other host needs an equivalent, and for the same reason in both
+// cases: a view there is a widget with a clock within reach. GtkSpinner redraws
+// itself and the GTK mounting manager puts an animated image on the frame
+// clock; NSProgressIndicator redraws itself and an animated image on AppKit
+// gets an NSTimer of its own, scheduled for exactly the next frame's delay.
+// Here a view is a plain object and only the window has anything to schedule
+// on, so one timer serves both and a frame is due when a tick finds it due.
 //
 // Started and stopped rather than left running, for the reason
 // Win32AnimationChoreographer.h gives about its own timer: a timer that runs
 // whether or not anything is animating wakes the process sixty times a second
 // forever, which matters more on a laptop than the frame interval does.
-constexpr UINT_PTR kSpinnerTimer = 102;
+constexpr UINT_PTR kAnimationTimer = 102;
 
 // BASALT_TEST_QUIT_FILE's poll. Repeating, unlike kQuitAfterTimer's one shot:
 // it looks for the file until it finds it. See core/TestQuitFile.h.
 constexpr UINT_PTR kQuitFileTimer = 103;
-bool gSpinnerTimerRunning = false;
+bool gAnimationTimerRunning = false;
+// When the last tick ran, so a frame delay is measured rather than assumed.
+// A GIF's delays are in hundredths of a second and the timer is 16ms, so
+// counting ticks would quantise every delay to a multiple of the tick and a
+// process that was busy would run the animation slow.
+std::chrono::steady_clock::time_point gLastAnimationTick{};
 
-void updateSpinnerTimer() {
+void updateAnimationTimer() {
   if (gHost.main().window == nullptr || gHost.main().root == nullptr) {
     return;
   }
   const bool wanted = gHost.main().root->hasAnimatingSpinner() ||
-      (gHost.logBoxRoot != nullptr && gHost.logBoxRoot->hasAnimatingSpinner());
-  if (wanted == gSpinnerTimerRunning) {
+      gHost.main().root->hasAnimatedImage() ||
+      (gHost.logBoxRoot != nullptr &&
+       (gHost.logBoxRoot->hasAnimatingSpinner() || gHost.logBoxRoot->hasAnimatedImage()));
+  if (wanted == gAnimationTimerRunning) {
     return;
   }
-  gSpinnerTimerRunning = wanted;
+  gAnimationTimerRunning = wanted;
   if (wanted) {
-    SetTimer(gHost.main().window, kSpinnerTimer, 16, nullptr);
+    gLastAnimationTick = std::chrono::steady_clock::now();
+    SetTimer(gHost.main().window, kAnimationTimer, 16, nullptr);
   } else {
-    KillTimer(gHost.main().window, kSpinnerTimer);
+    KillTimer(gHost.main().window, kAnimationTimer);
   }
 }
 
+// One tick: move every animated image on by however long it has been, and
+// repaint. The spinner needs no equivalent because it reads the clock as it
+// paints; an image has to pick a frame.
+void tickAnimations(HWND hwnd) {
+  const auto now = std::chrono::steady_clock::now();
+  const double elapsedMs = std::chrono::duration<double, std::milli>(
+                               now - gLastAnimationTick)
+                               .count();
+  gLastAnimationTick = now;
+  if (gHost.main().root != nullptr) {
+    gHost.main().root->advanceImageAnimations(elapsedMs);
+  }
+  if (gHost.logBoxRoot != nullptr) {
+    gHost.logBoxRoot->advanceImageAnimations(elapsedMs);
+  }
+  InvalidateRect(hwnd, nullptr, FALSE);
+}
+
+// After every transaction, and after every scroll. Both move views, and a
+// <TextInput>'s peer is a child window that does not move with one: nothing in
+// the view tree owns an HWND, so its placement is recomputed from the tree
+// rather than following it. GTK and AppKit need no equivalent, because there a
+// text field is a widget inside the widget that is the view.
 void syncPeersAndRepaint() {
   if (gHost.mountingManager != nullptr) {
     gHost.mountingManager->syncTextInputBounds(gHost.main().root);
   }
-  updateSpinnerTimer();
+  updateAnimationTimer();
   requestRepaint();
 }
 
@@ -770,13 +805,13 @@ constexpr UINT_PTR kScriptedInputTimerBase = 200;
 // same id as BASALT_QUIT_AFTER_MS's, and an app with an <ActivityIndicator> in
 // it cancelled its own shutdown and hung. A static_assert cannot check the
 // scripted range against the rest, so the base is held above everything else.
-static_assert(kSecondTreeTimer != kQuitAfterTimer && kSecondTreeTimer != kSpinnerTimer &&
-                  kSecondTreeTimer != kQuitFileTimer && kQuitAfterTimer != kSpinnerTimer &&
-                  kQuitAfterTimer != kQuitFileTimer && kSpinnerTimer != kQuitFileTimer,
+static_assert(kSecondTreeTimer != kQuitAfterTimer && kSecondTreeTimer != kAnimationTimer &&
+                  kSecondTreeTimer != kQuitFileTimer && kQuitAfterTimer != kAnimationTimer &&
+                  kQuitAfterTimer != kQuitFileTimer && kAnimationTimer != kQuitFileTimer,
               "two timers share an id, and SetTimer would silently replace one with the other");
 static_assert(kScriptedInputTimerBase > kSecondTreeTimer &&
                   kScriptedInputTimerBase > kQuitAfterTimer &&
-                  kScriptedInputTimerBase > kSpinnerTimer &&
+                  kScriptedInputTimerBase > kAnimationTimer &&
                   kScriptedInputTimerBase > kQuitFileTimer,
               "the scripted-input ids count up from the base and must start above the rest");
 
@@ -1597,8 +1632,8 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
       return 0;
 
     case WM_TIMER:
-      if (wparam == kSpinnerTimer) {
-        InvalidateRect(hwnd, nullptr, FALSE);
+      if (wparam == kAnimationTimer) {
+        tickAnimations(hwnd);
         return 0;
       }
       if (wparam == kSecondTreeTimer) {

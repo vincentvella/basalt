@@ -55,7 +55,9 @@ void Win32ImageLoader::load(const std::string &uri, Callback callback) {
 
   // Fetch and decode, and where they run depends on whether there is anywhere
   // to come back to.
-  const auto work = [uri](std::shared_ptr<RnWin32Image> &image, std::string &error) {
+  const auto work = [uri](std::shared_ptr<RnWin32Image> &image,
+                          RnWin32ImageFrames &frames,
+                          std::string &error) {
     std::string bytes;
     if (!fetchImageBytes(uri, &bytes, &error)) {
       if (error.empty()) {
@@ -71,11 +73,19 @@ void Win32ImageLoader::load(const std::string &uri, Callback callback) {
         reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size());
     if (image == nullptr) {
       error = "could not decode " + uri;
+      return;
     }
+    // The same bytes again, as an animation. A second decode rather than one
+    // path for both, because the still decode above is what every <Image> goes
+    // through and must not change: a frame count of one leaves this empty and
+    // costs a header read.
+    frames = RnWin32Image::framesFromEncodedBytes(
+        reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size());
   };
 
   auto state = state_;
   const auto deliver = [state, uri](const std::shared_ptr<RnWin32Image> &image,
+                                    const RnWin32ImageFrames &frames,
                                     const std::string &error,
                                     const Callback &callback) {
     // The loader may have gone while this was in flight -- a surface torn down,
@@ -88,14 +98,25 @@ void Win32ImageLoader::load(const std::string &uri, Callback callback) {
       }
       if (image != nullptr) {
         state->cache[uri] = image;
+        if (frames.animated()) {
+          state->animations[uri] = frames;
+        }
 
         // Four bytes a pixel, premultiplied BGRA, which is what
         // `fromEncodedBytes` decodes to and what RnWin32Image's own stride
-        // says. See core/ImageCache.h for which URI goes next.
-        const size_t bytes = static_cast<size_t>(image->width()) *
-                             static_cast<size_t>(image->height()) * 4u;
+        // says. Every frame of an animation, because every frame is a decoded
+        // bitmap that is held. See core/ImageCache.h for which URI goes next.
+        size_t bytes = static_cast<size_t>(image->width()) *
+                       static_cast<size_t>(image->height()) * 4u;
+        for (const auto &frame : frames.frames) {
+          if (frame != nullptr) {
+            bytes += static_cast<size_t>(frame->width()) *
+                     static_cast<size_t>(frame->height()) * 4u;
+          }
+        }
         for (const std::string &evicted : state->policy.insert(uri, bytes)) {
           state->cache.erase(evicted);
+          state->animations.erase(evicted);
         }
       }
     }
@@ -113,9 +134,10 @@ void Win32ImageLoader::load(const std::string &uri, Callback callback) {
   // else.
   if (!hasUiThread()) {
     std::shared_ptr<RnWin32Image> image;
+    RnWin32ImageFrames frames;
     std::string error;
-    work(image, error);
-    deliver(image, error, callback);
+    work(image, frames, error);
+    deliver(image, frames, error, callback);
     return;
   }
 
@@ -129,14 +151,21 @@ void Win32ImageLoader::load(const std::string &uri, Callback callback) {
   // thread touches is either its own or the shared state above.
   std::thread([work, deliver, callback = std::move(callback)]() mutable {
     std::shared_ptr<RnWin32Image> image;
+    RnWin32ImageFrames frames;
     std::string error;
-    work(image, error);
-    postToUiThread([deliver, image, error, callback = std::move(callback)]() {
-      deliver(image, error, callback);
-    });
+    work(image, frames, error);
+    postToUiThread(
+        [deliver, image, frames, error, callback = std::move(callback)]() {
+          deliver(image, frames, error, callback);
+        });
   }).detach();
 }
 
+RnWin32ImageFrames Win32ImageLoader::animation(const std::string &uri) {
+  const std::lock_guard<std::mutex> lock(state_->mutex);
+  const auto found = state_->animations.find(uri);
+  return found == state_->animations.end() ? RnWin32ImageFrames{} : found->second;
+}
 
 void Win32ImageLoader::loadImage(const std::string &uri,
                                  const facebook::react::IImageLoaderOnLoadCallback &&onLoad) {
