@@ -1,5 +1,6 @@
 #include "RnWin32TextLayout.h"
 
+#include "Win32Offscreen.h"
 #include "Win32Strings.h"
 
 #include <windows.h>
@@ -393,10 +394,11 @@ void RnWin32TextLayout::drawShadow(ID2D1RenderTarget *target,
   // beyond the glyphs, so the blur is given room by drawing the result at an
   // offset rather than by growing the bitmap: the effect's own output is larger
   // than its input and Direct2D composites all of it.
-  ComPtr<ID2D1BitmapRenderTarget> offscreen;
-  if (FAILED(target->CreateCompatibleRenderTarget(D2D1::SizeF(width, height),
-                                                  offscreen.GetAddressOf())) ||
-      !offscreen) {
+  // Asked for with a format that keeps alpha rather than inheriting the
+  // window's, which has none: the shadow is a blur of this bitmap's alpha, so
+  // an opaque one would be a filled box. See Win32Offscreen.h.
+  const ComPtr<ID2D1BitmapRenderTarget> offscreen = createOffscreen(target, width, height);
+  if (!offscreen) {
     return;
   }
 

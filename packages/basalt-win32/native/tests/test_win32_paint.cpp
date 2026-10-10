@@ -855,6 +855,30 @@ TEST(win32_paint_filters_in_straight_alpha) {
   EXPECT_PIXEL(pixels, 30, 30, 255, 0, 0, 255);
 }
 
+// The offscreen the graph runs over has to keep its alpha, which is the other
+// half of the pair above and the one the *app* was getting wrong: a compatible
+// render target inherits its parent's format, and the window's parent format is
+// opaque where this suite's WIC bitmap is not. An identity matrix is enough to
+// ask the question -- the only thing it can change is whether the alpha
+// survived the trip through the bitmap.
+TEST(win32_paint_a_filter_leaves_a_half_transparent_view_half_transparent) {
+  Tree tree;
+  RnWin32View *root = tree.box(1, 0, 0, 60, 60);
+  RnWin32View *box = tree.box(2, 0, 0, 60, 60);
+  box->setBackgroundColor(1.0f, 0.0f, 0.0f, 0.5f, true);
+  RnWin32View::Filters filters;
+  // Identity, which the default already is: `hasMatrix` is what sends the view
+  // through the graph at all.
+  filters.hasMatrix = true;
+  box->setFilters(filters);
+  root->insertChild(box, 0);
+
+  const RnPixels pixels = basalt::win32::renderToPixels(*root);
+  // Red at half alpha, as it went in. An opaque offscreen would answer with the
+  // red already mixed into black: (128, 0, 0) at full alpha.
+  EXPECT_PIXEL(pixels, 30, 30, 255, 0, 0, 128);
+}
+
 TEST(win32_paint_applies_a_filters_blur) {
   const auto edgeRamp = [](float radius) {
     Tree tree;

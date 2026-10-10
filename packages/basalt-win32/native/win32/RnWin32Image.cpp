@@ -1,6 +1,7 @@
 #include "RnWin32Image.h"
 
 #include "Win32Clip.h"
+#include "Win32Offscreen.h"
 
 #include <windows.h>
 
@@ -189,9 +190,11 @@ unsigned metadataValue(IWICMetadataQueryReader *reader, const wchar_t *path, uns
 //
 // One rather than zero, which is the measured answer rather than a guess: a GIF
 // with no application extension plays once in a browser, and ImageIO reports a
-// loop count of 1 for exactly those bytes, which the AppKit suite asserts. The
-// count lives in the extension's data block, little-endian, after a one-byte
-// sub-block id.
+// loop count of 1 for exactly those bytes, which the AppKit suite asserts.
+//
+// Two application identifiers mean the same thing: NETSCAPE2.0 is what
+// everything writes and ANIMEXTS1.0 is an older spelling of the same extension,
+// which is the pair Microsoft's own WIC GIF sample looks for.
 unsigned loopCountOf(IWICBitmapDecoder *decoder) {
   ComPtr<IWICMetadataQueryReader> reader;
   if (FAILED(decoder->GetMetadataQueryReader(reader.GetAddressOf())) || !reader) {
@@ -200,14 +203,22 @@ unsigned loopCountOf(IWICBitmapDecoder *decoder) {
 
   PROPVARIANT application;
   PropVariantInit(&application);
-  bool netscape = false;
+  bool looping = false;
   if (SUCCEEDED(reader->GetMetadataByName(L"/appext/application", &application))
-      && application.vt == (VT_UI1 | VT_VECTOR) && application.caub.cElems >= 11) {
-    const char *const bytes = reinterpret_cast<const char *>(application.caub.pElems);
-    netscape = std::string(bytes, 11) == "NETSCAPE2.0";
+      && application.vt == (VT_UI1 | VT_VECTOR) && application.caub.cElems >= 11
+      && application.caub.pElems != nullptr) {
+    // Searched for rather than compared against the start, for the same reason
+    // the data block below is: an application extension in the file carries its
+    // length ahead of its eleven bytes, and whether WIC hands that byte over is
+    // not a thing to be wrong about silently -- being wrong means a GIF that
+    // loops forever stops after one pass.
+    const std::string block(reinterpret_cast<const char *>(application.caub.pElems),
+                            application.caub.cElems);
+    looping = block.find("NETSCAPE2.0") != std::string::npos
+        || block.find("ANIMEXTS1.0") != std::string::npos;
   }
   PropVariantClear(&application);
-  if (!netscape) {
+  if (!looping) {
     return 1;
   }
 
@@ -215,9 +226,29 @@ unsigned loopCountOf(IWICBitmapDecoder *decoder) {
   PropVariantInit(&data);
   unsigned loops = 1;
   if (SUCCEEDED(reader->GetMetadataByName(L"/appext/data", &data))
-      && data.vt == (VT_UI1 | VT_VECTOR) && data.caub.cElems >= 4) {
-    loops = static_cast<unsigned>(data.caub.pElems[1])
-        | (static_cast<unsigned>(data.caub.pElems[2]) << 8);
+      && data.vt == (VT_UI1 | VT_VECTOR) && data.caub.pElems != nullptr) {
+    // The count is a sub-block: one byte of id, which is 1, then two bytes
+    // little-endian. Whether WIC hands the block over with its leading length
+    // byte was not something to take on trust -- reading it the wrong way round
+    // answers 1 for a GIF that loops forever, which is a still picture after
+    // one pass and is what the first run of this measured. So the id is what is
+    // looked for, and the length byte is skipped when it is there: the looping
+    // sub-block is three bytes long and says so, which tells `03 01 lo hi` from
+    // `01 lo hi` without either being assumed.
+    const BYTE *const bytes = data.caub.pElems;
+    const UINT count = data.caub.cElems;
+    const BYTE *at = nullptr;
+    if (count >= 4 && bytes[0] == 0x03 && bytes[1] == 0x01) {
+      at = bytes + 2;
+    } else if (count >= 3 && bytes[0] == 0x01) {
+      at = bytes + 1;
+    } else if (count == 2) {
+      // Two bytes and nothing else can only be the count itself.
+      at = bytes;
+    }
+    if (at != nullptr) {
+      loops = static_cast<unsigned>(at[0]) | (static_cast<unsigned>(at[1]) << 8);
+    }
   }
   PropVariantClear(&data);
   return loops;
@@ -379,11 +410,20 @@ RnWin32ImageFrames RnWin32Image::framesFromEncodedBytes(const uint8_t *data, siz
 }
 
 RnWin32Image::~RnWin32Image() {
-  if (deviceBitmap_ != nullptr) {
-    deviceBitmap_->Release();
-  }
+  releaseDeviceBitmap();
   if (bitmap_ != nullptr) {
     bitmap_->Release();
+  }
+}
+
+void RnWin32Image::releaseDeviceBitmap() const {
+  if (deviceBitmap_ != nullptr) {
+    deviceBitmap_->Release();
+    deviceBitmap_ = nullptr;
+  }
+  if (deviceTarget_ != nullptr) {
+    deviceTarget_->Release();
+    deviceTarget_ = nullptr;
   }
 }
 
@@ -415,11 +455,9 @@ void RnWin32Image::draw(ID2D1RenderTarget *target,
   // frame.
   if (blurRadius > 0.0f) {
     Microsoft::WRL::ComPtr<ID2D1DeviceContext> context;
-    Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> offscreen;
-    if (SUCCEEDED(target->QueryInterface(IID_PPV_ARGS(&context)))
-        && SUCCEEDED(target->CreateCompatibleRenderTarget(D2D1::SizeF(boxWidth, boxHeight),
-                                                          offscreen.GetAddressOf()))
-        && offscreen) {
+    const Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> offscreen =
+        createOffscreen(target, boxWidth, boxHeight);
+    if (SUCCEEDED(target->QueryInterface(IID_PPV_ARGS(&context))) && offscreen) {
       offscreen->BeginDraw();
       offscreen->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
       draw(offscreen.Get(), boxWidth, boxHeight, fit, tint, 0.0f);
@@ -446,16 +484,14 @@ void RnWin32Image::draw(ID2D1RenderTarget *target,
   }
 
   if (deviceBitmap_ == nullptr || deviceTarget_ != target) {
-    if (deviceBitmap_ != nullptr) {
-      deviceBitmap_->Release();
-      deviceBitmap_ = nullptr;
-    }
+    releaseDeviceBitmap();
     ID2D1Bitmap *created = nullptr;
     if (FAILED(target->CreateBitmapFromWicBitmap(bitmap_, nullptr, &created))) {
       return;
     }
     deviceBitmap_ = created;
     deviceTarget_ = target;
+    deviceTarget_->AddRef();
   }
 
   const float imageWidth = static_cast<float>(width_);

@@ -7,6 +7,7 @@
 #include "RnWin32TextLayout.h"
 #include "ScrollIndicator.h"
 #include "Win32Clip.h"
+#include "Win32Offscreen.h"
 #include "Win32Strings.h"
 
 // Which frame an animated image is showing, shared with the other two hosts.
@@ -794,11 +795,12 @@ void RnWin32View::setFilters(const Filters &filters) {
 // discovered.
 void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
   ComPtr<ID2D1DeviceContext> context;
-  ComPtr<ID2D1BitmapRenderTarget> offscreen;
-  if (FAILED(target->QueryInterface(IID_PPV_ARGS(&context)))
-      || FAILED(target->CreateCompatibleRenderTarget(
-             D2D1::SizeF(frame_.width, frame_.height), offscreen.GetAddressOf()))
-      || !offscreen) {
+  // With a format that keeps alpha rather than the window's, which has none:
+  // every one of these effects is defined on what is *not* covered as much as
+  // on what is. See Win32Offscreen.h.
+  const ComPtr<ID2D1BitmapRenderTarget> offscreen =
+      createOffscreen(target, frame_.width, frame_.height);
+  if (FAILED(target->QueryInterface(IID_PPV_ARGS(&context))) || !offscreen) {
     // No device context, no effects: the unfiltered picture is the honest
     // answer, since a filter that cannot be applied should not take the view
     // with it.
@@ -821,8 +823,11 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
   }
 
   // The chain, built from the bitmap outwards. `source` is whatever the last
-  // effect produced, or the bitmap when there is none.
+  // effect produced, or the bitmap when there is none. Each effect is held for
+  // as long as the graph is drawn, which is why they are declared out here.
+  ComPtr<ID2D1Effect> straighten;
   ComPtr<ID2D1Effect> matrix;
+  ComPtr<ID2D1Effect> premultiply;
   ComPtr<ID2D1Effect> blur;
   ComPtr<ID2D1Image> source;
   picture->QueryInterface(IID_PPV_ARGS(&source));
@@ -844,16 +849,37 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
       cells[16 + output] = filters_.offset[output];
     }
     matrix->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, wanted);
-    // Straight alpha, because CSS's filters are defined on unpremultiplied
-    // colour and Direct2D's default is premultiplied: a `grayscale(1)` over a
-    // half-transparent view is visibly wrong the other way. Clamped, which is
-    // what every browser does with a matrix that leaves the range.
-    matrix->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE,
-                     D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT);
+    // Clamped, which is what every browser does with a matrix that leaves the
+    // range.
     matrix->SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, TRUE);
+
+    // **Straight alpha by two effects of its own rather than by the matrix's
+    // own alpha mode.** CSS defines its filters on unpremultiplied colour, and
+    // `D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT` says it will do that conversion --
+    // but setting it and measuring the result gave the premultiplied answer
+    // anyway: a half-transparent red whose alpha the matrix forces opaque came
+    // out dark red rather than red, which is 0.5 read as a colour instead of as
+    // a colour times a coverage. `win32_paint_filters_in_straight_alpha` is
+    // that measurement. So the conversion is explicit, and the matrix is told
+    // premultiplied, which for an input that is already straight means it
+    // converts nothing.
+    matrix->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE,
+                     D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED);
+    if (SUCCEEDED(context->CreateEffect(CLSID_D2D1UnPremultiply, straighten.GetAddressOf()))
+        && straighten) {
+      straighten->SetInput(0, source.Get());
+      source.Reset();
+      straighten->GetOutput(source.GetAddressOf());
+    }
     matrix->SetInput(0, source.Get());
     source.Reset();
     matrix->GetOutput(source.GetAddressOf());
+    if (SUCCEEDED(context->CreateEffect(CLSID_D2D1Premultiply, premultiply.GetAddressOf()))
+        && premultiply) {
+      premultiply->SetInput(0, source.Get());
+      source.Reset();
+      premultiply->GetOutput(source.GetAddressOf());
+    }
   }
 
   if (filters_.blurRadius > 0.0f

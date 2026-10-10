@@ -112,14 +112,26 @@ class RnWin32Image {
  private:
   RnWin32Image() = default;
 
+  // Drops the cached device bitmap and the reference to the target it belongs
+  // to. Both or neither: a bitmap outliving its target is the bug below.
+  void releaseDeviceBitmap() const;
+
   IWICBitmap *bitmap_ = nullptr;
   unsigned width_ = 0;
   unsigned height_ = 0;
 
   // The device bitmap for the target that last drew this image. An <Image> in a
   // list is drawn into the same target every frame, so this converts once; a
-  // second target -- the snapshot -- replaces it rather than growing a map,
-  // because nothing here draws into two targets in the same frame.
+  // second target -- the snapshot, or the offscreen a blur draws through --
+  // replaces it rather than growing a map, because nothing here draws into two
+  // targets in the same frame.
+  //
+  // **The target is held with a reference, not compared as a bare address.** A
+  // blur draws into an offscreen that is destroyed when the call returns, and a
+  // later offscreen allocated at the same address would otherwise look like the
+  // same target and be handed a bitmap belonging to a dead one -- after which
+  // Direct2D draws nothing at all. That is what a blank picture appearing in
+  // one shard of the Windows suite and not another turned out to be.
   mutable ID2D1Bitmap *deviceBitmap_ = nullptr;
   mutable ID2D1RenderTarget *deviceTarget_ = nullptr;
 };
