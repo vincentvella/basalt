@@ -15,6 +15,14 @@ ScrollRange scrollRangeFor(double containerLength,
   return range;
 }
 
+ScrollAxisInsets centeringInsets(double containerLength, double contentLength) {
+  const double slack = containerLength - contentLength;
+  if (slack <= 0.0) {
+    return {};
+  }
+  return ScrollAxisInsets{.leading = slack / 2.0, .trailing = slack / 2.0};
+}
+
 double clampScrollOffset(double offset,
                          double containerLength,
                          double contentLength,

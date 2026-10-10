@@ -182,6 +182,9 @@ void AppKitScrollViewManager::update(RnAppKitView *view, const ShadowView &shado
     // on: whether the content's own edges count as snap points beside the
     // listed ones, and whether a fling across a spacing carries or stops at the
     // next point.
+    // `centerContent`, applied below once the content size is known.
+    entry.centerContent = props->centerContent;
+
     entry.snap.snapToStart = props->snapToStart;
     entry.snap.snapToEnd = props->snapToEnd;
     entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
@@ -224,6 +227,27 @@ void AppKitScrollViewManager::update(RnAppKitView *view, const ShadowView &shado
       entry.offsetX = data.contentOffset.x;
       entry.offsetY = data.contentOffset.y;
     }
+  }
+
+  // `centerContent`: content smaller than its container sits in the middle of
+  // it. Expressed as an inset of half the slack at each end, which leaves the
+  // range below a single offset to be at -- so the clamp that was already here
+  // is what centres the content and what keeps it centred.
+  //
+  // It replaces the app's own `contentInset` rather than adding to it, which is
+  // what iOS does: `centerContentIfNeeded` assigns the inset outright, and
+  // `RCTScrollViewComponentView` skips the `contentInset` prop entirely while
+  // `centerContent` is set. Recomputed here rather than where the prop is read
+  // because it needs the content size, which arrives with the state.
+  if (entry.centerContent) {
+    const ScrollAxisInsets horizontal =
+        centeringInsets(entry.containerSize.width, entry.contentSize.width);
+    const ScrollAxisInsets vertical =
+        centeringInsets(entry.containerSize.height, entry.contentSize.height);
+    entry.contentInset.left = static_cast<facebook::react::Float>(horizontal.leading);
+    entry.contentInset.right = static_cast<facebook::react::Float>(horizontal.trailing);
+    entry.contentInset.top = static_cast<facebook::react::Float>(vertical.leading);
+    entry.contentInset.bottom = static_cast<facebook::react::Float>(vertical.trailing);
   }
 
   // Re-clamp: the content may have shrunk under a scrolled offset.

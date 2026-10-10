@@ -80,7 +80,8 @@ ShadowView makeScrollView(Tag tag,
                           float contentWidth,
                           float contentHeight,
                           bool scrollEnabled = true,
-                          Point initialOffset = Point{0, 0}) {
+                          Point initialOffset = Point{0, 0},
+                          bool centerContent = false) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = x, .y = y}, .size = {.width = width, .height = height}};
 
@@ -91,6 +92,7 @@ ShadowView makeScrollView(Tag tag,
   // a test that set only one of them would be testing a shape React Native does
   // not produce.
   props->contentOffset = initialOffset;
+  props->centerContent = centerContent;
 
   ScrollViewState data;
   data.contentOffset = initialOffset;
@@ -433,6 +435,52 @@ TEST(win32_an_unchanged_content_offset_leaves_the_list_where_it_is) {
   apply(manager, std::move(mutations));
 
   EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 1020.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// `centerContent`: content smaller than the container sits in the middle of it.
+// The arithmetic is core/ScrollBounds.h's -- an inset of half the slack at each
+// end, leaving one offset to rest at -- so this asserts the prop reaches it and
+// that the clamp this host already ran puts the content there.
+TEST(win32_center_content_centres_content_that_fits) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  // 200 of content in a 300 container: 100 of slack, so an offset of -50.
+  mount(manager,
+        kSurfaceId,
+        makeScrollView(10, 0, 0, 400, 300, 400, 200, true, Point{0, 0}, /*centerContent=*/true));
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), -50.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_content_that_fits_is_not_centred_unless_asked) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mount(manager, kSurfaceId, makeScrollView(10, 0, 0, 400, 300, 400, 200));
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 0.0, 0.01);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+TEST(win32_center_content_does_nothing_to_a_list_that_scrolls) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 300);
+  mount(manager,
+        kSurfaceId,
+        makeScrollView(10, 0, 0, 400, 300, 400, 4000, true, Point{0, 0}, /*centerContent=*/true));
+
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 0.0, 0.01);
+  // And the list cannot be pulled above its first row, which an inset here
+  // would have allowed.
+  manager.scrollAt(root, 200, 150, 0, -50);
+  EXPECT_NEAR(manager.viewForTag(10)->scrollY(), 0.0, 0.01);
 
   manager.destroySurfaceRoot(kSurfaceId);
 }

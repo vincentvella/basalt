@@ -9,8 +9,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
 5. ~~`ScrollViewProps` has no rows on the support page~~
-6. Three `<ScrollView>` props are a desktop question nobody has answered;
-   ~~the three about snapping and contentOffset~~ are done
+6. Two `<ScrollView>` props are a desktop question nobody has answered;
+   ~~snapping's three, contentOffset and centerContent~~ are done
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -124,9 +124,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than trusting this file, which is how the `<TextInput>` rows found two
   stale claims in backlog/textinput.md on the day they were added.
 
-- **Three `<ScrollView>` props are a desktop question nobody has answered.**
-  Seven of them were, until 2026-10-10; the three about snapping and
-  `contentOffset` are done, and the entry keeps the others. Surfaced on 2026-10-09 by giving every prop a row,
+- **Two `<ScrollView>` props are a desktop question nobody has answered.**
+  Seven of them were, until 2026-10-10; the three about snapping,
+  `contentOffset` and `centerContent` are done, and the entry keeps the
+  others. Surfaced on 2026-10-09 by giving every prop a row,
   which is the point of the rows: each of these is a thing an app can write that
   no host reads, and none of them is somebody else's platform.
 
@@ -200,6 +201,22 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `tests/test_momentum.cpp`, all arithmetic, which is most of the reason this
   lives in core.
 
-  `centerContent` centres content smaller than the viewport, and
+  ~~`centerContent`~~ is done, 2026-10-10, and it is four lines plus a core
+  helper because the machinery was already there: `core/ScrollBounds.h` turns
+  half the slack at each end into an inset, which leaves the scroll range a
+  single offset to rest at, and the clamp every host runs on every mutation puts
+  the content there and keeps it there. Recomputed from the content size on each
+  mutation, so a list that grows past its container stops being centred.
+
+  iOS reaches it the same way -- `centerContentIfNeeded` assigns a
+  `contentInset` of exactly those numbers -- which is also why the prop
+  *replaces* the app's own `contentInset` here rather than adding to it:
+  `RCTScrollViewComponentView` skips that prop entirely while `centerContent` is
+  set, the two being the same channel.
+
   `indicatorStyle` asks for a light or dark indicator, which these hosts draw
-  themselves from `core/ScrollIndicator.h` and could colour from the prop.
+  themselves from `core/ScrollIndicator.h` and could colour from the prop. Worth
+  knowing before starting: iOS's `default` and `black` differ only by a white
+  border around the thumb, which these hosts do not draw, so two of the three
+  values would draw the same thing and the row would be `partial` rather than
+  done.

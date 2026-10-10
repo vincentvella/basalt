@@ -45,12 +45,16 @@ namespace {
 
 constexpr SurfaceId kSurfaceId = 1;
 
-ShadowView makeScrollView(Tag tag, float contentHeight, RnPoint contentOffset = RnPoint{0, 0}) {
+ShadowView makeScrollView(Tag tag,
+                          float contentHeight,
+                          RnPoint contentOffset = RnPoint{0, 0},
+                          bool centerContent = false) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 400, .height = 300}};
 
   auto props = std::make_shared<ScrollViewProps>();
   props->contentOffset = contentOffset;
+  props->centerContent = centerContent;
 
   ScrollViewState data;
   // The prop and the state carry the same value, which is what React Native
@@ -80,12 +84,15 @@ struct Scroller {
   RnAppKitView *view;
   Tag tag;
 
-  Scroller(Tag tag, float contentHeight, RnPoint contentOffset = RnPoint{0, 0})
+  Scroller(Tag tag,
+           float contentHeight,
+           RnPoint contentOffset = RnPoint{0, 0},
+           bool centerContent = false)
       : manager([](Tag) { return EventEmitter::Shared{}; }),
         view([RnAppKitView viewWithTag:static_cast<int>(tag)]),
         tag(tag) {
     [view setRnFrameX:0 y:0 width:400 height:300];
-    manager.update(view, makeScrollView(tag, contentHeight, contentOffset));
+    manager.update(view, makeScrollView(tag, contentHeight, contentOffset, centerContent));
   }
 
   ~Scroller() { manager.remove(tag); }
@@ -140,5 +147,34 @@ TEST(appkit_scrollview_a_content_offset_past_the_content_is_clamped) {
     // 300 of viewport over 500 of content: 200 is as far as it goes.
     Scroller scroller(13, 500, RnPoint{0, 400});
     EXPECT_NEAR(scroller.offsetY(), 200.0, 0.001);
+  }
+}
+
+// --- centerContent ----------------------------------------------------------
+//
+// The arithmetic is core/ScrollBounds.h's: an inset of half the slack at each
+// end, which leaves one offset to rest at. What this asserts is that the prop
+// reaches it on this host and that the clamp puts the content there.
+
+TEST(appkit_scrollview_center_content_centres_content_that_fits) {
+  @autoreleasepool {
+    // 200 of content in a 300 container: 100 of slack, so the content sits 50
+    // further down, which is an offset of -50.
+    Scroller scroller(20, 200, RnPoint{0, 0}, /*centerContent=*/true);
+    EXPECT_NEAR(scroller.offsetY(), -50.0, 0.001);
+  }
+}
+
+TEST(appkit_scrollview_content_that_fits_is_not_centred_unless_asked) {
+  @autoreleasepool {
+    Scroller scroller(21, 200);
+    EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
+  }
+}
+
+TEST(appkit_scrollview_center_content_does_nothing_to_a_list_that_scrolls) {
+  @autoreleasepool {
+    Scroller scroller(22, 4000, RnPoint{0, 0}, /*centerContent=*/true);
+    EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
   }
 }

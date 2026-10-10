@@ -53,7 +53,8 @@ ShadowView makeScrollView(Tag tag,
                           float contentHeight,
                           float decelerationRate = 0,
                           bool pagingEnabled = false,
-                          Point contentOffset = Point{0, 0}) {
+                          Point contentOffset = Point{0, 0},
+                          bool centerContent = false) {
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = width, .height = height}};
 
@@ -61,6 +62,7 @@ ShadowView makeScrollView(Tag tag,
   props->decelerationRate = decelerationRate;
   props->pagingEnabled = pagingEnabled;
   props->contentOffset = contentOffset;
+  props->centerContent = centerContent;
 
   ScrollViewState data;
   // Seeded from the prop, which is what ScrollViewShadowNode does for real:
@@ -95,7 +97,8 @@ struct Scroller {
            float contentHeight,
            float decelerationRate = 0,
            bool pagingEnabled = false,
-           Point contentOffset = Point{0, 0})
+           Point contentOffset = Point{0, 0},
+           bool centerContent = false)
       : manager([](Tag) { return facebook::react::EventEmitter::Shared{}; }),
         view(rn_view_new(static_cast<int>(tag))),
         tag(tag) {
@@ -109,7 +112,8 @@ struct Scroller {
                                   contentHeight,
                                   decelerationRate,
                                   pagingEnabled,
-                                  contentOffset));
+                                  contentOffset,
+                                  centerContent));
   }
 
   ~Scroller() {
@@ -328,4 +332,46 @@ TEST(scrollview_a_content_offset_past_the_content_is_clamped) {
   Scroller scroller(24, 500, 0, false, Point{0, 400});
   // 300 of viewport over 500 of content: 200 is as far as it goes.
   EXPECT_NEAR(scroller.offsetY(), 200.0, 0.001);
+}
+
+// --- centerContent -----------------------------------------------------------
+//
+// Content smaller than the container sits in the middle of it. The arithmetic
+// is core/ScrollBounds.h's -- an inset of half the slack at each end, which
+// leaves one offset to rest at -- so what these assert is that the prop reaches
+// it and that the clamp puts the content there.
+
+TEST(scrollview_center_content_centres_content_that_fits) {
+  // 200 of content in a 300 container: 100 of slack, so the content sits 50
+  // further down, which is an offset of -50.
+  Scroller scroller(30, 200, 0, false, Point{0, 0}, /*centerContent=*/true);
+  EXPECT_NEAR(scroller.offsetY(), -50.0, 0.001);
+}
+
+TEST(scrollview_content_that_fits_is_not_centred_unless_asked) {
+  // The control, and the behaviour of every list that never set the prop.
+  Scroller scroller(31, 200);
+  EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
+}
+
+TEST(scrollview_center_content_does_nothing_to_a_list_that_scrolls) {
+  // Content longer than the container has no slack to share out, and an inset
+  // here would let the list be pulled past its own first row.
+  Scroller scroller(32, 4000, 0, false, Point{0, 0}, /*centerContent=*/true);
+  EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
+  scroller.manager.dispatchCommand(scroller.tag, "scrollTo", folly::dynamic::array(0, -50, false));
+  EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
+}
+
+TEST(scrollview_centred_content_stays_centred_when_it_grows) {
+  // The inset is recomputed from the content size on every mutation, which is
+  // what this asserts: a list that grew past its container stops being centred
+  // rather than keeping an inset worked out when it was smaller.
+  Scroller scroller(33, 200, 0, false, Point{0, 0}, /*centerContent=*/true);
+  EXPECT_NEAR(scroller.offsetY(), -50.0, 0.001);
+
+  scroller.manager.update(
+      scroller.view,
+      makeScrollView(33, 400, 300, 400, 4000, 0, false, Point{0, 0}, /*centerContent=*/true));
+  EXPECT_NEAR(scroller.offsetY(), 0.0, 0.001);
 }

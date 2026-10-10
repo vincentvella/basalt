@@ -168,6 +168,11 @@ class Win32ScrollViewManager {
     double offsetX{0};
     double offsetY{0};
 
+    // `centerContent`: whether content smaller than the container is centred in
+    // it. Acted on through the content inset, which is how iOS does it too --
+    // see `update`.
+    bool centerContent{false};
+
     // The last `contentOffset` prop seen, and nothing when none has been.
     //
     // The *initial* value of that prop arrives through the state rather than

@@ -54,6 +54,20 @@ ScrollRange scrollRangeFor(double containerLength,
                            double contentLength,
                            ScrollAxisInsets insets = {});
 
+// `centerContent`: the inset that centres content smaller than its container.
+//
+// Half the slack at each end, and nothing at all once the content is longer
+// than the container -- a list that can scroll has nothing to centre.
+//
+// An inset rather than a position, which is not a trick: with half the slack at
+// each end the range above collapses to the single offset `-slack/2`, so the
+// clamp every host already runs on every mutation puts the content in the
+// middle and keeps it there. That is also how iOS does it --
+// `RCTEnhancedScrollView`'s `centerContentIfNeeded` assigns a `contentInset` of
+// exactly these numbers -- and why `centerContent` overrides the app's own
+// `contentInset` there and here: the two are the same channel.
+ScrollAxisInsets centeringInsets(double containerLength, double contentLength);
+
 // An offset brought inside that range.
 //
 // The one place the three hosts agreed already, and now the one place it is
