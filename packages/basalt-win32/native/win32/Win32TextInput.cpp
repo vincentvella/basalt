@@ -489,7 +489,7 @@ void Win32TextInputManager::applyTextChecking(Entry &entry, const TextInputProps
   // window's whole scope list, and a controlled field re-sending identical
   // props would otherwise reinstall it on every keystroke.
   const InputScope scope =
-      inputScopeForKeyboardType(basalt::keyboardTypeName(props.traits.keyboardType));
+      win32::inputScopeForKeyboardType(basalt::keyboardTypeName(props.traits.keyboardType));
   if (!entry.sawInputScope || scope != entry.inputScope) {
     entry.sawInputScope = true;
     entry.inputScope = scope;
