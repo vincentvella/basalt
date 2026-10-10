@@ -136,3 +136,48 @@ TEST(momentum_a_deceleration_rate_of_one_would_never_stop) {
   EXPECT(flight.frames < 6000);
   EXPECT(!momentum.isRunning());
 }
+
+// The projection, which is the same model asked where it would end up rather
+// than stepped there.
+//
+// It exists for `core/ScrollSnap.h`: a snapping list has to know where momentum
+// would have carried it before it can choose a point. So the test that matters
+// is that the closed form and the animation agree -- an integral that drifted
+// from the frames would make a list settle somewhere it was never heading.
+TEST(momentum_the_projection_agrees_with_the_frames) {
+  ScrollMomentum momentum;
+  EXPECT(momentum.start(0, 1200, ScrollMomentum::kNormalDeceleration));
+  const Flight flight = flyY(momentum);
+
+  const double projected =
+      basalt::scrollMomentumDistance(1200, ScrollMomentum::kNormalDeceleration);
+  EXPECT(projected > 0);
+  // Within a few per cent. The stepped version is deliberately the cruder of
+  // the two -- it moves at the velocity each frame *started* with, which
+  // overshoots slightly -- and ScrollMomentum.cpp says so where it does it.
+  EXPECT(projected > flight.distanceY * 0.9);
+  EXPECT(projected < flight.distanceY * 1.1);
+}
+
+TEST(momentum_the_projection_keeps_the_sign_and_scales_with_the_throw) {
+  const double gentle = basalt::scrollMomentumDistance(400, ScrollMomentum::kNormalDeceleration);
+  const double hard = basalt::scrollMomentumDistance(2000, ScrollMomentum::kNormalDeceleration);
+  EXPECT(gentle > 0);
+  EXPECT(hard > gentle * 2);
+
+  // Backwards travels backwards, which is the sign convention everything else
+  // here uses: positive velocity grows the content offset.
+  EXPECT_NEAR(basalt::scrollMomentumDistance(-2000, ScrollMomentum::kNormalDeceleration),
+              -hard,
+              0.0001);
+
+  // A faster rate stops sooner, the same way the stepped model does.
+  EXPECT(basalt::scrollMomentumDistance(2000, ScrollMomentum::kFastDeceleration) < hard);
+}
+
+TEST(momentum_a_release_is_projected_nowhere) {
+  // The same threshold `start` refuses at: below it there is no fling, so there
+  // is nothing to project and a snapping list should settle where it is.
+  EXPECT_NEAR(basalt::scrollMomentumDistance(10, ScrollMomentum::kNormalDeceleration), 0.0, 0.0001);
+  EXPECT_NEAR(basalt::scrollMomentumDistance(0, ScrollMomentum::kNormalDeceleration), 0.0, 0.0001);
+}

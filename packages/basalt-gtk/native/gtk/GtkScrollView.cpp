@@ -88,6 +88,16 @@ void GtkScrollViewManager::update(RnView *view, const ShadowView &shadowView) {
         entry.snap.alignment = ScrollSnapAlignment::Start;
         break;
     }
+    // The three modifiers of snapping, all of which `core/ScrollSnap.h` acts
+    // on: whether the content's own edges count as snap points beside the
+    // listed ones, and whether a fling across a spacing carries or stops at the
+    // next point.
+    entry.snap.snapToStart = props->snapToStart;
+    entry.snap.snapToEnd = props->snapToEnd;
+    entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
+    // And the friction, so the projection of where a fling would land uses the
+    // same rate the fling itself will.
+    entry.snap.decelerationRate = entry.decelerationRate;
   }
 
   if (const auto state =

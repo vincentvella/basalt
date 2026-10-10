@@ -9,7 +9,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. disableViewCulling is never set, which will matter once AT-SPI lands
 4. No zoom
 5. ~~`ScrollViewProps` has no rows on the support page~~
-6. Seven `<ScrollView>` props are a desktop question nobody has answered
+6. Four `<ScrollView>` props are a desktop question nobody has answered, and
+   ~~the three about snapping~~ are done
 
 - Trackpad (pixel-unit) scrolling is unverified; the wheel path is, on X11.
 - ~~No momentum.~~ See the Input section. What is left is Windows, which has no
@@ -123,10 +124,11 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than trusting this file, which is how the `<TextInput>` rows found two
   stale claims in backlog/textinput.md on the day they were added.
 
-- **Seven `<ScrollView>` props are a desktop question nobody has answered.**
-  Surfaced on 2026-10-09 by giving every prop a row, which is the point of the
-  rows: each of these is a thing an app can write that no host reads, and none
-  of them is somebody else's platform.
+- **Four `<ScrollView>` props are a desktop question nobody has answered.**
+  Seven of them were, until 2026-10-10; the three about snapping are done, and
+  the entry keeps the others. Surfaced on 2026-10-09 by giving every prop a row,
+  which is the point of the rows: each of these is a thing an app can write that
+  no host reads, and none of them is somebody else's platform.
 
   `contentOffset` is the first one an app notices: it sets where a list starts,
   and a chat view that opens at the bottom writes it. Every host keeps its
@@ -139,11 +141,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   the offset before anything is drawn. The shape of it belongs in `core/`, since
   the arithmetic is the same on all three.
 
-  `snapToStart`, `snapToEnd` and `disableIntervalMomentum` are modifiers of
-  snapping, which *is* implemented on all three: the first two decide whether
-  the first and last snap points are the content's edges, and the third stops a
-  fling from carrying past the next point. `core/ScrollSnap.h` is where they go,
-  and each is a line or two there rather than per host.
+  ~~`snapToStart`, `snapToEnd` and `disableIntervalMomentum`~~ are done,
+  2026-10-10, in `core/ScrollSnap.h` as this entry predicted -- with one thing
+  it did not predict, which is the interesting part.
+
+  The first two were the line or two expected: the content's own start and end
+  count as snap points beside the listed ones, which is what upstream means by
+  "by default the beginning of the list counts as a snap offset", and `false`
+  frees the gap between an edge and the listed point nearest it. Freeing it
+  means answering with *no* target at all, which each host already treats as
+  "not a snapping gesture" and runs the fling for. Both halves of upstream's
+  rule are kept, including the one that is easy to drop: a list thrown from
+  inside the snapping region towards a freed edge still settles on the last
+  listed point rather than sailing into the gap.
+
+  **`disableIntervalMomentum` turned out to be about what this repository was
+  already doing.** A flick here settled on the point next to where the finger
+  left, however hard the throw -- which is `disableIntervalMomentum: true`
+  behaviour, so the prop's *default* was the missing half. `snapToInterval` and
+  `snapToOffsets` on iOS let the momentum carry across several points and
+  settle at the one it arrives near, and that needed a projection: where the
+  fling *would* have landed. `core/ScrollMomentum.h` grew
+  `scrollMomentumDistance`, the closed form of the decay it already steps
+  through, and a test asserts the two agree to within a few per cent -- an
+  integral that drifted from the frames would settle a list somewhere it was
+  never heading.
+
+  `pagingEnabled` is deliberately left out of that: a paged view turns one page
+  per flick on iOS whatever it was thrown at, and a test says so.
+
+  Where upstream does this is `RCTEnhancedScrollView`'s
+  `scrollViewWillEndDragging`, which is handed iOS's own predicted target rather
+  than projecting one. Ten tests in `tests/test_scroll_snap.cpp` and three in
+  `tests/test_momentum.cpp`, all arithmetic, which is most of the reason this
+  lives in core.
 
   `centerContent` centres content smaller than the viewport, and
   `indicatorStyle` asks for a light or dark indicator, which these hosts draw

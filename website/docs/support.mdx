@@ -50,8 +50,8 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 176 of 279 | 177 of 279 | 172 of 279 |
-| | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `████████████░░░░░░░░` |
+| Done | 179 of 279 | 180 of 279 | 175 of 279 |
+| | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `█████████████░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
 Yoga does it for every host: a layout prop never reaches one of these
@@ -318,10 +318,10 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | `scrollIndicatorInsets` | ✅ | ✅ | ✅ |  |
 | `snapToInterval` | ✅ | ✅ | ✅ |  |
 | `snapToAlignment` | ✅ | ✅ | ✅ |  |
-| `disableIntervalMomentum` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `disableIntervalMomentum` | ✅ | ✅ | ✅ |  |
 | `snapToOffsets` | ✅ | ✅ | ✅ |  |
-| `snapToStart` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
-| `snapToEnd` | ✖ | ✖ | ✖ | [a desktop question nobody has answered; the entry lists the group](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `snapToStart` | ✅ | ✅ | ✅ |  |
+| `snapToEnd` | ✅ | ✅ | ✅ |  |
 | `contentInsetAdjustmentBehavior` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `scrollToOverflowEnabled` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `isInvertedVirtualizedList` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |

@@ -1995,22 +1995,19 @@
       "why": "sv-untouched"
     },
     "BaseScrollViewProps.snapToStart": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "sv-untouched"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
     },
     "BaseScrollViewProps.snapToEnd": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "sv-untouched"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
     },
     "BaseScrollViewProps.disableIntervalMomentum": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "sv-untouched"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes"
     },
     "BaseScrollViewProps.centerContent": {
       "linux": "no",

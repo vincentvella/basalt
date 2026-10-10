@@ -29,6 +29,24 @@
 //
 // Below that threshold the nearest point wins, which is the behaviour of
 // letting go without meaning anything by it.
+//
+// ## Next to *where*, which is the part `disableIntervalMomentum` is about
+//
+// For `pagingEnabled` the answer is the next page and nothing further, however
+// hard the list was thrown: that is what a paged view does on iOS, where
+// UIScrollView turns one page per flick.
+//
+// `snapToInterval` and `snapToOffsets` are not that. There the momentum is
+// real -- a hard throw crosses several points and settles at the one it
+// arrives near -- so the point is chosen from where the fling *would have
+// landed*, projected with the same friction model `core/ScrollMomentum.h`
+// animates. `disableIntervalMomentum` is the prop that asks for the other
+// behaviour, and gives the paged one: the next point from where the finger
+// left.
+//
+// Upstream decides this the same way, in `RCTEnhancedScrollView`'s
+// `scrollViewWillEndDragging`, except that it is handed iOS's own predicted
+// target rather than projecting one.
 
 #pragma once
 
@@ -56,6 +74,22 @@ struct ScrollSnapConfig {
   // spacing.
   std::vector<double> offsets;
   ScrollSnapAlignment alignment{ScrollSnapAlignment::Start};
+  // `snapToStart` and `snapToEnd`, which are about `snapToOffsets` and nothing
+  // else: by default the content's own start and end count as snap points
+  // beside the listed ones, and `false` lets the list scroll freely between an
+  // edge and the nearest listed point. Both default to true, as upstream's
+  // props and `ScrollView.js` do.
+  bool snapToStart{true};
+  bool snapToEnd{true};
+  // `disableIntervalMomentum`: a fling stops at the point next to where the
+  // *finger* left rather than where the coasting would have carried it. For a
+  // page less wide than the list, which is what React Native's own
+  // documentation says it is for.
+  bool disableIntervalMomentum{false};
+  // `decelerationRate`, needed to know where a fling would have landed. The
+  // same per-millisecond factor `core/ScrollMomentum.h` takes, defaulting to
+  // React Native's `'normal'`; a host that reads the prop passes its own.
+  double decelerationRate{0.998};
 
   bool enabled() const {
     return paging || interval > 0.0 || !offsets.empty();

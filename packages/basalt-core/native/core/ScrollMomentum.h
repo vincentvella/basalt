@@ -70,4 +70,18 @@ class ScrollMomentum {
   double decelerationRate_{kNormalDeceleration};
 };
 
+// How far a fling at `velocity` would travel before it stopped, signed like
+// the velocity.
+//
+// The closed form of the decay `advance` steps through, and it exists for
+// `core/ScrollSnap.h`: a snapping list has to know where momentum *would* have
+// carried it before it can decide which point to settle on, which is what
+// `disableIntervalMomentum` turns off. Nothing animates from this -- the fling
+// above is still what moves a list that is not snapping.
+//
+// Integrated to the speed the fling stops at rather than to zero, because that
+// is where `advance` gives up: the tail below it is never travelled, and a
+// projection that included it would reach past every real fling.
+double scrollMomentumDistance(double velocity, double decelerationRate);
+
 } // namespace basalt

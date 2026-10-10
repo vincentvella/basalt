@@ -62,6 +62,30 @@ bool ScrollMomentum::advance(double seconds, double &dx, double &dy) {
   return true;
 }
 
+double scrollMomentumDistance(double velocity, double decelerationRate) {
+  const double speed = std::abs(velocity);
+  if (speed < kStopSpeed) {
+    // A release rather than a fling, which is the same threshold `start`
+    // refuses at: nothing coasts from here.
+    return 0.0;
+  }
+  const double rate = std::clamp(decelerationRate, 0.5, 0.9999);
+  const double decay = std::log(rate);
+  if (decay >= 0.0) {
+    return 0.0;
+  }
+
+  // Velocity is in pixels per second and the rate is a factor per millisecond,
+  // which is the awkwardness React Native's own prop carries. So the integral
+  // is over milliseconds and the velocity is divided by a thousand to match:
+  //
+  //   distance = (v/1000) * integral of rate^t dt, from 0 to the moment the
+  //   speed falls to kStopSpeed, which is (rate^T - 1) / ln(rate) with
+  //   rate^T = kStopSpeed / |v|.
+  const double travelled = (speed / 1000.0) * ((kStopSpeed / speed) - 1.0) / decay;
+  return velocity < 0.0 ? -travelled : travelled;
+}
+
 void ScrollMomentum::stop() {
   running_ = false;
   velocityX_ = 0;

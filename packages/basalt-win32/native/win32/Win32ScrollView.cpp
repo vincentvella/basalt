@@ -105,6 +105,16 @@ void Win32ScrollViewManager::update(RnWin32View *view, const ShadowView &shadowV
         entry.snap.alignment = ScrollSnapAlignment::Start;
         break;
     }
+    // The three modifiers of snapping, all of which `core/ScrollSnap.h` acts
+    // on: whether the content's own edges count as snap points beside the
+    // listed ones, and whether a fling across a spacing carries or stops at the
+    // next point.
+    entry.snap.snapToStart = props->snapToStart;
+    entry.snap.snapToEnd = props->snapToEnd;
+    entry.snap.disableIntervalMomentum = props->disableIntervalMomentum;
+    // `decelerationRate` is not read on this host, so the projection of where a
+    // fling would land uses React Native's own default -- which is what the
+    // config carries. See the support page's row for the prop.
   }
 
   if (const auto state =
