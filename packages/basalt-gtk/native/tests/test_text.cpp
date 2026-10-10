@@ -10,6 +10,7 @@
 #include "GtkPixels.h"
 
 #include "FontScaling.h"
+#include "FontFitting.h"
 #include "PangoTextLayout.h"
 // For rn_pango_clip_height, the contract between measuring a clipped paragraph
 // and painting one. It lives in the widget layer; see the comment there.
@@ -993,4 +994,93 @@ TEST(gtk_a_base_writing_direction_resolves_and_moves_the_ink) {
   g_object_unref(natural);
   g_object_unref(ltr);
   g_object_unref(rtl);
+}
+
+// --- adjustsFontSizeToFit ----------------------------------------------------
+//
+// The search is core's and tested there; what these ask is the half that is
+// Pango's -- that the ratio reaches the font sizes, that the fitted paragraph
+// actually fits, and that a paragraph which never asked is left alone.
+
+TEST(text_adjusts_font_size_to_fit_shrinks_until_it_fits) {
+  ParagraphAttributes plain;
+  const AttributedString label = makeText("Delete all of the messages", 32.0F);
+
+  // Unconstrained, this is far wider than the box below.
+  const Measured natural = measure(label, plain, -1.0F);
+  EXPECT(natural.width > 200.0F);
+
+  ParagraphAttributes fitting;
+  fitting.adjustsFontSizeToFit = true;
+  const basalt::FontFit fit = basalt::textFitScale(label, fitting, 200.0F, 40.0F);
+  EXPECT(fit.scales());
+  EXPECT(fit.ratio < 1.0);
+
+  // And the fitted paragraph fits, which is the claim: measured through the
+  // same builder the host paints with.
+  PangoLayout *layout = basalt::buildTextLayout(label, fitting, 200.0F, fit);
+  float width = 0;
+  float height = 0;
+  basalt::textLayoutSize(layout, &width, &height);
+  g_object_unref(layout);
+  EXPECT(width <= 200.0F);
+  EXPECT(height <= 40.0F);
+}
+
+TEST(text_a_paragraph_that_did_not_ask_is_not_shrunk) {
+  // The control, and the behaviour of every paragraph in an app that never set
+  // the prop: the search does not run at all, which matters because it builds a
+  // layout per probe.
+  ParagraphAttributes plain;
+  const AttributedString label = makeText("Delete all of the messages", 32.0F);
+  EXPECT(!basalt::textFitScale(label, plain, 200.0F, 40.0F).scales());
+
+  const Measured measured = measure(label, plain, 200.0F);
+  // Wrapped and taller than the box, rather than shrunk into it.
+  EXPECT(measured.height > 40.0F);
+}
+
+TEST(text_a_paragraph_that_already_fits_keeps_its_size) {
+  ParagraphAttributes fitting;
+  fitting.adjustsFontSizeToFit = true;
+  const AttributedString label = makeText("Hi", 16.0F);
+  EXPECT(!basalt::textFitScale(label, fitting, 300.0F, 100.0F).scales());
+}
+
+TEST(text_the_minimum_font_size_stops_the_shrinking) {
+  // A floor the text cannot fit above: the ratio still comes back, and the size
+  // it resolves to is the floor rather than something unreadable.
+  ParagraphAttributes fitting;
+  fitting.adjustsFontSizeToFit = true;
+  fitting.minimumFontSize = 24.0F;
+  const AttributedString label = makeText("Delete all of the messages", 32.0F);
+
+  const basalt::FontFit fit = basalt::textFitScale(label, fitting, 60.0F, 30.0F);
+  EXPECT_NEAR(fit.apply(32.0), 24.0, 0.0001);
+
+  // Which is also what gets drawn: the layout is built with the same fit.
+  PangoLayout *layout = basalt::buildTextLayout(label, fitting, 60.0F, fit);
+  float width = 0;
+  float height = 0;
+  basalt::textLayoutSize(layout, &width, &height);
+  g_object_unref(layout);
+  // It does not fit -- it cannot -- and that is the floor doing its job rather
+  // than the search failing.
+  EXPECT(height > 30.0F);
+}
+
+TEST(text_a_line_limit_does_not_hide_the_overflow_from_the_search) {
+  // `numberOfLines` with `adjustsFontSizeToFit` is the pairing a button label
+  // is written with, and the reason the search measures the *untruncated*
+  // paragraph: a one-line limit makes a layout that fits any box by throwing
+  // text away, so a search that asked the truncated layout would shrink
+  // nothing and the label would be ellipsised instead.
+  ParagraphAttributes oneLine;
+  oneLine.adjustsFontSizeToFit = true;
+  oneLine.maximumNumberOfLines = 1;
+  const AttributedString label = makeText("Delete all of the messages", 32.0F);
+
+  const basalt::FontFit fit = basalt::textFitScale(label, oneLine, 200.0F, 40.0F);
+  EXPECT(fit.scales());
+  EXPECT(fit.ratio < 1.0);
 }

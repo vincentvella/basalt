@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "FontFitting.h"
 #include "RnWin32TextLayout.h"
 
 #include <react/renderer/attributedstring/AttributedString.h>
@@ -28,7 +29,11 @@ namespace basalt::win32 {
 // One fragment's attributes, as this platform understands them. Exposed so the
 // mounting manager can ask the same question about a lone run without building
 // a whole paragraph.
-RnTextStyle buildTextStyle(const facebook::react::TextAttributes &textAttributes);
+// `fit` is `adjustsFontSizeToFit`'s answer: the ratio the font size is
+// multiplied by and the two bounds it is clamped against. The default changes
+// nothing, which is what a fragment in a paragraph that never asked gets.
+RnTextStyle buildTextStyle(const facebook::react::TextAttributes &textAttributes,
+                           basalt::FontFit fit = {});
 
 // One fragment's text with its `textTransform` applied, which has to happen
 // before anything measures the string. Exposed for the suite, and for the same
@@ -41,6 +46,20 @@ std::string transformedFragmentText(const facebook::react::TextAttributes &textA
 
 std::shared_ptr<RnWin32TextLayout>
 buildTextLayout(const facebook::react::AttributedString &attributedString,
-                const facebook::react::ParagraphAttributes &paragraphAttributes);
+                const facebook::react::ParagraphAttributes &paragraphAttributes,
+                basalt::FontFit fit = {});
+
+// How far this paragraph's fonts have to shrink to fit a box, for
+// `adjustsFontSizeToFit`.
+//
+// The search is core's; this is the half that measures, which means building a
+// layout per probe -- about eight of them -- and is why it runs only for a
+// paragraph that asked. Both the measurement seam and the mounting manager call
+// it, with the constraints and the frame respectively, so the text is painted
+// at the size it was measured at.
+basalt::FontFit textFitScale(const facebook::react::AttributedString &attributedString,
+                             const facebook::react::ParagraphAttributes &paragraphAttributes,
+                             float maxWidth,
+                             float maxHeight);
 
 } // namespace basalt::win32

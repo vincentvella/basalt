@@ -91,7 +91,17 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
       ? -1.0f
       : static_cast<float>(layoutConstraints.maximumSize.width);
 
-  const auto layout = basalt::win32::buildTextLayout(attributedString, paragraphAttributes);
+  // `adjustsFontSizeToFit`: how far the fonts have to shrink for this paragraph
+  // to fit the box Yoga offered. A no-op ratio of 1 for every paragraph that did
+  // not ask, which is almost all of them -- the search builds a layout per probe
+  // and must not run otherwise.
+  const basalt::FontFit fit =
+      basalt::win32::textFitScale(attributedString,
+                                  paragraphAttributes,
+                                  maxWidth,
+                                  static_cast<float>(layoutConstraints.maximumSize.height));
+  const auto layout =
+      basalt::win32::buildTextLayout(attributedString, paragraphAttributes, fit);
   const basalt::win32::RnTextSize size =
       layout == nullptr ? basalt::win32::RnTextSize{} : layout->measure(maxWidth);
 

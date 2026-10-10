@@ -1104,7 +1104,15 @@ void GtkMountingManager::applyText(RnView *view, const ShadowView &shadowView) {
   // and gave it to a widget would be a silent race rather than a failure. See
   // threadPangoContext in PangoTextLayout.cpp.
   assert(onMainThread() && "a painted PangoLayout must be built on the GTK main thread");
-  PangoLayout *layout = basalt::buildTextLayout(data.attributedString, data.paragraphAttributes, width);
+  // `adjustsFontSizeToFit` again, against the frame rather than the constraint:
+  // the text is painted into the box Yoga assigned, which is the box it has to
+  // fit. Measuring and painting run the same search through the same builder,
+  // which is what keeps the painted size the measured one.
+  const float height = static_cast<float>(shadowView.layoutMetrics.frame.size.height);
+  const basalt::FontFit fit =
+      basalt::textFitScale(data.attributedString, data.paragraphAttributes, width, height);
+  PangoLayout *layout =
+      basalt::buildTextLayout(data.attributedString, data.paragraphAttributes, width, fit);
 
   // Fragments carry their own colours as Pango attributes; this is the fallback
   // for text that set none. React Native's default is opaque black.

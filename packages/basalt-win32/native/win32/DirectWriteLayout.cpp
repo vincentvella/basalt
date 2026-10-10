@@ -212,7 +212,7 @@ RnTextDecorationStyle toDecorationStyle(facebook::react::TextDecorationStyle sty
   return RnTextDecorationStyle::Solid;
 }
 
-RnTextStyle buildTextStyle(const TextAttributes &attributes) {
+RnTextStyle buildTextStyle(const TextAttributes &attributes, basalt::FontFit fit) {
   RnTextStyle style;
 
   if (!attributes.fontFamily.empty()) {
@@ -236,8 +236,12 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
   const float requested = (!std::isnan(attributes.fontSize) && attributes.fontSize > 0)
       ? static_cast<float>(attributes.fontSize)
       : style.fontSize;
-  style.fontSize =
-      requested * basalt::effectiveFontSizeMultiplier(attributes, basalt::systemFontScale());
+  // `adjustsFontSizeToFit` last, over the size the three font-scaling props
+  // resolved to: shrinking to fit is about the size the text would otherwise
+  // have been. A paragraph that never asked carries a ratio of 1 and this
+  // changes nothing.
+  style.fontSize = static_cast<float>(fit.apply(
+      requested * basalt::effectiveFontSizeMultiplier(attributes, basalt::systemFontScale())));
 
   style.bold = isBold(attributes);
   style.italic = attributes.fontStyle.has_value() &&
@@ -325,9 +329,42 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
   return style;
 }
 
+basalt::FontFit textFitScale(const AttributedString &attributedString,
+                             const ParagraphAttributes &paragraphAttributes,
+                             float maxWidth,
+                             float maxHeight) {
+  const basalt::FontFit limits = basalt::fontFitLimits(paragraphAttributes);
+  if (!paragraphAttributes.adjustsFontSizeToFit) {
+    return limits;
+  }
+
+  // Measured against the paragraph *without* its line limit, which is how this
+  // prop and `numberOfLines` work together. iOS tests whether the text was
+  // truncated; asking what the untruncated paragraph needs answers the same
+  // question with one layout instead of two, and is the reason a one-line
+  // button label shrinks rather than ellipsising.
+  ParagraphAttributes untruncated = paragraphAttributes;
+  untruncated.maximumNumberOfLines = 0;
+
+  return basalt::fontFitToBox(
+      limits,
+      [&](double ratio) {
+        basalt::FontFit probe = limits;
+        probe.ratio = ratio;
+        const auto layout = buildTextLayout(attributedString, untruncated, probe);
+        if (layout == nullptr) {
+          return basalt::FontFitBox{};
+        }
+        const RnTextSize size = layout->measure(maxWidth);
+        return basalt::FontFitBox{.width = size.width, .height = size.height};
+      },
+      basalt::FontFitBox{.width = maxWidth, .height = maxHeight});
+}
+
 std::shared_ptr<RnWin32TextLayout>
 buildTextLayout(const AttributedString &attributedString,
-                const ParagraphAttributes &paragraphAttributes) {
+                const ParagraphAttributes &paragraphAttributes,
+                basalt::FontFit fit) {
   std::vector<RnTextRun> runs;
   for (const auto &fragment : attributedString.getFragments()) {
     // An attachment is an inline `<View>`, which occupies space rather than
@@ -342,7 +379,7 @@ buildTextLayout(const AttributedString &attributedString,
     // mounting manager paints the view itself.
     if (fragment.isAttachment()) {
       const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
-      RnTextRun run{fragment.string, buildTextStyle(fragment.textAttributes), std::nullopt};
+      RnTextRun run{fragment.string, buildTextStyle(fragment.textAttributes, fit), std::nullopt};
       run.inlineBox =
           RnInlineBox{static_cast<float>(size.width), static_cast<float>(size.height)};
       runs.push_back(std::move(run));
@@ -353,7 +390,7 @@ buildTextLayout(const AttributedString &attributedString,
     // and the mounting manager go through, so doing it here is what keeps the
     // two agreeing.
     runs.push_back(RnTextRun{transformedFragmentText(fragment.textAttributes, fragment.string),
-                             buildTextStyle(fragment.textAttributes)});
+                             buildTextStyle(fragment.textAttributes, fit)});
   }
 
   auto layout = RnWin32TextLayout::createFromRuns(

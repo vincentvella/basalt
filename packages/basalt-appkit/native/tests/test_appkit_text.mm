@@ -1140,3 +1140,91 @@ TEST(appkit_a_right_to_left_paragraph_draws_against_the_right_edge) {
     EXPECT(rtl > 100.0);
   }
 }
+
+// --- adjustsFontSizeToFit ----------------------------------------------------
+//
+// The search is core's and tested there; what these ask is the half that is
+// Core Text's -- that the ratio reaches the font sizes, that the fitted
+// paragraph actually fits, and that a paragraph which never asked is untouched.
+namespace {
+
+facebook::react::AttributedString label(const std::string &text, float fontSize) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = fontSize;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+  return string;
+}
+
+} // namespace
+
+TEST(appkit_text_adjusts_font_size_to_fit_shrinks_until_it_fits) {
+  @autoreleasepool {
+    const auto text = label("Delete all of the messages", 32.0F);
+
+    facebook::react::ParagraphAttributes fitting;
+    fitting.adjustsFontSizeToFit = true;
+    const basalt::FontFit fit = basalt::textFitScale(text, fitting, 200.0F, 40.0F);
+    EXPECT(fit.scales());
+    EXPECT(fit.ratio < 1.0);
+
+    // And the fitted paragraph fits, measured through the same builder the host
+    // paints with.
+    RnTextLayout *layout = basalt::buildTextLayout(text, fitting, fit);
+    const CGSize size = [layout sizeForWidth:200.0];
+    EXPECT(size.width <= 200.0);
+    EXPECT(size.height <= 40.0);
+  }
+}
+
+TEST(appkit_text_a_paragraph_that_did_not_ask_is_not_shrunk) {
+  @autoreleasepool {
+    const auto text = label("Delete all of the messages", 32.0F);
+    facebook::react::ParagraphAttributes plain;
+    EXPECT(!basalt::textFitScale(text, plain, 200.0F, 40.0F).scales());
+
+    RnTextLayout *layout = basalt::buildTextLayout(text, plain);
+    // Wrapped and taller than the box, rather than shrunk into it.
+    EXPECT([layout sizeForWidth:200.0].height > 40.0);
+  }
+}
+
+TEST(appkit_text_a_paragraph_that_already_fits_keeps_its_size) {
+  @autoreleasepool {
+    facebook::react::ParagraphAttributes fitting;
+    fitting.adjustsFontSizeToFit = true;
+    EXPECT(!basalt::textFitScale(label("Hi", 16.0F), fitting, 300.0F, 100.0F).scales());
+  }
+}
+
+TEST(appkit_text_the_minimum_font_size_stops_the_shrinking) {
+  @autoreleasepool {
+    facebook::react::ParagraphAttributes fitting;
+    fitting.adjustsFontSizeToFit = true;
+    fitting.minimumFontSize = 24.0F;
+    const basalt::FontFit fit =
+        basalt::textFitScale(label("Delete all of the messages", 32.0F), fitting, 60.0F, 30.0F);
+    EXPECT_NEAR(fit.apply(32.0), 24.0, 0.0001);
+  }
+}
+
+TEST(appkit_text_a_line_limit_does_not_hide_the_overflow_from_the_search) {
+  @autoreleasepool {
+    // `numberOfLines` with `adjustsFontSizeToFit` is the pairing a button label
+    // is written with, and the reason the search measures the *untruncated*
+    // paragraph: a one-line limit makes a layout that fits any box by throwing
+    // text away.
+    facebook::react::ParagraphAttributes oneLine;
+    oneLine.adjustsFontSizeToFit = true;
+    oneLine.maximumNumberOfLines = 1;
+    const basalt::FontFit fit =
+        basalt::textFitScale(label("Delete all of the messages", 32.0F), oneLine, 200.0F, 40.0F);
+    EXPECT(fit.scales());
+    EXPECT(fit.ratio < 1.0);
+  }
+}

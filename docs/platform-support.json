@@ -1316,10 +1316,13 @@
       "why": "android-only"
     },
     "ParagraphAttributes.adjustsFontSizeToFit": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "paragraphAttributes.adjustsFontSizeToFit",
+        "textFitScale("
+      ]
     },
     "ParagraphAttributes.includeFontPadding": {
       "linux": "ignored",
@@ -1334,22 +1337,28 @@
       "why": "android-only"
     },
     "ParagraphAttributes.minimumFontSize": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "fontFitLimits("
+      ]
     },
     "ParagraphAttributes.maximumFontSize": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "fontFitLimits("
+      ]
     },
     "ParagraphAttributes.minimumFontScale": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "fontFitLimits("
+      ]
     },
     "ParagraphAttributes.textAlignVertical": {
       "linux": "no",

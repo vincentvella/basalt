@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 183 of 279 | 184 of 279 | 180 of 279 |
+| Done | 187 of 279 | 188 of 279 | 184 of 279 |
 | | `█████████████░░░░░░░` | `█████████████░░░░░░░` | `█████████████░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -440,9 +440,9 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `numberOfLines` <sub>`maximumNumberOfLines`</sub> | ✅ | ✅ | ✅ |  |
 | `ellipsizeMode` | ✅ | ✅ | ✅ |  |
 | `textBreakStrategy` | – | – | – | [Android's own: ReactCommon declares it in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `adjustsFontSizeToFit` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `adjustsFontSizeToFit` | ✅ | ✅ | ✅ |  |
 | `android_hyphenationFrequency` | – | – | – | [Android's own: ReactCommon declares it in that platform's host props](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `minimumFontScale` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `minimumFontScale` | ✅ | ✅ | ✅ |  |
 
 ### Neither
 
@@ -450,8 +450,8 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
-| `minimumFontSize` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `maximumFontSize` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `minimumFontSize` | ✅ | ✅ | ✅ |  |
+| `maximumFontSize` | ✅ | ✅ | ✅ |  |
 
 ## YogaStylableProps
 

@@ -16,6 +16,8 @@
 #include <gtk/gtk.h>
 #include <pango/pangocairo.h>
 
+#include "FontFitting.h"
+
 #include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
 #include <react/renderer/attributedstring/TextAttributes.h>
@@ -36,9 +38,27 @@ namespace basalt {
 // Thread-safe. Fabric measures text off the main thread while GTK paints on it,
 // so this serialises internally rather than assuming Pango's font map is
 // reentrant.
+// `fit` is `adjustsFontSizeToFit`'s answer: the ratio every font size is
+// multiplied by and the two bounds that ratio is clamped against. The default
+// is the one a paragraph that never asked gets, which changes nothing -- see
+// core/FontFitting.h.
 PangoLayout *buildTextLayout(const facebook::react::AttributedString &attributedString,
                              const facebook::react::ParagraphAttributes &paragraphAttributes,
-                             float maxWidth);
+                             float maxWidth,
+                             basalt::FontFit fit = {});
+
+// How far this paragraph's fonts have to shrink to fit a box, for
+// `adjustsFontSizeToFit`.
+//
+// The search is core's; this is the half that measures, which means building a
+// layout per probe -- about eight of them -- and is why it runs only for a
+// paragraph that asked. Both the measurement seam and the mounting manager call
+// it, with the constraints and the frame respectively, so the text is painted
+// at the size it was measured at.
+basalt::FontFit textFitScale(const facebook::react::AttributedString &attributedString,
+                             const facebook::react::ParagraphAttributes &paragraphAttributes,
+                             float maxWidth,
+                             float maxHeight);
 
 // Builds a PangoAttrList applying `textAttributes` to a whole string, for the
 // widgets that hold their own text rather than a layout we built: GtkText takes

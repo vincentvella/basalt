@@ -237,7 +237,8 @@ PangoDirection toPangoDirection(std::optional<facebook::react::WritingDirection>
 void applyFragmentAttributes(PangoAttrList *attributes,
                              const TextAttributes &textAttributes,
                              guint startIndex,
-                             guint endIndex) {
+                             guint endIndex,
+                             basalt::FontFit fit = {}) {
   const auto addAttribute = [&](PangoAttribute *attribute) {
     attribute->start_index = startIndex;
     attribute->end_index = endIndex;
@@ -259,8 +260,12 @@ void applyFragmentAttributes(PangoAttrList *attributes,
   // `maxFontSizeMultiplier` are honoured: this used to multiply by
   // `fontSizeMultiplier` and read neither of the two props that exist to
   // control that multiplication.
-  const float fontSize =
-      basalt::effectiveFontSize(textAttributes, kDefaultFontSize, basalt::systemFontScale());
+  // `adjustsFontSizeToFit` last, over the size the three font-scaling props
+  // resolved to: shrinking to fit is about the size the text would otherwise
+  // have been, including the desktop's own text scale. A paragraph that never
+  // asked carries a ratio of 1 and this changes nothing.
+  const float fontSize = static_cast<float>(fit.apply(
+      basalt::effectiveFontSize(textAttributes, kDefaultFontSize, basalt::systemFontScale())));
   // set_absolute_size, not set_size. set_size takes points and resolves them
   // against the context's resolution, which at the default 96dpi would render
   // a fontSize of 16 at about 21px. React Native's fontSize is in
@@ -460,9 +465,42 @@ static std::string transformedFragmentText(const AttributedString::Fragment &fra
   return fragment.string;
 }
 
+basalt::FontFit textFitScale(const AttributedString &attributedString,
+                             const ParagraphAttributes &paragraphAttributes,
+                             float maxWidth,
+                             float maxHeight) {
+  const basalt::FontFit limits = basalt::fontFitLimits(paragraphAttributes);
+  if (!paragraphAttributes.adjustsFontSizeToFit) {
+    return limits;
+  }
+
+  // Measured against the paragraph *without* its line limit, which is how this
+  // prop and `numberOfLines` work together. iOS tests whether the text was
+  // truncated; asking what the untruncated paragraph needs answers the same
+  // question with one layout instead of two, and is the reason a one-line
+  // button label shrinks rather than ellipsising.
+  ParagraphAttributes untruncated = paragraphAttributes;
+  untruncated.maximumNumberOfLines = 0;
+
+  return basalt::fontFitToBox(
+      limits,
+      [&](double ratio) {
+        basalt::FontFit probe = limits;
+        probe.ratio = ratio;
+        PangoLayout *layout = buildTextLayout(attributedString, untruncated, maxWidth, probe);
+        float width = 0;
+        float height = 0;
+        textLayoutSize(layout, &width, &height);
+        g_object_unref(layout);
+        return basalt::FontFitBox{.width = width, .height = height};
+      },
+      basalt::FontFitBox{.width = maxWidth, .height = maxHeight});
+}
+
 PangoLayout *buildTextLayout(const AttributedString &attributedString,
                              const ParagraphAttributes &paragraphAttributes,
-                             float maxWidth) {
+                             float maxWidth,
+                             basalt::FontFit fit) {
 
   // `baseWritingDirection`, which decides the context this layout is built on
   // and therefore has to be read before the layout exists. From the first
@@ -491,7 +529,7 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
     text += transformedFragmentText(fragment);
     const auto end = static_cast<guint>(text.size());
     if (end > start) {
-      applyFragmentAttributes(attributes, fragment.textAttributes, start, end);
+      applyFragmentAttributes(attributes, fragment.textAttributes, start, end, fit);
     }
     if (fragment.isAttachment() && end > start) {
       applyAttachmentShape(attributes, fragment, start, end);

@@ -112,14 +112,18 @@ NSUnderlineStyle toUnderlineStyle(facebook::react::TextDecorationStyle style) {
   return NSUnderlineStyleSingle;
 }
 
-NSFont *fontFor(const TextAttributes &textAttributes) {
+NSFont *fontFor(const TextAttributes &textAttributes, basalt::FontFit fit = {}) {
   // Through core/FontScaling.h, which is where `allowFontScaling` and
   // `maxFontSizeMultiplier` are honoured. macOS reports no text scale to honour
   // -- see appKitTextScale() -- so on this host those two props can only clamp
   // a multiplier something else set, and the test that proves they are read
   // supplies one with BASALT_TEST_FONT_SCALE.
-  const float size = basalt::effectiveFontSize(textAttributes, kDefaultFontSize,
-                                               basalt::systemFontScale());
+  // `adjustsFontSizeToFit` last, over the size those props resolved to:
+  // shrinking to fit is about the size the text would otherwise have been,
+  // including the desktop's own scale. A paragraph that never asked carries a
+  // ratio of 1 and this changes nothing.
+  const float size = static_cast<float>(fit.apply(
+      basalt::effectiveFontSize(textAttributes, kDefaultFontSize, basalt::systemFontScale())));
 
   const CGFloat weight = textAttributes.fontWeight ? toCoreTextWeight(*textAttributes.fontWeight)
                                                    : NSFontWeightRegular;
@@ -290,10 +294,11 @@ NSArray *fontFeaturesFor(const TextAttributes &textAttributes) {
   return features;
 }
 
-NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttributes &textAttributes) {
+NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttributes &textAttributes,
+                                                            basalt::FontFit fit) {
   NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
 
-  attributes[NSFontAttributeName] = fontFor(textAttributes);
+  attributes[NSFontAttributeName] = fontFor(textAttributes, fit);
   attributes[NSParagraphStyleAttributeName] = paragraphStyleFor(textAttributes);
 
   // The foreground, with `opacity` multiplied in, and React Native's default of
@@ -416,8 +421,38 @@ NSString *transformedFragmentText(const AttributedString::Fragment &fragment, NS
   return text;
 }
 
+basalt::FontFit textFitScale(const AttributedString &attributedString,
+                             const ParagraphAttributes &paragraphAttributes,
+                             float maxWidth,
+                             float maxHeight) {
+  const basalt::FontFit limits = basalt::fontFitLimits(paragraphAttributes);
+  if (!paragraphAttributes.adjustsFontSizeToFit) {
+    return limits;
+  }
+
+  // Measured against the paragraph *without* its line limit, which is how this
+  // prop and `numberOfLines` work together. iOS tests whether the text was
+  // truncated; asking what the untruncated paragraph needs answers the same
+  // question with one layout instead of two, and is the reason a one-line
+  // button label shrinks rather than ellipsising.
+  ParagraphAttributes untruncated = paragraphAttributes;
+  untruncated.maximumNumberOfLines = 0;
+
+  return basalt::fontFitToBox(
+      limits,
+      [&](double ratio) {
+        basalt::FontFit probe = limits;
+        probe.ratio = ratio;
+        RnTextLayout *layout = buildTextLayout(attributedString, untruncated, probe);
+        const CGSize size = [layout sizeForWidth:maxWidth];
+        return basalt::FontFitBox{.width = size.width, .height = size.height};
+      },
+      basalt::FontFitBox{.width = maxWidth, .height = maxHeight});
+}
+
 RnTextLayout *buildTextLayout(const AttributedString &attributedString,
-                              const ParagraphAttributes &paragraphAttributes) {
+                              const ParagraphAttributes &paragraphAttributes,
+                              basalt::FontFit fit) {
   NSMutableAttributedString *string = [[NSMutableAttributedString alloc] init];
 
   for (const auto &fragment : attributedString.getFragments()) {
@@ -431,7 +466,7 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
     text = transformedFragmentText(fragment, text);
 
     NSMutableDictionary *attributes =
-        [buildTextAttributes(fragment.textAttributes) mutableCopy];
+        [buildTextAttributes(fragment.textAttributes, fit) mutableCopy];
 
     // An inline `<View>`: one fragment holding U+FFFC, whose own size React
     // Native has already measured into the fragment. A run delegate is

@@ -8,10 +8,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
    upstream's
 3. ~~numberOfLines with ellipsizeMode: 'clip' does not truncate~~
-4. Ignored: adjustsFontSizeToFit, textBreakStrategy, hyphenation,
-   fontVariationSettings (~~textTransform~~, ~~textShadow*~~,
-   ~~the font-scaling three~~, ~~the decoration pair~~, ~~fontVariant~~ and
-   ~~a fragment's opacity~~ are done on GTK and AppKit)
+4. Ignored: textBreakStrategy, hyphenation, fontVariationSettings
+   (~~adjustsFontSizeToFit and its three bounds~~, ~~textTransform~~,
+   ~~textShadow*~~, ~~the font-scaling three~~, ~~the decoration pair~~,
+   ~~fontVariant~~ and ~~a fragment's opacity~~ are done)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
 7. Text is not selectable and reports nothing to AT-SPI
@@ -173,8 +173,48 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
   -- the fields no host reads are `fontVariationSettings`, `layoutDirection`,
   and the `accessibilityRole` and `role` that ride along on a fragment. `lineBreakMode` is read on AppKit only. Beside those,
-  `adjustsFontSizeToFit`, `textBreakStrategy` and hyphenation are
-  `ParagraphAttributes` and equally ignored.
+  `textBreakStrategy` and hyphenation are `ParagraphAttributes` and equally
+  ignored.
+
+  **`adjustsFontSizeToFit` came off that list on 2026-10-10**, with all three of
+  its bounds: `minimumFontSize`, `maximumFontSize` and `minimumFontScale`. A
+  label that says "Delete all messages" in a button sized for "Delete" now
+  shrinks instead of overflowing, on all three hosts.
+
+  The search is `core/FontFitting.h` and is upstream's, from
+  `NSTextStorage+FontScaling.m`: a bisection on the ratio every font size is
+  multiplied by, with three rules each worth naming. Text that already fits is
+  not touched, which is why the prop never *grows* anything although the
+  interval reaches 128. A fit within one per cent of the box's width is good
+  enough, so the search stops rather than finding the largest ratio that fits.
+  And the last ratio that *fitted* wins when the interval closes, which is not
+  the last ratio tried.
+
+  What each host adds is the measuring, which is the one part a toolkit knows:
+  the search takes a callable, and nothing in core knows what a glyph is. Eight
+  probes per fitted paragraph, so it runs only for a paragraph that asked --
+  and `scales()` is false for every other, which is what keeps the measurement
+  cache's hot path unchanged.
+
+  **The interaction with `numberOfLines` is the part that needed a decision.** A
+  one-line limit makes a layout that fits any box by throwing text away, so a
+  search that asked the *truncated* layout would shrink nothing and the label
+  would be ellipsised -- which is the opposite of what the pairing is written
+  for. iOS tests whether the text was truncated; each host here measures the
+  paragraph with its line limit removed, which answers the same question with
+  one layout instead of two. A test per host pins it.
+
+  Two differences from iOS, both deliberate. `minimumFontScale` is read here and
+  ignored there, Android being where that prop comes from -- and ignoring it
+  would be odd when the search is a search over exactly that ratio. And
+  `lineHeight` is not scaled, which matches upstream: it enumerates the font
+  attribute alone, so an explicit line height stays where the app put it.
+
+  The same search runs at paint time against the view's *frame* rather than the
+  measurement constraint, because that is the box the text is painted into. The
+  two agree whenever the frame is the measured size, and when a parent stretched
+  the view the painted text fits the box it is actually in, which is the more
+  useful of the two answers.
 
   Four of them are iOS's own with no desktop equivalent, and are not gaps so
   much as vocabulary: `dynamicTypeRamp` and `lineBreakStrategy` name iOS

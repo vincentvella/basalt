@@ -819,8 +819,17 @@ void AppKitMountingManager::applyText(RnAppKitView *view, const ShadowView &shad
   // Built through the same function the measurement seam uses, which is what
   // makes the painted lines break where the measured ones did. The width is not
   // baked in -- the view draws at whatever size Yoga gave it.
+  // `adjustsFontSizeToFit` again, against the frame rather than the constraint:
+  // the text is painted into the box Yoga assigned, which is the box it has to
+  // fit. Measuring and painting run the same search through the same builder,
+  // which is what keeps the painted size the measured one.
+  const basalt::FontFit fit =
+      basalt::textFitScale(data.attributedString,
+                           data.paragraphAttributes,
+                           static_cast<float>(shadowView.layoutMetrics.frame.size.width),
+                           static_cast<float>(shadowView.layoutMetrics.frame.size.height));
   RnTextLayout *layout =
-      basalt::buildTextLayout(data.attributedString, data.paragraphAttributes);
+      basalt::buildTextLayout(data.attributedString, data.paragraphAttributes, fit);
 
   // The paragraph's text shadow, resolved in core/TextShadows.h: the props are
   // per fragment and one Core Text frame draws them all, so the first fragment

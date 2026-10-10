@@ -96,7 +96,17 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
     // pointScaleFactor is part of the cache key above but not of the layout:
     // sizes here are logical, and GTK scales the rendered result. Keeping it in
     // the key only makes the cache finer-grained than it strictly needs to be.
-    PangoLayout *layout = basalt::buildTextLayout(attributedString, paragraphAttributes, maxWidth);
+    // `adjustsFontSizeToFit`: how far the fonts have to shrink for this
+    // paragraph to fit the box Yoga offered. A no-op ratio of 1 for every
+    // paragraph that did not ask, which is almost all of them -- the search
+    // builds a layout per probe and must not run otherwise.
+    const basalt::FontFit fit = basalt::textFitScale(
+        attributedString,
+        paragraphAttributes,
+        maxWidth,
+        static_cast<float>(layoutConstraints.maximumSize.height));
+    PangoLayout *layout =
+        basalt::buildTextLayout(attributedString, paragraphAttributes, maxWidth, fit);
 
     float width = 0;
     float height = 0;

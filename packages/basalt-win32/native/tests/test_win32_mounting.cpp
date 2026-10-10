@@ -612,3 +612,96 @@ TEST(win32_a_fragment_opacity_multiplies_the_alpha) {
   attributes.opacity = -1.0;
   EXPECT_NEAR(basalt::win32::buildTextStyle(attributes).color[3], 0.0f, 0.01f);
 }
+
+// --- adjustsFontSizeToFit ----------------------------------------------------
+//
+// The search is core's and tested there; what these ask is the half that is
+// DirectWrite's -- that the ratio reaches the font sizes, that the fitted
+// paragraph actually fits, and that a paragraph which never asked is untouched.
+namespace {
+
+facebook::react::AttributedString fittingLabel(const std::string &text, float fontSize) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = fontSize;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+  return string;
+}
+
+} // namespace
+
+TEST(win32_adjusts_font_size_to_fit_shrinks_until_it_fits) {
+  const auto text = fittingLabel("Delete all of the messages", 32.0f);
+
+  facebook::react::ParagraphAttributes fitting;
+  fitting.adjustsFontSizeToFit = true;
+  const basalt::FontFit fit = basalt::win32::textFitScale(text, fitting, 200.0f, 40.0f);
+  EXPECT(fit.scales());
+  EXPECT(fit.ratio < 1.0);
+
+  // And the fitted paragraph fits, measured through the same builder the host
+  // paints with.
+  const auto layout = basalt::win32::buildTextLayout(text, fitting, fit);
+  EXPECT(layout != nullptr);
+  if (layout == nullptr) {
+    return;
+  }
+  const basalt::win32::RnTextSize size = layout->measure(200.0f);
+  EXPECT(size.width <= 200.0f);
+  EXPECT(size.height <= 40.0f);
+}
+
+TEST(win32_a_paragraph_that_did_not_ask_is_not_shrunk) {
+  const auto text = fittingLabel("Delete all of the messages", 32.0f);
+  facebook::react::ParagraphAttributes plain;
+  EXPECT(!basalt::win32::textFitScale(text, plain, 200.0f, 40.0f).scales());
+
+  const auto layout = basalt::win32::buildTextLayout(text, plain);
+  EXPECT(layout != nullptr);
+  if (layout == nullptr) {
+    return;
+  }
+  // Wrapped and taller than the box, rather than shrunk into it.
+  EXPECT(layout->measure(200.0f).height > 40.0f);
+}
+
+TEST(win32_a_paragraph_that_already_fits_keeps_its_size) {
+  facebook::react::ParagraphAttributes fitting;
+  fitting.adjustsFontSizeToFit = true;
+  EXPECT(
+      !basalt::win32::textFitScale(fittingLabel("Hi", 16.0f), fitting, 300.0f, 100.0f).scales());
+}
+
+TEST(win32_the_minimum_font_size_stops_the_shrinking) {
+  facebook::react::ParagraphAttributes fitting;
+  fitting.adjustsFontSizeToFit = true;
+  fitting.minimumFontSize = 24.0f;
+  const basalt::FontFit fit = basalt::win32::textFitScale(
+      fittingLabel("Delete all of the messages", 32.0f), fitting, 60.0f, 30.0f);
+  EXPECT_NEAR(fit.apply(32.0), 24.0, 0.0001);
+
+  // Which is the size the style ends up with, this being where the ratio is
+  // applied.
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 32.0;
+  EXPECT_NEAR(basalt::win32::buildTextStyle(attributes, fit).fontSize, 24.0f, 0.01f);
+}
+
+TEST(win32_a_line_limit_does_not_hide_the_overflow_from_the_search) {
+  // `numberOfLines` with `adjustsFontSizeToFit` is the pairing a button label
+  // is written with, and the reason the search measures the *untruncated*
+  // paragraph: a one-line limit makes a layout that fits any box by throwing
+  // text away.
+  facebook::react::ParagraphAttributes oneLine;
+  oneLine.adjustsFontSizeToFit = true;
+  oneLine.maximumNumberOfLines = 1;
+  const basalt::FontFit fit = basalt::win32::textFitScale(
+      fittingLabel("Delete all of the messages", 32.0f), oneLine, 200.0f, 40.0f);
+  EXPECT(fit.scales());
+  EXPECT(fit.ratio < 1.0);
+}

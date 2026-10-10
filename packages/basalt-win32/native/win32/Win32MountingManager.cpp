@@ -786,8 +786,17 @@ void Win32MountingManager::applyText(RnWin32View *view, const ShadowView &shadow
   const auto &data = state->getData();
   // Built through the same function the measurement seam uses, which is what
   // makes the painted lines break where the measured ones did.
+  // `adjustsFontSizeToFit` again, against the frame rather than the constraint:
+  // the text is painted into the box Yoga assigned, which is the box it has to
+  // fit. Measuring and painting run the same search through the same builder,
+  // which is what keeps the painted size the measured one.
+  const basalt::FontFit fit =
+      win32::textFitScale(data.attributedString,
+                          data.paragraphAttributes,
+                          static_cast<float>(shadowView.layoutMetrics.frame.size.width),
+                          static_cast<float>(shadowView.layoutMetrics.frame.size.height));
   view->setTextLayout(
-      win32::buildTextLayout(data.attributedString, data.paragraphAttributes));
+      win32::buildTextLayout(data.attributedString, data.paragraphAttributes, fit));
 }
 
 namespace {

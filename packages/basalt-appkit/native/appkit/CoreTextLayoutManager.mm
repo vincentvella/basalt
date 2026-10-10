@@ -99,7 +99,16 @@ TextMeasurement TextLayoutManager::measure(const AttributedStringBox &attributed
         ? -1.0
         : static_cast<CGFloat>(layoutConstraints.maximumSize.width);
 
-    RnTextLayout *layout = basalt::buildTextLayout(attributedString, paragraphAttributes);
+    // `adjustsFontSizeToFit`: how far the fonts have to shrink for this
+    // paragraph to fit the box Yoga offered. A no-op ratio of 1 for every
+    // paragraph that did not ask, which is almost all of them -- the search
+    // builds a layout per probe and must not run otherwise.
+    const basalt::FontFit fit = basalt::textFitScale(
+        attributedString,
+        paragraphAttributes,
+        static_cast<float>(maxWidth),
+        static_cast<float>(layoutConstraints.maximumSize.height));
+    RnTextLayout *layout = basalt::buildTextLayout(attributedString, paragraphAttributes, fit);
     const CGSize size = [layout sizeForWidth:maxWidth];
 
     // Core Text can report a line slightly wider than the width it was given,
