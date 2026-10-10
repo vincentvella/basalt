@@ -615,6 +615,12 @@ class RnWin32TextRenderer final : public IDWriteTextRenderer {
   // Quadratics alternating above and below the line, a wavelength of six times
   // the thickness, which is about what a browser draws. Stroked at the line's
   // own thickness, so a wavy underline is as heavy as a solid one.
+  //
+  // The control point is *twice* the amplitude away from the line, because a
+  // quadratic only reaches halfway to it: the first version put the control
+  // point at one thickness and drew a wave of half that, which CI measured as
+  // an edge that moves by two pixels where the test asked for three. That is
+  // the whole reason this number is 2.0 and not 1.0.
   void drawWave(float left, float top, float width, float thickness, ID2D1Brush *brush) {
     if (!factory_) {
       return;
@@ -634,7 +640,7 @@ class RnWin32TextRenderer final : public IDWriteTextRenderer {
     bool up = true;
     for (float x = left; x < left + width; x += wave) {
       const float next = std::min(x + wave, left + width);
-      const float peak = middle + (up ? -thickness : thickness);
+      const float peak = middle + 2.0f * (up ? -thickness : thickness);
       sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(
           D2D1::Point2F((x + next) / 2.0f, peak), D2D1::Point2F(next, middle)));
       up = !up;
