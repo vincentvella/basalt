@@ -22,6 +22,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 11. A field resolves no text direction of its own, so `textAlign: 'end'` needs
     `writingDirection` set beside it
 
+- **A placeholder with no `placeholderTextColor` follows the system's
+  appearance, not the field's.** Measured on 2026-10-10 and *not* a bug, which
+  is the reason it is written down: a field styled white, on a Mac in dark
+  mode, had an invisible placeholder, and the obvious conclusion -- that
+  placeholders were broken on AppKit -- is wrong.
+
+  `NSColor.placeholderTextColor` resolves against the system appearance, so it
+  is near-white on a dark-mode Mac and vanishes on an app's white field. iOS
+  does exactly the same thing: `RCTUITextField._placeholderTextAttributes`
+  *removes* the colour attribute when the app set none, leaving UIKit's own
+  `placeholderText`, which is appearance-dependent too. GTK takes the theme's
+  colour, which is the same rule with a different source.
+
+  So all three match React Native, and an app that hardcodes light colours
+  against a dark system is the thing that is unusual. The fix, for an app, is
+  the prop: `placeholderTextColor` is honoured on every host -- and an app that
+  wants to follow the desktop should be reading `Appearance` rather than
+  hardcoding either way.
 - ~~**An uncontrolled field loses what was typed into it.**~~ Found on Windows
   in phase 46 and fixed on all three in phase 47. React Native's `TextInput.js`
   sends `text={value ?? defaultValue}`, so an uncontrolled field with no default

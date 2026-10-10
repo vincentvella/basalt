@@ -7732,6 +7732,100 @@ def test_scroll_snapping(bundle: Path) -> str:
     return "a page the size of the viewport, a fast rate, and three offsets"
 
 
+def test_disabled_switch_colour(bundle: Path) -> str:
+    """A disabled `<Switch>` that is on still looks on.
+
+    React Native's own documentation says a disabled switch is translucent, and
+    that is what two of the three hosts drew: Windows paints both parts at 40%
+    and AppKit dims NSSwitch's colours. GTK used the toolkit's `sensitive`
+    flag, and Adwaita's insensitive style does something else -- it replaces the
+    track's accent with the *unchecked* grey -- so a switch that was on and
+    disabled was the same colour as one that was off, with only the knob's
+    position to say otherwise. Found on 2026-10-10 by putting the two hosts'
+    pictures side by side, which is what `BASALT_SNAPSHOT` is for.
+
+    Measured as blueness -- the blue channel minus the stronger of red and green
+    -- rather than as an exact colour, because the accent is the platform's:
+    Adwaita's is #3584e4, AppKit's follows the system accent, and Windows paints
+    this project's own. What has to hold everywhere is the relationship: an on
+    switch is accent-coloured, a disabled one is the same colour dimmed, and an
+    off one is not coloured at all.
+    """
+    app = bundle_app(bundle.parent, "controls")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3500"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        picture = Path(directory) / "window.png"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        env["BASALT_SNAPSHOT"] = str(picture)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltControls"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists() or not picture.exists():
+            raise Failure("host wrote no tree or no snapshot")
+        tree = dump.read_text(encoding="utf-8")
+        snapshot = Snapshot(picture.read_bytes())
+
+    def blueness(what: str) -> int:
+        """How blue the bluest pixel of that switch is, from the dump's frame."""
+        # Matched exactly, because `switch:on` is a prefix of
+        # `switch:on:disabled` and a substring test would find both.
+        rows = []
+        for body, position, size in _views(tree):
+            control = re.search(r"control=(\S+)", body)
+            if control is not None and control.group(1) == f"switch:{what}":
+                rows.append((position, size))
+        if len(rows) != 1:
+            raise Failure(
+                f"{len(rows)} switches in the tree are {what!r}; e2e/controls.tsx "
+                f"has one of each.\n{tree}"
+            )
+        (x, y), (width, height) = rows[0]
+        best = -999
+        for sampleY in range(int(y), int(y + height)):
+            for sampleX in range(int(x), int(x + width)):
+                pixel = snapshot.at(sampleX, sampleY)
+                if pixel is not None:
+                    best = max(best, pixel[2] - max(pixel[0], pixel[1]))
+        return best
+
+    off = blueness("off")
+    on = blueness("on")
+    disabled = blueness("on:disabled")
+
+    if off > 20:
+        raise Failure(f"an off switch is accent-coloured ({off})")
+    if on < 60:
+        raise Failure(
+            f"an on switch is not accent-coloured ({on}); the whole measurement "
+            "depends on it being so"
+        )
+    if disabled <= 20:
+        raise Failure(
+            f"a disabled switch that is on is not accent-coloured ({disabled}, "
+            f"against {on} for the same switch enabled and {off} for one that is "
+            "off). React Native calls a disabled switch translucent; this one is "
+            "a different colour instead, so it reads as off."
+        )
+    if disabled >= on:
+        raise Failure(
+            f"a disabled switch is not dimmer than an enabled one ({disabled} "
+            f"against {on})"
+        )
+
+    return f"off {off}, on {on}, and on-but-disabled {disabled} blue"
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -8189,6 +8283,7 @@ SCENARIOS = [
     ("a snapshot has each view's colour where its frame says", test_snapshot_pixels),
     ("React Native's own Button looks like one, and presses", test_button),
     ("the ScrollView props that decide where a fling ends", test_scroll_snapping),
+    ("a disabled Switch that is on still looks on", test_disabled_switch_colour),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),

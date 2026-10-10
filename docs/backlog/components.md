@@ -26,6 +26,35 @@ input, `PanResponder` and command routing with them. What is left:
   accent colour and exposes nothing per instance, so `trackColor` and
   `thumbColor` do nothing on macOS. The tree dump does not print colours, so
   this is a difference in pixels rather than in behaviour.
+
+  An `<ActivityIndicator color>` *is* honoured on macOS, through a
+  `CIFalseColor` filter on the indicator's layer, and a snapshot cannot see it:
+  `renderInContext:` composites no Core Animation filters, the same limit that
+  hides a `boxShadow` and a `mixBlendMode` there. Worth knowing before the next
+  picture is read as a bug, which is how it was read first.
+- ~~**A disabled `<Switch>` that is on looked off on GTK.**~~ Fixed
+  2026-10-10, and found by putting the two hosts' pictures side by side rather
+  than by reading anything: `BASALT_SNAPSHOT` had existed for an hour.
+
+  React Native's own documentation calls a disabled switch *translucent*, and
+  that is what two hosts drew -- Windows paints both parts at 40% and AppKit
+  dims `NSSwitch`'s colours. GTK used the toolkit's `sensitive` flag, and
+  Adwaita's insensitive style does something else: it replaces the track's
+  accent with the *unchecked* grey, so the only thing left saying the switch
+  was on was the knob's position.
+
+  It is `gtk_widget_set_opacity(control, 0.4)` now, with the widget left
+  sensitive. Nothing is lost by that: the switch is already out of hit testing
+  -- a press is meant to land on the RnView behind it, which is how three
+  desktops make a press on a switch mean the same thing -- and the disabled
+  state a screen reader reads is on the view, where `accessibilityState` puts
+  it.
+
+  The scenario measures blueness, the blue channel minus the stronger of red
+  and green, rather than a colour: the accent is Adwaita's on one host, the
+  system's on another and this project's own on the third. What holds
+  everywhere is the relationship, and it is asserted on all three: off 7, on 96
+  and disabled 43 on GTK; 7, 130 and 60 on AppKit.
 - **Nothing is keyboard-reachable that is not `accessible` or a control.**
   React Native's `focusable` prop never reaches this platform: see the
   accessibility section, so `accessible` is the signal, plus being a control:

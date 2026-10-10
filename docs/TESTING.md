@@ -480,6 +480,14 @@ transform, and cannot say that any of it reached the screen. The two text bugs
 found on 2026-10-10 were both of that kind, and both were found by looking at a
 picture of React Native's own LogBox rather than by any assertion.
 
+**What a picture cannot show**, which is worth knowing before one is read as a
+bug. On macOS the snapshot is `[root.layer renderInContext:]`, and Core
+Animation composites nothing in that path: a `boxShadow`, a `mixBlendMode` and
+an `<ActivityIndicator color>` -- which is a `CIFalseColor` filter on the
+indicator's layer -- are all absent from the file while being perfectly visible
+on screen. GTK and Windows render their own node trees and have no such gap.
+The tree dump is what those three are asserted through instead.
+
 The suite can read the picture back: `Snapshot` in `scripts/integration_test.py`
 decodes a PNG with the standard library alone -- no Pillow and no numpy on three
 CI images -- and answers `at(x, y)`. `a snapshot has each view's colour where

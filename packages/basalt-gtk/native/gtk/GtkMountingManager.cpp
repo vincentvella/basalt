@@ -1031,7 +1031,20 @@ void GtkMountingManager::applyControlPeer(RnView *view, const basalt::ControlSta
     // `sensitive` would do this too and would also grey the widget out, which
     // is what `disabled` is for and must stay distinguishable from it.
     gtk_widget_set_can_target(control, FALSE);
-    gtk_widget_set_sensitive(control, state.disabled ? FALSE : TRUE);
+    // `disabled` is translucency, not GTK's `sensitive`.
+    //
+    // React Native's own documentation says a disabled switch is translucent,
+    // and the other two hosts draw it that way: Windows paints both parts at
+    // 40% and AppKit dims NSSwitch's own colours. Adwaita's insensitive style
+    // does something else -- it replaces the track's accent with the
+    // *unchecked* grey -- so a disabled switch that was on looked off, with
+    // only the knob's position to say otherwise. Measured in a picture on
+    // 2026-10-10, beside the other two hosts.
+    //
+    // Nothing is lost by leaving the widget sensitive: it is already out of hit
+    // testing above, and the disabled state a screen reader reads is on the
+    // RnView, where `accessibilityState` puts it.
+    gtk_widget_set_opacity(control, state.disabled ? 0.4 : 1.0);
   } else {
     gtk_spinner_set_spinning(GTK_SPINNER(control), state.on ? TRUE : FALSE);
     // `hidesWhenStopped` defaults to true, and a <RefreshControl> that is not
