@@ -50,7 +50,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
     "win-text": {
-      "text": "DirectWrite is given it",
+      "text": "DirectWrite draws no background; it wants a custom text renderer",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
     "mac-dropshadow": {
@@ -706,8 +706,7 @@
     "TextAttributes.letterSpacing": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "win-text"
+      "windows": "yes"
     },
     "TextAttributes.textTransform": {
       "linux": "yes",

@@ -230,6 +230,14 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes) {
 
   style.align = toAlign(attributes);
 
+  // `letterSpacing`, which DirectWrite calls trailing character spacing: the
+  // space goes after each character, as CSS's letter-spacing and iOS's kerning
+  // both put it. NaN is React Native's unset and zero is the same picture, so
+  // one check covers both.
+  if (!std::isnan(attributes.letterSpacing)) {
+    style.letterSpacing = static_cast<float>(attributes.letterSpacing);
+  }
+
   // `writingDirection`. `natural` is left-to-right here, as it is on the other
   // two hosts for Latin text: DirectWrite resolves a paragraph's direction from
   // the reading direction it is given rather than from the text, so there is no

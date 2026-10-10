@@ -825,3 +825,88 @@ TEST(text_a_paragraph_with_no_attachment_reports_no_boxes) {
     EXPECT(plain->attachmentBoxes(-1.0f).empty());
   }
 }
+
+// `letterSpacing`, which is the one text attribute DirectWrite keeps on a newer
+// interface than the rest: `IDWriteTextLayout1::SetCharacterSpacing`.
+//
+// Measured rather than read back, which is the instrument the other two hosts
+// use for it as well: what the prop means is that the text is wider, and a
+// layout that accepted the call and applied it to the wrong range measures
+// unchanged.
+TEST(text_letter_spacing_widens_the_text) {
+  RnTextStyle plain;
+  plain.fontSize = 16.0f;
+  RnTextStyle spaced = plain;
+  spaced.letterSpacing = 4.0f;
+
+  const auto tight = RnWin32TextLayout::create("Letter spaced", plain, 0);
+  const auto loose = RnWin32TextLayout::create("Letter spaced", spaced, 0);
+  EXPECT(tight != nullptr && loose != nullptr);
+  if (tight == nullptr || loose == nullptr) {
+    return;
+  }
+
+  const RnTextSize narrow = tight->measure(-1.0f);
+  const RnTextSize wide = loose->measure(-1.0f);
+  // Thirteen characters, four points after each: the string is about fifty-two
+  // points wider. Bounded rather than exact, because the trailing space on the
+  // last character is counted by some engines and not others -- what matters is
+  // that it is per character and not a single pad.
+  EXPECT(wide.width > narrow.width + 40.0f);
+  EXPECT(wide.width < narrow.width + 60.0f);
+  // And no taller: spacing is horizontal.
+  EXPECT_NEAR(wide.height, narrow.height, 0.5);
+}
+
+TEST(text_a_negative_letter_spacing_tightens_it) {
+  RnTextStyle plain;
+  plain.fontSize = 16.0f;
+  RnTextStyle tightened = plain;
+  tightened.letterSpacing = -1.0f;
+
+  const auto plainLayout = RnWin32TextLayout::create("Letter spaced", plain, 0);
+  const auto tightLayout = RnWin32TextLayout::create("Letter spaced", tightened, 0);
+  EXPECT(plainLayout != nullptr && tightLayout != nullptr);
+  if (plainLayout == nullptr || tightLayout == nullptr) {
+    return;
+  }
+
+  // Narrower, which is what a negative value asks for and what a minimum
+  // advance width of anything but zero would have refused.
+  EXPECT(tightLayout->measure(-1.0f).width < plainLayout->measure(-1.0f).width);
+}
+
+// Per run, which is the half that cannot be checked by measuring one paragraph:
+// a layout that applied the first run's spacing to the whole string would widen
+// the unspaced half too.
+TEST(text_letter_spacing_applies_to_its_own_run) {
+  RnTextStyle plain;
+  plain.fontSize = 16.0f;
+  RnTextStyle spaced = plain;
+  spaced.letterSpacing = 4.0f;
+
+  const auto both =
+      RnWin32TextLayout::createFromRuns({RnTextRun{"aaaaa", plain, std::nullopt},
+                                         RnTextRun{"bbbbb", spaced, std::nullopt}},
+                                        0);
+  const auto all =
+      RnWin32TextLayout::createFromRuns({RnTextRun{"aaaaa", spaced, std::nullopt},
+                                         RnTextRun{"bbbbb", spaced, std::nullopt}},
+                                        0);
+  const auto none =
+      RnWin32TextLayout::createFromRuns({RnTextRun{"aaaaa", plain, std::nullopt},
+                                         RnTextRun{"bbbbb", plain, std::nullopt}},
+                                        0);
+  EXPECT(both != nullptr && all != nullptr && none != nullptr);
+  if (both == nullptr || all == nullptr || none == nullptr) {
+    return;
+  }
+
+  const float mixed = both->measure(-1.0f).width;
+  const float spacedAll = all->measure(-1.0f).width;
+  const float plainAll = none->measure(-1.0f).width;
+  // Between the two, and not equal to either: one run spaced is half the extra
+  // width of both spaced.
+  EXPECT(mixed > plainAll + 10.0f);
+  EXPECT(mixed < spacedAll - 10.0f);
+}

@@ -5102,11 +5102,17 @@ def test_font_scaling(bundle: Path) -> None:
     work was wired and the two that control it were not.
 
     `BASALT_TEST_FONT_SCALE` supplies the scale, and is an instrument rather
-    than a shortcut: GTK reads a real one from `GtkSettings:gtk-xft-dpi`, macOS
-    publishes none at all, and a scenario that could only run where the desktop
-    happened to be set to large text would run nowhere. What it does not skip is
-    anything above it -- the scale goes in where the platform's own goes, and
-    core/FontScaling.h decides the rest.
+    than a shortcut: GTK reads a real one from `GtkSettings:gtk-xft-dpi`, and
+    neither macOS nor Windows publishes one this project will read -- macOS has
+    none, and Windows keeps it in WinRT, which docs/DECISIONS.md declines. A
+    scenario that could only run where the desktop happened to be set to large
+    text would run nowhere. What it does not skip is anything above it: the
+    scale goes in where the platform's own goes, and core/FontScaling.h decides
+    the rest.
+
+    So this runs on all three hosts and asserts the two props, which is the half
+    an app writes. What it cannot cover anywhere but Linux is a user moving the
+    system slider.
 
     Three paragraphs in one run. The plain one grows, the one with
     `allowFontScaling={false}` does not move at all, and the one with
@@ -5114,9 +5120,6 @@ def test_font_scaling(bundle: Path) -> None:
     having asked for 1.6. Heights rather than widths: a width depends on where
     the card wrapped.
     """
-    if PLATFORM == "windows":
-        raise Skipped("the Win32 host reads no text scale; UISettings is WinRT")
-
     app = bundle_app(bundle.parent, "text")
 
     def heights(scale):

@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (7):**
+**Open (6):**
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
@@ -22,7 +22,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 15. ~~The `outline` family is not drawn~~
 16. ~~`mixBlendMode` blends nothing~~
 17. ~~No text shadow, so `textShadowColor` and friends do nothing~~
-18. The desktop's text scale is not read, so large text does not enlarge text
+18. ~~The desktop's text scale is not read~~, declined: no WinRT in this host
 19. ~~No text decoration~~, except the styles DirectWrite has no form of
 20. ~~`fontVariant` and a fragment's `opacity` are not read~~
 21. ~~`writingDirection` is not read~~, and `start` and `end` are relative here
@@ -690,23 +690,44 @@ and none of it is a missing half.
   make this host the *most* capable of the three for style, since neither Pango
   nor Core Text has all five.
 
-- **The desktop's text scale is not read, so Windows's large-text setting does
-  not enlarge anything.** `allowFontScaling` and `maxFontSizeMultiplier` *are*
-  read here, through `core/FontScaling.h`, so a `<Text>` that refuses scaling
-  refuses it on all three hosts and a ceiling caps what it caps. What this host
-  passes as the platform's scale is 1.
+  **A `<Text>`'s own `backgroundColor` wants the same renderer**, and is the
+  other row the support page marks against this host for text. Pango has a
+  background attribute and Core Text draws the rectangle itself; DirectWrite
+  draws glyphs and nothing behind them, so the box has to be filled before the
+  run is drawn -- which is `IDWriteTextRenderer::DrawGlyphRun`, where the run's
+  width comes from the glyph advances it is handed and its height from the line
+  metrics. One renderer would answer both that and the decoration pair, which is
+  the argument for writing it once rather than twice.
 
-  The scale exists: `Windows::UI::ViewManagement::UISettings::TextScaleFactor`,
-  which is 1.0 to 2.25 and raises `TextScaleFactorChanged` when the user moves
-  the slider in Settings > Accessibility > Text size. It is WinRT, and this host
-  is Win32 with no WinRT in it, so reaching it means either `RoActivateInstance`
-  by hand or taking a C++/WinRT dependency into a host that has so far needed
-  neither. That is the decision, not the call.
+  `letterSpacing` was the third row in that group and is done, 2026-10-10:
+  `IDWriteTextLayout1::SetCharacterSpacing`, trailing rather than leading
+  because that is where CSS and iOS both put it, with a zero minimum advance
+  width so a negative value tightens rather than being refused. Per run, which a
+  single measurement cannot catch -- a layout that spaced the whole string would
+  widen the unspaced half too, so one test measures a paragraph with one run
+  spaced against the same paragraph with both.
 
-  Until then the group is testable but not useful here: `BASALT_TEST_FONT_SCALE`
-  supplies a scale, which is what the e2e scenario uses on macOS too, since
-  macOS publishes no scale either. The scenario is skipped by name on Windows
-  because the *platform* half is what is missing.
+- ~~**The desktop's text scale is not read, so Windows's large-text setting
+  does not enlarge anything.**~~ **Decided 2026-10-10: the WinRT dependency is
+  declined.** The entry said this was a decision rather than a call, and the
+  decision is no. See docs/DECISIONS.md, which has the reasoning so it is not
+  re-litigated; the short of it is that
+  `Windows::UI::ViewManagement::UISettings::TextScaleFactor` is the only way to
+  read the setting, it is WinRT, and taking a second Windows API family into a
+  host that is Win32 all the way down is not worth one float.
+
+  **What works is the half an app writes.** `allowFontScaling` and
+  `maxFontSizeMultiplier` are read here through `core/FontScaling.h`, so a
+  `<Text>` that refuses scaling refuses it on all three hosts and a ceiling caps
+  what it caps. What this host passes as the platform's scale is 1, which is
+  what macOS passes too -- it publishes none either.
+
+  So the end-to-end scenario now runs here rather than being skipped:
+  `BASALT_TEST_FONT_SCALE` goes in where the platform's own scale would, which
+  is a shared seam rather than a Windows shortcut, and the three assertions it
+  makes are about the two props. What no test on this host can cover is a user
+  moving the slider in Settings > Accessibility > Text size, and that is the
+  cost the decision accepts.
 
 - ~~**No text shadow, so `textShadowColor` and friends do nothing.**~~ Done,
   2026-10-09, the second of the two ways this entry named: `CLSID_D2D1Shadow`

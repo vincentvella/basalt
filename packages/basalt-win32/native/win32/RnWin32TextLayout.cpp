@@ -9,6 +9,8 @@
 #include <d2d1_1.h>
 #include <d2d1effects.h>
 #include <dwrite.h>
+// IDWriteTextLayout1, which is where character spacing lives: DirectWrite 1.1.
+#include <dwrite_1.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -79,6 +81,34 @@ DWRITE_TEXT_ALIGNMENT toDWriteAlignment(RnTextAlign align, bool rightToLeft) {
 // The typography object is per range and released straight after: a layout
 // takes its own reference, and the ranges of a paragraph rarely share a set of
 // features.
+// `letterSpacing`, which is `IDWriteTextLayout1`'s rather than
+// `IDWriteTextLayout`'s: character spacing arrived with DirectWrite 1.1, so the
+// layout is asked for the newer interface and the prop is simply not applied if
+// a system answers no -- which no supported Windows does, and which is cheaper
+// than a second code path.
+//
+// Trailing rather than leading, because that is where CSS puts
+// `letter-spacing` and where iOS's kerning goes: the space follows each
+// character, so a run of three characters is two gaps wide plus one at the end,
+// and the other two hosts measure the same.
+//
+// `minimumAdvanceWidth` is zero, which is the documented "no minimum": a
+// negative letter spacing is allowed to tighten a glyph's advance, which is
+// what an app asking for -1 means, and clamping it to the glyph's own width
+// would silently ignore the prop for small negatives.
+void applyLetterSpacing(IDWriteTextLayout *layout,
+                        const RnTextStyle &style,
+                        DWRITE_TEXT_RANGE range) {
+  if (style.letterSpacing == 0.0f) {
+    return;
+  }
+  ComPtr<IDWriteTextLayout1> spacing;
+  if (FAILED(layout->QueryInterface(IID_PPV_ARGS(spacing.GetAddressOf()))) || !spacing) {
+    return;
+  }
+  spacing->SetCharacterSpacing(0.0f, style.letterSpacing, 0.0f, range);
+}
+
 void applyTypography(IDWriteTextLayout *layout,
                      const RnTextStyle &style,
                      DWRITE_TEXT_RANGE range) {
@@ -374,6 +404,7 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
       layout->SetStrikethrough(TRUE, range);
     }
     applyTypography(layout, run.style, range);
+    applyLetterSpacing(layout, run.style, range);
   }
 
   // The inline boxes, which have to come after the per-run styling: setting a
@@ -405,6 +436,7 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
       layout->SetStrikethrough(TRUE, whole);
     }
     applyTypography(layout, style_, whole);
+    applyLetterSpacing(layout, style_, whole);
   }
 
   return layout;

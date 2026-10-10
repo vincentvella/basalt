@@ -81,6 +81,13 @@ struct RnTextStyle {
   // which edge the line starts from. False is left-to-right, and is also what
   // `natural` resolves to for Latin text.
   bool rightToLeft = false;
+  // `letterSpacing`, in the same points everything else here is in. Zero is
+  // React Native's unset, which is also "no extra space", so the two need no
+  // distinction -- unlike `lineHeight`, where zero means "the font's own".
+  //
+  // Added *after* each character, which is what CSS's letter-spacing and iOS's
+  // kerning both do: DirectWrite calls that trailing spacing.
+  float letterSpacing = 0.0f;
   // `fontVariant`, as OpenType tags: "smcp", "tnum", "ss07". Resolved by
   // `core/FontVariants.h`, which the GTK host uses in the same form; DirectWrite
   // takes them as a `DWRITE_FONT_FEATURE_TAG` each, on an `IDWriteTypography`.

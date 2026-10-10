@@ -50,7 +50,7 @@ under the row that implements them.
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | Toolkit | GTK4 | AppKit | Win32 |
-| Done | 174 of 279 | 172 of 279 | 164 of 279 |
+| Done | 174 of 279 | 172 of 279 | 165 of 279 |
 | | `████████████░░░░░░░░` | `████████████░░░░░░░░` | `████████████░░░░░░░░` |
 
 Counting a row as done when the host implements it, or when ReactCommon or
@@ -185,14 +185,14 @@ Written inside `style={{...}}`. Read from `____ViewStyle_InternalBase`, `____Tex
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `color` <sub>`foregroundColor`</sub> | ✅ | ✅ | ✅ |  |
-| `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `backgroundColor` | ✅ | ✅ | ✖ | [DirectWrite draws no background; it wants a custom text renderer](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `opacity` | ✅ | ✅ | ✅ |  |
 | `fontFamily` | ✅ | ✅ | ✅ |  |
 | `fontSize` | ✅ | ✅ | ✅ |  |
 | `fontWeight` | ✅ | ✅ | ✅ |  |
 | `fontStyle` | ✅ | ✅ | ✅ |  |
 | `fontVariant` | ✅ | ✅ | ✅ |  |
-| `letterSpacing` | ✅ | ✅ | ✖ | [DirectWrite is given it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
+| `letterSpacing` | ✅ | ✅ | ✅ |  |
 | `textTransform` | ✅ | ✅ | ✅ |  |
 | `lineHeight` | ✅ | ✅ | ✅ |  |
 | `textAlign` <sub>`alignment`</sub> | ✅ | ✅ | ✅ |  |

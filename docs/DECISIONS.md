@@ -709,3 +709,37 @@ Three names came out of the same audit with nowhere to go, and are listed on the
 page rather than dropped: `elevation` is Android's, `userSelect` has no
 ReactCommon field at all, and `verticalAlign` reaches ReactCommon under a name it
 does not read. backlog/text.md has the last two.
+
+## No WinRT in the Win32 host, so Windows publishes no text scale (2026-10-10)
+
+**Rejected:** reaching
+`Windows::UI::ViewManagement::UISettings::TextScaleFactor`, which is the only
+way to read the Windows large-text setting, either through a C++/WinRT
+dependency or by hand with `RoActivateInstance`.
+
+**Chosen:** the Win32 host reports a platform text scale of 1 and says so.
+
+**Why:** that one setting is the only thing in the host that wants WinRT. The
+host is Win32 all the way down -- `CreateWindowEx`, Direct2D, DirectWrite, UI
+Automation, a real `EDIT` -- and taking a second Windows API family into it for
+one float changes what the host *is*: C++/WinRT needs its own projection
+headers and a newer SDK floor, and `RoActivateInstance` by hand means
+initialising the Windows Runtime in a process that otherwise has no reason to,
+and then owning the activation and the `TextScaleFactorChanged` subscription.
+Neither is hard. Both are a dependency decision made for one number.
+
+**What this does not cost.** `allowFontScaling` and `maxFontSizeMultiplier` are
+read on all three hosts, through `core/FontScaling.h`, so a `<Text>` that
+refuses scaling refuses it everywhere and a ceiling caps what it caps. The
+props an app writes work. What is missing is the platform's own input, which no
+prop can ask for: on Windows a user who sets Settings > Accessibility > Text
+size gets no larger text in a Basalt app, where on Linux they do.
+`BASALT_TEST_FONT_SCALE` supplies a scale on every host -- macOS publishes none
+either -- so the group is tested in full on all three rather than only where a
+desktop happens to be set to large text.
+
+**What would change this.** An app that needs the setting honoured, or anything
+else in the host that wants WinRT: a second reason makes the dependency worth
+its cost, and the call is one line once the runtime is initialised. Until then
+this is written down so it is not re-litigated each time somebody greps for
+`TextScaleFactor`.
