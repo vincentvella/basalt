@@ -84,13 +84,20 @@ workaround and the comment explaining it, which is already written.
   The end-to-end scenario asserts the three fills from the dump, the label's
   colour from a snapshot, and that a tap still reaches `onPress`.
 
-  **The other ten, which are not fixed:**
+  **Three more are fixed here too**, on 2026-10-10, and
+  [scrollview.md](scrollview.md) has the detail:
 
   - `processDecelerationRate.js`, twice: `'normal'` and `'fast'` become a number
     per platform and `undefined` here, so a `<ScrollView decelerationRate>`
-    written in either of the two documented spellings reaches the host as
-    nothing. The numbers are 0.998 and 0.99 on iOS, 0.985 and 0.9 on Android.
-  - `ScrollView.js:1903`, in the same area.
+    written in either of the two documented spellings reached the host as
+    nothing. Overridden, answering with iOS's 0.998 and 0.99, which are the
+    numbers `core/ScrollMomentum.h` already uses.
+  - `ScrollView.js:1903`, `pagingEnabled`, which is computed in a render two
+    thousand lines long. Translated rather than forked: the ScrollView override
+    gives a paged list `snapToInterval` of its viewport and
+    `disableIntervalMomentum`, which is what paging is.
+
+  **The other seven, which are not:**
   - Five in LogBox's own interface, all `fontFamily`: the inspector's stack
     frames ask for `Menlo` on macos and `Consolas` on windows and name no font
     for linux, so GTK draws the call stack in the UI font. Cosmetic, and

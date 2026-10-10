@@ -360,6 +360,10 @@ float RnWin32View::textVerticalOffset() const {
                                         frame_.height - textInsetTop_ - textInsetBottom_);
 }
 
+void RnWin32View::setScrollSnap(std::string description) {
+  scrollSnap_ = std::move(description);
+}
+
 void RnWin32View::setTextInset(float left, float top, float right, float bottom) {
   // No repaint request here, for the reason `setImage` makes none: this host
   // invalidates once per mounted transaction, and this is only ever set during
@@ -2535,6 +2539,10 @@ void RnWin32View::describeInto(std::string &out, int depth) const {
                  static_cast<double>(scrollX_),
                  static_cast<double>(scrollY_));
   }
+  // `pagingEnabled`, `snapToInterval`, `snapToOffsets` and the rest, which
+  // decide where a fling ends and so are invisible to a dump taken while
+  // nothing moves. Formatted in core, so all three hosts print the same words.
+  out += scrollSnap_;
   // The overlay scrollbars, which are otherwise pure paint and so invisible to
   // every test this project has. Printed only when there is one, so a view that
   // does not scroll stays as short as it was.

@@ -7631,6 +7631,107 @@ def test_button(bundle: Path) -> str:
     return "filled, disabled and coloured, with a label that is not black"
 
 
+def test_scroll_snapping(bundle: Path) -> str:
+    """The `<ScrollView>` props that decide where a fling ends.
+
+    Two of them reached no desktop at all, for the same reason `<Button>` had
+    no colours: React Native's own JavaScript resolves them through
+    `Platform.select({ios, android})` with no `default`.
+
+    `pagingEnabled` is computed inside `ScrollView.render`, so it arrived as
+    `undefined`, `BaseScrollViewProps` kept its `false`, and a paged list
+    scrolled freely on every host -- while all three implemented paging and
+    were waiting to be told. basalt-core's ScrollView override translates it
+    into the thing `core/ScrollSnap.h` says paging is: a snap interval the size
+    of the viewport, with the momentum that would carry a fling past one page
+    turned off. The interval is asserted against the list's own width below,
+    because a translation that guessed a number would pass a weaker test.
+
+    `decelerationRate` is two words, `'normal'` and `'fast'`, resolved by a
+    module of two tables; both became `undefined` and the host kept React
+    Native's normal rate. A fast list is not a different animation on every
+    host -- AppKit flings at the system's friction and Windows does not fling
+    at all -- but on all three it decides where a fling is *projected* to land,
+    which is the point a snap is chosen from.
+
+    `snapToOffsets` was never broken, and is here so that a failure says which
+    of the three is wrong rather than "snapping".
+
+    None of it is visible in a frame: these props change where a list settles
+    after a gesture, and a dump is taken when nothing is moving. So each host
+    prints what it was told, in words `core/ScrollSnap.h` formats for all three
+    -- which is also what makes the three dumps comparable.
+    """
+    app = bundle_app(bundle.parent, "paging")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltPaging"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text(encoding="utf-8")
+
+    snapping = [line for line in tree.splitlines() if " snap=" in line]
+    if len(snapping) != 3:
+        raise Failure(
+            f"{len(snapping)} scroll views report snapping; e2e/paging.tsx has "
+            f"three.\n{tree}"
+        )
+    paged, fast, offsets = snapping
+
+    # The paged list, whose interval has to be its own viewport: the override
+    # measures it with `onLayout`, so a hard-coded number would be visible here
+    # as a width that does not match the frame.
+    width = re.search(r"frame=\([-0-9.]+,[-0-9.]+ ([0-9.]+)x", paged)
+    if width is None:
+        raise Failure(f"the paged list has no frame in the dump\n{paged}")
+    wanted = f"snap=interval:{float(width.group(1)):g},momentum=off"
+    if wanted not in paged:
+        raise Failure(
+            f"the paged list reports no page the size of its own viewport "
+            f"({wanted}). `pagingEnabled` is computed by a Platform.select with "
+            f"no desktop key, so without the override it arrives as nothing.\n{paged}"
+        )
+
+    if "snap=interval:150" not in fast:
+        raise Failure(f"the second list's snapToInterval did not arrive\n{fast}")
+    if "decel=0.99" not in fast:
+        raise Failure(
+            "`decelerationRate=\"fast\"` did not reach the host: React Native "
+            "resolves the word through a Platform.select with no desktop key, "
+            f"and the host then keeps its own normal rate.\n{fast}"
+        )
+    # And only that one. The rate is printed when it is not the default, so a
+    # host that applied `fast` to every list, or printed a line for each, fails
+    # here rather than passing three times over.
+    if sum("decel=" in line for line in snapping) != 1:
+        raise Failure(
+            "more than one list reports a deceleration rate; the app sets it on "
+            "one.\n" + "\n".join(snapping)
+        )
+
+    if "snap=offsets:3,end=off" not in offsets:
+        raise Failure(
+            f"snapToOffsets or snapToEnd did not arrive, and neither was ever "
+            f"broken -- so this is about the props, not about the two above.\n{offsets}"
+        )
+
+    return "a page the size of the viewport, a fast rate, and three offsets"
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -8087,6 +8188,7 @@ SCENARIOS = [
      test_inline_views),
     ("a snapshot has each view's colour where its frame says", test_snapshot_pixels),
     ("React Native's own Button looks like one, and presses", test_button),
+    ("the ScrollView props that decide where a fling ends", test_scroll_snapping),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),

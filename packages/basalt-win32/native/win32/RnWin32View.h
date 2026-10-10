@@ -123,6 +123,12 @@ class RnWin32View {
   // hit testing subtracts the same offset, so the two cannot disagree. Both
   // other platforms arrive at the same arrangement by their own route.
   void setScrollOffset(float x, float y);
+
+  // What this scroll view's snapping is set to, as core/ScrollSnap.h formats
+  // it: a fragment the tree dump prints verbatim, or empty for a view that does
+  // not snap. Pushed in by the scroll manager, which is where the props are
+  // read.
+  void setScrollSnap(std::string description);
   float scrollX() const { return scrollX_; }
   float scrollY() const { return scrollY_; }
 
@@ -829,6 +835,9 @@ class RnWin32View {
   const char *writingDirectionName_ = nullptr;
   const char *textAlignName_ = nullptr;
   const char *textVerticalAlignName_ = nullptr;
+  // This scroll view's snapping, as core formats it for the dump; see
+  // setScrollSnap.
+  std::string scrollSnap_;
   // The paragraph's padding and border; see setTextInset.
   float textInsetLeft_ = 0.0f;
   float textInsetTop_ = 0.0f;

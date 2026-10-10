@@ -737,6 +737,11 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // corner also disagreed with the views inside it.
 @property(nonatomic) NSEdgeInsets rnTextInset;
 
+// What this scroll view's snapping is set to, as core/ScrollSnap.h formats it:
+// a fragment the tree dump prints verbatim, or nil for a view that does not
+// snap. Pushed in by the scroll manager, which is where the props are read.
+@property(nonatomic, copy, nullable) NSString *rnScrollSnap;
+
 // `spellCheck` and `autoCorrect`, for the tree dump: @"on", @"off" or nil for a
 // field that said nothing, which is the third state rather than a default. What
 // this host does with them is two properties on the NSTextView a field is or

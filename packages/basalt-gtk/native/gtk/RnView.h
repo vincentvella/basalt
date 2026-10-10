@@ -343,6 +343,11 @@ void rn_view_set_text_selectable(RnView *self, gboolean selectable);
 // `rn_view_text_index_at`.
 void rn_view_set_text_inset(RnView *self, float left, float top, float right, float bottom);
 
+// What this scroll view's snapping is set to, as core/ScrollSnap.h formats it:
+// a fragment the tree dump prints verbatim, or empty for a view that does not
+// snap. Pushed in by the scroll manager, which is where the props are read.
+void rn_view_set_scroll_snap(RnView *self, const char *description);
+
 // How far down its box this view's paragraph is drawn, in a box `box_height`
 // tall. Zero for a view that draws no text, and for one whose paragraph sits at
 // the top -- which is every paragraph that says nothing about

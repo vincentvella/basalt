@@ -230,7 +230,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
     },
     "sv-deceleration": {
-      "text": "GTK's momentum reads it; AppKit takes the system's own deceleration and Windows has no momentum yet",
+      "text": "all three project a fling's landing point with it, which is where a snap is chosen from; GTK also animates its own momentum at that rate, where AppKit uses the system's and Windows has no fling yet",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md"
     },
     "sv-indicator-default": {
@@ -1886,8 +1886,8 @@
     },
     "BaseScrollViewProps.decelerationRate": {
       "linux": "yes",
-      "macos": "no",
-      "windows": "no",
+      "macos": "partial",
+      "windows": "partial",
       "why": "sv-deceleration"
     },
     "BaseScrollViewProps.bouncesZoom": {

@@ -204,3 +204,38 @@ TEST(snap_content_shorter_than_the_container_stays_at_zero) {
 }
 
 } // namespace
+
+// What a tree dump says a scroll view's snapping is, which is the only way an
+// end-to-end run can see any of these props: a snap point changes where a fling
+// *ends*, and a dump is taken when nothing is moving.
+TEST(scroll_snap_describes_itself_for_a_dump) {
+  ScrollSnapConfig plain;
+  EXPECT(basalt::describeScrollSnap(plain).empty());
+
+  ScrollSnapConfig paged;
+  paged.paging = true;
+  EXPECT(basalt::describeScrollSnap(paged) == " snap=paging");
+
+  ScrollSnapConfig interval;
+  interval.interval = 420.0;
+  interval.disableIntervalMomentum = true;
+  EXPECT(basalt::describeScrollSnap(interval) == " snap=interval:420,momentum=off");
+
+  ScrollSnapConfig offsets;
+  offsets.offsets = {0.0, 100.0, 250.0};
+  offsets.alignment = ScrollSnapAlignment::Center;
+  offsets.snapToEnd = false;
+  EXPECT(basalt::describeScrollSnap(offsets) == " snap=offsets:3,align=center,end=off");
+
+  // The rate rides along, and only when it is not React Native's `'normal'`:
+  // it is what the landing point of a fling is projected with, which is the
+  // point a snap is chosen from.
+  ScrollSnapConfig fast;
+  fast.interval = 100.0;
+  fast.decelerationRate = 0.99;
+  EXPECT(basalt::describeScrollSnap(fast) == " snap=interval:100 decel=0.99");
+
+  ScrollSnapConfig rateOnly;
+  rateOnly.decelerationRate = 0.9;
+  EXPECT(basalt::describeScrollSnap(rateOnly) == " decel=0.9");
+}

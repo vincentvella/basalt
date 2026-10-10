@@ -1,5 +1,7 @@
 #include "GtkScrollView.h"
 
+#include "ScrollSnap.h"
+
 #include <react/renderer/components/scrollview/ScrollEvent.h>
 #include <react/renderer/components/scrollview/ScrollViewEventEmitter.h>
 #include <react/renderer/components/scrollview/ScrollViewProps.h>
@@ -142,6 +144,12 @@ void GtkScrollViewManager::update(RnView *view, const ShadowView &shadowView) {
     // And the friction, so the projection of where a fling would land uses the
     // same rate the fling itself will.
     entry.snap.decelerationRate = entry.decelerationRate;
+
+    // What all of that came to, for the tree dump. None of these props is
+    // visible any other way: they decide where a fling *ends*, and a dump is
+    // taken when nothing is moving. The string is core's, so the three hosts
+    // cannot drift; see describeScrollSnap.
+    rn_view_set_scroll_snap(view, basalt::describeScrollSnap(entry.snap).c_str());
   }
 
   if (const auto state =

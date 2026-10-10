@@ -2971,6 +2971,12 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   if (scroll.x != 0 || scroll.y != 0) {
     [out appendFormat:@" scroll=(%g,%g)", scroll.x, scroll.y];
   }
+  // `pagingEnabled`, `snapToInterval`, `snapToOffsets` and the rest, which
+  // decide where a fling ends and so are invisible to a dump taken while
+  // nothing moves. Formatted in core, so all three hosts print the same words.
+  if (self.rnScrollSnap.length > 0) {
+    [out appendString:self.rnScrollSnap];
+  }
   // The overlay scrollbars, which are otherwise pure paint and so invisible to
   // every test this project has. Printed only when there is one, so a view that
   // does not scroll stays as short as it was.

@@ -352,3 +352,24 @@ test('an upstream specifier is never answered with the override of it', () => {
     context, 'basalt-core/upstream/Libraries/Components/View/View', 'macos');
   assert.equal(upstream.filePath, viewPath, "an upstream import should get React Native's");
 });
+
+// `decelerationRate`, whose two documented spellings React Native resolves
+// through `Platform.select({ios, android})` -- so on a desktop both became
+// `undefined` and `BaseScrollViewProps` kept its own default. A fast scroll
+// view scrolled at the normal rate, and nothing said so.
+test('decelerationRate resolves its two words to numbers', () => {
+  const processDecelerationRate = require(
+    path.join(
+      __dirname,
+      '..',
+      'packages/basalt-core/dist/src/overrides/processDecelerationRate.js',
+    ),
+  ).default;
+
+  // iOS's pair, which is the pair core/ScrollMomentum.h already calls
+  // `'normal'` and `'fast'`.
+  assert.equal(processDecelerationRate('normal'), 0.998);
+  assert.equal(processDecelerationRate('fast'), 0.99);
+  // And a number passes through, which is the third thing the prop takes.
+  assert.equal(processDecelerationRate(0.95), 0.95);
+});

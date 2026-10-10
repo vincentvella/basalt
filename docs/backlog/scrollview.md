@@ -28,6 +28,49 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   thread timer because the scroll manager has a tag rather than an HWND. A
   gesture or a wheel cancels it on all three, the person moving the list wins
   over the app moving it.
+- ~~**`pagingEnabled` and `decelerationRate` reach no desktop, whatever the app
+  writes.**~~ Fixed on 2026-10-10, in JavaScript, and found by the audit that
+  `<Button>` came out of: React Native resolves both through
+  `Platform.select({ios, android})` with no `default`, so on `linux`, `macos`
+  and `windows` they are `undefined` before any host sees them.
+
+  The two fail differently, which is why they needed different answers.
+
+  **`decelerationRate`** is a module of two tables,
+  `processDecelerationRate.js`, so the prop's two documented spellings --
+  `'normal'` and `'fast'` -- became nothing and `BaseScrollViewProps` kept its
+  own 0.998. A fast list scrolled at the normal rate and only a raw number
+  worked. `basalt-core/src/overrides/processDecelerationRate.ts` replaces the
+  thirty-line module and answers with iOS's pair, which is the pair
+  `core/ScrollMomentum.h` already calls `'normal'` and `'fast'`.
+
+  **`pagingEnabled`** is computed inside `ScrollView.render`, which is two
+  thousand lines and not forkable for one expression. The ScrollView override
+  beside it already exists for `refreshControl`, so it translates instead: a
+  paged list is given `snapToInterval` of its own viewport and
+  `disableIntervalMomentum`, which is what `core/ScrollSnap.h` says paging *is*
+  -- points a screenful apart, and one page per flick however hard it was
+  thrown. Only when the app set neither `snapToInterval` nor `snapToOffsets`,
+  which is the precedence upstream's iOS branch applies. The viewport comes
+  from `onLayout`, so a paged list snaps from its second frame and follows a
+  window that is resized.
+
+  **AppKit and Windows now read `decelerationRate` too**, which the entry below
+  says they did not. Not to animate with -- AppKit flings at the system's
+  friction and Windows has no fling -- but to *project*: where a fling would
+  have landed is the point a snap is chosen from, so a fast list snapped as if
+  it were a normal one. Three lines each, and the support page's row for the
+  prop is now `yes`/`partial`/`partial` rather than `yes`/`no`/`no`.
+
+  **None of this was visible to a test**, which is the other half of the work.
+  Snapping decides where a list settles after a gesture and a tree dump is
+  taken when nothing is moving, so every one of these props -- including the
+  three that always worked -- was unasserted end to end. `describeScrollSnap`
+  in `core/ScrollSnap.h` formats the configuration into the dump line, in one
+  place so the three hosts cannot drift, and the scenario reads it: the paged
+  list's interval has to equal its own frame width, which a translation that
+  guessed a number would fail.
+
 - ~~**No snapping or paging.**~~ Done on all three: `pagingEnabled`,
   `snapToInterval`, `snapToOffsets` and `snapToAlignment`, decided once in
   `core/ScrollSnap.h` and settled with the animation next door.
@@ -93,9 +136,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   this shape. Ten are read by every host, measured by grepping each one rather
   than trusting this file: `scrollEnabled`, `pagingEnabled`, both indicator
   flags, `scrollEventThrottle`, `contentInset`, `scrollIndicatorInsets` and the
-  three snapping props. `decelerationRate` is read on GTK alone, which is the
-  honest shape of the momentum work: AppKit takes the system's own deceleration
-  and Windows has none yet.
+  three snapping props. `decelerationRate` was read on GTK alone when this was
+  written, which was the honest shape of the momentum work: AppKit takes the
+  system's own deceleration and Windows has none yet. All three read it now,
+  for the projection a snap is chosen from; see the entry above.
 
   Of the twenty-eight nothing reads, twenty-one are somebody else's platform or
   a gesture no desktop has, and are marked as deliberately not done: the zoom

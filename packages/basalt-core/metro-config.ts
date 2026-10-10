@@ -287,6 +287,15 @@ export const PLATFORM_OVERRIDES: ReadonlyArray<OverrideEntry> = [
     path.join(OVERRIDE_DIR, 'View.js'),
   ],
   [
+    // The same missing key as Button's, in two tables of two: `'normal'` and
+    // `'fast'` are the two documented spellings of `decelerationRate` and both
+    // resolve to `undefined` here, so `BaseScrollViewProps` keeps its own
+    // default and a fast scroll view scrolled at the normal rate. See the
+    // header of the replacement for why it answers with iOS's pair.
+    path.join('Libraries', 'Components', 'ScrollView', 'processDecelerationRate.js'),
+    path.join(OVERRIDE_DIR, 'processDecelerationRate.js'),
+  ],
+  [
     // Also not a shim, and this one is a missing *key* rather than a missing
     // branch: React Native's `Button.js` builds its look out of four
     // `Platform.select({ios, android})` tables, and a platform that is neither

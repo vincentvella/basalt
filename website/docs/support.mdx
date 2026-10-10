@@ -296,7 +296,7 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | `automaticallyAdjustContentInsets` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `automaticallyAdjustsScrollIndicatorInsets` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `automaticallyAdjustKeyboardInsets` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
-| `decelerationRate` | ✅ | ✖ | ✖ | [GTK's momentum reads it; AppKit takes the system's own deceleration and Windows has no momentum yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
+| `decelerationRate` | ✅ | ◐ | ◐ | [all three project a fling's landing point with it, which is where a snap is chosen from; GTK also animates its own momentum at that rate, where AppKit uses the system's and Windows has no fling yet](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `endDraggingSensitivityMultiplier` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `directionalLockEnabled` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |
 | `indicatorStyle` | ◐ | ◐ | ◐ | [white is white; iOS's 'default' differs from 'black' only by a white border around the thumb, which these hosts do not draw](https://github.com/vincentvella/basalt/blob/main/docs/backlog/scrollview.md) |

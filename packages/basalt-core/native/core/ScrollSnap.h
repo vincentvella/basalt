@@ -51,6 +51,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace basalt {
@@ -100,6 +101,16 @@ struct ScrollSnapConfig {
 // release. Low enough that a deliberate flick always carries, high enough that
 // the wobble of letting go does not.
 inline constexpr double kScrollSnapFlickVelocity = 250.0;
+
+// What a scroll view's snapping is set to, as a tree dump prints it: a
+// fragment like ` snap=interval:420,momentum=off decel=0.99`, or empty when
+// there is nothing to say.
+//
+// Here rather than in each host so that the three dumps cannot drift, which is
+// the same argument `core/TextAlignments.h` makes for the names it resolves.
+// It exists because none of this is visible any other way: a snap point changes
+// where a fling *ends*, and a tree dump is taken when nothing is moving.
+std::string describeScrollSnap(const ScrollSnapConfig &config);
 
 // The offset to settle at, or nothing when no snapping is configured.
 //

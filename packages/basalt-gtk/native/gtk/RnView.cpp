@@ -242,6 +242,9 @@ struct _RnView {
   const char *text_align;
   // Where the paragraph sits in its box; see rn_view_set_text_vertical_flush.
   float text_vertical_flush;
+  // This scroll view's snapping, as core formats it for the dump; see
+  // rn_view_set_scroll_snap.
+  char *scroll_snap;
   // The paragraph's padding and border; see rn_view_set_text_inset.
   float text_inset_left;
   float text_inset_top;
@@ -1252,6 +1255,7 @@ static void rn_view_dispose(GObject *object) {
   g_clear_pointer(&self->highlights, g_array_unref);
   g_clear_pointer(&self->highlight_filled, g_array_unref);
 
+  g_clear_pointer(&self->scroll_snap, g_free);
   g_clear_object(&self->text_layout);
   g_clear_object(&self->texture);
   // The tick callback holds no reference, so it has to come off before the
@@ -1325,6 +1329,7 @@ static void rn_view_init(RnView *self) {
   self->writing_direction = nullptr;
   self->text_align = nullptr;
   self->text_vertical_flush = 0.0f;
+  self->scroll_snap = nullptr;
   self->text_inset_left = 0.0f;
   self->text_inset_top = 0.0f;
   self->text_inset_right = 0.0f;
@@ -1582,6 +1587,16 @@ void rn_view_set_text_valign(RnView *self, const char *valign) {
   g_return_if_fail(RN_IS_VIEW(self));
   // A literal from core, like the two above it.
   self->text_valign = valign;
+}
+
+void rn_view_set_scroll_snap(RnView *self, const char *description) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  const char *wanted = description != nullptr && *description != '\0' ? description : nullptr;
+  if (g_strcmp0(self->scroll_snap, wanted) == 0) {
+    return;
+  }
+  g_free(self->scroll_snap);
+  self->scroll_snap = g_strdup(wanted);
 }
 
 void rn_view_set_text_inset(RnView *self, float left, float top, float right, float bottom) {
@@ -3119,6 +3134,12 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
   }
   if (self->scroll_x != 0.0 || self->scroll_y != 0.0) {
     g_string_append_printf(out, " scroll=(%g,%g)", self->scroll_x, self->scroll_y);
+  }
+  // `pagingEnabled`, `snapToInterval`, `snapToOffsets` and the rest, which
+  // decide where a fling ends and so are invisible to a dump taken while
+  // nothing moves. Formatted in core, so all three hosts print the same words.
+  if (self->scroll_snap != nullptr) {
+    g_string_append(out, self->scroll_snap);
   }
   // The overlay scrollbars, which are otherwise pure paint and so invisible to
   // every test this project has. Printed only when there is one, so a view that

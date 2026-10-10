@@ -1,13 +1,24 @@
 #include "ScrollSnap.h"
 
+#include <string>
+
 #include "ScrollMomentum.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace basalt {
 
 namespace {
+
+// `%g` without a trailing `.000000`, which is what every other number in a tree
+// dump is printed with.
+std::string shortNumber(double value) {
+  char text[32];
+  std::snprintf(text, sizeof(text), "%g", value);
+  return text;
+}
 
 // What the alignment shifts by: a centred snap lines the middle of the
 // container up with a point, an end-aligned one lines up its trailing edge.
@@ -107,6 +118,55 @@ std::optional<double> nearestOffset(const ScrollSnapConfig &config,
 }
 
 } // namespace
+
+std::string describeScrollSnap(const ScrollSnapConfig &config) {
+  std::string out;
+  if (config.enabled()) {
+    out += " snap=";
+    if (config.paging) {
+      // The container's own length, which only the host knows; naming the mode
+      // is the whole of what this line can say.
+      out += "paging";
+    } else if (!config.offsets.empty()) {
+      out += "offsets:" + std::to_string(config.offsets.size());
+    } else {
+      out += "interval:" + shortNumber(config.interval);
+    }
+    switch (config.alignment) {
+      case ScrollSnapAlignment::Center:
+        out += ",align=center";
+        break;
+      case ScrollSnapAlignment::End:
+        out += ",align=end";
+        break;
+      case ScrollSnapAlignment::Start:
+        break;
+    }
+    // Printed only when false, both of them: true is the default and every
+    // scroll view would otherwise carry two words that say nothing.
+    if (!config.snapToStart) {
+      out += ",start=off";
+    }
+    if (!config.snapToEnd) {
+      out += ",end=off";
+    }
+    if (config.disableIntervalMomentum) {
+      out += ",momentum=off";
+    }
+  }
+  // Beside the snapping because that is what it is for here: the rate decides
+  // where a fling would have landed, which is the point a snap is chosen from.
+  // Only when it is not React Native's own default, so an ordinary list says
+  // nothing.
+  //
+  // Compared with a tolerance rather than exactly: the prop is a `float` in
+  // ReactCommon, so the default arrives here as 0.99800002574920654 and an
+  // equality test would print a line for every scroll view in every app.
+  if (std::abs(config.decelerationRate - ScrollMomentum::kNormalDeceleration) > 1e-6) {
+    out += " decel=" + shortNumber(config.decelerationRate);
+  }
+  return out;
+}
 
 std::optional<double> scrollSnapTarget(const ScrollSnapConfig &config,
                                        double offset,

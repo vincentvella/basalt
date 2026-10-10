@@ -1,5 +1,7 @@
 #import "AppKitScrollView.h"
 
+#include "ScrollSnap.h"
+
 #import <QuartzCore/QuartzCore.h>
 
 #include <react/renderer/components/scrollview/ScrollEvent.h>
@@ -229,9 +231,20 @@ void AppKitScrollViewManager::update(RnAppKitView *view, const ShadowView &shado
       // host is not this host's to run.
       stopAnimation(entry);
     }
-    // `decelerationRate` is not read on this host, so the projection of where a
-    // fling would land uses React Native's own default -- which is what the
-    // config carries. See the support page's row for the prop.
+    // `decelerationRate`, which this host does not animate with -- the fling
+    // itself is AppKit's, at its own friction -- but does need for the
+    // *projection*: where a fling would have landed is the point a snap is
+    // chosen from, and a fast list stops sooner. Zero is what an app that
+    // never set the prop leaves behind.
+    if (props->decelerationRate > 0) {
+      entry.snap.decelerationRate = static_cast<double>(props->decelerationRate);
+    }
+
+    // What all of that came to, for the tree dump. None of these props is
+    // visible any other way: they decide where a fling *ends*, and a dump is
+    // taken when nothing is moving. The string is core's, so the three hosts
+    // cannot drift; see describeScrollSnap.
+    view.rnScrollSnap = @(basalt::describeScrollSnap(entry.snap).c_str());
   }
 
   if (const auto state =
