@@ -827,7 +827,6 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
   // as long as the graph is drawn, which is why they are declared out here.
   ComPtr<ID2D1Effect> straighten;
   ComPtr<ID2D1Effect> matrix;
-  ComPtr<ID2D1Effect> premultiply;
   ComPtr<ID2D1Effect> blur;
   ComPtr<ID2D1Image> source;
   picture->QueryInterface(IID_PPV_ARGS(&source));
@@ -853,16 +852,26 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
     // range.
     matrix->SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, TRUE);
 
-    // **Straight alpha by two effects of its own rather than by the matrix's
-    // own alpha mode.** CSS defines its filters on unpremultiplied colour, and
-    // `D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT` says it will do that conversion --
-    // but setting it and measuring the result gave the premultiplied answer
-    // anyway: a half-transparent red whose alpha the matrix forces opaque came
-    // out dark red rather than red, which is 0.5 read as a colour instead of as
-    // a colour times a coverage. `win32_paint_filters_in_straight_alpha` is
-    // that measurement. So the conversion is explicit, and the matrix is told
-    // premultiplied, which for an input that is already straight means it
-    // converts nothing.
+    // **CSS's filters are defined on unpremultiplied colour**, and getting that
+    // took two measurements rather than a reading of the documentation.
+    //
+    // `D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT` sounds like the answer and is not:
+    // with it set, a half-transparent red whose alpha the matrix forces opaque
+    // came out dark red, which is 0.5 read as a colour rather than as a colour
+    // times a coverage. So that setting does not mean "convert for me"; it
+    // means "the data is already straight, leave the alpha alone".
+    //
+    // What does convert is `CLSID_D2D1UnPremultiply` ahead of the matrix, with
+    // the matrix then told PREMULTIPLIED -- which, read the same way, means
+    // "premultiply the result on the way out". An explicit `Premultiply` effect
+    // after it premultiplied a second time, which the second measurement
+    // caught: a half-transparent view with an *identity* matrix came back at a
+    // quarter of its colour.
+    //
+    // Both tests are kept, and they pin the pair from opposite ends: one has an
+    // opaque result, where premultiplying is a no-op and only the conversion on
+    // the way in shows; the other is transparent throughout, where only the
+    // conversion on the way out does.
     matrix->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE,
                      D2D1_COLORMATRIX_ALPHA_MODE_PREMULTIPLIED);
     if (SUCCEEDED(context->CreateEffect(CLSID_D2D1UnPremultiply, straighten.GetAddressOf()))
@@ -874,12 +883,6 @@ void RnWin32View::paintFiltered(ID2D1RenderTarget *target) const {
     matrix->SetInput(0, source.Get());
     source.Reset();
     matrix->GetOutput(source.GetAddressOf());
-    if (SUCCEEDED(context->CreateEffect(CLSID_D2D1Premultiply, premultiply.GetAddressOf()))
-        && premultiply) {
-      premultiply->SetInput(0, source.Get());
-      source.Reset();
-      premultiply->GetOutput(source.GetAddressOf());
-    }
   }
 
   if (filters_.blurRadius > 0.0f
