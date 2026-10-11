@@ -212,6 +212,10 @@ struct _RnView {
   // until something says otherwise, which is what every list that never set the
   // prop gets.
   GdkRGBA indicator_colour;
+  // And the hairline around it, which only `indicatorStyle: 'default'` has:
+  // iOS's default thumb is black with a white border, which is what keeps it
+  // visible over dark content as well as light. Transparent for the other two.
+  GdkRGBA indicator_border_colour;
   // `caretHidden` and `contextMenuHidden`, for the dump. What the peer does
   // about them is in GtkTextPeer.cpp.
   gboolean caret_hidden;
@@ -1434,6 +1438,13 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     // and white instead when `indicatorStyle` asked for it -- core decides
     // which, so all three hosts answer the prop with the same colour.
     const GdkRGBA thumb = self->indicator_colour;
+    // And the hairline around it, which `default` has and the other two do
+    // not. Drawn as a border node inside the thumb's own rounded rectangle, so
+    // it follows the pill rather than boxing it.
+    const GdkRGBA edge = self->indicator_border_colour;
+    const float edgeWidth = static_cast<float>(basalt::kScrollIndicatorBorderWidth);
+    const float edgeWidths[4] = {edgeWidth, edgeWidth, edgeWidth, edgeWidth};
+    const GdkRGBA edges[4] = {edge, edge, edge, edge};
 
     if (self->indicator_v_length > 0.0) {
       const graphene_rect_t bar =
@@ -1446,6 +1457,9 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       gtk_snapshot_push_rounded_clip(snapshot, &rounded);
       gtk_snapshot_append_color(snapshot, &thumb, &bar);
       gtk_snapshot_pop(snapshot);
+      if (edge.alpha > 0.0F) {
+        gtk_snapshot_append_border(snapshot, &rounded, edgeWidths, edges);
+      }
     }
     if (self->indicator_h_length > 0.0) {
       const graphene_rect_t bar =
@@ -1458,6 +1472,9 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       gtk_snapshot_push_rounded_clip(snapshot, &rounded);
       gtk_snapshot_append_color(snapshot, &thumb, &bar);
       gtk_snapshot_pop(snapshot);
+      if (edge.alpha > 0.0F) {
+        gtk_snapshot_append_border(snapshot, &rounded, edgeWidths, edges);
+      }
     }
   }
 
@@ -1758,6 +1775,9 @@ static void rn_view_init(RnView *self) {
   const basalt::ScrollIndicatorColour thumb =
       basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Default);
   self->indicator_colour = GdkRGBA{thumb.red, thumb.green, thumb.blue, thumb.alpha};
+  const basalt::ScrollIndicatorColour edge =
+      basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Default);
+  self->indicator_border_colour = GdkRGBA{edge.red, edge.green, edge.blue, edge.alpha};
   for (int i = 0; i < 4; i++) {
     self->border_radii[i] = graphene_size_t{0.0f, 0.0f};
     self->border_widths[i] = 0.0f;
@@ -3287,6 +3307,22 @@ void rn_view_set_scroll_indicator_colour(RnView *self,
     return;
   }
   self->indicator_colour = wanted;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void rn_view_set_scroll_indicator_border_colour(RnView *self,
+                                               float red,
+                                               float green,
+                                               float blue,
+                                               float alpha) {
+  if (!RN_IS_VIEW(self)) {
+    return;
+  }
+  const GdkRGBA wanted{red, green, blue, alpha};
+  if (gdk_rgba_equal(&self->indicator_border_colour, &wanted)) {
+    return;
+  }
+  self->indicator_border_colour = wanted;
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 

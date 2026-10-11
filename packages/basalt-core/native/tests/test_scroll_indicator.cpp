@@ -169,16 +169,33 @@ TEST(indicator_the_default_is_black) {
   EXPECT_NEAR(black.blue, 0.0, 0.0001);
 }
 
-TEST(indicator_default_and_black_are_the_same_colour_here) {
-  // Deliberate, and the reason the support row is `partial`: on iOS the two
-  // differ by a white border around the thumb, which these hosts do not draw,
-  // so the colour is all there is to tell them apart by and it is the same.
+TEST(indicator_default_and_black_share_a_fill_and_differ_by_a_border) {
+  // Which is exactly how iOS's two differ:
+  // `UIScrollViewIndicatorStyleDefault` is "black with a white border" and
+  // `.black` is black alone. The fill being the same is half the claim and
+  // used to be the whole of it, back when neither drew a border.
   const basalt::ScrollIndicatorColour fallback =
       basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Default);
   const basalt::ScrollIndicatorColour black =
       basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Black);
   EXPECT_NEAR(fallback.red, black.red, 0.0001);
   EXPECT_NEAR(fallback.alpha, black.alpha, 0.0001);
+
+  // And the border is the other half: white, and on `default` alone.
+  const basalt::ScrollIndicatorColour border =
+      basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Default);
+  EXPECT_NEAR(border.red, 1.0, 0.0001);
+  EXPECT_NEAR(border.green, 1.0, 0.0001);
+  EXPECT_NEAR(border.blue, 1.0, 0.0001);
+  EXPECT(border.alpha > basalt::kScrollIndicatorAlpha);
+
+  // The two styles an app picks because it knows what is behind the thumb have
+  // none: iOS draws neither with an outline, and adding one would be this
+  // platform inventing a look.
+  EXPECT_NEAR(basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Black).alpha,
+              0.0, 0.0001);
+  EXPECT_NEAR(basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::White).alpha,
+              0.0, 0.0001);
 }
 
 TEST(indicator_both_colours_are_equally_translucent) {

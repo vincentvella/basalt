@@ -210,3 +210,48 @@ TEST(appkit_scrollbar_goes_away_when_everything_fits) {
                           horizontalLength:0];
   EXPECT(indicatorViewOf(view) == nil);
 }
+
+// The hairline that tells `default` from `black`, which is the whole
+// difference between the two on iOS: `UIScrollViewIndicatorStyleDefault` is
+// "black with a white border" and `.black` is black alone. Without it an app
+// over dark content that left `indicatorStyle` alone got a black thumb on a
+// black ground, which is a scrollbar nobody can see.
+//
+// Over grey rather than white, for the reason the colour test above is: the
+// fill is a wash and both the fill and the edge have to be measurable against
+// the same ground. The edge is read at the thumb's outermost column and the
+// fill two points inside it, so the two cannot be confused with each other.
+TEST(appkit_scrollbar_default_has_a_white_edge_and_black_does_not) {
+  RnAppKitView *view = scrollViewWithIndicators(100, 100);
+  const CGSize size = CGSizeMake(100, 100);
+  const int grey = 128;
+
+  const basalt::ScrollIndicatorColour fill =
+      basalt::scrollIndicatorColourFor(basalt::ScrollIndicatorStyle::Default);
+  const basalt::ScrollIndicatorColour edge =
+      basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Default);
+  [view setRnScrollIndicatorColourRed:fill.red green:fill.green blue:fill.blue alpha:fill.alpha];
+  [view setRnScrollIndicatorBorderColourRed:edge.red
+                                      green:edge.green
+                                       blue:edge.blue
+                                      alpha:edge.alpha];
+
+  // The thumb is six points wide, two in from the right edge of a hundred, so
+  // its columns are 92 to 97. The left-hand edge column carries the hairline
+  // and the middle carries the fill.
+  const int edgeColumn = 92;
+  const int fillColumn = 95;
+  EXPECT(greyAt(indicatorViewOf(view), size, edgeColumn, 20) > grey + 10);
+  EXPECT(greyAt(indicatorViewOf(view), size, fillColumn, 20) < grey - 20);
+
+  // And `black`, which is the same fill with no edge: the column that was
+  // lighter than its ground is not any more.
+  const basalt::ScrollIndicatorColour none =
+      basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Black);
+  [view setRnScrollIndicatorBorderColourRed:none.red
+                                      green:none.green
+                                       blue:none.blue
+                                      alpha:none.alpha];
+  EXPECT(greyAt(indicatorViewOf(view), size, edgeColumn, 20) <= grey);
+  EXPECT(greyAt(indicatorViewOf(view), size, fillColumn, 20) < grey - 20);
+}

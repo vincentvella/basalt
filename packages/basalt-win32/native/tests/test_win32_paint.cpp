@@ -1742,6 +1742,44 @@ TEST(win32_paint_an_indicator_is_black_by_default) {
   EXPECT_NEAR(pixel.alpha, 89, 3);
 }
 
+// The hairline that tells `default` from `black`, which is the whole
+// difference between the two on iOS: `UIScrollViewIndicatorStyleDefault` is
+// "black with a white border" and `.black` is black alone. Without it a list
+// over dark content that never set `indicatorStyle` drew a black thumb on a
+// black ground.
+//
+// Read at the thumb's outermost column rather than its middle, which is where
+// the two differ: the fill is the same black either way and the test above
+// already pins that.
+TEST(win32_paint_a_default_indicator_has_a_white_edge_and_black_has_none) {
+  const auto edgeColumn = [](float width) {
+    return static_cast<unsigned>(width - basalt::kScrollIndicatorInset
+                                 - basalt::kScrollIndicatorThickness);
+  };
+
+  auto root = std::make_unique<RnWin32View>(1);
+  root->setFrame(0, 0, 100, 100);
+  root->setScrollIndicators(0.0f, 50.0f, 0.0f, 0.0f);
+  const basalt::ScrollIndicatorColour edge =
+      basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Default);
+  root->setScrollIndicatorBorderColour(edge.red, edge.green, edge.blue, edge.alpha);
+
+  const basalt::win32::RnPixels bordered = basalt::win32::renderToPixels(*root);
+  const auto hairline = bordered.at(edgeColumn(100), 20);
+  // White, where the fill two points inside it is black.
+  EXPECT(hairline.red > 128);
+  EXPECT(hairline.green > 128);
+  EXPECT(hairline.blue > 128);
+  EXPECT_NEAR(bordered.at(thumbColumn(100), 20).red, 0, 3);
+
+  // And `black`, which is the same fill with no edge at all.
+  const basalt::ScrollIndicatorColour none =
+      basalt::scrollIndicatorBorderColourFor(basalt::ScrollIndicatorStyle::Black);
+  root->setScrollIndicatorBorderColour(none.red, none.green, none.blue, none.alpha);
+  const basalt::win32::RnPixels plain = basalt::win32::renderToPixels(*root);
+  EXPECT(plain.at(edgeColumn(100), 20).red < 128);
+}
+
 TEST(win32_paint_an_indicator_takes_the_colour_it_was_given) {
   auto root = std::make_unique<RnWin32View>(1);
   root->setFrame(0, 0, 100, 100);

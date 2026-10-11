@@ -598,6 +598,12 @@ void AppKitScrollViewManager::updateIndicators(const Entry &entry) {
                                       green:thumb.green
                                        blue:thumb.blue
                                       alpha:thumb.alpha];
+  const basalt::ScrollIndicatorColour edge =
+      basalt::scrollIndicatorBorderColourFor(entry.indicatorStyle);
+  [entry.view setRnScrollIndicatorBorderColourRed:edge.red
+                                            green:edge.green
+                                             blue:edge.blue
+                                            alpha:edge.alpha];
   [entry.view setRnScrollIndicatorVerticalOffset:vertical.offset
                                   verticalLength:vertical.length
                                 horizontalOffset:horizontal.offset
