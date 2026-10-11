@@ -1,5 +1,6 @@
 #include "PangoTextLayout.h"
 
+#include "RnTextDashes.h"
 #include "TextAlignments.h"
 #include "TextDirection.h"
 
@@ -228,11 +229,15 @@ PangoDirection toPangoDirection(std::optional<facebook::react::WritingDirection>
 }
 
 
+// `dashRuns` collects the underlines Pango cannot draw, and may be null for a
+// caller that will not be painting one -- a `<TextInput>`'s attribute list,
+// whose text is drawn by a GtkText rather than by this host's snapshot.
 void applyFragmentAttributes(PangoAttrList *attributes,
                              const TextAttributes &textAttributes,
                              guint startIndex,
                              guint endIndex,
-                             basalt::FontFit fit = {}) {
+                             basalt::FontFit fit = {},
+                             GArray *dashRuns = nullptr) {
   const auto addAttribute = [&](PangoAttribute *attribute) {
     attribute->start_index = startIndex;
     attribute->end_index = endIndex;
@@ -324,7 +329,24 @@ void applyFragmentAttributes(PangoAttrList *attributes,
   // core/TextDecorations.h so that both hosts agree about what was asked for,
   // and mapped here to what Pango has.
   if (const auto decoration = basalt::textDecoration(textAttributes)) {
-    if (decoration->underline) {
+    const bool patterned =
+        decoration->style == facebook::react::TextDecorationStyle::Dotted
+        || decoration->style == facebook::react::TextDecorationStyle::Dashed;
+    if (decoration->underline && patterned) {
+      // Pango's enum has no pattern in it, so asking for an underline here
+      // would draw a solid line over the dashes this host is about to draw
+      // itself. The range is recorded instead; see RnTextDashes.h.
+      if (dashRuns != nullptr) {
+        RnTextDashRun run{};
+        run.start = startIndex;
+        run.end = endIndex;
+        run.dotted = decoration->style == facebook::react::TextDecorationStyle::Dotted;
+        run.has_color = decoration->hasColor;
+        run.color = GdkRGBA{decoration->red, decoration->green, decoration->blue,
+                            decoration->alpha};
+        g_array_append_val(dashRuns, run);
+      }
+    } else if (decoration->underline) {
       addAttribute(pango_attr_underline_new(toPangoUnderline(decoration->style)));
     }
     if (decoration->strikethrough) {
@@ -340,7 +362,7 @@ void applyFragmentAttributes(PangoAttrList *attributes,
       // "decoration colour". An alpha attribute would apply to the glyphs as
       // well, so a translucent decoration colour is recorded rather than
       // half-applied.
-      if (decoration->underline) {
+      if (decoration->underline && !patterned) {
         addAttribute(pango_attr_underline_color_new(red, green, blue));
       }
       if (decoration->strikethrough) {
@@ -522,12 +544,16 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // Fragment ranges are byte offsets into the concatenated UTF-8 string, which
   // is the same unit Pango's attribute indices use.
   std::string text;
+  // The dotted and dashed underlines this host draws rather than Pango. Built
+  // unconditionally and handed to the layout at the end, which frees it when
+  // there are none; see RnTextDashes.h.
+  GArray *dashRuns = g_array_new(FALSE, FALSE, sizeof(RnTextDashRun));
   for (const auto &fragment : attributedString.getFragments()) {
     const auto start = static_cast<guint>(text.size());
     text += transformedFragmentText(fragment);
     const auto end = static_cast<guint>(text.size());
     if (end > start) {
-      applyFragmentAttributes(attributes, fragment.textAttributes, start, end, fit);
+      applyFragmentAttributes(attributes, fragment.textAttributes, start, end, fit, dashRuns);
     }
     if (fragment.isAttachment() && end > start) {
       applyAttachmentShape(attributes, fragment, start, end);
@@ -537,6 +563,7 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.size()));
   pango_layout_set_attributes(layout, attributes);
   pango_attr_list_unref(attributes);
+  rn_text_set_dash_runs(layout, dashRuns);
 
   // Paragraph-level settings come from the first fragment, since React Native
   // resolves alignment onto every fragment from the <Text> that owns them.

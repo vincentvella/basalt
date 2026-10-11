@@ -914,10 +914,12 @@ TEST(gtk_a_decoration_style_maps_to_what_pango_has) {
   EXPECT(underlineOf(TextDecorationStyle::Double) == PANGO_UNDERLINE_DOUBLE);
   // The wavy one a spell checker draws, which is what `wavy` means.
   EXPECT(underlineOf(TextDecorationStyle::Wavy) == PANGO_UNDERLINE_ERROR);
-  // Pango has no pattern for either, so both are a single line and the gap is
-  // recorded rather than approximated with something it does have.
-  EXPECT(underlineOf(TextDecorationStyle::Dotted) == PANGO_UNDERLINE_SINGLE);
-  EXPECT(underlineOf(TextDecorationStyle::Dashed) == PANGO_UNDERLINE_SINGLE);
+  // Pango has no pattern for either, so this host draws them itself and asks
+  // Pango for nothing: an underline attribute here would put a solid line
+  // under the dashes. The pieces are recorded on the layout instead, which the
+  // next test measures in pixels. See RnTextDashes.h.
+  EXPECT(underlineOf(TextDecorationStyle::Dotted) == PANGO_UNDERLINE_NONE);
+  EXPECT(underlineOf(TextDecorationStyle::Dashed) == PANGO_UNDERLINE_NONE);
 }
 
 // And the half the attribute list cannot see: what the line looks like.
@@ -954,13 +956,16 @@ const char *const kNarrowGlyphs = "iiiiiiiiiiiiiiiiiiii";
 constexpr int kDecorationWidth = 600;
 constexpr int kDecorationHeight = 120;
 
-basalt::testing::RnPixels renderUnderlined(facebook::react::TextDecorationStyle style) {
+basalt::testing::RnPixels renderUnderlined(facebook::react::TextDecorationStyle style,
+                                           bool decorated = true) {
   AttributedString::Fragment fragment;
   fragment.string = kNarrowGlyphs;
   TextAttributes attributes;
   attributes.fontSize = kDecorationFontSize;
-  attributes.textDecorationLineType = facebook::react::TextDecorationLineType::Underline;
-  attributes.textDecorationStyle = style;
+  if (decorated) {
+    attributes.textDecorationLineType = facebook::react::TextDecorationLineType::Underline;
+    attributes.textDecorationStyle = style;
+  }
   fragment.textAttributes = attributes;
   AttributedString string;
   string.appendFragment(std::move(fragment));
@@ -981,29 +986,35 @@ basalt::testing::RnPixels renderUnderlined(facebook::react::TextDecorationStyle 
   return pixels;
 }
 
-// The row carrying the most ink, with how much of it was in one unbroken run.
+// The row carrying the most of the *line*, with how much of it was in one
+// unbroken run.
 //
-// For a paragraph of narrow glyphs the busiest row is the decoration whatever
-// style it is drawn in: even a dotted line puts more pixels on its row than
-// twenty stems put on theirs. Which of `ink` and `longest` is large is then what
-// tells the styles apart, a dotted line having the ink of a line and the runs of
-// a dot.
+// Measured against an undecorated render of the same text rather than against
+// the page, which is what isolates the line from the letters. Reading the ink
+// directly was tried first and the busiest row for a dotted line came out as
+// the row of dots on the twenty `i`s -- a glyph feature with more pixels in it
+// than a one-pixel-thick dotted line has, so the instrument was measuring the
+// font. A difference has nothing in it but the decoration.
 struct BusiestRow {
   int row{-1};
   int ink{0};
   int longest{0};
 };
 
-BusiestRow busiestRow(const basalt::testing::RnPixels &pixels) {
+BusiestRow busiestRow(const basalt::testing::RnPixels &decorated,
+                      const basalt::testing::RnPixels &plain) {
   BusiestRow busiest;
   for (int y = 0; y < kDecorationHeight; y++) {
     int ink = 0;
     int run = 0;
     int longest = 0;
     for (int x = 0; x < kDecorationWidth; x++) {
-      // The same threshold every other pixel assertion in this file uses, which
-      // counts a glyph's antialiased edge as ink.
-      if (pixels.at(x, y).alpha > 40) {
+      // A third of full coverage, which is well above the antialiasing either
+      // side of a stroke and well below the stroke itself.
+      const int difference =
+          std::abs(static_cast<int>(decorated.at(x, y).alpha)
+                   - static_cast<int>(plain.at(x, y).alpha));
+      if (difference > 80) {
         ink++;
         longest = ++run > longest ? run : longest;
       } else {
@@ -1022,9 +1033,11 @@ BusiestRow busiestRow(const basalt::testing::RnPixels &pixels) {
 TEST(gtk_a_dotted_underline_is_broken_and_a_solid_one_is_not) {
   using facebook::react::TextDecorationStyle;
 
-  const BusiestRow solid = busiestRow(renderUnderlined(TextDecorationStyle::Solid));
-  const BusiestRow dotted = busiestRow(renderUnderlined(TextDecorationStyle::Dotted));
-  const BusiestRow dashed = busiestRow(renderUnderlined(TextDecorationStyle::Dashed));
+  const basalt::testing::RnPixels plain =
+      renderUnderlined(TextDecorationStyle::Solid, /*decorated=*/false);
+  const BusiestRow solid = busiestRow(renderUnderlined(TextDecorationStyle::Solid), plain);
+  const BusiestRow dotted = busiestRow(renderUnderlined(TextDecorationStyle::Dotted), plain);
+  const BusiestRow dashed = busiestRow(renderUnderlined(TextDecorationStyle::Dashed), plain);
 
   // A line at all, and one unbroken run about as wide as the text: twenty
   // glyphs at this size are a couple of hundred points of it, so anything over
