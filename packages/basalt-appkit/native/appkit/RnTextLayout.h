@@ -15,6 +15,22 @@
 // colour below is genuinely optional.
 NS_ASSUME_NONNULL_BEGIN
 
+// A wavy underline, which Core Text has no pattern for.
+//
+// `NSUnderlineStyle` is a bitmask of a line style and a *pattern* -- dot, dash,
+// dash-dot -- and there is no wavy member: the squiggle under a misspelling is
+// drawn by the text system's spell checking rather than by an underline. So
+// `textDecorationStyle: 'wavy'` came out as a straight line, which GTK draws
+// correctly and this host did not.
+//
+// The attribute is left off a wavy range and this key carries the colour the
+// line should be drawn in, which the layout strokes itself in
+// `drawInContext:size:`. An attributed string taking keys nobody else knows is
+// AppKit's own extension point, and it keeps the squiggle attached to exactly
+// the characters that asked for it -- a nested `<Text>` with a wavy underline
+// inside a plain one is two ranges and draws as two.
+extern NSAttributedStringKey const RnWavyUnderlineAttributeName;
+
 @interface RnTextLayout : NSObject
 
 @property(nonatomic, readonly) NSAttributedString *attributedString;

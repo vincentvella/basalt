@@ -833,9 +833,13 @@ TEST(appkit_a_decoration_style_maps_to_core_texts_bitmask) {
               NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDot));
     EXPECT_EQ(underline(TextDecorationStyle::Dashed),
               NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDash));
-    // And the one that is exact on GTK and not here: no wavy pattern exists, so
-    // it is a single line and recorded as such.
-    EXPECT_EQ(underline(TextDecorationStyle::Wavy), NSInteger(NSUnderlineStyleSingle));
+    // And the one Core Text has no pattern for: this host strokes the squiggle
+    // itself, so it asks for no underline at all -- an attribute here would
+    // draw a straight line through the wave. The colour travels on
+    // `RnWavyUnderlineAttributeName` instead, and the next test measures the
+    // shape in pixels.
+    // -1 is this helper's "no attribute at all", which is the answer.
+    EXPECT_EQ(underline(TextDecorationStyle::Wavy), NSInteger(-1));
   }
 }
 
