@@ -156,6 +156,20 @@ if command -v node >/dev/null 2>&1; then
   # enough that nobody could say since when. Same arrangement, tests first.
   step "backlog count tests" node --test scripts/test_check_backlog.js
   step "backlog counts" node scripts/check_backlog.js
+  # Every supported React Native, not just the one this build uses. The
+  # compile commands CMake already recorded, pointed at another checkout and
+  # asked for syntax only: about a minute, and it catches the class of thing
+  # that broke 0.86 for two days -- an enum member 0.87 has and 0.86 does
+  # not. Skipped with a reason when the other checkout is not here, which is
+  # the same bargain the native-module check makes.
+  for other in ../react-native-0.86; do
+    if [ -d "$other/packages/react-native/ReactCommon" ]; then
+      step "React Native ${other##*-}" \
+        python3 scripts/check_versions.py "$other/packages/react-native" "${other##*0.}"
+    else
+      echo "  -- skipped React Native ${other##*-}: no checkout at $other"
+    fi
+  done
   # What a release would upload. The version arithmetic release.yml does after
   # a tag is pushed, plus the question nothing else asks: a package in
   # packages/ is published unless it says `private`, and every published one

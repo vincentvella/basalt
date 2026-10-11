@@ -940,9 +940,15 @@ TEST(appkit_a_decoration_colour_reaches_the_underline) {
 // plan, an `NSLayoutManager` subclass being the other way round.
 namespace {
 
+#if BASALT_RN_MINOR >= 87
 // Narrow glyphs with no descender, so the lowest ink in a column belongs to the
 // underline rather than to a letter, at a size where the line is thick enough
 // for a wave in it to be several pixels from crest to trough.
+//
+// All of this, down to the `#endif` below, is the wavy underline's: `wavy`
+// arrived in React Native 0.87 and naming the member on 0.86 does not
+// compile, so the test is guarded -- and an unused helper or constant left
+// outside the guard is an error in its own right here.
 constexpr float kDecorationFontSize = 40.0F;
 const char *const kNarrowGlyphs = "iiiiiiiiiiiiiiiiiiii";
 
@@ -1017,6 +1023,9 @@ int underlineBottomEdgeSpread(facebook::react::TextDecorationStyle style) {
   CGContextRelease(plain);
   return lowest < 0 ? -1 : lowest - highest;
 }
+// Guarded with the test that calls it: `wavy` is 0.87's, so on 0.86 this
+// would be an unused function, which is an error here.
+#endif
 
 } // namespace
 

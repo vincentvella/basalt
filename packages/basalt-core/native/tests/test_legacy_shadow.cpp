@@ -20,12 +20,22 @@ namespace {
 // Props as React Native hands them over, with nothing set but the shadow: the
 // defaults for `shadowOffset` and `shadowRadius` are React Native's own, which
 // is what makes "set only a colour and an opacity" a case worth testing.
-BaseViewProps shadowProps(float red, float green, float blue, float alpha, double opacity) {
+//
+// A struct holding the props rather than a function returning them, which is
+// not a style choice: React Native 0.86's `BaseViewProps` has an implicitly
+// deleted copy constructor, so a helper that returns one by value does not
+// compile there at all. 0.87's is copyable, which is why this went unnoticed
+// until a build against the version Expo installs. Taking `.props` off a
+// temporary is a reference into it and lives as long as the full expression.
+struct Shadowed {
   BaseViewProps props;
-  props.shadowColor = facebook::react::colorFromComponents(ColorComponents{red, green, blue, alpha});
-  props.shadowOpacity = opacity;
-  return props;
-}
+
+  Shadowed(float red, float green, float blue, float alpha, double opacity) {
+    props.shadowColor =
+        facebook::react::colorFromComponents(ColorComponents{red, green, blue, alpha});
+    props.shadowOpacity = opacity;
+  }
+};
 
 ColorComponents componentsOf(const BoxShadow &shadow) {
   return facebook::react::colorComponentsFromColor(shadow.color);
@@ -34,7 +44,8 @@ ColorComponents componentsOf(const BoxShadow &shadow) {
 } // namespace
 
 TEST(legacy_shadow_defaults_are_the_shadow_ios_would_draw) {
-  const BaseViewProps props = shadowProps(0.0F, 0.0F, 0.0F, 1.0F, 0.5);
+  Shadowed shadowed(0.0F, 0.0F, 0.0F, 1.0F, 0.5);
+  BaseViewProps &props = shadowed.props;
   const std::optional<BoxShadow> shadow = basalt::legacyShadow(props);
   EXPECT(shadow.has_value());
   if (!shadow.has_value()) {
@@ -60,19 +71,19 @@ TEST(legacy_shadow_defaults_are_the_shadow_ios_would_draw) {
 // one that cannot be made translucent by its colour.
 TEST(legacy_shadow_opacity_multiplies_the_colours_alpha) {
   const std::optional<BoxShadow> half =
-      basalt::legacyShadow(shadowProps(0.0F, 0.0F, 0.0F, 1.0F, 0.5));
+      basalt::legacyShadow(Shadowed(0.0F, 0.0F, 0.0F, 1.0F, 0.5).props);
   EXPECT(half.has_value());
   EXPECT_NEAR(componentsOf(*half).alpha, 0.5, 0.01);
 
   const std::optional<BoxShadow> quarter =
-      basalt::legacyShadow(shadowProps(0.0F, 0.0F, 0.0F, 0.5F, 0.5));
+      basalt::legacyShadow(Shadowed(0.0F, 0.0F, 0.0F, 0.5F, 0.5).props);
   EXPECT(quarter.has_value());
   EXPECT_NEAR(componentsOf(*quarter).alpha, 0.25, 0.01);
 
   // And the colour itself is the colour, which an alpha multiply can trample if
   // it is applied to the wrong component.
   const std::optional<BoxShadow> red =
-      basalt::legacyShadow(shadowProps(1.0F, 0.0F, 0.0F, 1.0F, 1.0));
+      basalt::legacyShadow(Shadowed(1.0F, 0.0F, 0.0F, 1.0F, 1.0).props);
   EXPECT(red.has_value());
   EXPECT_NEAR(componentsOf(*red).red, 1.0, 0.01);
   EXPECT_NEAR(componentsOf(*red).green, 0.0, 0.01);
@@ -83,7 +94,7 @@ TEST(legacy_shadow_opacity_multiplies_the_colours_alpha) {
 // a colour cannot hold an alpha above one.
 TEST(legacy_shadow_a_large_opacity_is_clamped) {
   const std::optional<BoxShadow> shadow =
-      basalt::legacyShadow(shadowProps(0.0F, 0.0F, 0.0F, 1.0F, 4.0));
+      basalt::legacyShadow(Shadowed(0.0F, 0.0F, 0.0F, 1.0F, 4.0).props);
   EXPECT(shadow.has_value());
   EXPECT_NEAR(componentsOf(*shadow).alpha, 1.0, 0.01);
 }
@@ -97,13 +108,13 @@ TEST(legacy_shadow_nothing_is_asked_for_by_default) {
 
   // A colour with no opacity, which is the default for every styled view that
   // sets `shadowColor` and forgets the rest.
-  EXPECT(!basalt::legacyShadow(shadowProps(0.0F, 0.0F, 0.0F, 1.0F, 0.0)).has_value());
+  EXPECT(!basalt::legacyShadow(Shadowed(0.0F, 0.0F, 0.0F, 1.0F, 0.0).props).has_value());
   // An opacity with no colour.
   BaseViewProps colourless;
   colourless.shadowOpacity = 0.5;
   EXPECT(!basalt::legacyShadow(colourless).has_value());
   // And a transparent colour, which is a colour React Native did parse.
-  EXPECT(!basalt::legacyShadow(shadowProps(0.0F, 0.0F, 0.0F, 0.0F, 0.5)).has_value());
+  EXPECT(!basalt::legacyShadow(Shadowed(0.0F, 0.0F, 0.0F, 0.0F, 0.5).props).has_value());
 }
 
 // Both mechanisms at once, which iOS allows: the layer's own shadow and the
@@ -111,7 +122,8 @@ TEST(legacy_shadow_nothing_is_asked_for_by_default) {
 // the list, so adding a `boxShadow` to an old component cannot be hidden behind
 // the shadow it already had.
 TEST(legacy_shadow_goes_behind_the_css_shadows) {
-  BaseViewProps props = shadowProps(0.0F, 0.0F, 0.0F, 1.0F, 0.5);
+  Shadowed shadowed(0.0F, 0.0F, 0.0F, 1.0F, 0.5);
+  BaseViewProps &props = shadowed.props;
   BoxShadow css;
   css.offsetX = 1;
   css.offsetY = 2;

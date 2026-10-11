@@ -52,13 +52,19 @@ std::string edge(std::optional<TextAlignment> alignment, bool rightToLeft) {
       alignment, basalt::TextDirections{.paragraph = rightToLeft, .relative = rightToLeft}));
 }
 
+#if BASALT_RN_MINOR >= 87
 // The two apart: `text` is which way this paragraph's own text runs, `layout`
 // is which way the app is laid out. They differ whenever an app shows Latin
 // text on a mirrored desktop, or Hebrew in a left-to-right one.
+//
+// Behind the same guard as its callers: `start` and `end` arrived in 0.87, so
+// on 0.86 every test that uses this is compiled out and an unused function is
+// an error here.
 std::string edgeIn(std::optional<TextAlignment> alignment, bool text, bool layout) {
   return name(physicalTextAlignment(
       alignment, basalt::TextDirections{.paragraph = text, .relative = layout}));
 }
+#endif
 
 } // namespace
 
