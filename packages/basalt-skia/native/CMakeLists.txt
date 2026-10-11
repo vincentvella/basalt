@@ -30,18 +30,33 @@
 set(BASALT_SKIA_DIR_DEFAULT "")
 set(BASALT_SKIA_LIBS_DEFAULT "")
 
-# The app's node_modules, from this package's installed location
-# (<app>/node_modules/basalt-skia/native) and from a repository checkout.
+# Two package names and two binary packages, because the library moved house.
+#
+# `@shopify/react-native-skia` is the 2.x line and has not moved since
+# 2026-10-01. `react-native-skia`, unscoped, is the same project under its
+# maintainer's own name: it carries a `release-2.x` tag and its `latest` is
+# 3.x, which replaced Ganesh with Skia Graphite and brings its binaries from
+# `react-native-skia-graphite-apple-macos` rather than
+# `react-native-skia-apple-macos`.
+#
+# Whichever the app installed is the one compiled against. That is the whole
+# point of resolving this out of node_modules: a Skia version is the app's
+# choice, and a platform that pinned one would be telling an app which
+# graphics library to use.
 foreach(root
     ${CMAKE_CURRENT_LIST_DIR}/../../..
     ${CMAKE_CURRENT_LIST_DIR}/../../../node_modules
     ${CMAKE_CURRENT_LIST_DIR}/../../node_modules)
-  if(EXISTS ${root}/@shopify/react-native-skia/cpp/skia/include/core/SkSurface.h)
-    get_filename_component(BASALT_SKIA_DIR_DEFAULT ${root}/@shopify/react-native-skia ABSOLUTE)
-  endif()
-  if(EXISTS ${root}/react-native-skia-apple-macos/libs/libskia.xcframework)
-    get_filename_component(BASALT_SKIA_LIBS_DEFAULT ${root}/react-native-skia-apple-macos ABSOLUTE)
-  endif()
+  foreach(package react-native-skia @shopify/react-native-skia)
+    if(EXISTS ${root}/${package}/cpp/skia/include/core/SkSurface.h)
+      get_filename_component(BASALT_SKIA_DIR_DEFAULT ${root}/${package} ABSOLUTE)
+    endif()
+  endforeach()
+  foreach(binaries react-native-skia-graphite-apple-macos react-native-skia-apple-macos)
+    if(EXISTS ${root}/${binaries}/libs/libskia.xcframework)
+      get_filename_component(BASALT_SKIA_LIBS_DEFAULT ${root}/${binaries} ABSOLUTE)
+    endif()
+  endforeach()
 endforeach()
 
 set(BASALT_SKIA_DIR "${BASALT_SKIA_DIR_DEFAULT}" CACHE PATH
@@ -60,6 +75,14 @@ if(BASALT_SKIA_DIR STREQUAL "" OR BASALT_SKIA_LIBS STREQUAL "")
   return()
 endif()
 
+# Which one, said out loud: the two lines are a major version apart and the
+# next thing to go wrong will be a C++ API that moved between them.
+if(EXISTS ${BASALT_SKIA_DIR}/package.json)
+  file(READ ${BASALT_SKIA_DIR}/package.json BASALT_SKIA_MANIFEST)
+  string(JSON BASALT_SKIA_NAME ERROR_VARIABLE ignored GET ${BASALT_SKIA_MANIFEST} name)
+  string(JSON BASALT_SKIA_VERSION ERROR_VARIABLE ignored GET ${BASALT_SKIA_MANIFEST} version)
+  message(STATUS "basalt-skia: ${BASALT_SKIA_NAME} ${BASALT_SKIA_VERSION}")
+endif()
 message(STATUS "basalt-skia: Skia from ${BASALT_SKIA_DIR}")
 
 # The static slices, which are universal: one file holds arm64 and x86_64, so
