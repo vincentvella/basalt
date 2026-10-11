@@ -49,10 +49,6 @@
       "text": "DirectWrite trims the end of a line and nowhere else, so head and middle cut the end",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
-    "win-stock-cursors": {
-      "text": "six keywords have no stock cursor",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
-    },
     "mac-dropshadow": {
       "text": "macOS casts the second and later drop shadows from the box rather than the alpha",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md"
@@ -339,8 +335,7 @@
     "BaseViewProps.cursor": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "partial",
-      "why": "win-stock-cursors"
+      "windows": "yes"
     },
     "BaseViewProps.boxShadow": {
       "linux": "yes",

@@ -159,6 +159,9 @@ add_library(basalt_win32_view STATIC
   # why this is in the view target rather than beside the demo: it is what the
   # rendering assertions in tests/test_win32_paint.cpp are built on.
   win32/Win32Snapshot.cpp
+  # The cursors Windows has no stock art for -- six CSS keywords drawn here as
+  # DIBs. Header-only until they were drawn; see Win32Cursors.h.
+  win32/Win32Cursors.cpp
   # Where a hidden title bar's pieces are -- the caption buttons and the drag
   # regions. Pure geometry over the view tree, so it is tested here with no
   # window and no React Native.

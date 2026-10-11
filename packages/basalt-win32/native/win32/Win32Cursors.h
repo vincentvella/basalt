@@ -14,13 +14,17 @@
 // onto the four `IDC_SIZE*` arrows, which is exactly what the shell does for a
 // window's own edges.
 //
-// Five keywords have nothing: `alias`, `cell`, `context-menu`, `copy`, `zoom-in`
-// and `zoom-out` exist in the CSS list and there is no stock cursor for any of
-// them. Windows ships the art for some of them inside shell32 and comctl32, as
-// unnamed ordinals, which is the kind of thing that works until an update moves
-// it -- so this answers "nothing" and the host leaves the pointer alone, the way
-// AppKit's map leaves the holes in its own list alone. The dump still reports the
-// keyword, so what an app asked for is visible either way.
+// Six keywords have no stock cursor at all: `alias`, `cell`, `context-menu`,
+// `copy`, `zoom-in` and `zoom-out`. They used to answer "nothing", which left
+// the pointer an arrow and made the prop look unimplemented; they are drawn
+// now, in Win32Cursors.cpp, which is why that file exists and this header no
+// longer answers the whole question by itself.
+//
+// Windows does ship art for some of them inside shell32 and comctl32 as
+// unnamed ordinals, which is the kind of thing that works until an update
+// renumbers it. `alias` is the exception -- `%SystemRoot%\Cursors\aero_link.cur`
+// is a real file with a real name -- and it is loaded from there with a drawn
+// fallback. The rest are this project's own art.
 //
 // `none` is its own answer: Win32 hides the pointer with `SetCursor(nullptr)`,
 // so it needs no cursor at all and is told apart from "nothing to do" by the
@@ -44,9 +48,19 @@ struct Win32Cursor {
   bool hidden = false;
 };
 
-// The stock cursor for a keyword. Loaded rather than cached: `LoadCursorW` on a
-// system cursor is a lookup in a shared table and does not need freeing, which
-// is why this hands back a raw handle and nobody destroys it.
+// The six this platform draws, cached for the life of the process and owned by
+// nobody: the same contract the stock cursors have, so a caller installs a
+// handle from here and never frees it. Null for every other keyword, and for a
+// drawing that failed.
+//
+// Out of line, unlike the rest of this header, because drawing a cursor is a
+// DIB, a mask and a hundred lines of shapes.
+HCURSOR win32DrawnCursorFor(const std::string &keyword);
+
+// The cursor for a keyword: a stock one where Windows has one, and one of this
+// platform's own where it does not. `LoadCursorW` on a system cursor is a
+// lookup in a shared table and needs no freeing, and the drawn ones are kept
+// for the life of the process, so nothing here is ever destroyed.
 inline Win32Cursor win32CursorFor(const std::string &keyword) {
   Win32Cursor answer;
   if (keyword.empty()) {
@@ -96,7 +110,11 @@ inline Win32Cursor win32CursorFor(const std::string &keyword) {
   }
   if (name != nullptr) {
     answer.cursor = LoadCursorW(nullptr, name);
+    return answer;
   }
+  // The six with no stock cursor, drawn. An unknown keyword falls through this
+  // as well and answers null, which is still "leave the pointer alone".
+  answer.cursor = win32DrawnCursorFor(keyword);
   return answer;
 }
 

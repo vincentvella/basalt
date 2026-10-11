@@ -360,18 +360,36 @@ and none of it is a missing half.
     keyword that is an absence rather than a different image.
 
     **Six keywords have no stock cursor**: `alias`, `cell`, `context-menu`,
-    `copy`, `zoom-in` and `zoom-out`. The art exists inside shell32 and comctl32
-    as unnamed ordinals, which is the kind of thing that works until an update
-    moves it, so those leave the pointer alone and the dump still reports what
-    the app asked for -- the same choice the AppKit map makes for the six
-    keywords macOS has no NSCursor for. The support page says `partial` for this
-    host and names the reason.
+    `copy`, `zoom-in` and `zoom-out`. They answered nothing until 2026-10-11,
+    which left the pointer an arrow -- and an arrow is what `default` is, so
+    six of this prop's values looked unimplemented rather than unavailable.
+
+    **They are drawn now**, in `Win32Cursors.cpp`: a 32 by 32 DIB with an alpha
+    channel through `CreateIconIndirect`, which is the documented way to make a
+    cursor from pixels, cached for the life of the process because a drawn
+    cursor is owned where a stock one is not. The art is this project's own and
+    plain -- a black shape with a white outline, which is what every Windows
+    cursor is: the pointer three of them are built on is written out as ASCII
+    art, since a pointer is a shape everybody recognises and nobody can
+    describe in numbers, and the magnifier, the plus and the badges are drawn
+    from circles and rectangles.
+    `alias` is the exception and is loaded from
+    `%SystemRoot%\Cursors\aero_link.cur`, the shell's own shortcut cursor,
+    which is the one of the six Windows ships as a file with a name rather than
+    as an ordinal inside a DLL; the drawing is its fallback.
+
+    **Nobody has seen them on a screen.** The suite can assert that each
+    keyword answers a cursor, that no two of the six share one, that none of
+    them is the arrow, and that asking twice gives the same handle -- which is
+    what catches the drawing failing or leaking. It cannot assert that a
+    magnifier looks like a magnifier. Somebody on Windows should hover over
+    `e2e/cursor.tsx` and look, and this paragraph should go when they have.
 
     Eight tests: the innermost view that asked for one, inheritance both ways,
     `pointerEvents: none` skipped by the cursor as it is by a press, the dump,
     each stock keyword against `LoadCursorW` with the families compared against
     each other -- which is what says `ns-resize` and `ew-resize` are not the
-    same arrow -- `none`, and the six that answer nothing. The end-to-end
+    same arrow -- `none`, and the six that are drawn. The end-to-end
     scenario now runs on all three hosts.
 
   What each of them took is above, in the order they were done in. The
