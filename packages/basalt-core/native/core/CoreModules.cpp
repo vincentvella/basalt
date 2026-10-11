@@ -639,19 +639,23 @@ facebook::react::DeviceInfoConstants DesktopDeviceInfoModule::getConstants(Runti
   // What JavaScript now has, so the first resize after this does not re-send
   // the same numbers.
   lastSent_ = metrics;
+  // Every field, by assignment rather than by designated initialiser.
+  //
+  // Two of each struct's fields are Android's physical-pixel payloads and
+  // iOS's notch flag, which this platform has nothing to say about -- and
+  // naming only the fields that matter is what `-Wmissing-field-initializers`
+  // is for. Which is not a style point: the *generated* `DisplayMetrics`
+  // declares `fontScale` with no default member initialiser, so a partial
+  // initialisation leaves it as whatever was on the stack, which is the bug
+  // upstream's own module has. All four are filled here.
   const auto describe = [](const basalt::DisplayMetrics &one) {
     return facebook::react::DisplayMetrics{one.width, one.height, one.scale, one.fontScale};
   };
-  return facebook::react::DeviceInfoConstants{
-      .Dimensions = facebook::react::NativeDeviceInfoDimensionsPayload<
-          std::optional<facebook::react::DisplayMetrics>,
-          std::optional<facebook::react::DisplayMetrics>,
-          std::optional<facebook::react::DisplayMetricsAndroid>,
-          std::optional<facebook::react::DisplayMetricsAndroid>>{
-          .window = describe(metrics.window),
-          .screen = describe(metrics.screen),
-      },
-  };
+
+  facebook::react::DeviceInfoConstants constants;
+  constants.Dimensions.window = describe(metrics.window);
+  constants.Dimensions.screen = describe(metrics.screen);
+  return constants;
 }
 
 // ---------------------------------------------------------------------------
