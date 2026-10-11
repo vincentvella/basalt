@@ -20,8 +20,14 @@
 #include "TestHarness.h"
 
 #include "GtkMountingManager.h"
+// The rasteriser the paint suite uses, for the one prop in this group that is
+// only answered in pixels: see the indicatorStyle section at the end.
+#include "GtkPixels.h"
 #include "GtkScrollView.h"
 #include "RnView.h"
+// For the thumb's geometry and its drawing constants, asked of core rather
+// than spelled here so that a change there moves these tests with it.
+#include "ScrollIndicator.h"
 
 #include <react/renderer/components/scrollview/ScrollViewProps.h>
 #include <react/renderer/components/scrollview/ScrollViewShadowNode.h>
@@ -416,6 +422,125 @@ TEST(scrollview_indicator_style_reaches_the_thumb) {
   const std::string reported(whiteDump);
   g_free(whiteDump);
   EXPECT(reported.find("scrollbar-colour=(1,1,1,0.35)") != std::string::npos);
+}
+
+// --- indicatorStyle's white border -------------------------------------------
+//
+// The half of the prop no dump line can see, which is why it is asked here in
+// pixels: `default` and `black` resolve to the same colour, so the only thing
+// that could ever tell them apart is what is drawn at the thumb's edge.
+namespace {
+
+using basalt::testing::RnPixel;
+using basalt::testing::RnPixels;
+using basalt::testing::renderView;
+
+// The size the Scroller fixture above gives every view it builds.
+constexpr int kScrollerWidth = 400;
+constexpr int kScrollerHeight = 300;
+
+// Whether anything close to white was drawn in the band the vertical thumb
+// runs down, with a couple of points of margin on each side of it.
+//
+// A band rather than a point, and nothing about where in the band: a border
+// can be stroked just inside the pill's edge or just around it, and either of
+// those is the feature. What is drawn today is a pill of one flat colour, so
+// there is no white anywhere near it on any host.
+bool whiteBesideTheThumb(const RnPixels &pixels, const basalt::ScrollIndicator &thumb) {
+  const int right = kScrollerWidth - 1;
+  const int left = kScrollerWidth
+      - static_cast<int>(basalt::kScrollIndicatorThickness + basalt::kScrollIndicatorInset) - 2;
+  const int above = static_cast<int>(thumb.offset) - 2;
+  const int top = above < 0 ? 0 : above;
+  const int bottom = static_cast<int>(thumb.offset + thumb.length) + 2;
+  for (int x = left; x <= right; x++) {
+    for (int y = top; y <= bottom; y++) {
+      const RnPixel pixel = pixels.at(x, y);
+      // Straight components, so a translucent white reads as white rather than
+      // as the grey it composites to -- see tests/GtkPixels.h.
+      if (pixel.alpha > 10 && pixel.red > 200 && pixel.green > 200 && pixel.blue > 200) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// One field of a view's own dump line, so that two views can be asked whether
+// they report the same thumb without either of their numbers being pinned here.
+std::string scrollbarField(RnView *view, const std::string &field) {
+  gchar *dump = rn_view_describe_tree(view);
+  const std::string text(dump);
+  g_free(dump);
+  const std::size_t at = text.find(field);
+  if (at == std::string::npos) {
+    return std::string();
+  }
+  const std::size_t end = text.find(' ', at);
+  return end == std::string::npos ? text.substr(at) : text.substr(at, end - at);
+}
+
+} // namespace
+
+// iOS's `default` is not the black thumb: it is the black thumb with a thin
+// white border round it, and that border is what keeps it visible whether the
+// content underneath is light or dark. Here the two styles resolve to one
+// colour and draw one flat pill, so a list over dark content that asked for
+// `default` -- the value an app gets by saying nothing at all -- has a thumb
+// that disappears into it, and `indicatorStyle: 'white'` is the only way to
+// see a scrollbar there. Nothing in the suite notices, because the two styles
+// agreeing is what every existing assertion about them checks.
+//
+// Asked as a difference between two renders rather than as a colour at a
+// point: the default thumb has white at its edge where the black one has none,
+// and is otherwise the same thumb in the same place. A new alpha, a themed
+// background or a border stroked inside the pill rather than around it all
+// leave that true.
+TEST(scrollview_a_default_indicator_has_a_white_edge_and_a_black_one_does_not) {
+  Scroller fallback(42, 4000);
+  Scroller black(43,
+                 4000,
+                 0,
+                 false,
+                 Point{0, 0},
+                 false,
+                 facebook::react::ScrollViewIndicatorStyle::Black);
+
+  const RnPixels fallbackPixels = renderView(fallback.view, kScrollerWidth, kScrollerHeight);
+  const RnPixels blackPixels = renderView(black.view, kScrollerWidth, kScrollerHeight);
+  // Said first, so a machine where no renderer would realize fails on that
+  // rather than on an image of nothing having no white in it.
+  EXPECT(fallbackPixels.valid());
+  EXPECT(blackPixels.valid());
+
+  const basalt::ScrollIndicator thumb = basalt::scrollIndicatorFor(
+      static_cast<double>(kScrollerHeight), 4000.0, 0.0);
+  EXPECT(thumb.visible);
+
+  // The claim, in both directions: `default` draws the border...
+  EXPECT(whiteBesideTheThumb(fallbackPixels, thumb));
+  // ...and `black` is the one that does not, which is the whole of the
+  // difference between the two values.
+  EXPECT(!whiteBesideTheThumb(blackPixels, thumb));
+
+  // And otherwise the same thumb. The middle of the pill is the same colour in
+  // both, so what `default` gained is an edge rather than a different fill.
+  const int column = kScrollerWidth
+      - static_cast<int>(basalt::kScrollIndicatorInset
+                         + basalt::kScrollIndicatorThickness / 2.0);
+  const int row = static_cast<int>(thumb.offset + thumb.length / 2.0);
+  const RnPixel fallbackFill = fallbackPixels.at(column, row);
+  const RnPixel blackFill = blackPixels.at(column, row);
+  EXPECT_NEAR(fallbackFill.red, blackFill.red, 3);
+  EXPECT_NEAR(fallbackFill.green, blackFill.green, 3);
+  EXPECT_NEAR(fallbackFill.blue, blackFill.blue, 3);
+  EXPECT_NEAR(fallbackFill.alpha, blackFill.alpha, 3);
+
+  // In the same place, which is the part the cross-host diff can see: a border
+  // must not move the thumb or change how long it is.
+  const std::string reported = scrollbarField(fallback.view, "scrollbar-v=");
+  EXPECT(!reported.empty());
+  EXPECT_EQ(reported, scrollbarField(black.view, "scrollbar-v="));
 }
 
 // --- maintainVisibleContentPosition ------------------------------------------

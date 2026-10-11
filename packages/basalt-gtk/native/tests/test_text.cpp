@@ -259,6 +259,101 @@ TEST(a_paragraph_with_no_line_limit_asks_for_no_clip) {
   EXPECT(!clips);
 }
 
+// `TextAttributes.lineBreakMode`, which is a different prop from everything
+// above and is why this sits at the end of the truncation block rather than
+// beside it.
+//
+// `numberOfLines` and `ellipsizeMode` are the paragraph's: how many lines may
+// show, and what the cut looks like once there are too many. `lineBreakMode` is
+// a *fragment's* and says something the pair cannot: that this text is a single
+// line whatever its box, cut where the mode names. A `<Text>` with
+// `lineBreakMode: 'middle'` and no line limit is how a path or a filename is
+// shown -- "/Users/.../report.pdf" -- and the ends are the part worth keeping.
+//
+// Nothing reads it here. `buildTextLayout` sets PANGO_WRAP_WORD_CHAR for any
+// constrained width and leaves ellipsization off unless a line limit asked for
+// it, so a paragraph that asked to be truncated wraps instead and the app gets
+// a block of text where it laid out a line. The support page says `no` for this
+// platform and this is the test that says what `no` costs.
+//
+// What would close it: `pango_layout_set_ellipsize` with the matching mode and
+// `pango_layout_set_height(layout, -1)` for the one line, which is the same
+// negative-height idiom the line limit already uses, plus PANGO_WRAP_CHAR for
+// `char`. The trap the comment in PangoTextLayout.cpp records applies in full:
+// ellipsizing with no height collapses a paragraph to one line, which is
+// exactly what these modes want and what the wrapping ones must not get, so the
+// control below matters as much as the claim.
+namespace {
+
+// A box narrower than kLongText needs, so every mode has something to do.
+constexpr float kNarrowBox = 200.0F;
+
+AttributedString brokenBy(std::optional<facebook::react::LineBreakMode> mode) {
+  TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.lineBreakMode = mode;
+
+  AttributedString::Fragment fragment;
+  fragment.string = kLongText;
+  fragment.textAttributes = attributes;
+  AttributedString string;
+  string.appendFragment(std::move(fragment));
+  return string;
+}
+
+float heightWith(std::optional<facebook::react::LineBreakMode> mode) {
+  return measure(brokenBy(mode), ParagraphAttributes{}, kNarrowBox).height;
+}
+
+// Which end of the line the cut takes, which is the question `head`, `middle`
+// and `tail` differ on and the one a height cannot answer. Asserted through
+// Pango's own enum rather than through the glyphs: a picture can say that two
+// modes drew different text, and only this says which of the two ends went.
+PangoEllipsizeMode ellipsizeWith(std::optional<facebook::react::LineBreakMode> mode) {
+  PangoLayout *layout = basalt::buildTextLayout(brokenBy(mode), ParagraphAttributes{}, kNarrowBox);
+  const PangoEllipsizeMode ellipsize = pango_layout_get_ellipsize(layout);
+  g_object_unref(layout);
+  return ellipsize;
+}
+
+} // namespace
+
+TEST(gtk_a_truncating_line_break_mode_cuts_the_line_rather_than_wrapping) {
+  using facebook::react::LineBreakMode;
+
+  const float oneLine = measure(makeText("Hello"), ParagraphAttributes{}, -1.0F).height;
+  const float wrapped = heightWith(LineBreakMode::Word);
+
+  // The control, and the half of this that is already right: `word` is React
+  // Native's default and wraps, and so does a fragment that never mentioned the
+  // prop. A fix that truncated every paragraph would be worse than the gap.
+  EXPECT(wrapped > oneLine * 1.5F);
+  EXPECT_NEAR(heightWith(std::nullopt), wrapped, 0.51);
+
+  // The four modes that do not wrap. The tolerance is a fraction of a line
+  // rather than of a point, because the ellipsis can come from a fallback face
+  // whose metrics are a little taller than the one the text is set in -- the
+  // same reason `clip_truncates_the_way_the_ellipsizing_modes_do` gives.
+  EXPECT_NEAR(heightWith(LineBreakMode::Head), oneLine, 2.0);
+  EXPECT_NEAR(heightWith(LineBreakMode::Middle), oneLine, 2.0);
+  EXPECT_NEAR(heightWith(LineBreakMode::Tail), oneLine, 2.0);
+  // `clip` asks for the cut with no ellipsis, which is the mode Pango acts on
+  // only through the height it was given; the line limit already works that
+  // way and this is the same arrangement.
+  EXPECT_NEAR(heightWith(LineBreakMode::Clip), oneLine, 2.0);
+
+  // And where the cut falls, which is the part "truncated" alone does not say:
+  // `head` keeps the end of the text and `tail` keeps the beginning, so a host
+  // that cut at the end for all three would pass every height above.
+  EXPECT(ellipsizeWith(LineBreakMode::Head) == PANGO_ELLIPSIZE_START);
+  EXPECT(ellipsizeWith(LineBreakMode::Middle) == PANGO_ELLIPSIZE_MIDDLE);
+  EXPECT(ellipsizeWith(LineBreakMode::Tail) == PANGO_ELLIPSIZE_END);
+  // The control again, in the same terms: a wrapping paragraph is not
+  // ellipsized at all, which is what the whole screen depends on.
+  EXPECT(ellipsizeWith(LineBreakMode::Word) == PANGO_ELLIPSIZE_NONE);
+  EXPECT(ellipsizeWith(std::nullopt) == PANGO_ELLIPSIZE_NONE);
+}
+
 TEST(font_size_is_absolute_not_points) {
   // set_size would resolve against the context's resolution, making a fontSize
   // of 100 render at about 133px on a 96dpi context. React Native's fontSize is
@@ -823,6 +918,132 @@ TEST(gtk_a_decoration_style_maps_to_what_pango_has) {
   // recorded rather than approximated with something it does have.
   EXPECT(underlineOf(TextDecorationStyle::Dotted) == PANGO_UNDERLINE_SINGLE);
   EXPECT(underlineOf(TextDecorationStyle::Dashed) == PANGO_UNDERLINE_SINGLE);
+}
+
+// And the half the attribute list cannot see: what the line looks like.
+//
+// The test above says what Pango was asked for, which is the whole of this
+// platform's job only while the answer is one of the three values Pango has.
+// For dotted and dashed it is not, so a test on the attribute can do no better
+// than record the fallback, and a reader of the support page is told `partial`
+// with no way to see what is missing. This is that way: the line is measured in
+// pixels, so `textDecorationStyle: 'dotted'` drawing a solid line fails here
+// however faithfully the enum was translated.
+//
+// The instrument is the Win32 suite's, which has all five styles and
+// distinguishes them by the shape of the ink rather than by its colour. Two
+// numbers per picture -- how much ink the busiest row carries and the longest
+// unbroken piece of it -- separate a dotted line from a solid one of the same
+// width without depending on anybody's dash arithmetic, which is what makes the
+// claim survive a change of font.
+//
+// What would close it: Pango gives the line's geometry through
+// `pango_font_metrics_get_underline_position` and
+// `pango_font_metrics_get_underline_thickness`, and `rn_view`'s snapshot is
+// already the hook that draws the paragraph, so the dashes are a
+// `gtk_snapshot_append_color` each. backlog/text.md records the same plan.
+namespace {
+
+// The paragraph every render below shares. Narrow glyphs with no descender, so
+// the lowest ink in a column belongs to the underline rather than to a letter,
+// and a size at which the line is a few pixels thick -- a dotted line one pixel
+// thick is a row of single pixels, which is a measurement with no room in it.
+// The box is wide enough that twenty of these glyphs are well inside it.
+constexpr float kDecorationFontSize = 40.0F;
+const char *const kNarrowGlyphs = "iiiiiiiiiiiiiiiiiiii";
+constexpr int kDecorationWidth = 600;
+constexpr int kDecorationHeight = 120;
+
+basalt::testing::RnPixels renderUnderlined(facebook::react::TextDecorationStyle style) {
+  AttributedString::Fragment fragment;
+  fragment.string = kNarrowGlyphs;
+  TextAttributes attributes;
+  attributes.fontSize = kDecorationFontSize;
+  attributes.textDecorationLineType = facebook::react::TextDecorationLineType::Underline;
+  attributes.textDecorationStyle = style;
+  fragment.textAttributes = attributes;
+  AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  PangoLayout *layout =
+      basalt::buildTextLayout(string, ParagraphAttributes{}, static_cast<float>(kDecorationWidth));
+  RnView *view = rn_view_new(1);
+  g_object_ref_sink(view);
+  rn_view_set_frame(view, 0.0F, 0.0F, static_cast<float>(kDecorationWidth),
+                    static_cast<float>(kDecorationHeight));
+  const GdkRGBA black{0.0F, 0.0F, 0.0F, 1.0F};
+  rn_view_set_text_layout(view, layout, &black);
+
+  const basalt::testing::RnPixels pixels =
+      basalt::testing::renderView(view, kDecorationWidth, kDecorationHeight);
+  g_object_unref(view);
+  g_object_unref(layout);
+  return pixels;
+}
+
+// The row carrying the most ink, with how much of it was in one unbroken run.
+//
+// For a paragraph of narrow glyphs the busiest row is the decoration whatever
+// style it is drawn in: even a dotted line puts more pixels on its row than
+// twenty stems put on theirs. Which of `ink` and `longest` is large is then what
+// tells the styles apart, a dotted line having the ink of a line and the runs of
+// a dot.
+struct BusiestRow {
+  int row{-1};
+  int ink{0};
+  int longest{0};
+};
+
+BusiestRow busiestRow(const basalt::testing::RnPixels &pixels) {
+  BusiestRow busiest;
+  for (int y = 0; y < kDecorationHeight; y++) {
+    int ink = 0;
+    int run = 0;
+    int longest = 0;
+    for (int x = 0; x < kDecorationWidth; x++) {
+      // The same threshold every other pixel assertion in this file uses, which
+      // counts a glyph's antialiased edge as ink.
+      if (pixels.at(x, y).alpha > 40) {
+        ink++;
+        longest = ++run > longest ? run : longest;
+      } else {
+        run = 0;
+      }
+    }
+    if (ink > busiest.ink) {
+      busiest = BusiestRow{y, ink, longest};
+    }
+  }
+  return busiest;
+}
+
+} // namespace
+
+TEST(gtk_a_dotted_underline_is_broken_and_a_solid_one_is_not) {
+  using facebook::react::TextDecorationStyle;
+
+  const BusiestRow solid = busiestRow(renderUnderlined(TextDecorationStyle::Solid));
+  const BusiestRow dotted = busiestRow(renderUnderlined(TextDecorationStyle::Dotted));
+  const BusiestRow dashed = busiestRow(renderUnderlined(TextDecorationStyle::Dashed));
+
+  // A line at all, and one unbroken run about as wide as the text: twenty
+  // glyphs at this size are a couple of hundred points of it, so anything over
+  // a hundred is a line rather than a glyph and the comparisons below have
+  // something to divide.
+  EXPECT(solid.row >= 0);
+  EXPECT(solid.longest > 100);
+
+  // The dotted line covers a comparable span -- it is over the same text -- in
+  // pieces a small fraction of that length. Today both renders come out of
+  // PANGO_UNDERLINE_SINGLE and this is the assertion that says so.
+  EXPECT(dotted.ink > 40);
+  EXPECT(dotted.longest < solid.longest / 4);
+
+  // And dashed is not a synonym for dotted, which is the pair the Win32 host
+  // already distinguishes: a dash is longer than a dot, and both are far
+  // shorter than the whole line.
+  EXPECT(dashed.longest > dotted.longest);
+  EXPECT(dashed.longest < solid.longest / 4);
 }
 
 // `fontVariant`, as the feature string Pango takes.

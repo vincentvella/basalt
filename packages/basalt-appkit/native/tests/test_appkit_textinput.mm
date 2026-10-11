@@ -1332,6 +1332,68 @@ TEST(textinput_a_multiline_field_that_did_not_ask_keeps_its_context_menu) {
   }
 }
 
+// The single-line twin of the multiline test above, and the same claim: a
+// field that asked for `contextMenuHidden` shows no context menu. It sits
+// beside its twin because the difference between them is the whole of what
+// this host does not do yet, and reading the two together is the only way to
+// see it.
+//
+// The difference is which object AppKit asks. A multiline peer is this
+// project's own NSTextView subclass, so the click lands on a view that can
+// refuse, and `-menuForEvent:` returning nil is the whole of the prop. A
+// single-line field hands editing to the window's shared *field editor* the
+// moment it is focused, and that editor is a plain NSTextView nobody here
+// subclasses: it is the first responder, it is the view under the pointer, and
+// it is therefore the object that answers for the menu. The flag on the field
+// never gets asked. That is why this test focuses the field and questions
+// `currentEditor` rather than the peer -- questioning the peer would pass
+// today while a real right-click still opened Cut, Copy and Paste on a field
+// that had asked for none of them.
+//
+// Without this test the prop looks done on macOS: the flag is set, the tree
+// dump says `context-menu=hidden`, and the multiline half really does work, so
+// every assertion in the file passes while the common case -- a single-line
+// `<TextInput>` -- is unchanged. backlog/textinput.md records that taking the
+// editor's own menu away does not help either, because it rebuilds one inside
+// `-menuForEvent:`, so there is nothing to assert about `menu = nil`. What
+// closes it is supplying the field editor through
+// `-windowWillReturnFieldEditor:toObject:`, which is a window-level hook
+// rather than a prop-level one, and this test is what will say it worked.
+TEST(textinput_context_menu_hidden_refuses_to_build_one_on_a_single_line_field) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 10, folly::dynamic::object("contextMenuHidden", true));
+    NSView *field = fieldOf(view);
+    EXPECT(!RnPeerIsMultiline(field));
+    EXPECT(RnPeerContextMenuHidden(field));
+
+    // A window, because an unfocused NSTextField has no field editor at all
+    // and so nothing to ask: the editor is borrowed from the window when the
+    // field starts editing. Never ordered front, which is what the rest of
+    // this file's focus tests do too.
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:manager.getSurfaceRoot(kSurfaceId)];
+    EXPECT([window makeFirstResponder:field]);
+
+    NSTextView *editor = (NSTextView *)((NSTextField *)field).currentEditor;
+    EXPECT(editor != nil);
+    if (editor != nil) {
+      // The behaviour rather than the flag, asked of the object that actually
+      // answers it: nil is how a view tells AppKit it has no context menu.
+      EXPECT([editor menuForEvent:secondaryClick()] == nil);
+    }
+
+    [window orderOut:nil];
+    [window close];
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
 // And what a single-line field does with the prop, which is carry it: the menu
 // a focused NSTextField shows belongs to the window's shared *field editor*,
 // an NSTextView this file does not own, and that view rebuilds its menu inside
