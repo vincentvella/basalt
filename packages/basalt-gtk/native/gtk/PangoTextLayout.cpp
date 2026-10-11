@@ -66,6 +66,41 @@ bool isSet(facebook::react::Float value) {
 // carries no patterns -- and fall back to a single line, which is visible and
 // wrong rather than missing and invisible. core/TextDecorations.h says why that
 // is the choice, and backlog/text.md names the call that would close it.
+// `lineBreakMode`, which React Native's JavaScript spells `lineBreakModeIOS`
+// and which this host can honour exactly: a line that does not fit is cut
+// rather than wrapped, and the mode says which end goes.
+//
+// `word` is the default and wraps, `char` wraps between characters, and the
+// other four are one line and a cut: `clip` with no ellipsis, and head, middle
+// and tail with one at that end. Pango has a value for each of the cuts, which
+// is why this is a mapping and not an entry in the backlog.
+struct RnLineBreak {
+  bool truncates{false};
+  bool wrapsAnywhere{false};
+  PangoEllipsizeMode ellipsize{PANGO_ELLIPSIZE_NONE};
+};
+
+RnLineBreak toLineBreak(std::optional<facebook::react::LineBreakMode> mode) {
+  if (!mode.has_value()) {
+    return RnLineBreak{};
+  }
+  switch (*mode) {
+    case facebook::react::LineBreakMode::Char:
+      return RnLineBreak{false, true, PANGO_ELLIPSIZE_NONE};
+    case facebook::react::LineBreakMode::Clip:
+      return RnLineBreak{true, false, PANGO_ELLIPSIZE_NONE};
+    case facebook::react::LineBreakMode::Head:
+      return RnLineBreak{true, false, PANGO_ELLIPSIZE_START};
+    case facebook::react::LineBreakMode::Middle:
+      return RnLineBreak{true, false, PANGO_ELLIPSIZE_MIDDLE};
+    case facebook::react::LineBreakMode::Tail:
+      return RnLineBreak{true, false, PANGO_ELLIPSIZE_END};
+    case facebook::react::LineBreakMode::Word:
+      break;
+  }
+  return RnLineBreak{};
+}
+
 PangoUnderline toPangoUnderline(facebook::react::TextDecorationStyle style) {
   switch (style) {
     case facebook::react::TextDecorationStyle::Double:
@@ -617,9 +652,16 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   pango_layout_set_alignment(layout, toPangoAlignment(edge));
   pango_layout_set_justify(layout, justify);
 
+  // `lineBreakMode`, from the first fragment like every other paragraph-level
+  // attribute: React Native resolves it onto all of them from the <Text> that
+  // owns them, and a paragraph has one way of breaking.
+  const RnLineBreak lineBreak = toLineBreak(
+      fragments.empty() ? std::optional<facebook::react::LineBreakMode>{}
+                        : fragments.front().textAttributes.lineBreakMode);
+
   if (maxWidth >= 0) {
     pango_layout_set_width(layout, toPangoUnits(maxWidth));
-    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+    pango_layout_set_wrap(layout, lineBreak.wrapsAnywhere ? PANGO_WRAP_CHAR : PANGO_WRAP_WORD_CHAR);
   } else {
     pango_layout_set_width(layout, -1);
   }
@@ -633,8 +675,19 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // to say the default was Tail, which is wrong in the direction that matters:
   // Tail would be harmless here, and Clip is the one the whole screen depends
   // on this guard refusing.
-  if (paragraphAttributes.maximumNumberOfLines > 0) {
-    pango_layout_set_ellipsize(layout, toPangoEllipsize(paragraphAttributes.ellipsizeMode));
+  // A truncating `lineBreakMode` is a line limit of one: the mode says a line
+  // that does not fit is cut, and a cut with more lines under it is a wrap.
+  // `numberOfLines` wins when an app set both, which is what iOS does -- the
+  // count is that prop's question and the end to cut is this one's.
+  const int lineLimit = paragraphAttributes.maximumNumberOfLines > 0
+      ? paragraphAttributes.maximumNumberOfLines
+      : (lineBreak.truncates ? 1 : 0);
+  if (lineLimit > 0) {
+    // The mode's end when the app named one, and `ellipsizeMode`'s otherwise.
+    pango_layout_set_ellipsize(layout,
+                               lineBreak.truncates
+                                   ? lineBreak.ellipsize
+                                   : toPangoEllipsize(paragraphAttributes.ellipsizeMode));
     // A negative height is Pango's way of expressing a line count, and Pango
     // acts on it only while it is ellipsizing. For 'clip', which asks for a cut
     // and no ellipsis, this therefore records the limit without enforcing it,
@@ -647,7 +700,7 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
     // The widget layer has no React Native in it and never sees a
     // ParagraphAttributes, so a layout that did not say how many lines it may
     // show would leave it with nothing to go on.
-    pango_layout_set_height(layout, -paragraphAttributes.maximumNumberOfLines);
+    pango_layout_set_height(layout, -lineLimit);
   } else {
     pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_NONE);
     // Explicitly, because Pango's default height is -1 rather than 0, and -1 is

@@ -540,6 +540,41 @@ TEST(win32_a_writing_direction_reaches_the_style) {
   EXPECT(!basalt::win32::buildTextStyle(attributes).rightToLeft);
 }
 
+// `lineBreakMode`, which React Native's JavaScript spells `lineBreakModeIOS`:
+// whether a line that does not fit wraps or is cut, and where.
+//
+// The prop reached nothing here -- `RnTextStyle` had no field for it -- so a
+// `<Text lineBreakModeIOS="tail">` wrapped onto four lines on this host and cut
+// to one on the platform the prop is named after. What the style carries is
+// the mode; what DirectWrite does with it is in RnWin32TextLayout.cpp, which
+// turns wrapping off for the four that cut and trims the line.
+TEST(win32_a_line_break_mode_reaches_the_style) {
+  using basalt::win32::RnLineBreakMode;
+  using facebook::react::LineBreakMode;
+
+  facebook::react::TextAttributes attributes;
+  // Nothing asked for wraps between words, which is React Native's default and
+  // what every ordinary paragraph depends on.
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Word);
+
+  attributes.lineBreakMode = LineBreakMode::Word;
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Word);
+  attributes.lineBreakMode = LineBreakMode::Char;
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Char);
+  attributes.lineBreakMode = LineBreakMode::Clip;
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Clip);
+  attributes.lineBreakMode = LineBreakMode::Tail;
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Tail);
+
+  // Head and middle arrive as themselves even though DirectWrite cuts the end
+  // for both: the style says what the app asked for, so the host can say what
+  // it did with it rather than pretending the app asked for a tail.
+  attributes.lineBreakMode = LineBreakMode::Head;
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Head);
+  attributes.lineBreakMode = LineBreakMode::Middle;
+  EXPECT(basalt::win32::buildTextStyle(attributes).lineBreakMode == RnLineBreakMode::Middle);
+}
+
 TEST(win32_an_alignment_keeps_start_and_end_relative) {
   using basalt::win32::RnTextAlign;
   using facebook::react::TextAlignment;

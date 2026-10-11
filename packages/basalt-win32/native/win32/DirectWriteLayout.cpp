@@ -29,6 +29,30 @@ using facebook::react::AttributedString;
 using facebook::react::ParagraphAttributes;
 using facebook::react::TextAttributes;
 
+// `lineBreakMode`, which React Native's JavaScript spells `lineBreakModeIOS`:
+// four of its six values are a cut rather than a wrap. See RnLineBreakMode for
+// what this host can and cannot do with them.
+RnLineBreakMode toLineBreakMode(std::optional<facebook::react::LineBreakMode> mode) {
+  if (!mode.has_value()) {
+    return RnLineBreakMode::Word;
+  }
+  switch (*mode) {
+    case facebook::react::LineBreakMode::Char:
+      return RnLineBreakMode::Char;
+    case facebook::react::LineBreakMode::Clip:
+      return RnLineBreakMode::Clip;
+    case facebook::react::LineBreakMode::Head:
+      return RnLineBreakMode::Head;
+    case facebook::react::LineBreakMode::Middle:
+      return RnLineBreakMode::Middle;
+    case facebook::react::LineBreakMode::Tail:
+      return RnLineBreakMode::Tail;
+    case facebook::react::LineBreakMode::Word:
+      break;
+  }
+  return RnLineBreakMode::Word;
+}
+
 RnTextAlign toAlign(const TextAttributes &attributes, basalt::TextDirections directions) {
   if (!attributes.alignment.has_value()) {
     return RnTextAlign::Natural;
@@ -272,6 +296,7 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes,
   }
 
   style.align = toAlign(attributes, directions);
+  style.lineBreakMode = toLineBreakMode(attributes.lineBreakMode);
 
   // `letterSpacing`, which DirectWrite calls trailing character spacing: the
   // space goes after each character, as CSS's letter-spacing and iOS's kerning

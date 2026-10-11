@@ -16,6 +16,7 @@
 #include "Win32Snapshot.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -1419,4 +1420,37 @@ TEST(win32_text_an_inline_view_is_hit_where_its_text_was_moved_to) {
   EXPECT_EQ(tagAt(parent.get(), 45.0f, 5.0f), 1);
   // ...and where the text actually is, the marker.
   EXPECT_EQ(tagAt(parent.get(), 45.0f, offset + 5.0f), 2);
+}
+
+// `lineBreakMode`, measured rather than mapped: the style mapping has its own
+// test in test_win32_mounting.cpp, and this is the half that says DirectWrite
+// was actually told.
+//
+// The four modes that cut turn wrapping off and trim the line, so a paragraph
+// that wraps onto several lines in a narrow box is one line tall under any of
+// them. `word` and `char` wrap, which is the control -- a fix that truncated
+// every paragraph would be worse than the gap it closes.
+TEST(text_a_cutting_line_break_mode_is_one_line_tall) {
+  using basalt::win32::RnLineBreakMode;
+
+  const auto heightWith = [](RnLineBreakMode mode) {
+    RnTextStyle style;
+    style.fontSize = 16.0f;
+    style.lineBreakMode = mode;
+    auto layout = RnWin32TextLayout::create(kLongText, style, 0);
+    return layout != nullptr ? layout->measure(200.0f).height : 0.0f;
+  };
+
+  const float oneLine = paragraph("Hello")->measure(-1.0f).height;
+  const float wrapped = heightWith(RnLineBreakMode::Word);
+  EXPECT(wrapped > oneLine * 1.5f);
+  EXPECT(heightWith(RnLineBreakMode::Char) > oneLine * 1.5f);
+
+  // A fraction of a line of tolerance rather than of a point: an ellipsis can
+  // come from a fallback face whose metrics are a little taller than the one
+  // the text is set in.
+  EXPECT(std::abs(heightWith(RnLineBreakMode::Clip) - oneLine) < 2.0f);
+  EXPECT(std::abs(heightWith(RnLineBreakMode::Tail) - oneLine) < 2.0f);
+  EXPECT(std::abs(heightWith(RnLineBreakMode::Head) - oneLine) < 2.0f);
+  EXPECT(std::abs(heightWith(RnLineBreakMode::Middle) - oneLine) < 2.0f);
 }

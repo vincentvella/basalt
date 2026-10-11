@@ -233,9 +233,11 @@ NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes,
     style.maximumLineHeight = lineHeight;
   }
 
-  // Wrapping, always. The line *limit* is applied in RnTextLayout, not here:
-  // a truncating line break mode would make Core Text ellipsize each line it
-  // lays out rather than the last one kept.
+  // Wrapping, always, *in the style*. The line limit and the cut are applied
+  // in RnTextLayout rather than here: a truncating line break mode on the
+  // paragraph style would make Core Text ellipsize each line it lays out
+  // rather than the last one kept. `lineBreakMode` is honoured where that
+  // limit is set, in buildTextLayout below.
   style.lineBreakMode = NSLineBreakByWordWrapping;
 
   return style;
@@ -540,9 +542,52 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
       break;
   }
 
+  // `lineBreakMode`, which React Native's JavaScript spells `lineBreakModeIOS`
+  // and which this host had been ignoring: the paragraph style below sets
+  // word wrapping unconditionally, and Core Text takes its truncation from
+  // this layer rather than from the style. Four of the six modes are a cut
+  // rather than a wrap, and each names the end the ellipsis goes at.
+  //
+  // `numberOfLines` wins over it when an app set both, which is what iOS does:
+  // the count is that prop's question and the end to cut is this one's. `char`
+  // is the one mode left unhonoured -- wrapping between characters is the
+  // typesetter's business rather than the framesetter's -- and
+  // backlog/text.md records it.
+  NSInteger lineLimit = paragraphAttributes.maximumNumberOfLines;
+  const auto lineBreak = attributedString.getFragments().empty()
+      ? std::optional<facebook::react::LineBreakMode>{}
+      : attributedString.getFragments().front().textAttributes.lineBreakMode;
+  if (lineBreak.has_value()) {
+    bool cuts = true;
+    switch (*lineBreak) {
+      case facebook::react::LineBreakMode::Head:
+        truncation = kCTLineTruncationStart;
+        truncates = true;
+        break;
+      case facebook::react::LineBreakMode::Middle:
+        truncation = kCTLineTruncationMiddle;
+        truncates = true;
+        break;
+      case facebook::react::LineBreakMode::Tail:
+        truncation = kCTLineTruncationEnd;
+        truncates = true;
+        break;
+      case facebook::react::LineBreakMode::Clip:
+        truncates = false;
+        break;
+      case facebook::react::LineBreakMode::Char:
+      case facebook::react::LineBreakMode::Word:
+        cuts = false;
+        break;
+    }
+    if (cuts && lineLimit <= 0) {
+      lineLimit = 1;
+    }
+  }
+
   RnTextLayout *layout =
       [RnTextLayout layoutWithAttributedString:string
-                         maximumNumberOfLines:paragraphAttributes.maximumNumberOfLines
+                         maximumNumberOfLines:lineLimit
                                truncationType:truncation
                                     truncates:truncates ? YES : NO];
   layout.rightToLeft = rightToLeft ? YES : NO;

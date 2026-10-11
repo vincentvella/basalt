@@ -735,7 +735,24 @@ RnWin32TextLayout::create(std::string utf8Text, const RnTextStyle &style, int ma
   format->SetReadingDirection(style.rightToLeft ? DWRITE_READING_DIRECTION_RIGHT_TO_LEFT
                                                 : DWRITE_READING_DIRECTION_LEFT_TO_RIGHT);
   format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-  format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+  // `lineBreakMode`: wrap between words, wrap between characters, or do not
+  // wrap at all and cut. The cut itself is `SetTrimming` on the layout, below,
+  // which is a layout property rather than a format one.
+  DWRITE_WORD_WRAPPING wrapping = DWRITE_WORD_WRAPPING_WRAP;
+  switch (style.lineBreakMode) {
+    case RnLineBreakMode::Char:
+      wrapping = DWRITE_WORD_WRAPPING_CHARACTER;
+      break;
+    case RnLineBreakMode::Clip:
+    case RnLineBreakMode::Head:
+    case RnLineBreakMode::Middle:
+    case RnLineBreakMode::Tail:
+      wrapping = DWRITE_WORD_WRAPPING_NO_WRAP;
+      break;
+    case RnLineBreakMode::Word:
+      break;
+  }
+  format->SetWordWrapping(wrapping);
   if (style.lineHeight > 0.0f) {
     // Baseline at 80% of the line box is DirectWrite's own recommendation for
     // uniform spacing, and it is what an unset baseline would have produced.
@@ -876,8 +893,54 @@ IDWriteTextLayout *RnWin32TextLayout::buildLayout(float maxWidth, float maxHeigh
   return layout;
 }
 
+// Whether a mode is a cut rather than a wrap, which is the question both
+// halves of the line limit ask. See RnLineBreakMode.
+static bool cutsRatherThanWraps(RnLineBreakMode mode) {
+  switch (mode) {
+    case RnLineBreakMode::Clip:
+    case RnLineBreakMode::Head:
+    case RnLineBreakMode::Middle:
+    case RnLineBreakMode::Tail:
+      return true;
+    case RnLineBreakMode::Word:
+    case RnLineBreakMode::Char:
+      break;
+  }
+  return false;
+}
+
 float RnWin32TextLayout::applyLineLimit(IDWriteTextLayout *layout) const {
-  if (layout == nullptr || maximumNumberOfLines_ <= 0) {
+  if (layout == nullptr) {
+    return -1.0f;
+  }
+
+  // A `lineBreakMode` that cuts has already turned wrapping off, so the text is
+  // one line that runs past the edge of its box. DirectWrite trims only when it
+  // is told to, and this is the telling: the ellipsis for head, middle and
+  // tail, and a bare granularity for `clip`, which asks for the cut without
+  // one.
+  //
+  // Head and middle get the *end* cut, which is the one thing this host cannot
+  // do faithfully: `SetTrimming` takes a granularity and a sign and no
+  // position. Cutting the wrong end keeps the single line the label asked for,
+  // where wrapping would break the layout around it; backlog/platform-windows.md
+  // records the difference and what closing it would take.
+  const bool cuts = cutsRatherThanWraps(style_.lineBreakMode);
+  if (cuts) {
+    DWRITE_TRIMMING trimming{};
+    trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
+    ComPtr<IDWriteInlineObject> sign;
+    if (style_.lineBreakMode != RnLineBreakMode::Clip
+        && SUCCEEDED(dwriteFactory()->CreateEllipsisTrimmingSign(layout, sign.GetAddressOf()))) {
+      layout->SetTrimming(&trimming, sign.Get());
+    } else {
+      layout->SetTrimming(&trimming, nullptr);
+    }
+  }
+
+  if (maximumNumberOfLines_ <= 0) {
+    // No height to limit: a cutting mode is one line already, and a wrapping
+    // one was never asked to stop.
     return -1.0f;
   }
 
