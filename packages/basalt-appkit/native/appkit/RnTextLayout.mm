@@ -1,5 +1,7 @@
 #import "RnTextLayout.h"
 
+NSAttributedStringKey const RnWavyUnderlineAttributeName = @"RnWavyUnderline";
+
 #include "TextHighlight.h"
 #include "TextVerticalAlign.h"
 
@@ -315,6 +317,86 @@
   return [_attributedString.string substringWithRange:NSMakeRange(start, end - start)];
 }
 
+// One line's wavy underlines, stroked where the font says an underline goes.
+//
+// `baselineY` is this line's baseline in the context's current space, which
+// the caller has already flipped back into Core Text's y-up orientation.
+//
+// The wave is a run of quadratic curves rather than a dash pattern, which is
+// the one shape a stroke cannot express: amplitude and period are multiples of
+// the line's own thickness, so a 40pt squiggle has the same proportions as a
+// 12pt one. Browsers draw it at about this size.
+- (void)drawWavyUnderlinesForLine:(CTLineRef)line
+                          context:(CGContextRef)context
+                              atX:(CGFloat)originX
+                                y:(CGFloat)baselineY {
+  const CFRange lineRange = CTLineGetStringRange(line);
+  if (lineRange.location == kCFNotFound || lineRange.length <= 0) {
+    return;
+  }
+  const NSRange range = NSMakeRange((NSUInteger)lineRange.location, (NSUInteger)lineRange.length);
+  if (NSMaxRange(range) > _attributedString.length) {
+    return;
+  }
+
+  [_attributedString enumerateAttribute:RnWavyUnderlineAttributeName
+                                inRange:range
+                                options:0
+                             usingBlock:^(id value, NSRange found, BOOL *stop) {
+    (void)stop;
+    NSColor *color = [value isKindOfClass:[NSColor class]] ? (NSColor *)value : nil;
+    if (color == nil || found.length == 0) {
+      return;
+    }
+
+    // The font of the run the wave is under, so the line sits where that
+    // font's underline would have and is as thick as it would have been.
+    NSFont *font = [self->_attributedString attribute:NSFontAttributeName
+                                              atIndex:found.location
+                                       effectiveRange:nullptr];
+    const CGFloat thickness =
+        MAX((CGFloat)1.0, font != nil ? CTFontGetUnderlineThickness((__bridge CTFontRef)font) : 1.0);
+    const CGFloat position =
+        font != nil ? CTFontGetUnderlinePosition((__bridge CTFontRef)font) : -thickness * 2;
+
+    const CGFloat startX =
+        originX + CTLineGetOffsetForStringIndex(line, (CFIndex)found.location, nullptr);
+    const CGFloat endX =
+        originX + CTLineGetOffsetForStringIndex(line, (CFIndex)NSMaxRange(found), nullptr);
+    const CGFloat from = MIN(startX, endX);
+    const CGFloat to = MAX(startX, endX);
+    if (to - from < 1.0) {
+      return;
+    }
+
+    // The same geometry the Win32 renderer draws, down to the number that
+    // matters: quadratics alternating above and below the line, a half wave
+    // every six thicknesses, and a control point *twice* the amplitude away
+    // because a quadratic only reaches halfway to it. That host's comment
+    // records what happens otherwise -- a control point at one thickness
+    // draws a wave of half that, which measures as an edge moving two pixels
+    // where three were asked for -- and this host walked into it as well.
+    const CGFloat wave = thickness * 6.0;
+    const CGFloat middle = baselineY + position;
+
+    CGContextSaveGState(context);
+    CGContextSetStrokeColorWithColor(context, color.CGColor);
+    CGContextSetLineWidth(context, thickness);
+    CGContextSetLineCap(context, kCGLineCapRound);
+    CGContextBeginPath(context);
+    CGContextMoveToPoint(context, from, middle);
+    bool up = true;
+    for (CGFloat at = from; at < to; at += wave) {
+      const CGFloat next = MIN(at + wave, to);
+      const CGFloat peak = middle + 2.0 * (up ? thickness : -thickness);
+      CGContextAddQuadCurveToPoint(context, (at + next) / 2.0, peak, next, middle);
+      up = !up;
+    }
+    CGContextStrokePath(context);
+    CGContextRestoreGState(context);
+  }];
+}
+
 - (void)drawInContext:(CGContextRef)context size:(CGSize)size {
   NSMutableArray *lines = [NSMutableArray array];
   [self linesForWidth:size.width outLines:lines];
@@ -385,6 +467,15 @@
         CGContextRestoreGState(context);
       }
     }
+
+    // The squiggle Core Text has no pattern for, under this line's glyphs and
+    // before them: an underline goes beneath the text, and a descender
+    // crossing it is drawn on top the way a straight underline's is. See
+    // RnWavyUnderlineAttributeName.
+    [self drawWavyUnderlinesForLine:line
+                            context:context
+                                atX:x
+                                  y:y + std::ceil(descent + leading)];
 
     CGContextSetTextPosition(context, x, y + std::ceil(descent + leading));
     CTLineDraw(line, context);

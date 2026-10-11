@@ -334,7 +334,20 @@ NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttribute
   // mapped here to Core Text's one bitmask.
   if (const auto decoration = basalt::textDecoration(textAttributes)) {
     const NSUnderlineStyle style = toUnderlineStyle(decoration->style);
-    if (decoration->underline) {
+    const bool wavy = decoration->style == facebook::react::TextDecorationStyle::Wavy;
+    if (decoration->underline && wavy) {
+      // Core Text has no wavy pattern, so asking for an underline here would
+      // draw a straight line through the squiggle the layout is about to
+      // stroke. The colour travels on the attribute: the decoration's when the
+      // app named one, and the text's own otherwise, which is what every
+      // undecorated underline does. See RnWavyUnderlineAttributeName.
+      NSColor *lineColor = decoration->hasColor
+          ? toColor(basalt::TextColor{decoration->red, decoration->green, decoration->blue,
+                                      decoration->alpha})
+          : attributes[NSForegroundColorAttributeName];
+      attributes[RnWavyUnderlineAttributeName] =
+          lineColor != nil ? lineColor : [NSColor blackColor];
+    } else if (decoration->underline) {
       attributes[NSUnderlineStyleAttributeName] = @(style);
     }
     if (decoration->strikethrough) {
@@ -345,7 +358,7 @@ NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttribute
     if (decoration->hasColor) {
       NSColor *const color = toColor(basalt::TextColor{
           decoration->red, decoration->green, decoration->blue, decoration->alpha});
-      if (decoration->underline) {
+      if (decoration->underline && !wavy) {
         attributes[NSUnderlineColorAttributeName] = color;
       }
       if (decoration->strikethrough) {
