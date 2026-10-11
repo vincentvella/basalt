@@ -911,6 +911,129 @@ TEST(appkit_a_decoration_colour_reaches_the_underline) {
   }
 }
 
+// The style this host has no value for, in the one term that can tell it from
+// the fallback: its shape.
+//
+// `appkit_a_decoration_style_maps_to_core_texts_bitmask` records that `wavy`
+// becomes NSUnderlineStyleSingle, which is honest about the translation and
+// says nothing about the result -- a reader of the support page is told
+// `partial` and shown a straight line under text that asked for a squiggle. The
+// Win32 host draws all five, and this is its test: a wave is the one underline
+// whose lowest edge moves, so for every column carrying ink the bottom-most
+// inked row is taken and what is asserted is the spread between them. A
+// straight line gives the same row for every column however the font or the
+// screen scales, which is what makes the claim portable.
+//
+// What would close it: `CTFontGetUnderlinePosition` and
+// `CTFontGetUnderlineThickness` give the two numbers Core Text would have drawn
+// the line from, and `drawInContext:size:` already has the context in Core
+// Text's own orientation, so the squiggle is a path stroked there with the
+// underline attribute left off that range. backlog/text.md records the same
+// plan, an `NSLayoutManager` subclass being the other way round.
+namespace {
+
+// Narrow glyphs with no descender, so the lowest ink in a column belongs to the
+// underline rather than to a letter, at a size where the line is thick enough
+// for a wave in it to be several pixels from crest to trough.
+constexpr float kDecorationFontSize = 40.0F;
+const char *const kNarrowGlyphs = "iiiiiiiiiiiiiiiiiiii";
+
+// How far the underline's lowest edge moves across the columns it covers, in
+// pixels, or -1 for a picture with no line in it at all.
+//
+// Measured as the *difference* between two renders of the same text, one
+// decorated and one not, which is what isolates the line from the letters. The
+// first version of this read the lowest dark pixel in each column and the
+// control failed: at the two ends of the line the stroke is antialiased below
+// the ink threshold, so those columns reported the bottom of a glyph instead
+// and a solid underline looked 33 rows out of level. A difference has no such
+// edge case -- a column where the two renders agree holds no line at all and
+// is skipped.
+int underlineBottomEdgeSpread(facebook::react::TextDecorationStyle style) {
+  const CGSize size = CGSizeMake(600, 120);
+
+  auto render = [&](bool decorated) {
+    facebook::react::TextAttributes attributes;
+    attributes.fontSize = kDecorationFontSize;
+    attributes.foregroundColor = facebook::react::colorFromComponents(
+        facebook::react::ColorComponents{0.0F, 0.0F, 0.0F, 1.0F});
+    if (decorated) {
+      attributes.textDecorationLineType = facebook::react::TextDecorationLineType::Underline;
+      attributes.textDecorationStyle = style;
+    }
+
+    facebook::react::AttributedString::Fragment fragment;
+    fragment.string = kNarrowGlyphs;
+    fragment.textAttributes = attributes;
+    facebook::react::AttributedString string;
+    string.appendFragment(std::move(fragment));
+
+    RnTextLayout *layout =
+        basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(nullptr, (size_t)size.width, (size_t)size.height,
+                                                 8, 0, space, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextSetRGBFillColor(context, 1, 1, 1, 1);
+    CGContextFillRect(context, CGRectMake(0, 0, size.width, size.height));
+    [layout drawInContext:context size:size];
+    return context;
+  };
+
+  CGContextRef decorated = render(true);
+  CGContextRef plain = render(false);
+  auto *withLine = static_cast<unsigned char *>(CGBitmapContextGetData(decorated));
+  auto *without = static_cast<unsigned char *>(CGBitmapContextGetData(plain));
+  const size_t stride = CGBitmapContextGetBytesPerRow(decorated);
+
+  int highest = (int)size.height;
+  int lowest = -1;
+  for (int x = 0; x < (int)size.width; x++) {
+    int bottom = -1;
+    for (int y = 0; y < (int)size.height; y++) {
+      const size_t at = (size_t)y * stride + (size_t)x * 4;
+      // A third of full coverage, which is well above the antialiasing either
+      // side of the stroke and well below the stroke itself.
+      if (std::abs((int)withLine[at] - (int)without[at]) > 80) {
+        bottom = y;
+      }
+    }
+    if (bottom < 0) {
+      continue;
+    }
+    highest = std::min(highest, bottom);
+    lowest = std::max(lowest, bottom);
+  }
+  CGContextRelease(decorated);
+  CGContextRelease(plain);
+  return lowest < 0 ? -1 : lowest - highest;
+}
+
+} // namespace
+
+TEST(appkit_a_wavy_underline_is_not_straight) {
+  @autoreleasepool {
+    using facebook::react::TextDecorationStyle;
+
+    const int straight = underlineBottomEdgeSpread(TextDecorationStyle::Solid);
+    const int wave = underlineBottomEdgeSpread(TextDecorationStyle::Wavy);
+
+    // Ink at all, first: a paragraph that drew nothing would answer -1 and the
+    // comparison below would be measuring an empty page.
+    EXPECT(straight >= 0);
+    // A solid underline's bottom edge is flat, to within the antialiasing of
+    // one row, which is what the row count is allowed to be and what makes the
+    // instrument worth trusting.
+    EXPECT(straight <= 1);
+    // The wave's rises and falls by its own amplitude, which is the line's
+    // thickness either side of where the straight one would have been. Today
+    // both styles come out of the same NSUnderlineStyleSingle and this is the
+    // assertion that says so.
+    EXPECT(wave >= 3);
+  }
+}
+
 // `fontVariant`, in Core Text's vocabulary rather than OpenType's.
 //
 // What is asserted is the feature settings on the font, not a picture: whether

@@ -18,6 +18,7 @@
 #include "PointerButtons.h"
 
 #include "Gestures.h"
+#include "Win32Cursors.h"
 #include "Win32MountingManager.h"
 #include "Win32TouchDispatcher.h"
 
@@ -358,4 +359,153 @@ TEST(win32_a_synthesised_hover_walks_the_tree_without_an_emitter) {
   dispatcher.synthesiseHover(-1, -1);
 
   manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// ---------------------------------------------------------------------------
+// The whole of `cursor`, as a keyword list rather than as a hit test.
+// See win32/Win32Cursors.h.
+//
+// The cursor tests in tests/test_win32_hittest.cpp ask which view is under the
+// pointer and whether the keywords Windows has a stock cursor for land on the
+// right one. This one asks the question those cannot: whether the list React
+// Native accepts is covered at all. It sits beside the touch dispatcher because
+// the list is a React Native fact -- `core/CursorNames.h` prints it from
+// `facebook::react::Cursor` -- and only the shards that have React Native can
+// be held to it.
+//
+// What breaks without this test is already in the tree and passing:
+// `cursor_a_keyword_windows_has_nothing_for_leaves_the_pointer_alone` asserts
+// the gap rather than closing it, so the suite stays green while six keywords
+// do nothing. An app that puts `cursor: 'zoom-in'` on an image gets the arrow
+// it already had, with no error and no warning, and a drag source that asked
+// for `copy` or `alias` to say what a drop will do gets no feedback at all --
+// which for those two keywords is the entire feature, the pointer being the
+// only thing a drag can speak through.
+//
+// So this claims the stronger thing the support page's `partial` is measured
+// against: every keyword React Native accepts resolves to some cursor, no
+// keyword falls back to the default arrow unless it *is* `default`, and two
+// keywords share a cursor only inside the families below, where the host
+// documents the sharing. It fails today on the six the backlog entry names and
+// on nothing else: `alias`, `cell`, `context-menu`, `copy`, `zoom-in` and
+// `zoom-out`, each of which answers no cursor whatever.
+//
+// `none` is deliberately not in the list. It is an absence rather than an
+// image, `SetCursor(nullptr)`, and the `hidden` flag is what says so; the
+// hit-test suite covers it. `auto` and `url` reach a host as no keyword at all.
+// ---------------------------------------------------------------------------
+
+TEST(win32_every_cursor_keyword_resolves_to_a_cursor_of_its_own) {
+  // CSS's list, grouped into the families that may legitimately share one
+  // cursor. A family is the exception the claim allows; everything else has to
+  // differ. The first family is the arrow, and nothing outside it may be.
+  const std::vector<std::vector<std::string>> families = {
+      {"default"},
+      {"pointer"},
+      // No vertical I-beam in the stock set, so `vertical-text` wears the
+      // horizontal one. A narrower complaint than the six below, since it is a
+      // cursor that means roughly the right thing rather than no cursor.
+      {"text", "vertical-text"},
+      {"crosshair"},
+      {"wait"},
+      // Busy but still usable, which is the arrow with the hourglass beside it.
+      {"progress"},
+      {"help"},
+      // CSS's own pair: both mean "this drop will not happen".
+      {"not-allowed", "no-drop"},
+      // Windows draws no difference between taking hold of something and
+      // moving it, and the shell uses one cursor for all four.
+      {"move", "all-scroll", "grab", "grabbing"},
+      // The eight directional resizes collapse onto the four `IDC_SIZE*`
+      // arrows the way a window's own edges do.
+      {"ew-resize", "col-resize", "e-resize", "w-resize"},
+      {"ns-resize", "row-resize", "n-resize", "s-resize"},
+      {"nesw-resize", "ne-resize", "sw-resize"},
+      {"nwse-resize", "nw-resize", "se-resize"},
+      // And the six with nothing. Each is its own family because each means
+      // its own thing: a shortcut, a spreadsheet cell, a menu about to open, a
+      // copy rather than a move, and magnifying in rather than out.
+      {"alias"},
+      {"cell"},
+      {"context-menu"},
+      {"copy"},
+      {"zoom-in"},
+      {"zoom-out"}};
+
+  struct Resolved {
+    std::string keyword;
+    int family;
+    basalt::win32::Win32Cursor answer;
+  };
+
+  std::vector<Resolved> resolved;
+  int family = 0;
+  for (const std::vector<std::string> &keywords : families) {
+    for (const std::string &keyword : keywords) {
+      resolved.push_back(Resolved{keyword, family, basalt::win32::win32CursorFor(keyword)});
+    }
+    family++;
+  }
+
+  // Every keyword answers a cursor. Collected into one string rather than
+  // asserted in the loop so that a failure names all of them at once, the way
+  // GestureScope::joined does for states.
+  std::string withoutOne;
+  for (const Resolved &entry : resolved) {
+    // `hidden` as well as null: a keyword answered by hiding the pointer has
+    // no cursor of its own either, and hiding the pointer over a cell or a
+    // shortcut would be worse than the arrow it replaces.
+    if (entry.answer.cursor != nullptr && !entry.answer.hidden) {
+      continue;
+    }
+    if (!withoutOne.empty()) {
+      withoutOne += ",";
+    }
+    withoutOne += entry.keyword;
+  }
+  EXPECT_EQ(withoutOne, std::string(""));
+
+  // No two keywords from different families wear the same cursor. Null answers
+  // are skipped: every null equals every other null, and the check above has
+  // already named them, so this reports only genuine collisions.
+  std::string collided;
+  for (const Resolved &left : resolved) {
+    for (const Resolved &right : resolved) {
+      // Each cross-family pair once, which is also how same-family pairs are
+      // left alone.
+      if (left.family >= right.family) {
+        continue;
+      }
+      if (left.answer.cursor == nullptr || right.answer.cursor == nullptr) {
+        continue;
+      }
+      if (left.answer.cursor != right.answer.cursor) {
+        continue;
+      }
+      if (!collided.empty()) {
+        collided += ",";
+      }
+      collided += left.keyword + "=" + right.keyword;
+    }
+  }
+  EXPECT_EQ(collided, std::string(""));
+
+  // And the failure this is really about, named directly rather than left to
+  // the loop above: the arrow belongs to `default`. A keyword mapped onto
+  // `IDC_ARROW` to stop it answering nothing is the same silence with a handle
+  // in it, because the arrow is what the window class already shows.
+  const HCURSOR arrow = LoadCursorW(nullptr, IDC_ARROW);
+  EXPECT(basalt::win32::win32CursorFor("default").cursor == arrow);
+
+  std::string wearingTheArrow;
+  for (const Resolved &entry : resolved) {
+    if (entry.keyword == "default" || entry.answer.cursor != arrow) {
+      continue;
+    }
+    if (!wearingTheArrow.empty()) {
+      wearingTheArrow += ",";
+    }
+    wearingTheArrow += entry.keyword;
+  }
+  EXPECT_EQ(wearingTheArrow, std::string(""));
 }

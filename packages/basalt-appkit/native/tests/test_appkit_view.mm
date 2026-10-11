@@ -716,6 +716,122 @@ TEST(filter_only_the_first_drop_shadow_is_drawn) {
   }
 }
 
+// Both `dropShadow()` entries in a filter list are drawn, which is the half of
+// the list this host drops. CSS applies a filter list left to right, each
+// function working on what the one before it produced, so two drop shadows are
+// a shadow of the content and then a shadow of that -- not a choice between the
+// two. The pair that an app actually writes is a tight dark shadow for the edge
+// and a wide soft one for the lift, and with only the first drawn the view
+// still looks deliberate: the warning goes to the log, nothing on screen says a
+// shadow is missing, and the design it was copied from is the only place the
+// second one survives.
+//
+// A CALayer carries one shadow, so the two cannot both live on the view's own
+// layer -- which is why this looks at every layer in the view's own tree rather
+// than at `self.layer` alone, the way the box shadows beside it already take a
+// layer per shadow. Which layer each lands on is an implementation's choice;
+// that both are there is not. Layer properties and no pixels, for the reason
+// the rest of this file has none: Core Animation composites a shadow and
+// `renderInContext:` draws nothing of it.
+//
+// `filter_only_the_first_drop_shadow_is_drawn` above states today's limit, so
+// it is the test this one replaces once the limit goes.
+namespace {
+
+// One shadow found in a layer tree, in the layer's own terms.
+struct LayerShadow {
+  CGFloat dx = 0;
+  CGFloat dy = 0;
+  CGFloat radius = 0;
+  float opacity = 0;
+};
+
+void collectShadows(CALayer *layer, std::vector<LayerShadow> &found) {
+  if (layer.shadowOpacity > 0) {
+    found.push_back(LayerShadow{layer.shadowOffset.width,
+                                layer.shadowOffset.height,
+                                layer.shadowRadius,
+                                layer.shadowOpacity});
+  }
+  for (CALayer *sublayer in layer.sublayers) {
+    collectShadows(sublayer, found);
+  }
+}
+
+std::vector<LayerShadow> shadowsInLayerTree(RnAppKitView *view) {
+  std::vector<LayerShadow> found;
+  collectShadows(view.layer, found);
+  return found;
+}
+
+// Whether one of them is the shadow that was asked for, in the terms the other
+// drop shadow tests use: the standard deviation crosses unchanged into
+// `shadowRadius`, the colour's alpha becomes `shadowOpacity`, and the offset is
+// CSS's with the sign of dy turned over, the layer not being flipped where the
+// view is.
+bool carriesShadow(const std::vector<LayerShadow> &found,
+                   CGFloat dx,
+                   CGFloat dy,
+                   CGFloat standardDeviation,
+                   float opacity) {
+  for (const LayerShadow &shadow : found) {
+    if ((int)shadow.dx == (int)dx && (int)shadow.dy == (int)(-dy) &&
+        (int)(shadow.radius * 10) == (int)(standardDeviation * 10) &&
+        (int)(shadow.opacity * 100) == (int)(opacity * 100)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// A view asking for two unmistakably different drop shadows, or for the first
+// of them alone -- the same two numbers either way, so the only difference
+// between the two views is the entry that is meant to be dropped.
+RnAppKitView *twiceDropShadowed(bool bothEntries) {
+  RnAppKitView *view = [RnAppKitView viewWithTag:1];
+  [view setRnFrameX:0 y:0 width:60 height:40];
+
+  RnAppKitFilterShadow shadows[2]{};
+  shadows[0].dx = 2;
+  shadows[0].dy = 3;
+  shadows[0].standardDeviation = 1;
+  shadows[0].color[3] = 1;
+  shadows[1].dx = 20;
+  shadows[1].dy = 6;
+  shadows[1].standardDeviation = 10;
+  shadows[1].color[3] = 0.5;
+
+  RnAppKitFilters filters{};
+  filters.opacity = 1;
+  filters.shadows = shadows;
+  filters.shadowCount = bothEntries ? 2 : 1;
+  [view setRnFilters:&filters];
+  return view;
+}
+
+} // namespace
+
+TEST(filter_two_drop_shadows_are_both_drawn) {
+  @autoreleasepool {
+    const std::vector<LayerShadow> both = shadowsInLayerTree(twiceDropShadowed(true));
+
+    // Two shadows, each with its own numbers: a view that kept only the last,
+    // or that averaged the pair into one middling shadow, fails here as surely
+    // as one that keeps only the first.
+    EXPECT_EQ((long)both.size(), 2L);
+    EXPECT(carriesShadow(both, 2, 3, 1, 1.0F));
+    EXPECT(carriesShadow(both, 20, 6, 10, 0.5F));
+
+    // And asking for two is not the same as asking for the first alone, which
+    // is what dropping the rest of the list comes to.
+    const std::vector<LayerShadow> firstOnly = shadowsInLayerTree(twiceDropShadowed(false));
+    EXPECT_EQ((long)firstOnly.size(), 1L);
+    EXPECT(carriesShadow(firstOnly, 2, 3, 1, 1.0F));
+    EXPECT(!carriesShadow(firstOnly, 20, 6, 10, 0.5F));
+    EXPECT(both.size() != firstOnly.size());
+  }
+}
+
 TEST(filter_a_drop_shadow_is_reported_in_the_tree) {
   @autoreleasepool {
     RnAppKitView *view = dropShadowed(4, 6, 3, 0.5);
