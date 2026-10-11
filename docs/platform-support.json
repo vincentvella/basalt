@@ -45,6 +45,10 @@
       "text": "CLSID_D2D1Blend",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
+    "win-trim-end": {
+      "text": "DirectWrite trims the end of a line and nowhere else, so head and middle cut the end",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
+    },
     "win-stock-cursors": {
       "text": "six keywords have no stock cursor",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
@@ -738,14 +742,11 @@
       "why": "text-ios"
     },
     "TextAttributes.lineBreakMode": {
-      "linux": "no",
+      "linux": "yes",
       "macos": "yes",
-      "windows": "no",
-      "why": "text-ignored",
-      "reads": [
-        "style.lineBreakMode",
-        "lineBreakMode"
-      ]
+      "windows": "partial",
+      "why": "win-trim-end",
+      "reads": ["lineBreakMode"]
     },
     "TextAttributes.textDecorationColor": {
       "linux": "yes",

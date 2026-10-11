@@ -49,9 +49,9 @@ under the row that implements them.
 
 | Host | Toolkit | Written itself | All 280 rows |
 | --- | --- | --- | --- |
-| Linux | GTK4 | 119 of 142, 84% | <span className="support-bar"><span className="support-yes" style={{width: '42.50%'}} title="119 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '5.36%'}} title="15 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.85%'}} title="64 deliberately not done" /></span> |
+| Linux | GTK4 | 120 of 142, 85% | <span className="support-bar"><span className="support-yes" style={{width: '42.86%'}} title="120 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.85%'}} title="64 deliberately not done" /></span> |
 | macOS | AppKit | 120 of 142, 85% | <span className="support-bar"><span className="support-yes" style={{width: '42.86%'}} title="120 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.85%'}} title="64 deliberately not done" /></span> |
-| Windows | Win32 | 116 of 141, 82% | <span className="support-bar"><span className="support-yes" style={{width: '41.43%'}} title="116 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-no" style={{width: '5.36%'}} title="15 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.21%'}} title="65 deliberately not done" /></span> |
+| Windows | Win32 | 116 of 141, 82% | <span className="support-bar"><span className="support-yes" style={{width: '41.43%'}} title="116 done" /><span className="support-partial" style={{width: '3.93%'}} title="11 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.21%'}} title="65 deliberately not done" /></span> |
 
 **Written itself** is out of the rows that host writes: what it has written,
 what it has half written, and what is still missing. The hatched part of the
@@ -59,9 +59,9 @@ bar is the rest, and it is nobody's work left.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| <span className="support-chip support-yes" /> ✅ done | 119 | 120 | 116 |
-| <span className="support-chip support-partial" /> ◐ partly done | 8 | 8 | 10 |
-| <span className="support-chip support-no" /> ✖ not yet | 15 | 14 | 15 |
+| <span className="support-chip support-yes" /> ✅ done | 120 | 120 | 116 |
+| <span className="support-chip support-partial" /> ◐ partly done | 8 | 8 | 11 |
+| <span className="support-chip support-no" /> ✖ not yet | 14 | 14 | 14 |
 | <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
 | <span className="support-chip support-ignored" /> – deliberately not done | 64 | 64 | 65 |
 
@@ -224,7 +224,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `maxFontSizeMultiplier` | ✅ | ✅ | ✅ |  |
 | `dynamicTypeRamp` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✖ | ✅ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✅ | ✅ | ◐ | [DirectWrite trims the end of a line and nowhere else, so head and middle cut the end](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `accessibilityRole` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `role` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 

@@ -176,10 +176,40 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   whose longest line is below the cut.
 - Ignored, and now counted: walking `TextAttributes` field by field on
   2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
-  -- the fields no host reads are `fontVariationSettings`, `layoutDirection`,
-  and the `accessibilityRole` and `role` that ride along on a fragment. `lineBreakMode` is read on AppKit only. Beside those,
+  -- the fields no host reads are `fontVariationSettings` and the
+  `accessibilityRole` and `role` that ride along on a fragment. Beside those,
   `textBreakStrategy` and hyphenation are `ParagraphAttributes` and equally
   ignored.
+
+  **`lineBreakMode` came off that list on 2026-10-11, and `layoutDirection` on
+  the same day** -- the second with the alignment entry above. The first was
+  recorded here as "read on AppKit only", which was a grep's answer rather than
+  a measurement: what that host had was `style.lineBreakMode =
+  NSLineBreakByWordWrapping`, a line that ignores the prop, and the support
+  page's needle matched it. No host read it.
+
+  It is React Native's `lineBreakModeIOS`, and every desktop text engine has
+  the thing it asks for, which is why this is a mapping rather than an entry.
+  Four of its six values are a cut rather than a wrap and each names the end
+  the ellipsis goes at. GTK is `pango_layout_set_ellipsize` with START, MIDDLE
+  or END and a height of one line, which is the idiom `numberOfLines` already
+  uses; AppKit is a line limit of one and a `CTLineTruncationType`, applied
+  where the layout is built rather than on the paragraph style, since Core Text
+  would otherwise ellipsize every line it lays out; Windows turns wrapping off
+  and calls `SetTrimming`.
+
+  `numberOfLines` wins over it when an app sets both, which is what iOS does:
+  the count is that prop's question and the end to cut is this one's.
+
+  Two halves are not honoured and both are per-host rather than general.
+  `char`, which wraps between characters, is Pango's `PANGO_WRAP_CHAR` and
+  DirectWrite's `DWRITE_WORD_WRAPPING_CHARACTER` and has no Core Text
+  equivalent at the framesetter level -- wrapping between characters is the
+  *typesetter's* business there, which is a different line-breaking path from
+  the one this host uses. And `head` and `middle` cut the end on Windows:
+  `IDWriteTextLayout::SetTrimming` takes a granularity and a sign and no
+  position, so closing it means measuring the string, cutting it by hand and
+  rebuilding the layout, which is what `applyLineLimit` would have to grow.
 
   **`adjustsFontSizeToFit` came off that list on 2026-10-10**, with all three of
   its bounds: `minimumFontSize`, `maximumFontSize` and `minimumFontScale`. A

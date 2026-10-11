@@ -1728,3 +1728,66 @@ TEST(appkit_text_an_inline_view_follows_its_paragraph) {
     EXPECT_NEAR(marker.frame.origin.y, taller, 0.01);
   }
 }
+
+// `lineBreakMode`, which React Native's JavaScript spells `lineBreakModeIOS`.
+//
+// This host was marked as reading it on the strength of one line --
+// `style.lineBreakMode = NSLineBreakByWordWrapping` -- which is the opposite:
+// the paragraph style wraps unconditionally and Core Text takes its truncation
+// from this project's own layer, which never looked at the prop. So a
+// `<Text lineBreakModeIOS="tail">` wrapped onto four lines here and cut to one
+// on the platform the prop is named after.
+//
+// Measured the way the GTK suite measures the same claim, by the height of the
+// laid-out paragraph in a narrow box: a mode that cuts is one line tall
+// whatever it does with the ellipsis, and the modes that wrap are not.
+namespace {
+
+RnTextLayout *brokenBy(std::optional<facebook::react::LineBreakMode> mode) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 16.0F;
+  attributes.lineBreakMode = mode;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = kLong.UTF8String;
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+  return basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{});
+}
+
+CGFloat heightWith(std::optional<facebook::react::LineBreakMode> mode) {
+  return [brokenBy(mode) sizeForWidth:200].height;
+}
+
+} // namespace
+
+TEST(appkit_a_truncating_line_break_mode_cuts_the_line_rather_than_wrapping) {
+  @autoreleasepool {
+    using facebook::react::LineBreakMode;
+
+    const CGFloat oneLine = [layoutFor(@"Hello", 16, 0) sizeForWidth:-1].height;
+    const CGFloat wrapped = heightWith(LineBreakMode::Word);
+
+    // The control, and the half that was already right: `word` is React
+    // Native's default and wraps, and so does a fragment that never mentioned
+    // the prop. A fix that truncated every paragraph would be worse than the
+    // gap it closes.
+    EXPECT(wrapped > oneLine * 1.5);
+    EXPECT_NEAR(heightWith(std::nullopt), wrapped, 0.51);
+
+    // The four that cut. The tolerance is a fraction of a line rather than of
+    // a point: an ellipsis can come from a fallback face whose metrics are a
+    // little taller than the one the text is set in.
+    EXPECT_NEAR(heightWith(LineBreakMode::Head), oneLine, 2.0);
+    EXPECT_NEAR(heightWith(LineBreakMode::Middle), oneLine, 2.0);
+    EXPECT_NEAR(heightWith(LineBreakMode::Tail), oneLine, 2.0);
+    EXPECT_NEAR(heightWith(LineBreakMode::Clip), oneLine, 2.0);
+
+    // And `char`, which is a wrap rather than a cut and is the one mode this
+    // host does not honour: wrapping between characters is the typesetter's
+    // business and this layer uses a framesetter. It wraps, which is the half
+    // that matters, and backlog/text.md records the rest.
+    EXPECT(heightWith(LineBreakMode::Char) > oneLine * 1.5);
+  }
+}

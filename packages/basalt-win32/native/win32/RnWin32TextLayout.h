@@ -75,6 +75,25 @@ enum class RnTextDecorationStyle {
 // The attributes this platform honours. React Native has many more; each one
 // added here is a line in `DirectWriteLayout`, which is the file that will
 // translate an AttributedString once there is a mounting manager to deliver
+// `lineBreakMode`, which React Native's JavaScript spells `lineBreakModeIOS`:
+// how a line that does not fit its box is dealt with.
+//
+// `Word` is the default and wraps between words; `Char` wraps between
+// characters; the other four are one line and a cut, which is the half this
+// host can only half honour. DirectWrite trims at the *end* of a line and
+// nowhere else -- `IDWriteTextLayout::SetTrimming` takes a granularity and a
+// sign, not a position -- so `Head` and `Middle` cut the end here and
+// backlog/platform-windows.md records it. Cutting the wrong end keeps the
+// layout a label asked for, where wrapping would break it.
+enum class RnLineBreakMode {
+  Word,
+  Char,
+  Clip,
+  Head,
+  Middle,
+  Tail,
+};
+
 // one.
 struct RnTextStyle {
   std::string fontFamily = "Segoe UI";
@@ -124,6 +143,10 @@ struct RnTextStyle {
   // asks for it and a face without it renders unchanged, which is why nothing
   // here asserts on the pixels.
   std::vector<std::string> fontFeatures;
+  // `lineBreakMode`. A paragraph's rather than a run's, like the alignment and
+  // the reading direction above it: the format is built from the first run's
+  // style and this is one of the properties that lives there.
+  RnLineBreakMode lineBreakMode = RnLineBreakMode::Word;
 };
 
 struct RnTextSize {
