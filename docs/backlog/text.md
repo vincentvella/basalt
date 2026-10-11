@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (5):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -22,6 +22,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 12. ~~`padding` on a `<Text>` lays the box out and the text ignores it~~
 13. ~~An inline `<View>` stays at the top of a paragraph `textAlignVertical`
     moved~~
+14. A paragraph resolves `start` and `end` against its own text, not against a
+    right-to-left layout
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -695,6 +697,29 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   height as well, and the GTK side would have to add the offset after Pango
   answers. Recorded rather than half-fixed, because a view whose y follows the
   text and whose x does not is harder to diagnose than one that does neither.
+
+- **A paragraph resolves `start` and `end` against its own text, not against a
+  right-to-left layout.** Found on 2026-10-10 while making the layout mirror
+  for an Arabic desktop: the boxes reversed and the sentence stayed where it
+  was.
+
+  `core/TextAlignments.h` resolves the two relative spellings from the
+  paragraph's *own* base direction, which comes from the text through Unicode's
+  P2 rule or from an explicit `writingDirection`. So Latin text in a mirrored
+  app is left-aligned.
+
+  **That is iOS's behaviour and not Android's**, which is why this is a record
+  rather than a bug: `NSTextAlignmentNatural` follows the paragraph, and
+  Android's `TEXT_ALIGNMENT_VIEW_START` follows the view. React Native does not
+  reconcile them, so there is a choice to make here and it has not been made.
+
+  What would make it Android's: `ShadowView::layoutMetrics.layoutDirection`
+  carries the direction Yoga used, no host reads it, and a paragraph with no
+  explicit `writingDirection` could take its base direction from it -- which is
+  also what `RCTTextAttributes` does on iOS, where the attributes carry a
+  `layoutDirection` that the base writing direction is resolved from. One field
+  in each `applyText`, and the dump's `text-align=` would then say `right` for
+  the sentence above.
 
 - ~~**`padding` on a `<Text>` lays the box out and the text ignores it.**~~
   Fixed on all three on 2026-10-10, and found by looking at a screenshot of

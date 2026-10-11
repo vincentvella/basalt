@@ -5,6 +5,7 @@
 // only one with a real design decision in it. See postToUiThread below.
 
 #include "PlatformServices.h"
+#include "SystemLocale.h"
 #include "ShareFallback.h"
 
 #include "Win32Strings.h"
@@ -704,6 +705,40 @@ void showAlert(const AlertRequest &request, AlertCallback onButton) {
     }
     onButton(index, std::string{});
   });
+}
+
+} // namespace basalt
+
+// --- The desktop's language --------------------------------------------------
+
+namespace basalt {
+
+// `LOCALE_IREADINGLAYOUT` is Windows' own answer and is what every Win32
+// application mirrors from: 1 means right to left with left-to-right numbers,
+// which is Arabic and Hebrew. The other three values -- vertical layouts --
+// are not mirroring and read as left to right here, which is what they are.
+SystemLocale systemLocale() {
+  SystemLocale locale;
+
+  wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
+  if (GetUserDefaultLocaleName(name, LOCALE_NAME_MAX_LENGTH) > 0) {
+    const int bytes =
+        WideCharToMultiByte(CP_UTF8, 0, name, -1, nullptr, 0, nullptr, nullptr);
+    if (bytes > 1) {
+      std::string utf8(static_cast<std::size_t>(bytes - 1), '\0');
+      WideCharToMultiByte(CP_UTF8, 0, name, -1, utf8.data(), bytes, nullptr, nullptr);
+      locale.identifier = utf8;
+    }
+
+    DWORD layout = 0;
+    if (GetLocaleInfoEx(name,
+                        LOCALE_IREADINGLAYOUT | LOCALE_RETURN_NUMBER,
+                        reinterpret_cast<LPWSTR>(&layout),
+                        sizeof(layout) / sizeof(wchar_t)) > 0) {
+      locale.rightToLeft = layout == 1;
+    }
+  }
+  return locale;
 }
 
 } // namespace basalt

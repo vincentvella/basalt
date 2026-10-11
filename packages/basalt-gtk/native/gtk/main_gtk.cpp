@@ -65,6 +65,7 @@
 #include "AppearanceModule.h"
 #include "BlobModule.h"
 #include "CoreModules.h"
+#include "SystemLocale.h"
 #include "ColorScheme.h"
 #include "DevBundle.h"
 #include "DragAndDrop.h"
@@ -256,7 +257,14 @@ LayoutConstraints constraintsFor(int width, int height) {
   return LayoutConstraints{
       .minimumSize = size,
       .maximumSize = size,
-      .layoutDirection = LayoutDirection::LeftToRight,
+      // The desktop's own reading direction, or whatever `I18nManager` was
+      // told. This was `LeftToRight` unconditionally until 2026-10-10, so an
+      // app in Arabic -- or one calling `forceRTL(true)` and reloading, which
+      // is what React Native's documentation says to do -- laid out
+      // left-to-right with a flag that claimed otherwise. See
+      // core/SystemLocale.h.
+      .layoutDirection = basalt::layoutIsRightToLeft() ? LayoutDirection::RightToLeft
+                                                       : LayoutDirection::LeftToRight,
   };
 }
 
@@ -1363,6 +1371,11 @@ void onActivate(GtkApplication *app, gpointer data) {
   host->application = app;
   gWindowHost = host;
   createHostWindow(host, app, kSurfaceId, "basalt-core", kInitialWidth, kInitialHeight);
+
+  // Which language this desktop is in and which way it reads, asked once and
+  // on this thread: `gtk_widget_get_default_direction` is GTK's own answer,
+  // resolved from the locale by GTK itself. See core/SystemLocale.h.
+  basalt::setSystemLocale(basalt::systemLocale());
 
   // The desktop's text scale, on this thread because GtkSettings belongs to it
   // and text is measured off it. See core/FontScaling.h, which is where

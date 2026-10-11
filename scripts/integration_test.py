@@ -8070,6 +8070,109 @@ def test_app_state(bundle: Path) -> str:
     return "active at startup, and background when the window went away"
 
 
+def test_right_to_left(bundle: Path) -> str:
+    """A desktop that reads right to left lays the app out that way.
+
+    `I18nManager.getConstants()` answered `isRTL: false` and
+    `localeIdentifier: ""` on every host unless an app called `forceRTL`, and
+    all three passed `LayoutDirection::LeftToRight` to Yoga whatever the flag
+    said. So an app in Arabic laid out left to right, and an app that forced
+    the flag and reloaded -- which is what React Native's own documentation
+    says to do -- got a layout that disagreed with its own flag.
+
+    The locale comes from `BASALT_TEST_LOCALE`, because a scenario cannot
+    change the machine's language; the hosts ask their own platform otherwise,
+    each through the call that platform's applications mirror from.
+
+    Two runs of the same app, and what is asserted is the difference: a
+    `flexDirection: 'row'` reverses, and `paddingStart` moves to the other
+    side. Both are Yoga's doing once it is told, which is the point -- the bug
+    was never in Yoga.
+    """
+    app = bundle_app(bundle.parent, "rtl")
+
+    def run(locale: str | None):
+        env = dict(os.environ)
+        env["BASALT_QUIT_AFTER_MS"] = "3000"
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                     "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                     "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+            env.pop(name, None)
+        if locale is None:
+            env.pop("BASALT_TEST_LOCALE", None)
+        else:
+            env["BASALT_TEST_LOCALE"] = locale
+        with tempfile.TemporaryDirectory() as directory:
+            dump = Path(directory) / "tree.txt"
+            env["BASALT_DUMP_TREE"] = str(dump)
+            result = run_host_process(
+                [str(HOST), str(app), "BasaltRtl"],
+                cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+            )
+            _remember_output(result.stderr)
+            check_output(result.stderr, result.returncode)
+            if not dump.exists():
+                raise Failure("host wrote no widget tree")
+            return dump.read_text(encoding="utf-8"), result.stdout + result.stderr
+
+    def positions(tree: str) -> dict:
+        found = {}
+        for body, (x, _y), _size in _views(tree):
+            for colour in ("2563eb", "16a34a", "dc2626", "a855f7"):
+                if colour in body:
+                    found[colour] = x
+        return found
+
+    plainTree, plainLog = run(None)
+    plain = positions(plainTree)
+    if len(plain) != 4:
+        raise Failure(f"{len(plain)} of the app's four boxes are in the tree\n{plainTree}")
+    if plain["2563eb"] >= plain["16a34a"] or plain["16a34a"] >= plain["dc2626"]:
+        raise Failure(
+            "the row is not in order in a left-to-right locale, so the "
+            f"comparison below says nothing: {plain}"
+        )
+
+    # The desktop's own answer, whatever this machine is set to. Asserted only
+    # for being *something*: a runner's locale is not this suite's to choose,
+    # and an empty identifier is what the bug looked like.
+    reported = re.search(r"i18n isRTL (\S+) locale (\S*)", plainLog)
+    if reported is None:
+        raise Failure(f"the app logged no i18n constants\n{tail_text(plainLog)}")
+    if not reported.group(2):
+        raise Failure(
+            "`I18nManager.getConstants().localeIdentifier` is empty. Every "
+            "desktop publishes its language; this host is not asking."
+        )
+
+    mirroredTree, mirroredLog = run("ar-EG")
+    mirrored = positions(mirroredTree)
+    if "i18n isRTL true" not in mirroredLog:
+        raise Failure(
+            "an Arabic locale did not make `I18nManager.isRTL` true.\n"
+            + tail_text(mirroredLog)
+        )
+    if len(mirrored) != 4:
+        raise Failure(f"{len(mirrored)} of four boxes in the mirrored tree\n{mirroredTree}")
+
+    # The row, reversed: what was leftmost is now rightmost.
+    if not (mirrored["2563eb"] > mirrored["16a34a"] > mirrored["dc2626"]):
+        raise Failure(
+            "a `flexDirection: 'row'` did not reverse in a right-to-left "
+            f"locale: {mirrored}. Yoga mirrors when it is told the direction, "
+            "and the hosts passed LeftToRight unconditionally."
+        )
+    # And `paddingStart`, which is the other side now.
+    if mirrored["a855f7"] <= plain["a855f7"]:
+        raise Failure(
+            "`paddingStart` did not move to the right in a right-to-left "
+            f"locale: {plain['a855f7']:g} then {mirrored['a855f7']:g}"
+        )
+
+    return (f"a row from {plain['2563eb']:g} rightwards, and from "
+            f"{mirrored['2563eb']:g} leftwards when the desktop reads that way")
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -8530,6 +8633,7 @@ SCENARIOS = [
     ("a disabled Switch that is on still looks on", test_disabled_switch_colour),
     ("Dimensions and PixelRatio report the real window", test_dimensions),
     ("AppState says what the application is doing", test_app_state),
+    ("a right-to-left desktop mirrors the layout", test_right_to_left),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),

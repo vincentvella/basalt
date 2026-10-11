@@ -1,6 +1,7 @@
 // macOS's half of the platform-services seam: clipboard, opening a URL, alerts.
 
 #include "PlatformServices.h"
+#include "SystemLocale.h"
 #include "TestDialog.h"
 
 #include <cstdint>
@@ -590,6 +591,31 @@ void postToUiThread(std::function<void()> work) {
 
 bool isUiThread() {
   return [NSThread isMainThread];
+}
+
+} // namespace basalt
+
+// --- The desktop's language --------------------------------------------------
+
+namespace basalt {
+
+// `characterDirectionForLanguage:` is ICU's own answer, which is what every
+// Cocoa application uses to decide whether to mirror -- so an app on this host
+// mirrors exactly when the desktop around it does. Asking the language rather
+// than the full identifier is deliberate: `ar_EG` and `ar` read the same way,
+// and the territory never decides direction.
+SystemLocale systemLocale() {
+  SystemLocale locale;
+  NSLocale *const current = NSLocale.currentLocale;
+  locale.identifier = current.localeIdentifier.UTF8String != nullptr
+      ? current.localeIdentifier.UTF8String
+      : "";
+  NSString *const language = [current objectForKey:NSLocaleLanguageCode];
+  if (language != nil) {
+    locale.rightToLeft = [NSLocale characterDirectionForLanguage:language] ==
+        NSLocaleLanguageDirectionRightToLeft;
+  }
+  return locale;
 }
 
 } // namespace basalt

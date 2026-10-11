@@ -1,6 +1,7 @@
 // Linux's half of the platform-services seam: clipboard, opening a URI, alerts.
 
 #include "PlatformServices.h"
+#include "SystemLocale.h"
 #include "ShareFallback.h"
 #include "TextSelection.h"
 // For `quitHost`, which the `quit` role goes through so a quit handler is asked.
@@ -916,6 +917,32 @@ bool isUiThread() {
   // asking that rather than remembering a thread id keeps this true in a test
   // binary that never starts a loop -- where the honest answer is "no".
   return g_main_context_is_owner(g_main_context_default()) != 0;
+}
+
+} // namespace basalt
+
+// --- The desktop's language --------------------------------------------------
+
+namespace basalt {
+
+// GTK resolves the reading direction itself, from the locale, through a
+// translated string: a right-to-left language's translation of "default:LTR"
+// is "default:RTL", and `gtk_widget_get_default_direction` reads it back. That
+// is the same mechanism every GTK application uses, so an app on this host
+// mirrors exactly when the desktop around it does.
+SystemLocale systemLocale() {
+  SystemLocale locale;
+
+  // The first of GLib's language names, which honours LANGUAGE, LC_ALL,
+  // LC_MESSAGES and LANG in the order the C library does -- and answers "C"
+  // when none of them is set, which is a left-to-right locale with no
+  // territory and is reported as it is rather than hidden.
+  const char *const *names = g_get_language_names();
+  if (names != nullptr && names[0] != nullptr) {
+    locale.identifier = names[0];
+  }
+  locale.rightToLeft = gtk_widget_get_default_direction() == GTK_TEXT_DIR_RTL;
+  return locale;
 }
 
 } // namespace basalt

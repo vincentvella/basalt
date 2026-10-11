@@ -39,6 +39,35 @@ falls back or silently does nothing; the API appears to work and simply has no
 effect. `Clipboard` and `Vibration` use `getEnforcing`, which throws at import,
 so anything importing them dies at startup.
 
+- ~~**`I18nManager` knew neither the language nor which way it reads.**~~
+  Fixed 2026-10-10 on all three hosts. `getConstants()` answered
+  `localeIdentifier: ""` and `isRTL: false` unless an app had called
+  `forceRTL`, and -- the half that mattered more -- every host passed
+  `LayoutDirection::LeftToRight` to Yoga whatever the flag said. So an app in
+  Arabic laid out left to right, and an app that forced the flag and reloaded,
+  which is what React Native's documentation says to do, got a layout that
+  disagreed with its own flag.
+
+  The reason recorded in the code was that "deciding it from the system locale
+  would need a locale database this does not have". That is true of parsing a
+  locale *name* and not of the question: every desktop publishes the reading
+  direction, and each host now asks through the call its own applications
+  mirror from -- `gtk_widget_get_default_direction`, which GTK resolves from a
+  translated string; `+[NSLocale characterDirectionForLanguage:]`, which is
+  ICU's data; and `LOCALE_IREADINGLAYOUT`, where 1 is right to left.
+
+  The precedence between the three controls is React Native's and is in
+  `core/SystemLocale.h` with unit tests: `allowRTL(false)` wins over
+  everything, `forceRTL(true)` wins over the locale, and `forceRTL(false)`
+  clears the force rather than forcing the other way.
+
+  **What is still left to right is the text inside it.** A paragraph resolves
+  `textAlign: 'start'` against its own content's direction, not the layout's,
+  so Latin text in a mirrored app stays at the left edge where iOS would also
+  leave it and Android would not. `ParagraphAttributes` has nowhere to carry
+  the layout direction today; `layoutMetrics.layoutDirection` is what would
+  feed it, and no host reads that field. Recorded in [text.md](text.md).
+
 - ~~**`AppState` told an app nothing at all.**~~ Fixed 2026-10-10 on all three
   hosts, and found by the same method as `Dimensions` next door: logging what
   an app reads. `AppState.currentState` was the empty string, which is not one

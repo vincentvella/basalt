@@ -58,6 +58,7 @@
 #include "Win32Packaging.h"
 #include "PointerButtons.h"
 #include "WindowControl.h"
+#include "SystemLocale.h"
 #include "WindowHost.h"
 #include "Win32RunLoopObserver.h"
 #include "Win32Snapshot.h"
@@ -306,7 +307,14 @@ LayoutConstraints constraintsFor(int width, int height) {
   return LayoutConstraints{
       .minimumSize = size,
       .maximumSize = size,
-      .layoutDirection = LayoutDirection::LeftToRight,
+      // The desktop's own reading direction, or whatever `I18nManager` was
+      // told. This was `LeftToRight` unconditionally until 2026-10-10, so an
+      // app in Arabic -- or one calling `forceRTL(true)` and reloading, which
+      // is what React Native's documentation says to do -- laid out
+      // left-to-right with a flag that claimed otherwise. See
+      // core/SystemLocale.h.
+      .layoutDirection = basalt::layoutIsRightToLeft() ? LayoutDirection::RightToLeft
+                                                       : LayoutDirection::LeftToRight,
   };
 }
 
@@ -2309,6 +2317,10 @@ int main(int argc, char **argv) {
     basalt::postToUiThread(
         [scheme] { basalt::titleBar().setDarkMode(scheme == basalt::ColorScheme::Dark); });
   });
+
+  // Which language this desktop is in and which way it reads, asked once. See
+  // core/SystemLocale.h.
+  basalt::setSystemLocale(basalt::systemLocale());
 
   UINT dpi = GetDpiForWindow(gHost.main().window);
   gHost.scaleFactor = dpi >= 96 ? static_cast<int>(dpi / 96) : 1;

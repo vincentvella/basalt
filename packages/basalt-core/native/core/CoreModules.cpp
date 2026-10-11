@@ -1,6 +1,7 @@
 #include "CoreModules.h"
 
 #include "DeviceMetrics.h"
+#include "SystemLocale.h"
 
 #include "ShareFallback.h"
 #include "TestDialog.h"
@@ -241,25 +242,36 @@ I18nState &i18n() {
 
 Object DesktopI18nManagerModule::getConstants(Runtime &rt) {
   I18nState &state = i18n();
-  const std::lock_guard<std::mutex> lock(state.mutex);
+  const SystemLocale locale = lastKnownSystemLocale();
 
   Object constants(rt);
-  // `isRTL` is what the layout actually is. Only `forceRTL` can make it true
-  // here: deciding it from the system locale would need a locale database this
-  // does not have, and guessing wrong flips an app's entire layout.
-  constants.setProperty(rt, "isRTL", state.forceRTL);
-  constants.setProperty(rt, "doLeftAndRightSwapInRTL", state.swapLeftAndRight);
-  // Empty rather than a guess. React Native's JavaScript treats it as opaque
-  // and only apps read it.
-  constants.setProperty(rt, "localeIdentifier", String::createFromUtf8(rt, ""));
+  // `isRTL` is what the layout actually is, and since 2026-10-10 that includes
+  // the desktop's own language: every platform publishes a reading direction,
+  // which is a different question from parsing a locale name. See
+  // core/SystemLocale.h, which also decides the precedence between this and
+  // the two calls below.
+  constants.setProperty(rt, "isRTL", layoutIsRightToLeft());
+  {
+    const std::lock_guard<std::mutex> lock(state.mutex);
+    constants.setProperty(rt, "doLeftAndRightSwapInRTL", state.swapLeftAndRight);
+  }
+  constants.setProperty(rt,
+                        "localeIdentifier",
+                        String::createFromUtf8(rt, locale.identifier));
   return constants;
 }
 
 void DesktopI18nManagerModule::allowRTL(Runtime &rt, bool allow) {
   (void)rt;
   I18nState &state = i18n();
-  const std::lock_guard<std::mutex> lock(state.mutex);
-  state.allowRTL = allow;
+  {
+    const std::lock_guard<std::mutex> lock(state.mutex);
+    state.allowRTL = allow;
+  }
+  // And the copy the layout reads, which is core's: a host building layout
+  // constraints cannot lock this module's state, and the two must not be able
+  // to disagree about which way the app reads.
+  setAllowRTL(allow);
 }
 
 void DesktopI18nManagerModule::forceRTL(Runtime &rt, bool force) {
@@ -267,6 +279,7 @@ void DesktopI18nManagerModule::forceRTL(Runtime &rt, bool force) {
   I18nState &state = i18n();
   const std::lock_guard<std::mutex> lock(state.mutex);
   state.forceRTL = force;
+  setForceRTL(force);
   // Deliberately not restarting or relaying out. On iOS and Android this takes
   // effect after a reload, and React Native's own documentation says so -- an
   // app that flipped direction mid-session would be a surprise rather than a

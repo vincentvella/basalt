@@ -56,6 +56,7 @@
 #import "AppKitFocus.h"
 #import "AppKitTouchDispatcher.h"
 #import "AppKitSnapshot.h"
+#include "SystemLocale.h"
 #import "RnAppKitView.h"
 
 #include "AppearanceModule.h"
@@ -249,7 +250,14 @@ LayoutConstraints constraintsFor(int width, int height) {
   return LayoutConstraints{
       .minimumSize = size,
       .maximumSize = size,
-      .layoutDirection = LayoutDirection::LeftToRight,
+      // The desktop's own reading direction, or whatever `I18nManager` was
+      // told. This was `LeftToRight` unconditionally until 2026-10-10, so an
+      // app in Arabic -- or one calling `forceRTL(true)` and reloading, which
+      // is what React Native's documentation says to do -- laid out
+      // left-to-right with a flag that claimed otherwise. See
+      // core/SystemLocale.h.
+      .layoutDirection = basalt::layoutIsRightToLeft() ? LayoutDirection::RightToLeft
+                                                       : LayoutDirection::LeftToRight,
   };
 }
 
@@ -1239,6 +1247,9 @@ int main(int argc, const char *argv[]) {
     // where that is explained. Handed over the same way GTK hands over the one
     // it reads from GtkSettings, so core/FontScaling.h is the only thing that
     // decides what `allowFontScaling` means.
+    // Which language this desktop is in and which way it reads, asked once and
+    // on this thread. See core/SystemLocale.h.
+    basalt::setSystemLocale(basalt::systemLocale());
     basalt::setSystemFontScale(basalt::appKitTextScale());
 
     // Before ReactHost, so the beat is being induced from the first event on.
