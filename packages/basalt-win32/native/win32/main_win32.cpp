@@ -759,10 +759,25 @@ void dumpTreeIfRequested() {
   }
 }
 
+// Set once the application is on its way out, and read by `reportAppState`.
+//
+// Teardown hides and destroys the window, and Windows reports that the way it
+// reports any other window going away: activation leaves the process and
+// `IsWindowVisible` turns false, while the JavaScript is still running and
+// still listening. So quitting emitted `background` -- an application being
+// told it was minimised as it was being ended, which is not a state it is in
+// and not an event any app wants. The other two hosts never had it, because
+// neither reports anything from its terminate path.
+bool gQuitting = false;
+
 // `AppState`, from the two facts Windows keeps: whether this application is
 // frontmost, and whether its window is minimised. See core/AppStateHost.h for
 // what the pair means.
 void reportAppState(HWND window, bool focused) {
+  if (gQuitting) {
+    return;
+  }
+
   const bool visible = window != nullptr && IsWindowVisible(window) != FALSE &&
       IsIconic(window) == FALSE;
 
@@ -1247,6 +1262,9 @@ void captureBeforeTeardown() {
     return;
   }
   captured = true;
+  // Everything after this point is the application ending, including the
+  // window going away, and `AppState` says nothing about any of it.
+  gQuitting = true;
   dumpTreeIfRequested();
   dumpMenuIfRequested();
   snapshotIfRequested();
@@ -1933,6 +1951,10 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
       // an app closing a window, and quitting on it would mean a preview panel
       // taking the whole application with it.
       if (self == nullptr || self->surfaceId == kSurfaceId) {
+        // An app that closes its own main window through `close()` reaches
+        // teardown here rather than through WM_CLOSE, so this is the other
+        // place that has to stop reporting app state.
+        gQuitting = true;
         PostQuitMessage(0);
         return 0;
       }
