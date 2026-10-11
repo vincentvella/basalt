@@ -245,8 +245,11 @@ RnTextDecorationStyle toDecorationStyle(facebook::react::TextDecorationStyle sty
       return RnTextDecorationStyle::Dotted;
     case facebook::react::TextDecorationStyle::Dashed:
       return RnTextDecorationStyle::Dashed;
+#if BASALT_RN_MINOR >= 87
+    // `wavy` arrived in 0.87, and 0.86 has no such member to name.
     case facebook::react::TextDecorationStyle::Wavy:
       return RnTextDecorationStyle::Wavy;
+#endif
     case facebook::react::TextDecorationStyle::Solid:
       return RnTextDecorationStyle::Solid;
   }

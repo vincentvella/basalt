@@ -111,8 +111,14 @@ NSUnderlineStyle toUnderlineStyle(facebook::react::TextDecorationStyle style) {
       return static_cast<NSUnderlineStyle>(NSUnderlineStyleSingle | NSUnderlineStylePatternDot);
     case facebook::react::TextDecorationStyle::Dashed:
       return static_cast<NSUnderlineStyle>(NSUnderlineStyleSingle | NSUnderlineStylePatternDash);
-    case facebook::react::TextDecorationStyle::Solid:
+#if BASALT_RN_MINOR >= 87
+    // `wavy` arrived in 0.87; 0.86's enum has four members and naming the
+    // fifth does not compile there. The squiggle itself is drawn rather than
+    // asked for, which is why this falls through to a single line: see
+    // RnWavyUnderlineAttributeName.
     case facebook::react::TextDecorationStyle::Wavy:
+#endif
+    case facebook::react::TextDecorationStyle::Solid:
       return NSUnderlineStyleSingle;
   }
   return NSUnderlineStyleSingle;
@@ -336,7 +342,12 @@ NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttribute
   // mapped here to Core Text's one bitmask.
   if (const auto decoration = basalt::textDecoration(textAttributes)) {
     const NSUnderlineStyle style = toUnderlineStyle(decoration->style);
+#if BASALT_RN_MINOR >= 87
     const bool wavy = decoration->style == facebook::react::TextDecorationStyle::Wavy;
+#else
+    // 0.86's enum has no `wavy`, so nothing can ask for one there.
+    const bool wavy = false;
+#endif
     if (decoration->underline && wavy) {
       // Core Text has no wavy pattern, so asking for an underline here would
       // draw a straight line through the squiggle the layout is about to

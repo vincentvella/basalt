@@ -86,9 +86,14 @@ TEST(text_decoration_carries_the_style_for_each_host_to_map) {
   // Unset is solid, which is CSS's default and React Native's.
   EXPECT(textDecoration(attributes)->style == TextDecorationStyle::Solid);
 
+  // `wavy` is 0.87's; 0.86's enum stops at Dashed, and naming the member
+  // there does not compile. The same guard the hosts carry.
   for (const auto style : {TextDecorationStyle::Solid, TextDecorationStyle::Double,
                            TextDecorationStyle::Dotted, TextDecorationStyle::Dashed,
-                           TextDecorationStyle::Wavy}) {
+#if BASALT_RN_MINOR >= 87
+                           TextDecorationStyle::Wavy,
+#endif
+                           TextDecorationStyle::Solid}) {
     attributes.textDecorationStyle = style;
     EXPECT(textDecoration(attributes)->style == style);
   }

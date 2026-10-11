@@ -912,8 +912,11 @@ TEST(gtk_a_decoration_style_maps_to_what_pango_has) {
   EXPECT(underlineOf(std::nullopt) == PANGO_UNDERLINE_SINGLE);
   EXPECT(underlineOf(TextDecorationStyle::Solid) == PANGO_UNDERLINE_SINGLE);
   EXPECT(underlineOf(TextDecorationStyle::Double) == PANGO_UNDERLINE_DOUBLE);
-  // The wavy one a spell checker draws, which is what `wavy` means.
+#if BASALT_RN_MINOR >= 87
+  // The wavy one a spell checker draws, which is what `wavy` means. 0.87's:
+  // the member does not exist in 0.86 and naming it there is a compile error.
   EXPECT(underlineOf(TextDecorationStyle::Wavy) == PANGO_UNDERLINE_ERROR);
+#endif
   // Pango has no pattern for either, so this host draws them itself and asks
   // Pango for nothing: an underline attribute here would put a solid line
   // under the dashes. The pieces are recorded on the layout instead, which the

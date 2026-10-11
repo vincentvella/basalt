@@ -105,8 +105,14 @@ PangoUnderline toPangoUnderline(facebook::react::TextDecorationStyle style) {
   switch (style) {
     case facebook::react::TextDecorationStyle::Double:
       return PANGO_UNDERLINE_DOUBLE;
+#if BASALT_RN_MINOR >= 87
+    // `wavy` arrived in 0.87. React Native 0.86's enum is Solid, Double,
+    // Dotted and Dashed, so naming this member there is a compile error --
+    // which is how the release rehearsal found that this platform had stopped
+    // building against the version Expo installs.
     case facebook::react::TextDecorationStyle::Wavy:
       return PANGO_UNDERLINE_ERROR;
+#endif
     case facebook::react::TextDecorationStyle::Solid:
     case facebook::react::TextDecorationStyle::Dotted:
     case facebook::react::TextDecorationStyle::Dashed:

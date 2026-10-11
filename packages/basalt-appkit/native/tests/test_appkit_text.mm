@@ -833,13 +833,17 @@ TEST(appkit_a_decoration_style_maps_to_core_texts_bitmask) {
               NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDot));
     EXPECT_EQ(underline(TextDecorationStyle::Dashed),
               NSInteger(NSUnderlineStyleSingle | NSUnderlineStylePatternDash));
+#if BASALT_RN_MINOR >= 87
     // And the one Core Text has no pattern for: this host strokes the squiggle
     // itself, so it asks for no underline at all -- an attribute here would
     // draw a straight line through the wave. The colour travels on
     // `RnWavyUnderlineAttributeName` instead, and the next test measures the
     // shape in pixels.
     // -1 is this helper's "no attribute at all", which is the answer.
+    //
+    // `wavy` is 0.87's; 0.86's enum stops at Dashed.
     EXPECT_EQ(underline(TextDecorationStyle::Wavy), NSInteger(-1));
+#endif
   }
 }
 
@@ -1016,6 +1020,7 @@ int underlineBottomEdgeSpread(facebook::react::TextDecorationStyle style) {
 
 } // namespace
 
+#if BASALT_RN_MINOR >= 87
 TEST(appkit_a_wavy_underline_is_not_straight) {
   @autoreleasepool {
     using facebook::react::TextDecorationStyle;
@@ -1037,6 +1042,7 @@ TEST(appkit_a_wavy_underline_is_not_straight) {
     EXPECT(wave >= 3);
   }
 }
+#endif
 
 // `fontVariant`, in Core Text's vocabulary rather than OpenType's.
 //
