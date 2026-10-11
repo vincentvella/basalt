@@ -147,6 +147,12 @@ class RnWin32View {
   // Native's vocabulary.
   void setScrollIndicatorColour(float red, float green, float blue, float alpha);
 
+  // The hairline around the thumb, which `indicatorStyle: 'default'` has and
+  // the other two do not: iOS's default is black with a white border, and that
+  // border is the whole difference between `default` and `black`. A
+  // transparent colour means none, which is what the other two resolve to.
+  void setScrollIndicatorBorderColour(float red, float green, float blue, float alpha);
+
   // --- Appearance ----------------------------------------------------------
 
   // Components are premultiplied-free 0..1, as React Native's colour components
@@ -820,6 +826,13 @@ class RnWin32View {
                                0.0f,
                                0.0f,
                                basalt::kScrollIndicatorAlpha};
+  // And the hairline around it, which only `default` has. Core's answer for
+  // that style, for the same reason: white, and rather more opaque than the
+  // fill so that it separates the thumb from what is behind it.
+  float indicatorBorderColour_[4] = {1.0f,
+                                     1.0f,
+                                     1.0f,
+                                     basalt::kScrollIndicatorBorderAlpha};
 
   bool hidden_ = false;
   bool hidesBackFace_ = false;

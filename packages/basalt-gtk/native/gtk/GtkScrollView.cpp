@@ -718,6 +718,9 @@ void GtkScrollViewManager::updateIndicators(const Entry &entry) {
 
   const ScrollIndicatorColour thumb = scrollIndicatorColourFor(entry.indicatorStyle);
   rn_view_set_scroll_indicator_colour(entry.view, thumb.red, thumb.green, thumb.blue, thumb.alpha);
+  const ScrollIndicatorColour edge = scrollIndicatorBorderColourFor(entry.indicatorStyle);
+  rn_view_set_scroll_indicator_border_colour(entry.view, edge.red, edge.green, edge.blue,
+                                             edge.alpha);
   rn_view_set_scroll_indicators(
       entry.view, vertical.offset, vertical.length, horizontal.offset, horizontal.length);
 }

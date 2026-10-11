@@ -564,6 +564,9 @@ void Win32ScrollViewManager::updateIndicators(const Entry &entry) {
 
   const ScrollIndicatorColour thumb = scrollIndicatorColourFor(entry.indicatorStyle);
   entry.view->setScrollIndicatorColour(thumb.red, thumb.green, thumb.blue, thumb.alpha);
+  const basalt::ScrollIndicatorColour edge =
+      basalt::scrollIndicatorBorderColourFor(entry.indicatorStyle);
+  entry.view->setScrollIndicatorBorderColour(edge.red, edge.green, edge.blue, edge.alpha);
   entry.view->setScrollIndicators(static_cast<float>(vertical.offset),
                                   static_cast<float>(vertical.length),
                                   static_cast<float>(horizontal.offset),

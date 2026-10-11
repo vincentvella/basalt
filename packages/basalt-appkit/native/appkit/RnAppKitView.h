@@ -882,6 +882,16 @@ typedef NS_ENUM(NSInteger, RnAppKitControlKind) {
                                 green:(CGFloat)green
                                  blue:(CGFloat)blue
                                 alpha:(CGFloat)alpha;
+
+// The hairline around the thumb, which `indicatorStyle: 'default'` has and the
+// other two styles do not: iOS's default is black with a white border, and
+// that border is the whole difference between `default` and `black`. A
+// transparent colour means none. Resolved by `core/ScrollIndicator.h`, like
+// the fill, so the three hosts cannot drift.
+- (void)setRnScrollIndicatorBorderColourRed:(CGFloat)red
+                                      green:(CGFloat)green
+                                       blue:(CGFloat)blue
+                                      alpha:(CGFloat)alpha;
 // What that colour is now, for the test suite: the thumb is drawn into a layer
 // a test can rasterise, but reading the colour back is the cheaper assertion.
 - (NSColor *)rnScrollIndicatorColour;

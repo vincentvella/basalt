@@ -2048,10 +2048,10 @@
       "windows": "yes"
     },
     "BaseScrollViewProps.indicatorStyle": {
-      "linux": "partial",
-      "macos": "partial",
-      "windows": "partial",
-      "why": "sv-indicator-default"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": ["indicatorStyle", "scrollIndicatorColourFor"]
     }
   },
   "areas": [

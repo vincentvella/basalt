@@ -417,6 +417,11 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 // `indicatorStyle`, as the colour core resolved it to. Black and translucent
 // until something says otherwise.
 @property(nonatomic) NSColor *rnThumbColour;
+// The hairline around it, which `indicatorStyle: 'default'` has and the other
+// two do not: iOS's default thumb is black with a white border, and that
+// border is the whole difference between `default` and `black`. Nil, or a
+// transparent colour, means none.
+@property(nonatomic) NSColor *rnThumbBorderColour;
 @end
 
 @implementation RnAppKitScrollIndicatorView
@@ -438,6 +443,28 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   CGPathRef path = CGPathCreateWithRoundedRect(bar, radius, radius, NULL);
   CGContextAddPath(context, path);
   CGContextFillPath(context);
+  CGPathRelease(path);
+}
+
+// The hairline, stroked inside the pill it belongs to: a stroke straddles its
+// path, so the rectangle is inset by half the width and the line lands on the
+// thumb rather than half outside it.
+- (void)rnStrokePill:(NSRect)bar inContext:(CGContextRef)context {
+  NSColor *const edge = _rnThumbBorderColour;
+  if (edge == nil || edge.alphaComponent <= 0) {
+    return;
+  }
+  const CGFloat width = basalt::kScrollIndicatorBorderWidth;
+  const NSRect inner = NSInsetRect(bar, width / 2.0, width / 2.0);
+  const CGFloat radius = MAX((CGFloat)0, basalt::kScrollIndicatorThickness / 2.0 - width / 2.0);
+  CGPathRef path = CGPathCreateWithRoundedRect(inner, radius, radius, NULL);
+  CGContextSaveGState(context);
+  CGContextSetRGBStrokeColor(context, edge.redComponent, edge.greenComponent, edge.blueComponent,
+                             edge.alphaComponent);
+  CGContextSetLineWidth(context, width);
+  CGContextAddPath(context, path);
+  CGContextStrokePath(context);
+  CGContextRestoreGState(context);
   CGPathRelease(path);
 }
 
@@ -463,18 +490,20 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
                            thumb.alphaComponent);
 
   if (_rnVerticalLength > 0.0) {
-    [self rnFillPill:NSMakeRect(size.width - thickness - inset,
-                                _rnVerticalOffset,
-                                thickness,
-                                _rnVerticalLength)
-           inContext:context];
+    const NSRect bar = NSMakeRect(size.width - thickness - inset,
+                                  _rnVerticalOffset,
+                                  thickness,
+                                  _rnVerticalLength);
+    [self rnFillPill:bar inContext:context];
+    [self rnStrokePill:bar inContext:context];
   }
   if (_rnHorizontalLength > 0.0) {
-    [self rnFillPill:NSMakeRect(_rnHorizontalOffset,
-                                size.height - thickness - inset,
-                                _rnHorizontalLength,
-                                thickness)
-           inContext:context];
+    const NSRect bar = NSMakeRect(_rnHorizontalOffset,
+                                  size.height - thickness - inset,
+                                  _rnHorizontalLength,
+                                  thickness);
+    [self rnFillPill:bar inContext:context];
+    [self rnStrokePill:bar inContext:context];
   }
 }
 
@@ -575,6 +604,8 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // it. Nil until a prop says otherwise, which the drawing reads as the
   // default.
   NSColor *_rnIndicatorColour;
+  // The hairline around the thumb, which only `indicatorStyle: 'default'` has.
+  NSColor *_rnIndicatorBorderColour;
 }
 
 + (instancetype)viewWithTag:(NSInteger)tag {
@@ -1127,6 +1158,7 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   if (_indicators == nil) {
     _indicators = [[RnAppKitScrollIndicatorView alloc] initWithFrame:self.bounds];
     _indicators.rnThumbColour = _rnIndicatorColour;
+    _indicators.rnThumbBorderColour = _rnIndicatorBorderColour;
     [self addSubview:_indicators positioned:NSWindowAbove relativeTo:nil];
   }
 
@@ -1164,6 +1196,24 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
 
 - (NSColor *)rnScrollIndicatorColour {
   return _rnIndicatorColour;
+}
+
+- (void)setRnScrollIndicatorBorderColourRed:(CGFloat)red
+                                      green:(CGFloat)green
+                                       blue:(CGFloat)blue
+                                      alpha:(CGFloat)alpha {
+  // Held here for the reason the fill is: the overlay is made and thrown away
+  // as the content grows past the viewport and shrinks back inside it, so a
+  // colour kept only there would be lost each time.
+  _rnIndicatorBorderColour = [NSColor colorWithSRGBRed:red green:green blue:blue alpha:alpha];
+  if (_indicators != nil && ![_indicators.rnThumbBorderColour isEqual:_rnIndicatorBorderColour]) {
+    _indicators.rnThumbBorderColour = _rnIndicatorBorderColour;
+    _indicators.needsDisplay = YES;
+  }
+}
+
+- (NSColor *)rnScrollIndicatorBorderColour {
+  return _rnIndicatorBorderColour;
 }
 
 static const char *RnAppKitImageFitName(RnAppKitImageFit fit) {

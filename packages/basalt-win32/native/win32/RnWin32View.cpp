@@ -194,6 +194,13 @@ void RnWin32View::setScrollIndicators(float verticalOffset,
   indicatorHorizontalLength_ = horizontalLength;
 }
 
+void RnWin32View::setScrollIndicatorBorderColour(float red, float green, float blue, float alpha) {
+  indicatorBorderColour_[0] = red;
+  indicatorBorderColour_[1] = green;
+  indicatorBorderColour_[2] = blue;
+  indicatorBorderColour_[3] = alpha;
+}
+
 void RnWin32View::setScrollIndicatorColour(float red, float green, float blue, float alpha) {
   indicatorColour_[0] = red;
   indicatorColour_[1] = green;
@@ -1899,28 +1906,52 @@ void RnWin32View::paintScrollIndicators(ID2D1RenderTarget *target) const {
     return;
   }
 
+  // The hairline around the thumb, which `default` has and the other two do
+  // not. A stroke straddles its own rectangle, so the rounded rect is inset by
+  // half the width and the line lands on the thumb rather than half outside
+  // it -- the same arithmetic the AppKit host uses.
+  ComPtr<ID2D1SolidColorBrush> edgeBrush;
+  const float edgeWidth = static_cast<float>(basalt::kScrollIndicatorBorderWidth);
+  const bool hasEdge = indicatorBorderColour_[3] > 0.0f
+      && SUCCEEDED(target->CreateSolidColorBrush(D2D1::ColorF(indicatorBorderColour_[0],
+                                                              indicatorBorderColour_[1],
+                                                              indicatorBorderColour_[2],
+                                                              indicatorBorderColour_[3]),
+                                                 edgeBrush.GetAddressOf()));
+
   const float radius = thickness / 2.0f;
+  const float edgeRadius = radius - edgeWidth / 2.0f > 0.0f ? radius - edgeWidth / 2.0f : 0.0f;
   if (indicatorVerticalLength_ > 0.0f) {
     const float left = frame_.width - thickness - inset;
-    target->FillRoundedRectangle(
-        D2D1::RoundedRect(D2D1::RectF(left,
-                                      indicatorVerticalOffset_,
-                                      left + thickness,
-                                      indicatorVerticalOffset_ + indicatorVerticalLength_),
-                          radius,
-                          radius),
-        brush.Get());
+    const D2D1_RECT_F bar = D2D1::RectF(left,
+                                        indicatorVerticalOffset_,
+                                        left + thickness,
+                                        indicatorVerticalOffset_ + indicatorVerticalLength_);
+    target->FillRoundedRectangle(D2D1::RoundedRect(bar, radius, radius), brush.Get());
+    if (hasEdge) {
+      const D2D1_RECT_F inner = D2D1::RectF(bar.left + edgeWidth / 2.0f,
+                                            bar.top + edgeWidth / 2.0f,
+                                            bar.right - edgeWidth / 2.0f,
+                                            bar.bottom - edgeWidth / 2.0f);
+      target->DrawRoundedRectangle(
+          D2D1::RoundedRect(inner, edgeRadius, edgeRadius), edgeBrush.Get(), edgeWidth);
+    }
   }
   if (indicatorHorizontalLength_ > 0.0f) {
     const float top = frame_.height - thickness - inset;
-    target->FillRoundedRectangle(
-        D2D1::RoundedRect(D2D1::RectF(indicatorHorizontalOffset_,
-                                      top,
-                                      indicatorHorizontalOffset_ + indicatorHorizontalLength_,
-                                      top + thickness),
-                          radius,
-                          radius),
-        brush.Get());
+    const D2D1_RECT_F bar = D2D1::RectF(indicatorHorizontalOffset_,
+                                        top,
+                                        indicatorHorizontalOffset_ + indicatorHorizontalLength_,
+                                        top + thickness);
+    target->FillRoundedRectangle(D2D1::RoundedRect(bar, radius, radius), brush.Get());
+    if (hasEdge) {
+      const D2D1_RECT_F inner = D2D1::RectF(bar.left + edgeWidth / 2.0f,
+                                            bar.top + edgeWidth / 2.0f,
+                                            bar.right - edgeWidth / 2.0f,
+                                            bar.bottom - edgeWidth / 2.0f);
+      target->DrawRoundedRectangle(
+          D2D1::RoundedRect(inner, edgeRadius, edgeRadius), edgeBrush.Get(), edgeWidth);
+    }
   }
 }
 

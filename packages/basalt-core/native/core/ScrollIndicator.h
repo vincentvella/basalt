@@ -40,12 +40,12 @@ inline constexpr double kScrollIndicatorMinimumLength = 24.0;
 
 // `indicatorStyle`, as React Native's three values.
 //
-// Two of them draw the same thing here, and that is iOS's doing rather than a
-// shortcut: `UIScrollViewIndicatorStyleDefault` is "black with a white border"
-// and `.black` is black alone, so the difference is a border these hosts do not
-// draw. `.white` is the one that matters -- it is what a list over dark content
-// asks for, and a black thumb there is invisible. backlog/scrollview.md records
-// the border, which is why the support row is `partial` rather than done.
+// `UIScrollViewIndicatorStyleDefault` is "black with a white border", `.black`
+// is black alone, and `.white` is the one a list over dark content asks for,
+// where a black thumb is invisible. So the three are two fills and one border,
+// and the border is what tells `default` from `black`: it is a hairline of
+// white around the pill, which is what keeps the default thumb visible over
+// dark and light content both.
 enum class ScrollIndicatorStyle {
   Default,
   Black,
@@ -76,10 +76,33 @@ inline ScrollIndicatorColour scrollIndicatorColourFor(ScrollIndicatorStyle style
     return ScrollIndicatorColour{
         .red = 1.0F, .green = 1.0F, .blue = 1.0F, .alpha = kScrollIndicatorAlpha};
   }
-  // `Default` and `Black` both: see above for why those two are one answer
-  // here.
+  // `Default` and `Black` share a fill and differ by the border below, which
+  // is exactly how iOS's two differ.
   return ScrollIndicatorColour{
       .red = 0.0F, .green = 0.0F, .blue = 0.0F, .alpha = kScrollIndicatorAlpha};
+}
+
+// A hairline, which is what a border around a six-point pill can be without
+// becoming the thumb. One point rather than a fraction: two of the three hosts
+// stroke in logical points and a half-point line lands differently in each.
+inline constexpr double kScrollIndicatorBorderWidth = 1.0;
+
+// Rather more opaque than the fill, for the one job it has: the fill is a wash
+// that lets the content through, and an outline as faint as that would not
+// separate a black thumb from black content behind it.
+inline constexpr float kScrollIndicatorBorderAlpha = 0.6F;
+
+// The border around the thumb, or nothing for the two styles that have none.
+//
+// Only `Default` has one. `black` and `white` are the styles an app chooses
+// *because* it knows what is behind the thumb, and iOS draws neither with an
+// outline; adding one to either would be this platform inventing a look.
+inline ScrollIndicatorColour scrollIndicatorBorderColourFor(ScrollIndicatorStyle style) {
+  if (style == ScrollIndicatorStyle::Default) {
+    return ScrollIndicatorColour{
+        .red = 1.0F, .green = 1.0F, .blue = 1.0F, .alpha = kScrollIndicatorBorderAlpha};
+  }
+  return ScrollIndicatorColour{};
 }
 
 struct ScrollIndicator {

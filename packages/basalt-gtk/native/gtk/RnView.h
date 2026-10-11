@@ -518,6 +518,16 @@ void rn_view_set_scroll_indicator_colour(RnView *self,
                                          float green,
                                          float blue,
                                          float alpha);
+
+// The hairline around the thumb, which `indicatorStyle: 'default'` has and the
+// other two do not: iOS's default is black with a white border, and that
+// border is the whole difference between `default` and `black`. Transparent
+// means none, which is what the other two styles resolve to.
+void rn_view_set_scroll_indicator_border_colour(RnView *self,
+                                                float red,
+                                                float green,
+                                                float blue,
+                                                float alpha);
 void rn_view_get_scroll_offset(RnView *self, double *offset_x, double *offset_y);
 
 // A textual description of the widget tree rooted here, one indented line per

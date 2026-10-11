@@ -291,18 +291,28 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   `RCTScrollViewComponentView` skips that prop entirely while `centerContent` is
   set, the two being the same channel.
 
-  ~~`indicatorStyle`~~ is `partial` as of 2026-10-10, and partial is the honest
-  answer rather than a half-finished one. The three values arrive and
-  `core/ScrollIndicator.h` resolves each to a colour, which every host now draws
-  instead of its own hardcoded black -- so `white` is white, which is the whole
-  use of the prop: a list over dark content had an invisible thumb.
+  ~~`indicatorStyle`~~ is done as of 2026-10-11, in two goes. The three values
+  arrive and `core/ScrollIndicator.h` resolves each to a colour, which every
+  host draws instead of its own hardcoded black -- so `white` is white, which
+  is the use an app has for the prop: a list over dark content had an
+  invisible thumb.
 
-  What it does not have is the difference between `default` and `black`. On iOS
-  that is `UIScrollViewIndicatorStyleDefault` being "black with a white border"
-  against `.black` being black alone, so the two differ by a border these hosts
-  do not draw and both map to the same colour here. Drawing the border is what
-  would close it: a second rounded rectangle a point larger behind the thumb, in
-  each of the three paint paths.
+  **The border came second**, and it is the whole difference between `default`
+  and `black`: `UIScrollViewIndicatorStyleDefault` is "black with a white
+  border" against `.black` being black alone, so a default thumb stays visible
+  over dark content where a plain black one disappears into it. Core answers a
+  second colour, `scrollIndicatorBorderColourFor`, which is white for `default`
+  and nothing for the other two -- an app that names `black` or `white` knows
+  what is behind the thumb, and iOS outlines neither.
+
+  Each host strokes it inside the pill rather than around it: a stroke
+  straddles its own path, so the rectangle is inset by half the line's width
+  and the hairline lands on the thumb instead of half outside it. GTK is a
+  border node in the thumb's rounded rectangle, AppKit a `CGContextStrokePath`
+  after the fill, Windows a `DrawRoundedRectangle` after the
+  `FillRoundedRectangle`. The alpha is higher than the fill's on purpose: the
+  fill is a wash that lets content through, and an outline as faint as that
+  would not separate a black thumb from black content.
 
   The colour reaches the view layer as four floats rather than as the enum,
   which is the division those layers are built on: each is compiled and tested
