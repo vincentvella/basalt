@@ -29,11 +29,13 @@
 #pragma once
 
 #include "ActionSheet.h"
+#include "AppStateHost.h"
 #include "DeviceMetrics.h"
 #include "PlatformServices.h"
 #include "SettingsStore.h"
 
 #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+#include <react/coremodules/AppStateModule.h>
 #include <react/coremodules/DeviceInfoModule.h>
 
 #include <optional>
@@ -216,6 +218,32 @@ class DesktopSettingsManagerModule
 // and the event -- `didUpdateDimensions`, which is how `Dimensions.js` learns
 // that a window was resized, and without which every layout computed from
 // `Dimensions.get('window')` is stale the moment somebody drags a corner.
+// `AppState`, whose every method ReactCxxPlatform leaves empty: `getConstants`
+// answers `initialAppState: ""`, `getCurrentAppState` calls neither of its
+// callbacks, and nothing ever emits a change. An app pausing a poll while it is
+// not in front, or refetching when it comes back, was told nothing at all. See
+// core/AppStateHost.h for what the three states mean on a desktop.
+class DesktopAppStateModule
+    : public facebook::react::NativeAppStateCxxSpec<DesktopAppStateModule> {
+ public:
+  explicit DesktopAppStateModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker);
+  ~DesktopAppStateModule() override;
+
+  static constexpr const char *kModuleName = "AppState";
+
+  facebook::react::AppStateConstants getConstants(facebook::jsi::Runtime &rt);
+  void getCurrentAppState(
+      facebook::jsi::Runtime &rt,
+      const facebook::react::AsyncCallback<facebook::react::AppState> &success,
+      facebook::jsi::Function error);
+  // React Native's `NativeEventEmitter` calls both, and this platform's events
+  // go through `RCTDeviceEventEmitter` rather than through the module -- see
+  // AppState.js, which passes null for anything that is not iOS. Nothing to
+  // count, so nothing to do.
+  void addListener(facebook::jsi::Runtime &rt, const std::string &eventName);
+  void removeListeners(facebook::jsi::Runtime &rt, double count);
+};
+
 class DesktopDeviceInfoModule
     : public facebook::react::NativeDeviceInfoCxxSpec<DesktopDeviceInfoModule> {
  public:

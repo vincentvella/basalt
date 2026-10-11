@@ -26,7 +26,8 @@
     },
     "AppState": {
       "asked": "getEnforcing",
-      "answeredBy": "react-native"
+      "answeredBy": "basalt",
+      "effect": "Upstream's module is empty in every method -- `initialAppState: \"\"`, a `getCurrentAppState` that calls neither callback, and no events -- so `AppState.currentState` was the empty string. This one reports active, inactive and background from the window's focus and whether it is on screen."
     },
     "Appearance": {
       "asked": "get",

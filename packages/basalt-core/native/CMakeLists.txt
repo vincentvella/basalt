@@ -76,6 +76,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_animation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_image_progress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_device_metrics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_app_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_font_fitting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_bounds.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_visible_position.cpp
@@ -227,6 +228,7 @@ if(DEFINED RN_DIR)
     core/ImageCache.cpp
     core/ScrollBounds.cpp
     core/ScrollIndicator.cpp
+    core/AppStateHost.cpp
     core/DeviceMetrics.cpp
     core/ScrollSnap.cpp
     # Keeping the content still while items are inserted above it.

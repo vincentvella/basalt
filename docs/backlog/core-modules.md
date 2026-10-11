@@ -39,6 +39,37 @@ falls back or silently does nothing; the API appears to work and simply has no
 effect. `Clipboard` and `Vibration` use `getEnforcing`, which throws at import,
 so anything importing them dies at startup.
 
+- ~~**`AppState` told an app nothing at all.**~~ Fixed 2026-10-10 on all three
+  hosts, and found by the same method as `Dimensions` next door: logging what
+  an app reads. `AppState.currentState` was the empty string, which is not one
+  of React Native's own states, and `addEventListener('change')` never fired --
+  ReactCxxPlatform's module has a `// TODO: T160890586` where the work would
+  go and four empty methods under it.
+
+  **The three states, on a desktop.** React Native's are iOS's, so the mapping
+  had to be chosen, and it is react-native-macos's:
+
+      active      the application is frontmost
+      inactive    it is running and visible, and something else has focus
+      background  nothing of it is on screen: hidden, or every window minimised
+
+  `inactive` on a phone is a transition -- a call arriving over the app -- and
+  the desktop analogue is another window being in front, which is the same
+  thing an app wants it for: do less, stay ready.
+
+  The decision is `core/AppStateHost.h`'s, from two facts, because all three
+  hosts have exactly those two and differ only in how they hear about them:
+  `notify::is-active` and the toplevel's state on GTK,
+  `applicationDidBecomeActive` and its four siblings on AppKit, `WM_ACTIVATEAPP`
+  and `WM_SIZE`'s minimise on Windows.
+
+  **What is not tested end to end is `inactive`**, and that is a limit of the
+  harness rather than of the hosts: a scenario cannot click on another
+  application. What it can do is minimise the window through this platform's
+  own API, which is `background`, and that is what the scenario asserts
+  alongside `active` at startup. The mapping itself -- including that invisible
+  beats focused -- is a unit test in core.
+
 - ~~**`Dimensions` and `PixelRatio` answered with a fiction.**~~ Fixed
   2026-10-10 on all three hosts, and found by logging what an app reads rather
   than by any audit: `scripts/audit_modules.py` records `DeviceInfo` as

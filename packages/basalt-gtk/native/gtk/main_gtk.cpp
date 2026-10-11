@@ -812,6 +812,26 @@ void showLogBoxSurface(Host *host, const std::string &appKey) {
 
 // The frame clock only exists once a widget is realised, so the choreographer
 // cannot be attached at construction time.
+// `AppState`, from the two facts GTK keeps in two places: whether this window
+// is the active one, and whether the window manager has minimised it. See
+// core/AppStateHost.h for what the pair means.
+void reportAppState(GtkWindow *window) {
+  if (window == nullptr) {
+    return;
+  }
+  const bool focused = gtk_window_is_active(window) != FALSE;
+  bool visible = gtk_widget_get_visible(GTK_WIDGET(window)) != FALSE;
+  if (GdkSurface *const surface = gtk_native_get_surface(GTK_NATIVE(window))) {
+    if (GDK_IS_TOPLEVEL(surface)) {
+      const GdkToplevelState state = gdk_toplevel_get_state(GDK_TOPLEVEL(surface));
+      if ((state & GDK_TOPLEVEL_STATE_MINIMIZED) != 0) {
+        visible = false;
+      }
+    }
+  }
+  basalt::notifyAppState(basalt::appStateFor(focused, visible));
+}
+
 void onRootMapped(GtkWidget *widget, gpointer data) {
   auto *host = static_cast<Host *>(data);
   if (host->choreographer != nullptr) {
@@ -866,6 +886,11 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         // `Dimensions` and `PixelRatio`, which ReactCxxPlatform answers with a
         // hardcoded 1280x720 and a zero scale. Ours answers with the window
         // this host actually made; see core/DeviceMetrics.h.
+        // `AppState`, whose every method upstream leaves empty. See
+        // core/AppStateHost.h.
+        if (name == basalt::DesktopAppStateModule::kModuleName) {
+          return std::make_shared<basalt::DesktopAppStateModule>(jsInvoker);
+        }
         if (name == basalt::DesktopDeviceInfoModule::kModuleName) {
           return std::make_shared<basalt::DesktopDeviceInfoModule>(jsInvoker);
         }
@@ -1229,6 +1254,42 @@ HostWindow *createHostWindow(Host *host,
 
   g_signal_connect(made->window, "notify::maximized", G_CALLBACK(onWindowState), nullptr);
   g_signal_connect(made->window, "notify::fullscreened", G_CALLBACK(onWindowState), nullptr);
+
+  // `AppState`: whether this application is the one in front, and whether any
+  // of it is on screen. The main window's, since React Native's AppState is
+  // about the application rather than about a window -- and the app's window
+  // is the one it means. See core/AppStateHost.h.
+  //
+  // Two signals, because GTK4 reports the two facts in different places: the
+  // window knows whether it is active, and the *surface* knows whether the
+  // window manager has minimised it. A surface exists only once the window is
+  // realised, so that half is connected from "realize".
+  if (isMainWindow) {
+    g_signal_connect(made->window,
+                     "notify::is-active",
+                     G_CALLBACK(+[](GObject *window, GParamSpec * /*spec*/, gpointer /*data*/) {
+                       reportAppState(GTK_WINDOW(window));
+                     }),
+                     nullptr);
+    g_signal_connect(made->window,
+                     "realize",
+                     G_CALLBACK(+[](GtkWidget *widget, gpointer /*data*/) {
+                       GdkSurface *const surface = gtk_native_get_surface(GTK_NATIVE(widget));
+                       if (surface == nullptr) {
+                         return;
+                       }
+                       g_signal_connect(
+                           surface,
+                           "notify::state",
+                           G_CALLBACK(+[](GObject * /*surface*/,
+                                          GParamSpec * /*spec*/,
+                                          gpointer window) {
+                             reportAppState(GTK_WINDOW(window));
+                           }),
+                           widget);
+                     }),
+                     nullptr);
+  }
   // The animation choreographer runs on a frame clock, and a widget only has
   // one once it is realised -- hence the "map". The *main* window's, and only
   // its: attaching to every window's meant the last one opened stole the clock

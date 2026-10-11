@@ -7966,6 +7966,93 @@ def test_dimensions(bundle: Path) -> str:
             f"{scale:g}x, and a resize that said so")
 
 
+def test_app_state(bundle: Path) -> str:
+    """`AppState` says what the application is doing, which was nothing at all.
+
+    ReactCxxPlatform provides the module and leaves every method empty:
+    `getConstants` answers `initialAppState: ""`, `getCurrentAppState` calls
+    neither of its callbacks, and nothing emits a change. So
+    `AppState.currentState` was the empty string -- not `'active'`, not even
+    `'unknown'` -- and `addEventListener('change')` never fired, on all three
+    hosts. An app pausing a poll while it is not in front, or refetching when
+    it comes back, was told nothing.
+
+    Two assertions, and the second is the one that needs a gesture: the state
+    at startup has to be `active`, and minimising the window has to produce
+    `background`. The app minimises *itself*, through this platform's own
+    window API, because that is the one state change a scenario can cause --
+    it cannot click on another application, and nothing else takes an app off
+    the screen.
+
+    `inactive`, the third state, is another application taking focus while this
+    one stays visible. Both hosts implement it from the same signal and no
+    scenario here can cause it; backlog/core-modules.md records that.
+    """
+    app = bundle_app(bundle.parent, "appstate")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "7000"
+    for name in ("BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_MENU",
+                 "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    # The button, measured rather than guessed.
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        measuring = dict(env)
+        measuring["BASALT_DUMP_TREE"] = str(dump)
+        measuring["BASALT_QUIT_AFTER_MS"] = "3000"
+        measuring.pop("BASALT_TEST_TAP", None)
+        first = run_host_process(
+            [str(HOST), str(app), "BasaltAppState"],
+            cwd=REPO, env=measuring, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(first.stderr)
+        check_output(first.stderr, first.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text(encoding="utf-8")
+        logged = first.stdout + first.stderr
+
+    if "appstate at import: active" not in logged:
+        found = re.search(r"appstate at import: (\S*)", logged)
+        raise Failure(
+            "`AppState.currentState` is "
+            f"{found.group(1) if found else 'nothing at all'} at startup and "
+            "should be 'active'. Upstream's module answers the empty string, "
+            f"which is not one of React Native's own states.\n{tail_text(logged)}"
+        )
+    if "appstate -> " in logged:
+        raise Failure(
+            "the app reported a state change with nothing to change it.\n"
+            + tail_text(logged)
+        )
+
+    button = [(position, size) for body, position, size in _views(tree) if "bg=#0f766e" in body]
+    if len(button) != 1:
+        raise Failure(f"{len(button)} buttons in the tree; the app has one.\n{tree}")
+    (x, y), (width, height) = button[0]
+    env["BASALT_TEST_TAP"] = f"{round(x + width / 2)},{round(y + height / 2)}"
+
+    second = run_host_process(
+        [str(HOST), str(app), "BasaltAppState"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(second.stderr)
+    check_output(second.stderr, second.returncode)
+    after = second.stdout + second.stderr
+
+    if "appstate -> background" not in after:
+        raise Failure(
+            "minimising the window told `AppState` nothing. Nothing else takes "
+            "an app off the screen, so an app that stops work while it is not "
+            f"visible never starts again either.\n{tail_text(after)}"
+        )
+
+    return "active at startup, and background when the window went away"
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -8425,6 +8512,7 @@ SCENARIOS = [
     ("the ScrollView props that decide where a fling ends", test_scroll_snapping),
     ("a disabled Switch that is on still looks on", test_disabled_switch_colour),
     ("Dimensions and PixelRatio report the real window", test_dimensions),
+    ("AppState says what the application is doing", test_app_state),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),

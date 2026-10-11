@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (22):**
+**Open (23):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -52,6 +52,35 @@ workaround and the comment explaining it, which is already written.
     of them
 22. `DeviceInfoModule` answers `Dimensions` with a hardcoded 1280x720 and has no
     seam to wire
+23. `AppStateModule` is empty in every method, and `AppState.currentState` is
+    therefore the empty string
+
+- **`AppStateModule` is empty in every method.** The other half of the same
+  afternoon as the `DeviceInfo` entry above, and the same shape:
+
+      AppStateConstants AppStateModule::getConstants(jsi::Runtime&) {
+        // TODO: T160890586 Wire up AppState implementation to use real data
+        return AppStateConstants{.initialAppState = ""};
+      }
+      void AppStateModule::getCurrentAppState(..., const AsyncCallback<AppState>&, jsi::Function) {}
+      void AppStateModule::addListener(...) {}
+      void AppStateModule::removeListeners(...) {}
+
+  `AppState.currentState` is therefore `""`, which is not one of React Native's
+  own states -- `AppStateStatus` is `active`, `background`, `inactive`,
+  `unknown` or `extension` -- and an app comparing against any of them compares
+  against nothing. `getCurrentAppState` calling neither of its callbacks is the
+  worse half: `AppState.js` uses it to correct `currentState` at startup, so
+  the empty string stands, and a promise wrapped around it never settles.
+
+  The module takes no constructor arguments and holds no state, so again there
+  is no seam: a host cannot tell it anything.
+
+  **Answered here**, by `basalt::DesktopAppStateModule`, from the two facts
+  every desktop has: whether the application is frontmost and whether any of it
+  is on screen. [core-modules.md](core-modules.md) has the mapping and
+  [core/AppStateHost.h](https://github.com/vincentvella/basalt/blob/main/packages/basalt-core/native/core/AppStateHost.h)
+  the reasoning.
 
 - **`DeviceInfoModule` answers `Dimensions` with a hardcoded 1280x720, and
   there is no seam to wire it to anything.** ReactCxxPlatform's

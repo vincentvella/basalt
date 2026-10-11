@@ -336,6 +336,11 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         // `Dimensions` and `PixelRatio`, which ReactCxxPlatform answers with a
         // hardcoded 1280x720 and a zero scale. Ours answers with the window
         // this host actually made; see core/DeviceMetrics.h.
+        // `AppState`, whose every method upstream leaves empty. See
+        // core/AppStateHost.h.
+        if (name == basalt::DesktopAppStateModule::kModuleName) {
+          return std::make_shared<basalt::DesktopAppStateModule>(jsInvoker);
+        }
         if (name == basalt::DesktopDeviceInfoModule::kModuleName) {
           return std::make_shared<basalt::DesktopDeviceInfoModule>(jsInvoker);
         }
@@ -772,6 +777,49 @@ void shutdown() {
 // Every window, including the app's own. What this does *not* cover is Cmd-Q:
 // terminating goes through applicationShouldTerminate:, which never asks a
 // window whether it minds -- that is the handler further down.
+// `AppState`, from the two facts AppKit keeps: whether this application is
+// frontmost, and whether any of it is on screen. Hiding the app (Cmd-H) and
+// miniaturising every window are both "background"; losing focus to another
+// application while still visible is "inactive". See core/AppStateHost.h.
+- (void)rnReportAppState {
+  const bool focused = NSApp.isActive;
+  bool visible = !NSApp.isHidden;
+  if (visible) {
+    visible = NO;
+    for (NSWindow *window in NSApp.windows) {
+      if (window.isVisible && !window.isMiniaturized) {
+        visible = YES;
+        break;
+      }
+    }
+  }
+  basalt::notifyAppState(basalt::appStateFor(focused, visible));
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification {
+  [self rnReportAppState];
+}
+
+- (void)applicationDidResignActive:(NSNotification *)notification {
+  [self rnReportAppState];
+}
+
+- (void)applicationDidHide:(NSNotification *)notification {
+  [self rnReportAppState];
+}
+
+- (void)applicationDidUnhide:(NSNotification *)notification {
+  [self rnReportAppState];
+}
+
+- (void)windowDidMiniaturize:(NSNotification *)notification {
+  [self rnReportAppState];
+}
+
+- (void)windowDidDeminiaturize:(NSNotification *)notification {
+  [self rnReportAppState];
+}
+
 - (BOOL)windowShouldClose:(NSWindow *)sender {
   for (const auto &candidate : gHost.windows) {
     if (candidate->window != sender) {

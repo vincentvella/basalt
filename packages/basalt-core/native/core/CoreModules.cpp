@@ -595,6 +595,53 @@ Value DesktopShareModule::share(Runtime &rt, Object content, std::optional<Strin
 }
 
 // ---------------------------------------------------------------------------
+// AppState
+// ---------------------------------------------------------------------------
+
+DesktopAppStateModule::DesktopAppStateModule(
+    std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
+    : facebook::react::NativeAppStateCxxSpec<DesktopAppStateModule>(std::move(jsInvoker)) {
+  setAppStateListener([this](AppStateKind state) {
+    const std::string name = appStateName(state);
+    emitDeviceEvent("appStateDidChange",
+                    [name](Runtime &runtime, std::vector<Value> &args) {
+                      Object payload(runtime);
+                      payload.setProperty(runtime, "app_state",
+                                          String::createFromUtf8(runtime, name));
+                      args.emplace_back(std::move(payload));
+                    });
+  });
+}
+
+DesktopAppStateModule::~DesktopAppStateModule() {
+  // The listener captured `this`; a surface torn down and started again builds
+  // a new module.
+  setAppStateListener(nullptr);
+}
+
+facebook::react::AppStateConstants DesktopAppStateModule::getConstants(Runtime & /*rt*/) {
+  facebook::react::AppStateConstants constants;
+  constants.initialAppState = appStateName(currentAppState());
+  return constants;
+}
+
+void DesktopAppStateModule::getCurrentAppState(
+    Runtime & /*rt*/,
+    const facebook::react::AsyncCallback<facebook::react::AppState> &success,
+    facebook::jsi::Function /*error*/) {
+  // Answered rather than dropped, which is the whole of what upstream's does:
+  // `AppState.js` calls this once at startup to populate `currentState`, and a
+  // callback that is never called leaves it as whatever `getConstants` said.
+  facebook::react::AppState state;
+  state.app_state = appStateName(currentAppState());
+  success(std::move(state));
+}
+
+void DesktopAppStateModule::addListener(Runtime & /*rt*/, const std::string & /*eventName*/) {}
+
+void DesktopAppStateModule::removeListeners(Runtime & /*rt*/, double /*count*/) {}
+
+// ---------------------------------------------------------------------------
 // Dimensions and PixelRatio
 // ---------------------------------------------------------------------------
 

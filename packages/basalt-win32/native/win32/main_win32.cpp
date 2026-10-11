@@ -530,6 +530,11 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         // `Dimensions` and `PixelRatio`, which ReactCxxPlatform answers with a
         // hardcoded 1280x720 and a zero scale. Ours answers with the window
         // this host actually made; see core/DeviceMetrics.h.
+        // `AppState`, whose every method upstream leaves empty. See
+        // core/AppStateHost.h.
+        if (name == basalt::DesktopAppStateModule::kModuleName) {
+          return std::make_shared<basalt::DesktopAppStateModule>(jsInvoker);
+        }
         if (name == basalt::DesktopDeviceInfoModule::kModuleName) {
           return std::make_shared<basalt::DesktopDeviceInfoModule>(jsInvoker);
         }
@@ -744,6 +749,15 @@ void dumpTreeIfRequested() {
   } else {
     std::fprintf(stderr, "could not write %s\n", path);
   }
+}
+
+// `AppState`, from the two facts Windows keeps: whether this application is
+// frontmost, and whether its window is minimised. See core/AppStateHost.h for
+// what the pair means.
+void reportAppState(HWND window, bool focused) {
+  const bool visible = window != nullptr && IsWindowVisible(window) != FALSE &&
+      IsIconic(window) == FALSE;
+  basalt::notifyAppState(basalt::appStateFor(focused, visible));
 }
 
 // BASALT_SNAPSHOT: render the surface to a PNG on the way out.
@@ -1388,9 +1402,24 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
       basalt::notifyWindowBoundsChanged();
       return 0;
 
+    // `AppState`: whether this application is the one in front. Windows sends
+    // this to every top-level window of the process when it gains or loses
+    // activation to *another process*, which is the question React Native's
+    // AppState asks -- clicking between two windows of this app is not a
+    // change. See core/AppStateHost.h.
+    case WM_ACTIVATEAPP:
+      reportAppState(window, wparam != FALSE);
+      return 0;
+
     case WM_SIZE: {
       if (self == nullptr) {
         break;
+      }
+      // Minimised is the desktop's "nothing of it is on screen", and restoring
+      // is the way back. `wparam` says which; the activation half is
+      // WM_ACTIVATEAPP above, and `reportAppState` combines the two.
+      if (wparam == SIZE_MINIMIZED || wparam == SIZE_RESTORED || wparam == SIZE_MAXIMIZED) {
+        reportAppState(window, GetActiveWindow() == window);
       }
       const int width = LOWORD(lparam);
       const int height = HIWORD(lparam);
