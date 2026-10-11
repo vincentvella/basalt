@@ -207,7 +207,6 @@ set(BASALT_WIN32_TEST_SOURCES
   tests/test_win32_hittest.cpp
   # DirectWrite measurement, against RnWin32TextLayout alone.
   tests/test_win32_text.cpp
-  tests/test_win32_selection.cpp
   # The resize modes, against a real bitmap and real pixels.
   tests/test_win32_image.cpp
   # The UIA mapping. The React Native role name is what the cross-platform diff
@@ -353,6 +352,14 @@ if(TARGET basalt_core)
     # This host is still the only one that can check the table, and the
     # Windows CI shards, which do have React Native, still do.
     tests/test_win32_key_events.cpp
+    # Selecting text with a pointer, here for the same reason and found the
+    # same way: it drives a Win32TouchDispatcher and asserts against
+    # core/TextSelection.h, both of which speak React Native, and it sat in
+    # the unconditional set above from the day it was written. The MSBuild job
+    # is the only build without a React Native, so it failed there and nowhere
+    # else -- the second time this file has learnt that, which is why the
+    # rule is now in the comment above rather than in a commit message.
+    tests/test_win32_selection.cpp
     win32/Win32KeyEvents.cpp
     # A package's own tests; see the AppKit package for why they sit with core's.
     ${BASALT_PACKAGE_TESTS}

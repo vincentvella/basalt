@@ -34,6 +34,7 @@
   },
   "bin": {
     "basalt": "dist/cli/basalt.js",
+    "basalt-core": "dist/cli/basalt.js",
     "basalt-bundle": "dist/cli/bundle-cli.js"
   },
   "types": "dist/src/index.d.ts",

@@ -22,10 +22,22 @@ const VERBS: Readonly<Record<string, (argv: string[]) => number>> = {
 // namespace where it was not. The rename rewrote this string along with every
 // other mention of the old package name, and it is the one place that wanted
 // the command a person types.
-const USAGE = `basalt <command> [directory]
+//
+// Both names run this file, and that is not tidiness. `npx <name>` resolves a
+// *package*, and runs its bin only when one of them is named after it -- with
+// `basalt` and `basalt-bundle` alone, `npx basalt-core init` answered "could
+// not determine executable to run", which is how the release rehearsal
+// failed. The other spelling is worse: `basalt` is a real package on npm, a
+// BSON parser belonging to somebody else, so `npx basalt init` in an app that
+// has not installed this one yet offers to fetch *that*. So the documented
+// command is `npx basalt-core`, which can only mean this package, and
+// `basalt` stays for the local bin an installed app already has on its path.
+const USAGE = `npx basalt-core <command> [directory]
 
   init     configure an app to build for the desktop
   doctor   report what a build needs, changing nothing
+
+Once the package is installed, \`basalt\` is the same command.
 `;
 
 export function main(argv: string[]): number {

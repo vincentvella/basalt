@@ -69,7 +69,7 @@ Hermes uses `__builtin_expect`, which MSVC's compiler does not have.
 </Tabs>
 
 :::tip[Check before you build]
-`npx basalt doctor` asks all of these questions in seconds and changes
+`npx basalt-core doctor` asks all of these questions in seconds and changes
 nothing. A first build compiles Hermes and React Native's C++ from source and
 takes tens of minutes, and without this every missing prerequisite surfaces as
 a CMake error twenty minutes in.
@@ -80,7 +80,7 @@ a CMake error twenty minutes in.
 From the root of your app:
 
 ```bash
-npx basalt init
+npx basalt-core init
 ```
 
 It is idempotent, and it reports every step as one of four things:
@@ -189,7 +189,7 @@ app that installed `basalt-core` alone has no desktop commands at all.
 ## If something goes wrong
 
 **`run-linux` is not a command.** The host package is not installed. Run your
-package manager, or `npx basalt init` if it was never a dependency.
+package manager, or `npx basalt-core init` if it was never a dependency.
 
 **Metro cannot find a module, or fails on `@babel/runtime`.** Usually a linked
 checkout or a monorepo, where Metro resolves Basalt's files by their real path
@@ -197,5 +197,5 @@ and then looks for dependencies from there. `withDesktopPlatforms` names the
 project's `node_modules` explicitly to cover this, so check your Metro config
 is actually wrapped, `doctor` reports that.
 
-**The build fails naming a path, deep in CMake.** Run `npx basalt doctor`. It
+**The build fails naming a path, deep in CMake.** Run `npx basalt-core doctor`. It
 encodes the same prerequisite list the build needs and CI installs.
