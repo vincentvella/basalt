@@ -405,6 +405,15 @@ endif()
 # needs onScroll and scroll state, and <TextInput>, which needs an EDIT peer.
 # ---------------------------------------------------------------------------
 
+# Without React Native there is no basalt_core to link, and the harness calls
+# `basalt::installCrashHandler` whatever it is linked against -- so this build
+# compiles that one file itself. The MSBuild job in release.yml is the only
+# build that gets here, which is why the link error it answered with was
+# invisible to every CI run.
+if(NOT TARGET basalt_core)
+  list(APPEND BASALT_WIN32_TEST_SOURCES ${BASALT_CRASH_HANDLER})
+endif()
+
 add_executable(basalt_win32_tests ${BASALT_WIN32_TEST_SOURCES})
 target_compile_options(basalt_win32_tests PRIVATE ${BASALT_WIN32_WARNINGS})
 target_include_directories(basalt_win32_tests PRIVATE ${BASALT_TEST_INCLUDE})

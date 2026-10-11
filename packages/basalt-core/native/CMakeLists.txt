@@ -38,6 +38,14 @@ get_filename_component(BASALT_THIRD_PARTY "${BASALT_THIRD_PARTY}" ABSOLUTE)
 # it alongside its own tests and brings its own `main`; see docs/TESTING.md.
 set(BASALT_TEST_HARNESS ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.cpp
     CACHE INTERNAL "the toolkit-free test runner")
+# What the harness calls and cannot define: a crashing test prints a stack
+# rather than a silent non-zero exit. It lives in basalt_core, which a suite
+# linking that target gets for free -- and the Windows view layer builds with
+# no React Native and therefore no basalt_core, so that build has to compile
+# this one file itself. Named here, beside the harness that needs it, rather
+# than spelled as a path in the package that happens to hit the problem.
+set(BASALT_CRASH_HANDLER ${CMAKE_CURRENT_SOURCE_DIR}/core/CrashHandler.cpp
+    CACHE INTERNAL "the crash handler the test harness installs")
 set(BASALT_TEST_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/tests
     CACHE INTERNAL "where TestHarness.h lives")
 
