@@ -162,17 +162,17 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `accessibilityLanguage` | ✖ | ✖ | ✖ | [GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityLargeContentTitle` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityValue` | ✅ | ✅ | ✅ |  |
-| `accessibilityActions` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityActions` | ✖ | ✖ | ✖ | [the accessible action family, unimplemented rather than declined](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityShowsLargeContentViewer` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityViewIsModal` | ✅ | ✅ | ✅ |  |
 | `accessibilityElementsHidden` | ✅ | ✅ | ✅ |  |
 | `accessibilityIgnoresInvertColors` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `accessibilityRespondsToUserInteraction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `onAccessibilityTap` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityRespondsToUserInteraction` | ✖ | ✖ | ✖ | [the accessible action family, unimplemented rather than declined](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `onAccessibilityTap` | ✖ | ✖ | ✖ | [the accessible action family, unimplemented rather than declined](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityEscape` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `onAccessibilityAction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `onAccessibilityAction` | ✖ | ✖ | ✖ | [the accessible action family, unimplemented rather than declined](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `importantForAccessibility` | ✅ | ✅ | ✅ |  |
-| `role` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `role` | ✖ | ✖ | ✖ | [the accessible action family, unimplemented rather than declined](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `testID` <sub>`testId`</sub> | ◐ | ✅ | ✅ | [GTK publishes an accessible id from 4.22; CI's 4.14 carries it and cannot publish it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 
 ### Neither
@@ -224,9 +224,9 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `maxFontSizeMultiplier` | ✅ | ✅ | ✅ |  |
 | `dynamicTypeRamp` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✖ | ✅ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `accessibilityRole` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `role` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✖ | ✅ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `accessibilityRole` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `role` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ### Neither
 
@@ -237,7 +237,7 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | `fontSizeMultiplier` | ✅ | ✅ | ✅ |  |
 | `isHighlighted` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `isPressable` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `layoutDirection` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `layoutDirection` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `textEffects` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ## ImageProps
@@ -371,7 +371,7 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | --- | --- | --- | --- | --- |
 | `paragraphAttributes` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `mostRecentEventCount` | ✅ | ✅ | ✅ |  |
-| `acceptDragAndDropTypes` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `acceptDragAndDropTypes` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 
 ## TextInputProps
 
@@ -394,8 +394,8 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `traits` | ✅ | ✅ | ✅ |  |
-| `onKeyPressSync` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `onChangeSync` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `onKeyPressSync` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `onChangeSync` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 
 ## TextInputTraits
 
@@ -416,7 +416,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `spellCheck` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `caretHidden` | ✅ | ✅ | ✅ |  |
 | `clearButtonMode` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `scrollEnabled` | ✖ | ✖ | ✖ | [on the ignored list in that file, with what each would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `scrollEnabled` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `secureTextEntry` | ✅ | ✅ | ✅ |  |
 | `clearTextOnFocus` | ✅ | ✅ | ✅ |  |
 | `keyboardType` | ✅ | ✅ | ✅ |  |

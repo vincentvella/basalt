@@ -74,7 +74,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
     },
     "text-ignored": {
-      "text": "on the ignored list, with the call named",
+      "text": "a TextAttributes field no host reads yet, counted rather than guessed",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     },
     "text-shadow-one": {
@@ -90,7 +90,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/upstream.md"
     },
     "a11y-ignored": {
-      "text": "on the ignored list",
+      "text": "the accessible action family, unimplemented rather than declined",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     },
     "a11y-ios": {
@@ -182,7 +182,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "ti-ignored": {
-      "text": "on the ignored list in that file, with what each would take",
+      "text": "a desktop question nobody has answered yet, with what it would take",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "ti-trait": {
