@@ -688,11 +688,13 @@ TEST(filter_a_drop_shadow_comes_off_again) {
   }
 }
 
-// Two of them is one here, a CALayer having one shadow, and the first in the
-// list is the one drawn: CSS applies the list left to right, so that is the one
-// nearest the content. The limit is recorded in backlog/platform-macos.md rather
-// than approximated.
-TEST(filter_only_the_first_drop_shadow_is_drawn) {
+// The first `dropShadow()` is the view's own layer's, which is the half of the
+// arrangement worth pinning separately: it is the one cast from the content's
+// *alpha* rather than from the view's box, which is what makes a drop shadow a
+// drop shadow, and CSS applies a filter list left to right so the first is the
+// one nearest the content. The rest are layers of their own and the test below
+// is theirs.
+TEST(filter_the_first_drop_shadow_is_the_views_own_layers) {
   @autoreleasepool {
     RnAppKitView *view = [RnAppKitView viewWithTag:1];
     [view setRnFrameX:0 y:0 width:60 height:40];
@@ -734,8 +736,9 @@ TEST(filter_only_the_first_drop_shadow_is_drawn) {
 // the rest of this file has none: Core Animation composites a shadow and
 // `renderInContext:` draws nothing of it.
 //
-// `filter_only_the_first_drop_shadow_is_drawn` above states today's limit, so
-// it is the test this one replaces once the limit goes.
+// `filter_the_first_drop_shadow_is_the_views_own_layers` above pins the half
+// of this that is cast from the content's alpha; this one is about the rest of
+// the list arriving at all.
 namespace {
 
 // One shadow found in a layer tree, in the layer's own terms.

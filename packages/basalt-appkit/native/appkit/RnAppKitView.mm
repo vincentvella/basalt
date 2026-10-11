@@ -210,6 +210,62 @@ static CGPathRef RnAppKitCreateReversedPath(CGPathRef path) {
 // flipped view, and the mask cuts the box itself out so the shadow is only ever
 // outside it -- a shadow painted under a translucent background would otherwise
 // show through it, which CSS does not do.
+// A `dropShadow()` beyond the first, as a layer of its own.
+//
+// A CALayer carries one shadow, so a list of them needs a layer each. The first
+// stays on the view's own layer, where it is cast from the content's *alpha* --
+// which is what makes a drop shadow a drop shadow. The rest are cast from the
+// view's box through a `shadowPath`, which is the one deviation here and is
+// exact for every opaque view: a rounded card with two shadows is the case this
+// exists for. backlog/platform-macos.md records the difference, which shows
+// only on a view whose content has holes in it.
+//
+// CSS applies a filter list left to right, each function working on what the
+// one before produced, so the second shadow is a shadow of the content *and*
+// the first shadow. These are drawn from the same box instead, which is the
+// same approximation and the same reason.
+static CALayer *RnAppKitFilterShadowLayer(const RnAppKitFilterShadow &shadow,
+                                          const CGFloat radii[8],
+                                          CGSize size) {
+  CALayer *layer = [CALayer layer];
+  layer.frame = CGRectMake(0, 0, size.width, size.height);
+  // The same conversions the view's own layer uses in -rnApplyFilterShadow:,
+  // so the second shadow of a pair is drawn by the same arithmetic as the
+  // first: the standard deviation crosses unchanged, the colour's alpha is the
+  // layer's opacity, and dy is turned over because the layer is not flipped
+  // where the view is.
+  layer.shadowRadius = shadow.standardDeviation;
+  layer.shadowOpacity = (float)shadow.color[3];
+  layer.shadowOffset = CGSizeMake(shadow.dx, -shadow.dy);
+
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  const CGFloat opaque[4] = {shadow.color[0], shadow.color[1], shadow.color[2], 1};
+  CGColorRef color = CGColorCreate(space, opaque);
+  layer.shadowColor = color;
+  CGColorRelease(color);
+  CGColorSpaceRelease(space);
+
+  CGPathRef shadowPath = RnAppKitCreateRoundedPath(layer.bounds, radii);
+  layer.shadowPath = shadowPath;
+  CGPathRelease(shadowPath);
+
+  // Everything outside the view's own box, the way the outset box shadows are
+  // masked: without it the shadow is drawn under the content as well, which
+  // darkens a translucent view from inside.
+  CAShapeLayer *mask = [CAShapeLayer layer];
+  mask.fillRule = kCAFillRuleEvenOdd;
+  CGMutablePathRef maskPath = CGPathCreateMutable();
+  CGPathRef viewPath = RnAppKitCreateRoundedPath(layer.bounds, radii);
+  const CGFloat reach = shadow.standardDeviation * 3 + std::abs(shadow.dx) + std::abs(shadow.dy);
+  CGPathAddRect(maskPath, nullptr, CGRectInset(layer.bounds, -reach - 1, -reach - 1));
+  CGPathAddPath(maskPath, nullptr, viewPath);
+  CGPathRelease(viewPath);
+  mask.path = maskPath;
+  CGPathRelease(maskPath);
+  layer.mask = mask;
+  return layer;
+}
+
 static CALayer *RnAppKitOutsetShadowLayer(const RnAppKitBoxShadow &shadow,
                                           const CGFloat radii[8],
                                           CGSize size) {
@@ -487,6 +543,10 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // The `backgroundImage` gradients, each with its own stops.
   std::vector<RnAppKitGradientRecord> _gradients;
   NSMutableArray<CALayer *> *_boxShadowLayers;
+  // The second and later `dropShadow()` entries, a layer each. See
+  // RnAppKitFilterShadowLayer.
+  NSMutableArray<CALayer *> *_filterShadowLayers;
+  std::vector<RnAppKitFilterShadow> _extraFilterShadows;
   NSString *_cursorName;
   // `mixBlendMode`: the keyword asked for, and the Core Image filter it became.
   // The `dropShadow()` from `filter`, as the layer's own shadow.
@@ -589,6 +649,7 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
   // the size it used to be. The outline is in the same position.
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+    [self rnRebuildFilterShadowLayers];
   }
   if (_outlineWidth > 0) {
     [self rnRebuildOutlineLayer];
@@ -1938,6 +1999,7 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   // it.
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+    [self rnRebuildFilterShadowLayers];
   }
   if (_outlineWidth > 0) {
     [self rnRebuildOutlineLayer];
@@ -2090,6 +2152,7 @@ static CGImageRef RnBlurredImageCreate(CGImageRef image,
   // the outline.
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+    [self rnRebuildFilterShadowLayers];
   }
   if (_outlineWidth > 0) {
     [self rnRebuildOutlineLayer];
@@ -2549,6 +2612,7 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   }
   _boxShadows = std::move(wanted);
   [self rnRebuildBoxShadowLayers];
+  [self rnRebuildFilterShadowLayers];
 }
 
 - (NSInteger)rnBoxShadowCount {
@@ -2595,6 +2659,44 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
 // a set of radii too elliptical for CALayer's cornerRadius.
 - (BOOL)rnClipsItsOwnLayer {
   return _clipsChildren || self.layer.mask != nil;
+}
+
+// The drop shadows a CALayer cannot hold, one layer each.
+//
+// Rebuilt rather than updated, the way the box shadows are: the geometry
+// depends on the view's size and corner radii, both of which change under it.
+- (void)rnRebuildFilterShadowLayers {
+  for (CALayer *layer in _filterShadowLayers) {
+    [layer removeFromSuperlayer];
+  }
+  [_filterShadowLayers removeAllObjects];
+  if (_extraFilterShadows.empty()) {
+    return;
+  }
+  if (_filterShadowLayers == nil) {
+    _filterShadowLayers = [NSMutableArray array];
+  }
+
+  const CGSize size = self.bounds.size;
+  if (size.width <= 0 || size.height <= 0) {
+    return;
+  }
+  CGFloat radii[8];
+  for (int i = 0; i < 8; i++) {
+    radii[i] = _hasBorderRadii ? _borderRadii[i] : 0;
+  }
+
+  // Back to front: the last function in the list is the outermost, so it is
+  // added first and the earlier ones are drawn over it.
+  for (auto shadow = _extraFilterShadows.rbegin(); shadow != _extraFilterShadows.rend();
+       ++shadow) {
+    if (shadow->color[3] <= 0) {
+      continue;
+    }
+    CALayer *layer = RnAppKitFilterShadowLayer(*shadow, radii, size);
+    [self.layer insertSublayer:layer atIndex:0];
+    [_filterShadowLayers addObject:layer];
+  }
 }
 
 - (void)rnRebuildBoxShadowLayers {
@@ -2657,6 +2759,7 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   [super viewDidMoveToSuperview];
   if (!_boxShadows.empty()) {
     [self rnRebuildBoxShadowLayers];
+    [self rnRebuildFilterShadowLayers];
   }
   if (_outlineWidth > 0) {
     [self rnRebuildOutlineLayer];
@@ -2761,7 +2864,7 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     // by the test for taking a filter away; the second was caught by the same
     // test written again for the shadow, which is the argument for writing it.
     if (_filters == nil && _filterOpacity == 1 && _filterShadow.color[3] == 0 &&
-        _filterShadow.standardDeviation == 0) {
+        _filterShadow.standardDeviation == 0 && _extraFilterShadows.empty()) {
       return;
     }
     _filters = nil;
@@ -2769,6 +2872,8 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
     _filterOpacity = 1;
     [self rnApplyOpacity];
     [self rnApplyFilterShadow:nullptr];
+    _extraFilterShadows.clear();
+    [self rnRebuildFilterShadowLayers];
     return;
   }
 
@@ -2810,7 +2915,12 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
   _filterOpacity = filters->opacity;
   [self rnApplyOpacity];
 
+  // The first is the view's own layer's, where it is cast from the content's
+  // alpha. The rest are layers of their own; see RnAppKitFilterShadowLayer.
   [self rnApplyFilterShadow:filters->shadowCount > 0 ? filters->shadows : nullptr];
+  _extraFilterShadows.assign(filters->shadows + (filters->shadowCount > 0 ? 1 : 0),
+                             filters->shadows + MAX((NSInteger)0, filters->shadowCount));
+  [self rnRebuildFilterShadowLayers];
 }
 
 // `dropShadow()`, which is the layer's own shadow rather than a Core Image

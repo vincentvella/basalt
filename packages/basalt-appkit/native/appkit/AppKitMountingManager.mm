@@ -1252,10 +1252,6 @@ void AppKitMountingManager::applyProps(RnAppKitView *view, const ShadowView &sha
       // The view copies what it keeps, so the vector may go out of scope.
       [view setRnFilters:&filters];
 
-      if (resolved.dropShadows.size() > 1) {
-        LOG(WARNING) << "filter: only the first dropShadow() is drawn on this "
-                     << "platform; a CALayer has one shadow";
-      }
     }
   }
 

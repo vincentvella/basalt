@@ -50,7 +50,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md"
     },
     "mac-dropshadow": {
-      "text": "macOS draws the first of a list",
+      "text": "macOS casts the second and later drop shadows from the box rather than the alpha",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-macos.md"
     },
     "gtk-pluslighter": {
