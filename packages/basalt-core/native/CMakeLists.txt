@@ -193,6 +193,12 @@ if(DEFINED RN_DIR)
   get_property(basalt_package_installers GLOBAL PROPERTY BASALT_PACKAGE_EXPO_INSTALLERS)
   get_property(basalt_package_core_sources GLOBAL PROPERTY BASALT_PACKAGE_CORE_SOURCES)
   get_property(basalt_package_includes GLOBAL PROPERTY BASALT_PACKAGE_INCLUDES)
+  # And the ones that are somebody else's headers, which cannot be held to
+  # this project's warnings: Skia's trip `-Wpedantic` on a variadic macro, as
+  # React Native's own trip several, which is why those are `SYSTEM` too. A
+  # package says which of its include directories are its own and which are a
+  # dependency's.
+  get_property(basalt_package_system_includes GLOBAL PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES)
 
   # A semicolon by character code: CMake treats `;` as a list separator, and
   # escaping it as `\;` survives into the generated file rather than becoming
@@ -355,6 +361,9 @@ if(DEFINED RN_DIR)
     BASALT_REACT_NATIVE_VERSION="${RN_VERSION}"
     BASALT_RN_MINOR=${RN_MINOR})
   target_include_directories(basalt_core PUBLIC core ${basalt_package_includes})
+  if(basalt_package_system_includes)
+    target_include_directories(basalt_core SYSTEM PUBLIC ${basalt_package_system_includes})
+  endif()
   target_include_directories(basalt_core SYSTEM PUBLIC
     ${RN_DIR}/ReactCommon
     ${RN_DIR}/ReactCommon/jsi

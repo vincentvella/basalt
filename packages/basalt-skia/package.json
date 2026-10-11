@@ -1,0 +1,19 @@
+{
+  "name": "basalt-skia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "@shopify/react-native-skia on the desktop: the module, the platform context, and the Skia the app already installed.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt.git",
+    "directory": "packages/basalt-skia"
+  },
+  "files": [
+    "native"
+  ],
+  "peerDependencies": {
+    "@shopify/react-native-skia": ">=2",
+    "react-native": "*"
+  }
+}

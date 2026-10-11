@@ -62,7 +62,11 @@ if(NOT DEFINED BASALT_PACKAGES)
   # carries.
   set(BASALT_PACKAGES
     ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-notifications
-    ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-subprocess)
+    ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-subprocess
+    # Contributes nothing unless the app installed Skia, which this repository
+    # has not: see its CMakeLists for how it is found and why absent is not an
+    # error.
+    ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-skia)
 endif()
 #
 # The same loop is in each host package's CMakeLists, because that is the entry
