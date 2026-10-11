@@ -7744,12 +7744,15 @@ def test_disabled_switch_colour(bundle: Path) -> str:
     position to say otherwise. Found on 2026-10-10 by putting the two hosts'
     pictures side by side, which is what `BASALT_SNAPSHOT` is for.
 
-    Measured as blueness -- the blue channel minus the stronger of red and green
-    -- rather than as an exact colour, because the accent is the platform's:
-    Adwaita's is #3584e4, AppKit's follows the system accent, and Windows paints
-    this project's own. What has to hold everywhere is the relationship: an on
-    switch is accent-coloured, a disabled one is the same colour dimmed, and an
-    off one is not coloured at all.
+    Measured as colourfulness -- the strongest channel minus the weakest --
+    rather than as a colour, because the three hosts genuinely differ about
+    which colour an on switch is: Adwaita's accent blue on GTK, the system
+    accent on AppKit, and React Native's own green on Windows, which has no
+    accent to read without WinRT. Blueness was the first attempt and it failed
+    on Windows for exactly that reason, which is the kind of thing only running
+    it there says. What has to hold everywhere is the relationship: an on
+    switch is coloured, a disabled one is the same colour dimmed, and an off one
+    is grey.
     """
     app = bundle_app(bundle.parent, "controls")
 
@@ -7776,8 +7779,8 @@ def test_disabled_switch_colour(bundle: Path) -> str:
         tree = dump.read_text(encoding="utf-8")
         snapshot = Snapshot(picture.read_bytes())
 
-    def blueness(what: str) -> int:
-        """How blue the bluest pixel of that switch is, from the dump's frame."""
+    def colourfulness(what: str) -> int:
+        """How coloured the most coloured pixel of that switch is, from its frame."""
         # Matched exactly, because `switch:on` is a prefix of
         # `switch:on:disabled` and a substring test would find both.
         rows = []
@@ -7796,26 +7799,26 @@ def test_disabled_switch_colour(bundle: Path) -> str:
             for sampleX in range(int(x), int(x + width)):
                 pixel = snapshot.at(sampleX, sampleY)
                 if pixel is not None:
-                    best = max(best, pixel[2] - max(pixel[0], pixel[1]))
+                    best = max(best, max(pixel) - min(pixel))
         return best
 
-    off = blueness("off")
-    on = blueness("on")
-    disabled = blueness("on:disabled")
+    off = colourfulness("off")
+    on = colourfulness("on")
+    disabled = colourfulness("on:disabled")
 
-    if off > 20:
-        raise Failure(f"an off switch is accent-coloured ({off})")
+    if off > 30:
+        raise Failure(f"an off switch is coloured ({off}), and it should be grey")
     if on < 60:
         raise Failure(
-            f"an on switch is not accent-coloured ({on}); the whole measurement "
-            "depends on it being so"
+            f"an on switch is not coloured ({on}); the whole measurement depends "
+            "on it being so"
         )
-    if disabled <= 20:
+    if disabled <= 30:
         raise Failure(
-            f"a disabled switch that is on is not accent-coloured ({disabled}, "
-            f"against {on} for the same switch enabled and {off} for one that is "
-            "off). React Native calls a disabled switch translucent; this one is "
-            "a different colour instead, so it reads as off."
+            f"a disabled switch that is on is not coloured ({disabled}, against "
+            f"{on} for the same switch enabled and {off} for one that is off). "
+            "React Native calls a disabled switch translucent; this one is a "
+            "different colour instead, so it reads as off."
         )
     if disabled >= on:
         raise Failure(
@@ -7823,7 +7826,7 @@ def test_disabled_switch_colour(bundle: Path) -> str:
             f"against {on})"
         )
 
-    return f"off {off}, on {on}, and on-but-disabled {disabled} blue"
+    return f"off {off}, on {on}, and on-but-disabled {disabled} of colour"
 
 
 def test_displays(bundle: Path) -> None:

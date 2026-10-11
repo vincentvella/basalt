@@ -27,6 +27,13 @@ input, `PanResponder` and command routing with them. What is left:
   `thumbColor` do nothing on macOS. The tree dump does not print colours, so
   this is a difference in pixels rather than in behaviour.
 
+  The three also differ about what colour an *unstyled* on switch is: GTK and
+  AppKit take the desktop's accent, which is blue on both, and Windows draws
+  React Native's own green, having no accent to read without WinRT. Deliberate
+  on all three and recorded here because a test that measured "is it blue"
+  passed on two hosts and failed on the third; what the scenario asserts now is
+  that it is *coloured*.
+
   An `<ActivityIndicator color>` *is* honoured on macOS, through a
   `CIFalseColor` filter on the indicator's layer, and a snapshot cannot see it:
   `renderInContext:` composites no Core Animation filters, the same limit that

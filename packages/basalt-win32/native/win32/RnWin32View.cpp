@@ -1716,8 +1716,14 @@ D2D1_COLOR_F colourOr(const float rgba[4], bool has, D2D1_COLOR_F fallback) {
 // would be more native and is a per-user setting read through UISettings, which
 // is a WinRT dependency this package does not have; React Native's own default
 // switch is not accent-coloured either.
+//
+// Which is why the on colour is *green*, React Native's own, where GTK and
+// AppKit take the desktop's accent and draw a blue one. It was called
+// `kTrackOnBlue` until 2026-10-10, when a scenario measuring "is this switch
+// accent-coloured" measured blueness, passed on two hosts and failed here --
+// the name having been the only blue thing about it.
 constexpr float kTrackOffGrey = 0.78f;
-constexpr float kTrackOnBlue[3] = {0.20f, 0.60f, 0.35f};
+constexpr float kTrackOnGreen[3] = {0.20f, 0.60f, 0.35f};
 constexpr float kSpinnerGrey = 0.45f;
 
 } // namespace
@@ -1843,7 +1849,7 @@ void RnWin32View::paintControl(ID2D1RenderTarget *target) const {
   const D2D1_COLOR_F trackColour = controlStyle_.on
       ? colourOr(controlStyle_.trackOn,
                  controlStyle_.hasTrackOn,
-                 D2D1::ColorF(kTrackOnBlue[0], kTrackOnBlue[1], kTrackOnBlue[2], 1.0f))
+                 D2D1::ColorF(kTrackOnGreen[0], kTrackOnGreen[1], kTrackOnGreen[2], 1.0f))
       : colourOr(controlStyle_.trackOff,
                  controlStyle_.hasTrackOff,
                  D2D1::ColorF(kTrackOffGrey, kTrackOffGrey, kTrackOffGrey, 1.0f));
