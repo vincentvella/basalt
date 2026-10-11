@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (4):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -22,8 +22,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 12. ~~`padding` on a `<Text>` lays the box out and the text ignores it~~
 13. ~~An inline `<View>` stays at the top of a paragraph `textAlignVertical`
     moved~~
-14. A paragraph resolves `start` and `end` against its own text, not against a
-    right-to-left layout
+14. ~~A paragraph resolves `start` and `end` against its own text, not against
+    a right-to-left layout~~
 8. ~~The mutex covering Pango is not held while text is drawn~~
 
 - ~~**Inline views (`<Text><View/></Text>`) measure as zero-sized attachments.**~~
@@ -698,28 +698,66 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   answers. Recorded rather than half-fixed, because a view whose y follows the
   text and whose x does not is harder to diagnose than one that does neither.
 
-- **A paragraph resolves `start` and `end` against its own text, not against a
-  right-to-left layout.** Found on 2026-10-10 while making the layout mirror
-  for an Arabic desktop: the boxes reversed and the sentence stayed where it
-  was.
+- ~~**A paragraph resolves `start` and `end` against its own text, not against
+  a right-to-left layout.**~~ Fixed on all three on 2026-10-11. Found on
+  2026-10-10 while making the layout mirror for an Arabic desktop: the boxes
+  reversed and the sentence stayed where it was.
 
-  `core/TextAlignments.h` resolves the two relative spellings from the
-  paragraph's *own* base direction, which comes from the text through Unicode's
-  P2 rule or from an explicit `writingDirection`. So Latin text in a mirrored
-  app is left-aligned.
+  **`start` and `end` are the layout's words**, and that is the decision this
+  entry was holding open. Every other relative spelling in React Native means
+  the layout -- `paddingStart`, `marginEnd`, `borderStartColor`, all resolved
+  by Yoga against `LayoutConstraints::layoutDirection` -- and a paragraph whose
+  `textAlign: 'start'` pointed the other way from its own `paddingStart` was
+  the one thing in the window facing backwards.
 
-  **That is iOS's behaviour and not Android's**, which is why this is a record
-  rather than a bug: `NSTextAlignmentNatural` follows the paragraph, and
-  Android's `TEXT_ALIGNMENT_VIEW_START` follows the view. React Native does not
-  reconcile them, so there is a choice to make here and it has not been made.
+  Upstream agrees and says so in one function: `RCTResolveTextAlignment` in
+  `RCTAttributedTextUtils.mm` takes `(textAlignment, layoutDirection)` and
+  answers `Start` from the layout. The direction reaches a host in
+  `TextAttributes::layoutDirection`, which `ParagraphShadowNode::getContent`
+  fills from `YGNodeLayoutGetDirection` -- so it is Yoga's answer for this
+  paragraph rather than a global, and it is right for a subtree an app
+  mirrored on its own. That field is what the support page listed as read by no
+  host; it is read by all three now.
 
-  What would make it Android's: `ShadowView::layoutMetrics.layoutDirection`
-  carries the direction Yoga used, no host reads it, and a paragraph with no
-  explicit `writingDirection` could take its base direction from it -- which is
-  also what `RCTTextAttributes` does on iOS, where the attributes carry a
-  `layoutDirection` that the base writing direction is resolved from. One field
-  in each `applyText`, and the dump's `text-align=` would then say `right` for
-  the sentence above.
+  `core/TextDirection.h` answers both halves at once, because a paragraph has
+  two directions and conflating them is what the bug was: `paragraph` is which
+  way the text runs, for the engine and for `natural`, and `relative` is what
+  `start` and `end` mean. One `TextDirections` reaches each host's layout
+  builder, and `physicalTextAlignment` takes it instead of a bool.
+
+  **Two places this platform does not follow upstream, both deliberate.**
+
+  `left` and `right` stay physical. `RCTResolveTextAlignment` mirrors them with
+  the layout, so `textAlign: 'left'` draws flush right in a mirrored iOS app.
+  This file's own table was measured against the rule that `left` is the left
+  of the box, three hosts disagreed about exactly that, and reversing it now
+  would make the one prop with an unambiguous name mean its opposite. The call
+  that would change it is the same function, and it is two lines.
+
+  An explicit `writingDirection` decides its own edges. Upstream reads only the
+  layout, so `<Text writingDirection="rtl" textAlign="end">` is flush right on
+  iOS; it is flush left here, which is what the previous entry measured and
+  fixed -- `end` is the edge a line finishes at, and a paragraph that said
+  which way it runs has said which edge that is. A paragraph that says nothing
+  still follows the layout, so upstream's rule is the default and this is the
+  override.
+
+  **What is still open is `natural`**, which is the default and is still
+  resolved from the text by P2. So Latin text with no `textAlign` at all is
+  left-aligned on an Arabic desktop, where upstream puts it right: the same
+  file has a flattening helper that resolves `NSTextAlignmentNatural` from
+  `baseTextAttributes.layoutDirection` and the base writing direction from
+  `[NSParagraphStyle defaultWritingDirectionForLanguage:nil]`. Where that
+  helper runs was not established, so this is written down rather than
+  copied -- and changing it would also left-align Hebrew in a left-to-right
+  app, which is the other half of the same rule and is a bigger change than it
+  looks.
+
+  Proved by the scenario rather than the tick: "a right-to-left desktop mirrors
+  the layout" reads `text-align=` out of the tree in both locales, which is the
+  resolved edge rather than the prop. It fails with the rule reverted, measured
+  on GTK; the AppKit suite draws the paragraph and counts ink columns for the
+  same claim, and `test_text_alignment.cpp` holds the table.
 
 - ~~**`padding` on a `<Text>` lays the box out and the text ignores it.**~~
   Fixed on all three on 2026-10-10, and found by looking at a screenshot of

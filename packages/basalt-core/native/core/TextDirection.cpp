@@ -181,15 +181,54 @@ bool paragraphIsRightToLeft(std::optional<facebook::react::WritingDirection> dir
   return textStartsRightToLeft(utf8);
 }
 
+bool layoutIsRightToLeft(std::optional<facebook::react::LayoutDirection> layoutDirection) {
+  return layoutDirection.value_or(facebook::react::LayoutDirection::LeftToRight)
+      == facebook::react::LayoutDirection::RightToLeft;
+}
+
+TextDirections textDirections(std::optional<facebook::react::WritingDirection> direction,
+                              std::string_view utf8,
+                              bool layoutRightToLeft) {
+  // What `start` and `end` mean: the direction the app *asked* for when it
+  // asked, and the layout's otherwise.
+  //
+  // Upstream's `RCTResolveTextAlignment` reads only the layout direction, so a
+  // `<Text writingDirection="rtl" textAlign="end">` is flush right on iOS. It
+  // is flush left here, which is the measured behaviour this file's table was
+  // written for: `end` is the edge a line finishes at, and a paragraph that
+  // said which way it runs has said which edge that is. Nothing is lost -- a
+  // paragraph that says nothing still follows the layout, which is upstream's
+  // whole rule -- and backlog/text.md records the divergence.
+  bool relative = layoutRightToLeft;
+  if (direction.has_value() && *direction != facebook::react::WritingDirection::Natural) {
+    relative = *direction == facebook::react::WritingDirection::RightToLeft;
+  }
+  return TextDirections{
+      .paragraph = paragraphIsRightToLeft(direction, utf8),
+      .relative = relative,
+  };
+}
+
+TextDirections paragraphDirections(const facebook::react::AttributedString &attributedString) {
+  // The first fragment, the way every other paragraph-level question here is
+  // answered: React Native resolves these onto every fragment from the <Text>
+  // that owns them, and an empty paragraph has nothing to mirror anyway.
+  const auto &fragments = attributedString.getFragments();
+  const bool layoutRightToLeft =
+      !fragments.empty() && layoutIsRightToLeft(fragments.front().textAttributes.layoutDirection);
+  return textDirections(writingDirection(attributedString),
+                        paragraphText(attributedString),
+                        layoutRightToLeft);
+}
+
 const char *paragraphTextAlignmentName(
     const facebook::react::AttributedString &attributedString) {
   const auto &fragments = attributedString.getFragments();
   const std::optional<facebook::react::TextAlignment> alignment = fragments.empty()
       ? std::optional<facebook::react::TextAlignment>{}
       : fragments.front().textAttributes.alignment;
-  const bool rightToLeft = paragraphIsRightToLeft(writingDirection(attributedString),
-                                                  paragraphText(attributedString));
-  return physicalTextAlignmentName(physicalTextAlignment(alignment, rightToLeft));
+  return physicalTextAlignmentName(
+      physicalTextAlignment(alignment, paragraphDirections(attributedString)));
 }
 
 std::string paragraphText(const facebook::react::AttributedString &attributedString) {

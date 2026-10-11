@@ -804,10 +804,10 @@
       "why": "text-ios"
     },
     "TextAttributes.layoutDirection": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": ["layoutDirection", "paragraphDirections"]
     },
     "TextAttributes.accessibilityRole": {
       "linux": "no",

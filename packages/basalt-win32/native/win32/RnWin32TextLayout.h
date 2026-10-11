@@ -46,12 +46,16 @@ enum class RnTextAlign {
   Center,
   Right,
   Justified,
-  // The reading direction's own edges, which is what `natural`, `start` and
-  // `end` ask for. DirectWrite expresses these directly, as LEADING and
-  // TRAILING, so a natural alignment follows the direction without this file
-  // having to know which way that is.
+  // The reading direction's own start edge, which is what `natural` asks for
+  // and the only relative alignment left here. DirectWrite expresses it
+  // directly, as LEADING, so it follows the direction without this file having
+  // to know which way that is.
+  //
+  // `start` and `end` used to be relative too, and are not: they follow the
+  // *layout* direction rather than this paragraph's, which is a different
+  // question whenever an app shows Latin text on a mirrored desktop.
+  // `core/TextAlignments.h` answers it, and what arrives here is the edge.
   Natural,
-  End,
 };
 
 // `textDecorationStyle`, as React Native's five.

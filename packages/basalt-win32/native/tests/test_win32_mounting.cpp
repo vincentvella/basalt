@@ -561,10 +561,25 @@ TEST(win32_an_alignment_keeps_start_and_end_relative) {
   attributes.alignment = TextAlignment::Natural;
   EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Natural);
 #if BASALT_RN_MINOR >= 87
+  // `start` and `end` are resolved against the *layout* direction before they
+  // reach DirectWrite, which is what the fourth argument carries. Nothing
+  // passed is a left-to-right app, so they are the left and right edges.
   attributes.alignment = TextAlignment::Start;
-  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Natural);
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Left);
   attributes.alignment = TextAlignment::End;
-  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::End);
+  EXPECT(basalt::win32::buildTextStyle(attributes).align == RnTextAlign::Right);
+
+  // And the other way round on a mirrored desktop, for the same Latin text:
+  // this is the case DirectWrite's own LEADING and TRAILING get wrong, they
+  // being relative to the paragraph rather than to the app. See
+  // core/TextAlignments.h and backlog/text.md.
+  const basalt::TextDirections mirrored{.paragraph = false, .relative = true};
+  attributes.alignment = TextAlignment::Start;
+  EXPECT(basalt::win32::buildTextStyle(attributes, {}, std::nullopt, mirrored).align
+         == RnTextAlign::Right);
+  attributes.alignment = TextAlignment::End;
+  EXPECT(basalt::win32::buildTextStyle(attributes, {}, std::nullopt, mirrored).align
+         == RnTextAlign::Left);
 #endif
 }
 

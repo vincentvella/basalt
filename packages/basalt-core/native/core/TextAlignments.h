@@ -50,14 +50,47 @@ namespace basalt {
 // that silently means left.
 enum class PhysicalTextAlignment { Left, Center, Right, Justified };
 
-// The edge for `alignment` in a paragraph running `rightToLeft`.
+// The two directions a paragraph has, which are not the same question.
+//
+// `paragraph` is which way the text runs: the `writingDirection` prop, or
+// Unicode's P2 over the text when the app said `natural` or said nothing. It
+// decides where an unaligned paragraph sits, because `natural` means "the edge
+// this text starts from".
+//
+// `relative` is what the words `start` and `end` mean, and that is the *app's*
+// layout direction rather than the text's. A mirrored app lays every other
+// relative thing out that way -- Yoga resolves `paddingStart` and
+// `marginEnd` against `LayoutConstraints::layoutDirection` -- and a paragraph
+// whose `textAlign: 'start'` pointed the other way from its own
+// `paddingStart` would be the one thing in the window facing backwards.
+//
+// Upstream resolves it the same way and in one place:
+// `RCTResolveTextAlignment` in `RCTAttributedTextUtils.mm` takes
+// `(textAlignment, layoutDirection)` and answers `Start` with the layout's
+// left or right. The direction reaches here in
+// `TextAttributes::layoutDirection`, which `ParagraphShadowNode::getContent`
+// fills from `YGNodeLayoutGetDirection` -- so it is Yoga's answer for this
+// paragraph, not a global, and it is right for a subtree an app mirrored on
+// its own.
+//
+// Upstream's iOS half also mirrors `left` and `right` themselves when the
+// layout is right to left. This platform does not, and backlog/text.md records
+// that with the measurement: `left` is the left of the box here, on all three
+// hosts, which is the rule the rest of this file is written to.
+struct TextDirections {
+  bool paragraph = false;
+  bool relative = false;
+};
+
+// The edge for `alignment`, given what the text does and what the layout does.
 //
 // No alignment at all is `natural`, which is React Native's own default and the
 // reason this takes an optional: a paragraph that said nothing still has an
 // answer, and in a right-to-left one it is not the left edge.
 inline PhysicalTextAlignment physicalTextAlignment(
     std::optional<facebook::react::TextAlignment> alignment,
-    bool rightToLeft) {
+    TextDirections directions) {
+  const bool rightToLeft = directions.paragraph;
   if (!alignment.has_value()) {
     return rightToLeft ? PhysicalTextAlignment::Right : PhysicalTextAlignment::Left;
   }
@@ -73,10 +106,11 @@ inline PhysicalTextAlignment physicalTextAlignment(
       return PhysicalTextAlignment::Justified;
 #if BASALT_RN_MINOR >= 87
     // The two that arrived in 0.87, and the whole reason this file exists.
+    // Against the layout rather than the text: see TextDirections above.
     case facebook::react::TextAlignment::Start:
-      return rightToLeft ? PhysicalTextAlignment::Right : PhysicalTextAlignment::Left;
+      return directions.relative ? PhysicalTextAlignment::Right : PhysicalTextAlignment::Left;
     case facebook::react::TextAlignment::End:
-      return rightToLeft ? PhysicalTextAlignment::Left : PhysicalTextAlignment::Right;
+      return directions.relative ? PhysicalTextAlignment::Left : PhysicalTextAlignment::Right;
 #endif
     case facebook::react::TextAlignment::Natural:
       break;

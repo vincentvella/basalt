@@ -525,17 +525,19 @@ TEST(text_a_physical_alignment_stays_physical_in_a_right_to_left_paragraph) {
   EXPECT(farRight > 0);
 }
 
-TEST(text_end_is_relative_and_follows_the_direction) {
-  // `start` and `end` are the relative pair, and this host keeps them relative:
-  // `end` is the right edge in a left-to-right paragraph and the left edge in a
-  // right-to-left one. The other two fold `end` into physical right.
-  const auto [leftInLtr, rightInLtr] = inkAtTheEdges(RnTextAlign::End, false);
-  EXPECT_EQ(leftInLtr, 0);
-  EXPECT(rightInLtr > 0);
+TEST(text_natural_is_relative_and_follows_the_direction) {
+  // `natural` is the one alignment this host still hands to DirectWrite
+  // relative: LEADING, which is the left edge in a left-to-right paragraph and
+  // the right edge in a right-to-left one. `start` and `end` are resolved to a
+  // physical edge before they get here, against the layout rather than the
+  // paragraph; see core/TextAlignments.h.
+  const auto [leftInLtr, rightInLtr] = inkAtTheEdges(RnTextAlign::Natural, false);
+  EXPECT(leftInLtr > 0);
+  EXPECT_EQ(rightInLtr, 0);
 
-  const auto [leftInRtl, rightInRtl] = inkAtTheEdges(RnTextAlign::End, true);
-  EXPECT(leftInRtl > 0);
-  EXPECT_EQ(rightInRtl, 0);
+  const auto [leftInRtl, rightInRtl] = inkAtTheEdges(RnTextAlign::Natural, true);
+  EXPECT_EQ(leftInRtl, 0);
+  EXPECT(rightInRtl > 0);
 }
 
 // fontVariant, as far as a test without a known font can go.

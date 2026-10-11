@@ -8169,8 +8169,38 @@ def test_right_to_left(bundle: Path) -> str:
             f"locale: {plain['a855f7']:g} then {mirrored['a855f7']:g}"
         )
 
+    # `textAlign: 'start'` over Latin text, which is the half the boxes cannot
+    # show: a paragraph resolved `start` against its own text, so the row and
+    # the padding mirrored and the sentence stayed where it was. The dump
+    # prints the resolved edge rather than the prop, which is what makes this
+    # an assertion about the answer; see core/TextAlignments.h.
+    def sentenceEdge(tree: str, which: str) -> str:
+        for line in tree.splitlines():
+            if "which edge is the start" in line:
+                found = re.search(r"text-align=(\w+)", line)
+                if found is None:
+                    raise Failure(f"the {which} paragraph has no text-align\n{line}")
+                return found.group(1)
+        raise Failure(f"no paragraph in the {which} tree\n{tree}")
+
+    plainEdge = sentenceEdge(plainTree, "plain")
+    mirroredEdge = sentenceEdge(mirroredTree, "mirrored")
+    if plainEdge != "left":
+        raise Failure(
+            f"`textAlign: 'start'` is {plainEdge} in a left-to-right locale, "
+            "so the comparison below says nothing"
+        )
+    if mirroredEdge != "right":
+        raise Failure(
+            f"`textAlign: 'start'` is {mirroredEdge} on a desktop that reads "
+            "right to left, and should be right. `start` is the layout's word, "
+            "the same one `paddingStart` beside it uses, and the paragraph was "
+            "resolving it against its own Latin text."
+        )
+
     return (f"a row from {plain['2563eb']:g} rightwards, and from "
-            f"{mirrored['2563eb']:g} leftwards when the desktop reads that way")
+            f"{mirrored['2563eb']:g} leftwards when the desktop reads that way, "
+            "with the sentence against the far edge")
 
 
 def test_displays(bundle: Path) -> None:

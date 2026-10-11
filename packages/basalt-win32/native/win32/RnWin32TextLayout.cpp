@@ -52,8 +52,8 @@ IDWriteFactory *dwriteFactory() {
 
 // DirectWrite's alignments are relative to the reading direction: LEADING is
 // the right edge in a right-to-left paragraph. So the two physical alignments
-// swap there, and the two relative ones do not have to be told the direction at
-// all.
+// swap there, and the one relative alignment left does not have to be told the
+// direction at all.
 DWRITE_TEXT_ALIGNMENT toDWriteAlignment(RnTextAlign align, bool rightToLeft) {
   switch (align) {
     case RnTextAlign::Center:
@@ -62,8 +62,6 @@ DWRITE_TEXT_ALIGNMENT toDWriteAlignment(RnTextAlign align, bool rightToLeft) {
       return DWRITE_TEXT_ALIGNMENT_JUSTIFIED;
     case RnTextAlign::Right:
       return rightToLeft ? DWRITE_TEXT_ALIGNMENT_LEADING : DWRITE_TEXT_ALIGNMENT_TRAILING;
-    case RnTextAlign::End:
-      return DWRITE_TEXT_ALIGNMENT_TRAILING;
     case RnTextAlign::Natural:
       return DWRITE_TEXT_ALIGNMENT_LEADING;
     case RnTextAlign::Left:

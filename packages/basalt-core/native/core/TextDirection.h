@@ -40,6 +40,8 @@
 
 #pragma once
 
+#include "TextAlignments.h"
+
 #include <react/renderer/attributedstring/AttributedString.h>
 
 #include <optional>
@@ -60,6 +62,23 @@ bool textStartsRightToLeft(std::string_view utf8);
 // finishes at, which is the left one here.
 bool paragraphIsRightToLeft(std::optional<facebook::react::WritingDirection> direction,
                             std::string_view utf8);
+
+// What the app's layout does, from the field React Native fills for exactly
+// this: `TextAttributes::layoutDirection`, set in
+// `ParagraphShadowNode::getContent` from `YGNodeLayoutGetDirection`. Absent
+// means left to right, which is what upstream's own `.value_or` does -- a
+// paragraph that reached a host without one is not a paragraph to guess about.
+bool layoutIsRightToLeft(std::optional<facebook::react::LayoutDirection> layoutDirection);
+
+// Both directions at once, which is what every caller wants: see
+// `TextDirections` in core/TextAlignments.h for why there are two.
+TextDirections textDirections(std::optional<facebook::react::WritingDirection> direction,
+                              std::string_view utf8,
+                              bool layoutRightToLeft);
+
+// The same, for a whole paragraph: the direction prop and the text come out of
+// the attributed string, and the layout direction off its fragments.
+TextDirections paragraphDirections(const facebook::react::AttributedString &attributedString);
 
 // The paragraph's text, concatenated, which is what the rule above reads. The
 // fragments are the paragraph: React Native splits a `<Text>` into one per

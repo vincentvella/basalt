@@ -29,7 +29,7 @@ using facebook::react::AttributedString;
 using facebook::react::ParagraphAttributes;
 using facebook::react::TextAttributes;
 
-RnTextAlign toAlign(const TextAttributes &attributes) {
+RnTextAlign toAlign(const TextAttributes &attributes, basalt::TextDirections directions) {
   if (!attributes.alignment.has_value()) {
     return RnTextAlign::Natural;
   }
@@ -43,26 +43,34 @@ RnTextAlign toAlign(const TextAttributes &attributes) {
     case facebook::react::TextAlignment::Left:
       return RnTextAlign::Left;
 #if BASALT_RN_MINOR >= 87
-    // React Native 0.87 added the writing-direction-relative spellings, and
-    // this host keeps them relative rather than folding them into the physical
-    // pair: DirectWrite has LEADING and TRAILING, so `start` and `end` cost
-    // nothing to honour and follow the paragraph's direction on their own.
-    // Left out of this switch entirely, `end` once fell through to
-    // left-aligned, which clang said out loud in a warning nobody had
-    // recompiled this file to see.
+    // React Native 0.87's two relative spellings, resolved to an edge by
+    // `core/TextAlignments.h` like the other two hosts do.
     //
-    // This is why this host does not use `core/TextAlignments.h`'s horizontal
-    // table, which the other two do: it turns a relative alignment into a
-    // physical edge, and DirectWrite wants the relative one. The vertical half
-    // of that header is used here, there being nothing relative about it. What this host needed instead was
-    // the *direction* resolved, which is the other half of the same entry --
-    // `SetReadingDirection` is told and never asks the text, so a paragraph of
-    // Hebrew was laid out left to right and every relative alignment in it
-    // pointed at the wrong edge. See buildTextStyle.
-    case facebook::react::TextAlignment::End:
-      return RnTextAlign::End;
+    // This host used to hand them to DirectWrite as LEADING and TRAILING,
+    // which cost nothing and was right while "relative" meant one thing. It
+    // means two: LEADING follows the *reading* direction, which is this
+    // paragraph's own, and `start` follows the *layout*, which is the app's.
+    // They differ for Latin text on a mirrored desktop, which is the case the
+    // backlog entry opened with, so the question has to be answered before
+    // DirectWrite sees it.
+    //
+    // The physical edge then goes back through the reading direction in
+    // `RnWin32TextLayout`, which maps Left and Right onto LEADING and TRAILING
+    // the right way round for the direction the paragraph is laid out in.
+    // `natural` stays LEADING, being the one that does follow the text.
     case facebook::react::TextAlignment::Start:
-      return RnTextAlign::Natural;
+    case facebook::react::TextAlignment::End:
+      switch (basalt::physicalTextAlignment(attributes.alignment, directions)) {
+        case basalt::PhysicalTextAlignment::Right:
+          return RnTextAlign::Right;
+        case basalt::PhysicalTextAlignment::Center:
+          return RnTextAlign::Center;
+        case basalt::PhysicalTextAlignment::Justified:
+          return RnTextAlign::Justified;
+        case basalt::PhysicalTextAlignment::Left:
+          break;
+      }
+      return RnTextAlign::Left;
 #endif
     case facebook::react::TextAlignment::Natural:
       break;
@@ -223,7 +231,8 @@ RnTextDecorationStyle toDecorationStyle(facebook::react::TextDecorationStyle sty
 
 RnTextStyle buildTextStyle(const TextAttributes &attributes,
                            basalt::FontFit fit,
-                           std::optional<bool> rightToLeft) {
+                           std::optional<bool> rightToLeft,
+                           basalt::TextDirections directions) {
   RnTextStyle style;
 
   if (!attributes.fontFamily.empty()) {
@@ -262,7 +271,7 @@ RnTextStyle buildTextStyle(const TextAttributes &attributes,
     style.lineHeight = static_cast<float>(attributes.lineHeight);
   }
 
-  style.align = toAlign(attributes);
+  style.align = toAlign(attributes, directions);
 
   // `letterSpacing`, which DirectWrite calls trailing character spacing: the
   // space goes after each character, as CSS's letter-spacing and iOS's kerning
@@ -388,8 +397,8 @@ buildTextLayout(const AttributedString &attributedString,
   // Which way the paragraph runs, once for the whole of it rather than per
   // fragment: `writingDirection` is a paragraph's prop, and the text it is
   // resolved against is the paragraph's text. See core/TextDirection.h.
-  const bool rightToLeft = basalt::paragraphIsRightToLeft(
-      basalt::writingDirection(attributedString), basalt::paragraphText(attributedString));
+  const basalt::TextDirections directions = basalt::paragraphDirections(attributedString);
+  const bool rightToLeft = directions.paragraph;
 
   std::vector<RnTextRun> runs;
   for (const auto &fragment : attributedString.getFragments()) {
@@ -406,7 +415,9 @@ buildTextLayout(const AttributedString &attributedString,
     if (fragment.isAttachment()) {
       const auto &size = fragment.parentShadowView.layoutMetrics.frame.size;
       RnTextRun run{
-          fragment.string, buildTextStyle(fragment.textAttributes, fit, rightToLeft), std::nullopt};
+          fragment.string,
+          buildTextStyle(fragment.textAttributes, fit, rightToLeft, directions),
+          std::nullopt};
       run.inlineBox =
           RnInlineBox{static_cast<float>(size.width), static_cast<float>(size.height)};
       runs.push_back(std::move(run));
@@ -417,7 +428,7 @@ buildTextLayout(const AttributedString &attributedString,
     // and the mounting manager go through, so doing it here is what keeps the
     // two agreeing.
     runs.push_back(RnTextRun{transformedFragmentText(fragment.textAttributes, fragment.string),
-                             buildTextStyle(fragment.textAttributes, fit, rightToLeft)});
+                             buildTextStyle(fragment.textAttributes, fit, rightToLeft, directions)});
   }
 
   auto layout = RnWin32TextLayout::createFromRuns(

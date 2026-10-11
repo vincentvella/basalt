@@ -190,7 +190,8 @@ NSFont *fontFor(const TextAttributes &textAttributes, basalt::FontFit fit = {}) 
   return font;
 }
 
-NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes, bool rightToLeft) {
+NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes,
+                                    basalt::TextDirections directions) {
   NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
 
   // `natural` is left alone rather than resolved here: it is this style's own
@@ -199,7 +200,7 @@ NSParagraphStyle *paragraphStyleFor(const TextAttributes &textAttributes, bool r
   // it for the paragraph path, where no frame is used; see its `rightToLeft`.
   if (textAttributes.alignment && *textAttributes.alignment != TextAlignment::Natural) {
     style.alignment =
-        toTextAlignment(basalt::physicalTextAlignment(*textAttributes.alignment, rightToLeft));
+        toTextAlignment(basalt::physicalTextAlignment(*textAttributes.alignment, directions));
   }
 
   // `baseWritingDirection`, which is the same call upstream's iOS half makes in
@@ -307,11 +308,11 @@ NSArray *fontFeaturesFor(const TextAttributes &textAttributes) {
 
 NSDictionary<NSAttributedStringKey, id> *buildTextAttributes(const TextAttributes &textAttributes,
                                                             basalt::FontFit fit,
-                                                            bool rightToLeft) {
+                                                            basalt::TextDirections directions) {
   NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
 
   attributes[NSFontAttributeName] = fontFor(textAttributes, fit);
-  attributes[NSParagraphStyleAttributeName] = paragraphStyleFor(textAttributes, rightToLeft);
+  attributes[NSParagraphStyleAttributeName] = paragraphStyleFor(textAttributes, directions);
 
   // The foreground, with `opacity` multiplied in, and React Native's default of
   // opaque black rather than the system label colour -- which is white in dark
@@ -472,8 +473,8 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
   // said nothing. Every relative alignment needs it, and Core Text will not
   // answer it here -- it resolves a direction inside a frame, and this layer
   // draws its own lines. See core/TextDirection.h.
-  const bool rightToLeft = basalt::paragraphIsRightToLeft(
-      basalt::writingDirection(attributedString), basalt::paragraphText(attributedString));
+  const basalt::TextDirections directions = basalt::paragraphDirections(attributedString);
+  const bool rightToLeft = directions.paragraph;
 
   for (const auto &fragment : attributedString.getFragments()) {
     if (fragment.string.empty()) {
@@ -486,7 +487,7 @@ RnTextLayout *buildTextLayout(const AttributedString &attributedString,
     text = transformedFragmentText(fragment, text);
 
     NSMutableDictionary *attributes =
-        [buildTextAttributes(fragment.textAttributes, fit, rightToLeft) mutableCopy];
+        [buildTextAttributes(fragment.textAttributes, fit, directions) mutableCopy];
 
     // An inline `<View>`: one fragment holding U+FFFC, whose own size React
     // Native has already measured into the fragment. A run delegate is

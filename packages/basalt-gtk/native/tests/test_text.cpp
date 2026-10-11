@@ -1112,11 +1112,15 @@ const char *const kHebrew = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d \xd7\xa2\xd7\x95\x
 // which is 0 for flush left and about 222 for flush right.
 float alignedAt(const char *text,
                 std::optional<facebook::react::WritingDirection> direction,
-                std::optional<facebook::react::TextAlignment> alignment) {
+                std::optional<facebook::react::TextAlignment> alignment,
+                std::optional<facebook::react::LayoutDirection> layoutDirection = std::nullopt) {
   TextAttributes attributes;
   attributes.fontSize = 16.0F;
   attributes.alignment = alignment;
   attributes.baseWritingDirection = direction;
+  // What React Native fills from Yoga for a mirrored app, and what `start` and
+  // `end` are resolved against. See core/TextAlignments.h.
+  attributes.layoutDirection = layoutDirection;
 
   AttributedString::Fragment fragment;
   fragment.string = text;
@@ -1185,14 +1189,13 @@ TEST(text_align_start_and_end_are_the_edges_the_line_runs_between) {
   using A = facebook::react::TextAlignment;
   using D = facebook::react::WritingDirection;
 
+  using L = facebook::react::LayoutDirection;
+
   EXPECT(isLeft(alignedAt("hello world", std::nullopt, A::Start)));
   EXPECT(isRight(alignedAt("hello world", std::nullopt, A::End)));
 
-  // The entry this closes: `end` in a right-to-left paragraph is the *left*
-  // edge, and this host drew it flush right whether the direction came from the
-  // text or from the prop.
-  EXPECT(isRight(alignedAt(kHebrew, std::nullopt, A::Start)));
-  EXPECT(isLeft(alignedAt(kHebrew, std::nullopt, A::End)));
+  // `end` in a paragraph that said it runs right to left is the *left* edge,
+  // and this host drew it flush right.
   EXPECT(isRight(alignedAt(kHebrew, D::RightToLeft, A::Start)));
   EXPECT(isLeft(alignedAt(kHebrew, D::RightToLeft, A::End)));
 
@@ -1200,6 +1203,17 @@ TEST(text_align_start_and_end_are_the_edges_the_line_runs_between) {
   // case that cannot be got right by looking at the text alone.
   EXPECT(isRight(alignedAt("hello world", D::RightToLeft, A::Start)));
   EXPECT(isLeft(alignedAt("hello world", D::RightToLeft, A::End)));
+
+  // A mirrored app, where the paragraph said nothing: the layout decides, the
+  // same way Yoga decides `paddingStart` for the box around it.
+  EXPECT(isRight(alignedAt("hello world", std::nullopt, A::Start, L::RightToLeft)));
+  EXPECT(isLeft(alignedAt("hello world", std::nullopt, A::End, L::RightToLeft)));
+
+  // And Hebrew in an app that is not mirrored: `start` is the left edge,
+  // because `start` is the layout's word. `natural` is the one that follows
+  // the text, and has its own test above.
+  EXPECT(isLeft(alignedAt(kHebrew, std::nullopt, A::Start, L::LeftToRight)));
+  EXPECT(isRight(alignedAt(kHebrew, std::nullopt, A::End, L::LeftToRight)));
 }
 #endif
 

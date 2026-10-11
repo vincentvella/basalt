@@ -46,8 +46,18 @@ const char *name(PhysicalTextAlignment alignment) {
   return "?";
 }
 
+// The common case: a paragraph whose text and whose app run the same way.
 std::string edge(std::optional<TextAlignment> alignment, bool rightToLeft) {
-  return name(physicalTextAlignment(alignment, rightToLeft));
+  return name(physicalTextAlignment(
+      alignment, basalt::TextDirections{.paragraph = rightToLeft, .relative = rightToLeft}));
+}
+
+// The two apart: `text` is which way this paragraph's own text runs, `layout`
+// is which way the app is laid out. They differ whenever an app shows Latin
+// text on a mirrored desktop, or Hebrew in a left-to-right one.
+std::string edgeIn(std::optional<TextAlignment> alignment, bool text, bool layout) {
+  return name(physicalTextAlignment(
+      alignment, basalt::TextDirections{.paragraph = text, .relative = layout}));
 }
 
 } // namespace
@@ -81,6 +91,70 @@ TEST(alignment_start_and_end_are_the_edges_the_line_runs_between) {
   EXPECT_EQ(edge(TextAlignment::Start, true), std::string("right"));
   EXPECT_EQ(edge(TextAlignment::End, false), std::string("right"));
   EXPECT_EQ(edge(TextAlignment::End, true), std::string("left"));
+}
+#endif
+
+#if BASALT_RN_MINOR >= 87
+TEST(alignment_start_and_end_follow_the_layout_rather_than_the_text) {
+  // The distinction this pair exists for, and backlog/text.md entry 14.
+  //
+  // `start` is the word every other relative thing in React Native uses --
+  // `paddingStart`, `marginEnd`, `borderStartColor` -- and Yoga resolves all
+  // of those against the layout direction. A paragraph that resolved it
+  // against its own text would face the other way from its own padding on a
+  // mirrored desktop showing Latin text, which is the case here.
+  //
+  // Upstream resolves it the same way: `RCTResolveTextAlignment` in
+  // `RCTAttributedTextUtils.mm` takes the layout direction and answers `Start`
+  // from it. The field it reads is `TextAttributes::layoutDirection`, filled
+  // by `ParagraphShadowNode::getContent` from Yoga.
+  EXPECT_EQ(edgeIn(TextAlignment::Start, /*text=*/false, /*layout=*/true), std::string("right"));
+  EXPECT_EQ(edgeIn(TextAlignment::End, /*text=*/false, /*layout=*/true), std::string("left"));
+  // And the other way round: Hebrew in an app that is not mirrored.
+  EXPECT_EQ(edgeIn(TextAlignment::Start, /*text=*/true, /*layout=*/false), std::string("left"));
+  EXPECT_EQ(edgeIn(TextAlignment::End, /*text=*/true, /*layout=*/false), std::string("right"));
+}
+
+TEST(alignment_natural_follows_the_text_rather_than_the_layout) {
+  // The other half of the same decision, and deliberately not symmetrical:
+  // `natural` is React Native's default and means "the edge this text starts
+  // from", so Hebrew in a left-to-right app is still flush right. Upstream's
+  // iOS half agrees -- `Natural` is the one value `RCTResolveTextAlignment`
+  // passes through untouched, for `NSParagraphStyle` to resolve from the
+  // paragraph's own writing direction.
+  EXPECT_EQ(edgeIn(TextAlignment::Natural, /*text=*/true, /*layout=*/false), std::string("right"));
+  EXPECT_EQ(edgeIn(std::nullopt, /*text=*/true, /*layout=*/false), std::string("right"));
+  EXPECT_EQ(edgeIn(TextAlignment::Natural, /*text=*/false, /*layout=*/true), std::string("left"));
+  EXPECT_EQ(edgeIn(std::nullopt, /*text=*/false, /*layout=*/true), std::string("left"));
+}
+
+TEST(alignment_a_paragraph_that_says_which_way_it_runs_decides_its_own_edges) {
+  // `textDirections` rather than the table: the question is which direction
+  // reaches `relative`, and the answer is the prop when there is one.
+  using facebook::react::WritingDirection;
+  const std::string latin = "hello";
+  // Said nothing: the layout decides, which is upstream's rule.
+  EXPECT(basalt::textDirections(std::nullopt, latin, true).relative);
+  EXPECT(!basalt::textDirections(std::nullopt, latin, false).relative);
+  EXPECT(basalt::textDirections(WritingDirection::Natural, latin, true).relative);
+  // Said so: the prop decides, in an app mirrored either way. `end` is the
+  // edge this paragraph's lines finish at, which is what it just declared.
+  EXPECT(basalt::textDirections(WritingDirection::RightToLeft, latin, false).relative);
+  EXPECT(!basalt::textDirections(WritingDirection::LeftToRight, latin, true).relative);
+  // And the text alone never decides it, which is the change: Hebrew in an app
+  // that is not mirrored has `start` on the left.
+  EXPECT(!basalt::textDirections(std::nullopt, kHebrew, false).relative);
+  EXPECT(basalt::textDirections(std::nullopt, kHebrew, false).paragraph);
+}
+
+TEST(alignment_left_and_right_stay_physical_in_a_mirrored_app) {
+  // Upstream's iOS half mirrors these two with the layout, so `textAlign:
+  // 'left'` draws flush right in a right-to-left app. This platform does not,
+  // and backlog/text.md records the divergence with the call that would make
+  // it upstream's. `left` is the left of the box on all three hosts, which is
+  // what the rest of this file is written to.
+  EXPECT_EQ(edgeIn(TextAlignment::Left, /*text=*/false, /*layout=*/true), std::string("left"));
+  EXPECT_EQ(edgeIn(TextAlignment::Right, /*text=*/false, /*layout=*/true), std::string("right"));
 }
 #endif
 

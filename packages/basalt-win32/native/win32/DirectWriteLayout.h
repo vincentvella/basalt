@@ -18,6 +18,7 @@
 
 #include "FontFitting.h"
 #include "RnWin32TextLayout.h"
+#include "TextAlignments.h"
 
 #include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/attributedstring/ParagraphAttributes.h>
@@ -38,9 +39,13 @@ namespace basalt::win32 {
 // told: it never asks the text. Left out, the prop alone decides, which is what
 // a caller with no paragraph to resolve means -- a `<TextInput>`. See
 // core/TextDirection.h.
+// `directions` is which way the text runs and what `start` and `end` mean; see
+// core/TextAlignments.h. The default is a left-to-right layout, which is what a
+// caller with no paragraph means.
 RnTextStyle buildTextStyle(const facebook::react::TextAttributes &textAttributes,
                            basalt::FontFit fit = {},
-                           std::optional<bool> rightToLeft = std::nullopt);
+                           std::optional<bool> rightToLeft = std::nullopt,
+                           basalt::TextDirections directions = {});
 
 // One fragment's text with its `textTransform` applied, which has to happen
 // before anything measures the string. Exposed for the suite, and for the same

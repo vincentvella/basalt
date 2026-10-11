@@ -1249,13 +1249,17 @@ const char *const kHebrewText = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d \xd7\xa2\xd7\x
 // Flush left is 0 or 1; flush right is past 200.
 int inkStartsAt(const char *text,
                 std::optional<facebook::react::WritingDirection> direction,
-                std::optional<facebook::react::TextAlignment> alignment) {
+                std::optional<facebook::react::TextAlignment> alignment,
+                std::optional<facebook::react::LayoutDirection> layoutDirection = std::nullopt) {
   const CGSize size = CGSizeMake(300, 40);
 
   facebook::react::TextAttributes attributes;
   attributes.fontSize = 16.0F;
   attributes.alignment = alignment;
   attributes.baseWritingDirection = direction;
+  // What React Native fills from Yoga for a mirrored app, and what `start` and
+  // `end` are resolved against. See core/TextAlignments.h.
+  attributes.layoutDirection = layoutDirection;
 
   facebook::react::AttributedString::Fragment fragment;
   fragment.string = text;
@@ -1340,17 +1344,30 @@ TEST(appkit_text_align_start_and_end_are_the_edges_the_line_runs_between) {
     using A = facebook::react::TextAlignment;
     using D = facebook::react::WritingDirection;
 
+    using L = facebook::react::LayoutDirection;
+
     EXPECT(drawnLeft(inkStartsAt("hello world", std::nullopt, A::Start)));
     EXPECT(drawnRight(inkStartsAt("hello world", std::nullopt, A::End)));
 
-    // The entry this closes: `end` is the left edge in a right-to-left
-    // paragraph, however the direction was decided.
-    EXPECT(drawnRight(inkStartsAt(kHebrewText, std::nullopt, A::Start)));
-    EXPECT(drawnLeft(inkStartsAt(kHebrewText, std::nullopt, A::End)));
+    // `end` is the left edge in a paragraph that said it runs right to left,
+    // which is the row this entry opened with.
     EXPECT(drawnRight(inkStartsAt(kHebrewText, D::RightToLeft, A::Start)));
     EXPECT(drawnLeft(inkStartsAt(kHebrewText, D::RightToLeft, A::End)));
     EXPECT(drawnRight(inkStartsAt("hello world", D::RightToLeft, A::Start)));
     EXPECT(drawnLeft(inkStartsAt("hello world", D::RightToLeft, A::End)));
+
+    // And in a mirrored app, for a paragraph that said nothing: the layout
+    // decides, as it does for `paddingStart` beside it. Latin text included,
+    // which is the case the text alone would get wrong.
+    EXPECT(drawnRight(inkStartsAt("hello world", std::nullopt, A::Start, L::RightToLeft)));
+    EXPECT(drawnLeft(inkStartsAt("hello world", std::nullopt, A::End, L::RightToLeft)));
+
+    // Hebrew in an app that is not mirrored is the other half of it. The text
+    // runs right to left and `start` is still the left edge, because `start`
+    // is the layout's word and this layout is left to right. `natural` is the
+    // one that follows the text, and has its own test above.
+    EXPECT(drawnLeft(inkStartsAt(kHebrewText, std::nullopt, A::Start, L::LeftToRight)));
+    EXPECT(drawnRight(inkStartsAt(kHebrewText, std::nullopt, A::End, L::LeftToRight)));
   }
 }
 #endif

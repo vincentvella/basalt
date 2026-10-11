@@ -550,13 +550,20 @@ PangoLayout *buildTextLayout(const AttributedString &attributedString,
   // text when it said `natural` or said nothing. See core/TextDirection.h for
   // why that rule is answered there rather than asked of Pango, and
   // tests/test_text.cpp for the assertion that holds the two together.
-  const bool rightToLeft = basalt::paragraphIsRightToLeft(direction, text);
+  // And what `start` and `end` mean, which is the app's layout direction
+  // rather than this text's: see TextDirections in core/TextAlignments.h.
+  const bool layoutRightToLeft =
+      !fragments.empty()
+      && basalt::layoutIsRightToLeft(fragments.front().textAttributes.layoutDirection);
+  const basalt::TextDirections directions =
+      basalt::textDirections(direction, text, layoutRightToLeft);
+  const bool rightToLeft = directions.paragraph;
 
   // Which edge, from core/TextAlignments.h: `start` and `end` are relative and
   // `left` and `right` are not, and all three hosts had been deciding that
   // locally and differently.
   const basalt::PhysicalTextAlignment physical =
-      basalt::physicalTextAlignment(alignment, rightToLeft);
+      basalt::physicalTextAlignment(alignment, directions);
   const bool justify = physical == basalt::PhysicalTextAlignment::Justified;
   // Justified text stretches every line but the last, which goes against the
   // edge the paragraph starts from.
