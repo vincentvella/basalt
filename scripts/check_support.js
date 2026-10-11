@@ -54,7 +54,7 @@ const STATUSES = {
   yes: {mark: '✅', label: 'done'},
   partial: {mark: '◐', label: 'partly done'},
   no: {mark: '✖', label: 'not yet'},
-  upstream: {mark: '△', label: "ReactCommon's"},
+  upstream: {mark: '△', label: "ReactCommon's or Yoga's"},
   ignored: {mark: '–', label: 'deliberately not done'},
 };
 
@@ -233,35 +233,45 @@ function audit(inventory, data) {
   return problems;
 }
 
+// How many rows sit at each status for one host, which is what the summary
+// needs: a single done-out-of-total hid the question an app author and this
+// project both ask, which is how much of what is ours to write is written.
+// `upstream` and `ignored` rows are not ours to write, and counting them in
+// either direction says something untrue -- in the total, that there is work
+// left in them; in the numerator, that we did it.
 function counts(inventory, data, key) {
-  let done = 0;
-  let total = 0;
+  const tally = {yes: 0, partial: 0, no: 0, upstream: 0, ignored: 0, total: 0};
+  const add = (row) => {
+    tally[row[key]]++;
+    tally.total++;
+  };
   for (const struct of inventory.structs) {
     for (const prop of struct.props) {
       const row = data.statuses[`${struct.name}.${prop.name}`];
       if (row === undefined) {
         continue;
       }
-      total++;
-      if (row[key] === 'yes' || row[key] === 'upstream') {
-        done++;
-      }
+      add(row);
     }
   }
   for (const area of data.areas) {
     for (const row of area.rows) {
-      total++;
-      if (row[key] === 'yes' || row[key] === 'upstream') {
-        done++;
-      }
+      add(row);
     }
   }
-  return {done, total};
+  // The rows this host is answerable for: what it has done, what it has half
+  // done, and what is still missing.
+  tally.ours = tally.yes + tally.partial + tally.no;
+  return tally;
 }
 
 function bar(done, total) {
   const filled = total === 0 ? 0 : Math.round((done / total) * 20);
   return '█'.repeat(filled) + '░'.repeat(20 - filled);
+}
+
+function percent(done, total) {
+  return total === 0 ? '--' : Math.round((done / total) * 100) + '%';
 }
 
 function render(inventory, data) {
@@ -322,20 +332,41 @@ function render(inventory, data) {
   lines.push('under the row that implements them.');
   lines.push('');
 
-  lines.push('| | ' + keys.map((key) => label(data, key)).join(' | ') + ' |');
-  lines.push('| --- | ' + keys.map(() => '---').join(' | ') + ' |');
-  lines.push(
-    '| Toolkit | '
-      + keys.map((key) => data.platforms.find((p) => p.key === key).toolkit).join(' | ')
-      + ' |',
-  );
-  const done = keys.map((key) => counts(inventory, data, key));
-  lines.push('| Done | ' + done.map(({done: d, total}) => `${d} of ${total}`).join(' | ') + ' |');
-  lines.push('| | ' + done.map(({done: d, total}) => '`' + bar(d, total) + '`').join(' | ') + ' |');
+  // One row per host, because a reader wants one number: how much of what this
+  // platform has to write is written. The three statuses that are a host's own
+  // work are the only ones in it, and they are what the bar is out of.
+  const tallies = keys.map((key) => counts(inventory, data, key));
+  lines.push('| Host | Toolkit | Done | Left | |');
+  lines.push('| --- | --- | --- | --- | --- |');
+  keys.forEach((key, i) => {
+    const t = tallies[i];
+    const toolkit = data.platforms.find((p) => p.key === key).toolkit;
+    lines.push(
+      `| ${label(data, key)} | ${toolkit} | ${t.yes} | ${t.partial + t.no} | `
+        + '`' + bar(t.yes, t.ours) + '` ' + percent(t.yes, t.ours) + ' |',
+    );
+  });
   lines.push('');
-  lines.push('Counting a row as done when the host implements it, or when ReactCommon or');
-  lines.push('Yoga does it for every host: a layout prop never reaches one of these');
-  lines.push('toolkits, so there is nothing for a host to implement and nothing to claim.');
+  // Written as a span rather than a number: 74 is the same on every host, and
+  // the deliberate skips differ by one, so a single figure would be wrong on
+  // some host and nobody would know which.
+  const span = (pick) =>
+    [...new Set(tallies.map(pick))].sort((a, b) => a - b).join(' or ');
+  lines.push('Out of the ' + tallies[0].total + ' rows below, those are the ones a host writes');
+  lines.push('itself. The rest are nobody\'s work left:');
+  lines.push('');
+  lines.push('- ' + span((t) => t.upstream) + ' are **done for every host already**, by ReactCommon or');
+  lines.push('  Yoga, before a prop reaches a toolkit at all: Yoga lays out');
+  lines.push('  `flex` and `padding` off the shadow tree, and ReactCommon parses and');
+  lines.push('  animates `opacity` the same way everywhere. Nothing for a host to write,');
+  lines.push('  and nothing for this platform to claim.');
+  lines.push('- ' + span((t) => t.ignored) + ' are **deliberately not done**, each with its reason in');
+  lines.push('  the Why column: an Android-only field, a prop upstream itself');
+  lines.push('  ignores, a knob no desktop has. These will not move.');
+  lines.push('');
+  lines.push('Counting either group would move the bar without anybody writing anything, so');
+  lines.push('neither is in it. `Left` is the partly-done and the not-yet rows together, and');
+  lines.push('the marks in the tables below say which is which.');
   lines.push('');
 
   lines.push('| | |');

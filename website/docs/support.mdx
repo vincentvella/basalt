@@ -47,22 +47,34 @@ is the one in the row and ReactCommon's is under it; where several names land
 in one field, as thirteen corner radii land in `borderRadii`, they are listed
 under the row that implements them.
 
-| | Linux | macOS | Windows |
-| --- | --- | --- | --- |
-| Toolkit | GTK4 | AppKit | Win32 |
-| Done | 192 of 280 | 193 of 280 | 189 of 280 |
-| | `██████████████░░░░░░` | `██████████████░░░░░░` | `██████████████░░░░░░` |
+| Host | Toolkit | Done | Left | |
+| --- | --- | --- | --- | --- |
+| Linux | GTK4 | 118 | 35 | `███████████████░░░░░` 77% |
+| macOS | AppKit | 119 | 34 | `████████████████░░░░` 78% |
+| Windows | Win32 | 115 | 37 | `███████████████░░░░░` 76% |
 
-Counting a row as done when the host implements it, or when ReactCommon or
-Yoga does it for every host: a layout prop never reaches one of these
-toolkits, so there is nothing for a host to implement and nothing to claim.
+Out of the 280 rows below, those are the ones a host writes
+itself. The rest are nobody's work left:
+
+- 74 are **done for every host already**, by ReactCommon or
+  Yoga, before a prop reaches a toolkit at all: Yoga lays out
+  `flex` and `padding` off the shadow tree, and ReactCommon parses and
+  animates `opacity` the same way everywhere. Nothing for a host to write,
+  and nothing for this platform to claim.
+- 53 or 54 are **deliberately not done**, each with its reason in
+  the Why column: an Android-only field, a prop upstream itself
+  ignores, a knob no desktop has. These will not move.
+
+Counting either group would move the bar without anybody writing anything, so
+neither is in it. `Left` is the partly-done and the not-yet rows together, and
+the marks in the tables below say which is which.
 
 | | |
 | --- | --- |
 | ✅ | done |
 | ◐ | partly done |
 | ✖ | not yet |
-| △ | ReactCommon's |
+| △ | ReactCommon's or Yoga's |
 | – | deliberately not done |
 
 **A tick is an index entry, not a proof.** What proves a prop behaves is the

@@ -129,14 +129,42 @@ test('a why that links into this repository has to point at a file that is here'
   assert.equal(here.length, 0);
 });
 
-test('a prop that ReactCommon consumes counts as done', () => {
+test('a prop ReactCommon consumes is neither our work nor our credit', () => {
   const inventory = inventoryOf(['onLayout', 'cursor']);
   const data = dataOf({
     'BaseViewProps.onLayout': {linux: 'upstream', macos: 'upstream', why: 'because'},
     'BaseViewProps.cursor': {linux: 'yes', macos: 'no', why: 'because'},
   });
-  assert.deepEqual(counts(inventory, data, 'linux'), {done: 2, total: 2});
-  assert.deepEqual(counts(inventory, data, 'macos'), {done: 1, total: 2});
+  assert.deepEqual(counts(inventory, data, 'linux'), {
+    yes: 1, partial: 0, no: 0, upstream: 1, ignored: 0, total: 2, ours: 1,
+  });
+  assert.deepEqual(counts(inventory, data, 'macos'), {
+    yes: 0, partial: 0, no: 1, upstream: 1, ignored: 0, total: 2, ours: 1,
+  });
+});
+
+test('a row nobody will ever write does not hold the bar back', () => {
+  // The whole point of splitting the summary. An Android-only prop and a prop
+  // ReactCommon handles are both outside the host's reach, so a host that has
+  // written everything that is its to write reads full, not two thirds.
+  const inventory = inventoryOf(['opacity', 'needsOffscreenAlphaCompositing', 'onLayout']);
+  const data = dataOf({
+    'BaseViewProps.opacity': {linux: 'yes', macos: 'yes'},
+    'BaseViewProps.needsOffscreenAlphaCompositing': {
+      linux: 'ignored', macos: 'ignored', why: 'because',
+    },
+    'BaseViewProps.onLayout': {linux: 'upstream', macos: 'upstream', why: 'because'},
+  });
+  assert.deepEqual(counts(inventory, data, 'linux'), {
+    yes: 1, partial: 0, no: 0, upstream: 1, ignored: 1, total: 3, ours: 1,
+  });
+  const page = render(inventory, data);
+  assert.ok(
+    page.includes('| Linux | GTK4 | 1 | 0 | '),
+    'the summary counts rows that are not a host\'s to write',
+  );
+  assert.ok(page.includes('100%'));
+  assert.match(page, /█{20}/);
 });
 
 test('the page carries one row per attribute, a mark per status and a bar per platform', () => {
@@ -152,8 +180,10 @@ test('the page carries one row per attribute, a mark per status and a bar per pl
   for (const {mark} of Object.values(STATUSES)) {
     assert.ok(page.includes(mark), `the legend is missing ${mark}`);
   }
-  // One of two done, so the bar is half full and the count says so.
-  assert.ok(page.includes('1 of 2'));
+  // One of two rows ours and done, so the bar is half full and the breakdown
+  // says which half: one done, one not yet, nothing anywhere else.
+  assert.ok(page.includes('| Linux | GTK4 | 1 | 1 | '));
+  assert.ok(page.includes('50%'));
   assert.match(page, /█{10}░{10}/);
   // The why is a link rather than bare text, and the struct's header is named.
   assert.ok(page.includes('[because](https://example.com/)'));
@@ -208,7 +238,7 @@ test("the name an app writes leads, and ReactCommon's spelling follows it", () =
   // The status is still keyed by what React Native's header calls it.
   assert.equal(counts(inventoryOf([{name: 'borderRadii', kind: 'style'}]), dataOf({
     'BaseViewProps.borderRadii': {linux: 'yes', macos: 'yes'},
-  }), 'linux').done, 1);
+  }), 'linux').yes, 1);
 });
 
 // Every other name that lands in the same field is on the page too, spelled

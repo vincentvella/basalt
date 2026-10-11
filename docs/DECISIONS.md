@@ -775,3 +775,22 @@ found it was adding `.js` to one import.
 
 `scripts/test_platform_js.js` now asserts the rule directly, from an origin that
 is not the override, which is the case the old guard got wrong.
+
+## The support page counts only what a host has to write (2026-10-10)
+
+The summary used to read `Done: 192 of 280`, which answered a question nobody
+asks. It counted a prop Yoga lays out and a prop deliberately left alone the
+same way it counted a prop somebody sat down and wrote, so the figure could not
+be read as progress in either direction: 74 of those ticks were ReactCommon's
+or Yoga's, and 53 rows in the total will never move.
+
+So the summary now has one row per host and one denominator: the rows that host
+writes itself, which is `done` plus `partly done` plus `not yet`. The two groups
+outside it are stated underneath, as counts with their reason, because they are
+worth knowing and they are not progress. Linux reads 118 of 153 rather than 192
+of 280, and the bar moves only when somebody writes something.
+
+The arithmetic matters more than the wording, so `scripts/test_check_support.js`
+pins it: a host whose every remaining row is upstream's or deliberately skipped
+reads full, and `counts()` returns the five statuses separately rather than a
+pair that has already made the decision.
