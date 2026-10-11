@@ -490,8 +490,12 @@ typedef struct {
   CGFloat blurRadius;
   CGFloat opacity;
   // Borrowed for the duration of the call, in the order they were written: the
-  // first is the one nearest the content. Only the first is drawn -- a CALayer
-  // has one shadow -- and backlog/platform-macos.md records that.
+  // first is the one nearest the content, which CSS applying a filter list
+  // left to right is what makes true. A CALayer carries one shadow, so the
+  // first is the view's own layer's -- cast from the content's alpha -- and
+  // each of the rest is a layer of its own cast from the view's box. The
+  // difference shows only on content with holes in it, and
+  // backlog/platform-macos.md records it.
   const RnAppKitFilterShadow *shadows;
   NSInteger shadowCount;
 } RnAppKitFilters;

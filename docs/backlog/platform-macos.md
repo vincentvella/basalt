@@ -6,7 +6,7 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (2):**
+**Open (1):**
 
 1. ~~Justified text~~, which worked all along
 2. ~~Fonts loaded at runtime are untested~~
@@ -18,7 +18,8 @@ If an entry here is about to be picked up, run the thing it describes first.
 7. ~~No animated images~~
 8. ~~No gesture cancellation from the platform~~, and the half of it that
    was already handled
-9. Only the first `dropShadow()` in a filter list is drawn
+9. ~~Only the first `dropShadow()` in a filter list is drawn~~, though a
+   later one is cast from the box rather than the alpha
 
 - ~~**Hit testing ignores `transform`.**~~ Fixed, the way Windows already did
   it: `RnAppKitView` gains `rnLocalToParent`, the frame's translation with the
@@ -365,7 +366,28 @@ If an entry here is about to be picked up, run the thing it describes first.
   no text and no image" is a lot of behaviour that changes with the content, for
   a prop that is rare.
 
-  So this stays recorded. What *is* worth doing if it is ever picked up is
-  deciding between CSS's answer (draw them all, which GTK already does) and
-  iOS's (keep the last), rather than keeping a third answer that matches
-  neither. backlog/correctness.md has the rest of the function.
+  **Drawn on 2026-10-11, with the trade this entry argued against and for the
+  reason this project draws a dotted underline solid rather than not at all.**
+  The choice was never between the box and the alpha; it was between the box
+  and *nothing*, and a shadow of the wrong silhouette is wrong in a way a
+  person can see, where a missing one looks like a prop nobody implemented.
+  CSS's answer was taken over iOS's, so all of them are drawn.
+
+  The first stays the view's own layer's and is cast from the content's alpha,
+  which is the case that matters and the one that was already right. Each one
+  after it is a layer of its own with a `shadowPath` over the view's rounded
+  box, inserted behind the content, masked outside that box the way the outset
+  box shadows are. For an opaque view -- a card, a button, the thing a designer
+  puts two shadows on -- it is exact.
+
+  **What is still approximate, and it is the paragraph above turned around.**
+  A later shadow is cast from the box rather than from the previous function's
+  output, so text, a transparent image, or children with gaps between them cast
+  a rectangular second shadow where CSS would cast their own shape. The support
+  page says `partial` for that reason rather than `yes`. What would close it is
+  a Core Image chain in `layer.filters` -- blur, tint, offset, composite --
+  which operates on the layer's rendered content and so follows the alpha;
+  macOS 15's own `CIFilter.dropShadow` would be the whole of it, and the
+  deployment target is older than that.
+
+  backlog/correctness.md has the rest of the function.
