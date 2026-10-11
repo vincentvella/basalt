@@ -312,11 +312,6 @@ function counts(inventory, data, key) {
   return tally;
 }
 
-function bar(done, total) {
-  const filled = total === 0 ? 0 : Math.round((done / total) * 20);
-  return '█'.repeat(filled) + '░'.repeat(20 - filled);
-}
-
 function percent(done, total) {
   return total === 0 ? '--' : Math.round((done / total) * 100) + '%';
 }
@@ -379,49 +374,75 @@ function render(inventory, data) {
   lines.push('under the row that implements them.');
   lines.push('');
 
-  // One row per host, because a reader wants one number: how much of what this
-  // platform has to write is written. The three statuses that are a host's own
-  // work are the only ones in it, and they are what the bar is out of.
+  // One bar per host over every row React Native declares, and one number: how
+  // much of what this platform has to write is written.
+  //
+  // The bar is segmented rather than filled because a single filled bar had to
+  // choose a denominator, and whichever it chose was a different question from
+  // the one the reader was asking. Five segments say the whole thing at once,
+  // and the two that are nobody's work are hatched, so this platform's own
+  // progress is the solid run at the left.
   const tallies = keys.map((key) => counts(inventory, data, key));
-  lines.push('| Host | Toolkit | Done | Left | |');
-  lines.push('| --- | --- | --- | --- | --- |');
+  const segments = [
+    ['yes', STATUSES.yes],
+    ['partial', STATUSES.partial],
+    ['no', STATUSES.no],
+    ['upstream', STATUSES.upstream],
+    ['ignored', STATUSES.ignored],
+  ];
+  lines.push('| Host | Toolkit | Written itself | All ' + tallies[0].total + ' rows |');
+  lines.push('| --- | --- | --- | --- |');
   keys.forEach((key, i) => {
     const t = tallies[i];
     const toolkit = data.platforms.find((p) => p.key === key).toolkit;
+    // The last segment takes the remainder, so the widths add to a hundred
+    // whatever the rounding did.
+    const drawn = segments.filter(([name]) => t[name] > 0);
+    let used = 0;
+    const spans = drawn.map(([name, status], index) => {
+      const width = index === drawn.length - 1
+        ? (100 - used).toFixed(2)
+        : ((t[name] / t.total) * 100).toFixed(2);
+      used += Number(width);
+      return `<span className="support-${name}" style={{width: '${width}%'}} `
+        + `title="${t[name]} ${status.label}" />`;
+    });
     lines.push(
-      `| ${label(data, key)} | ${toolkit} | ${t.yes} | ${t.partial + t.no} | `
-        + '`' + bar(t.yes, t.ours) + '` ' + percent(t.yes, t.ours) + ' |',
+      `| ${label(data, key)} | ${toolkit} | ${t.yes} of ${t.ours}, ${percent(t.yes, t.ours)} | `
+        + `<span className="support-bar">${spans.join('')}</span> |`,
     );
   });
   lines.push('');
-  // Written as a span rather than a number: 74 is the same on every host, and
-  // the deliberate skips differ by one, so a single figure would be wrong on
-  // some host and nobody would know which.
-  const span = (pick) =>
-    [...new Set(tallies.map(pick))].sort((a, b) => a - b).join(' or ');
-  lines.push('Out of the ' + tallies[0].total + ' rows below, those are the ones a host writes');
-  lines.push('itself. The rest are nobody\'s work left:');
-  lines.push('');
-  lines.push('- ' + span((t) => t.upstream) + ' are **done for every host already**, by ReactCommon or');
-  lines.push('  Yoga, before a prop reaches a toolkit at all: Yoga lays out');
-  lines.push('  `flex` and `padding` off the shadow tree, and ReactCommon parses and');
-  lines.push('  animates `opacity` the same way everywhere. Nothing for a host to write,');
-  lines.push('  and nothing for this platform to claim.');
-  lines.push('- ' + span((t) => t.ignored) + ' are **deliberately not done**, each with its reason in');
-  lines.push('  the Why column: an Android-only field, a prop upstream itself');
-  lines.push('  ignores, a knob no desktop has. These will not move.');
-  lines.push('');
-  lines.push('Counting either group would move the bar without anybody writing anything, so');
-  lines.push('neither is in it. `Left` is the partly-done and the not-yet rows together, and');
-  lines.push('the marks in the tables below say which is which.');
+  lines.push('**Written itself** is out of the rows that host writes: what it has written,');
+  lines.push('what it has half written, and what is still missing. The hatched part of the');
+  lines.push('bar is the rest, and it is nobody\'s work left.');
   lines.push('');
 
-  lines.push('| | |');
-  lines.push('| --- | --- |');
-  for (const [, {mark, label: text}] of Object.entries(STATUSES)) {
-    lines.push(`| ${mark} | ${text} |`);
+  // The legend and the breakdown are one table: five rows, each carrying the
+  // colour in the bar, the mark used in every table below it, and the count on
+  // each host. Three separate tables said the same thing three times, which is
+  // what made the first version of this page unreadable.
+  lines.push('| | ' + keys.map((key) => label(data, key)).join(' | ') + ' |');
+  lines.push('| --- | ' + keys.map(() => '---').join(' | ') + ' |');
+  for (const [name, status] of segments) {
+    lines.push(
+      `| <span className="support-chip support-${name}" /> ${status.mark} ${status.label} | `
+        + tallies.map((t) => String(t[name])).join(' | ') + ' |',
+    );
   }
   lines.push('');
+  const capital = (text) => text.slice(0, 1).toUpperCase() + text.slice(1);
+  lines.push('- **' + capital(STATUSES.upstream.label) + '** is a prop that never reaches one of');
+  lines.push('  these toolkits. Yoga lays out `flex` and `padding` off the shadow tree before');
+  lines.push('  a host sees a view, and ReactCommon parses and animates `opacity` the same');
+  lines.push('  way everywhere. Nothing for a host to write, and nothing for this platform');
+  lines.push('  to claim.');
+  lines.push('- **' + capital(STATUSES.ignored.label) + '** is a prop with its reason in the Why');
+  lines.push('  column: an Android-only field, a prop upstream itself ignores, a knob no');
+  lines.push('  desktop has. These will not move, so counting them as work left would make');
+  lines.push('  the bar never fill.');
+  lines.push('');
+
   lines.push('**A tick is an index entry, not a proof.** What proves a prop behaves is the');
   lines.push('end-to-end scenario that exercises it on every host, in');
   lines.push('`scripts/integration_test.py`. What this page is checked against is narrower');

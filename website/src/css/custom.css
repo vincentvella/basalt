@@ -40,3 +40,87 @@
   overflow-x: auto;
   max-width: 100%;
 }
+
+/* The platform support page's breakdown bar.
+ *
+ * One bar per host over every row React Native declares, in the order the
+ * statuses mean something: what the host has written, what it has half
+ * written, what is left, and then the two groups that are nobody's work --
+ * ReactCommon's or Yoga's, and the deliberate skips. Those two are hatched
+ * rather than flat, so the part of the bar that is this platform's progress
+ * reads as one block of solid colour at the left.
+ *
+ * A `title` on each segment carries its count, and the counts are in the
+ * legend table under the bar as well: a tooltip is not a place to keep a
+ * number somebody might want to read. */
+.support-bar {
+  display: flex;
+  width: 100%;
+  min-width: 11rem;
+  height: 0.85rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.support-bar > span {
+  height: 100%;
+}
+
+/* The same five colours as a 0.8rem square, for the legend's first column. */
+.support-chip {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 3px;
+  vertical-align: -0.1rem;
+}
+
+.support-yes {
+  background: #2f7d33;
+}
+
+.support-partial {
+  background: #d99521;
+}
+
+/* A muted terracotta rather than a grey: this is the work still to do, and a
+   grey would sit next to two hatched greys that are not this platform's work
+   at all. */
+.support-no {
+  background: #b3503c;
+}
+
+.support-upstream {
+  background: repeating-linear-gradient(
+    135deg, #39699d, #39699d 3px, #5283b4 3px, #5283b4 6px);
+}
+
+.support-ignored {
+  background: repeating-linear-gradient(
+    135deg, #8a8a8a, #8a8a8a 3px, #a8a8a8 3px, #a8a8a8 6px);
+}
+
+/* Lifted for a dark background, the way the primary ramp above is. */
+[data-theme='dark'] .support-yes {
+  background: #4caf50;
+}
+
+[data-theme='dark'] .support-partial {
+  background: #e8ad3c;
+}
+
+[data-theme='dark'] .support-no {
+  background: #d1705c;
+}
+
+[data-theme='dark'] .support-upstream {
+  background: repeating-linear-gradient(
+    135deg, #81acda, #81acda 3px, #9cc0e4 3px, #9cc0e4 6px);
+}
+
+[data-theme='dark'] .support-ignored {
+  background: repeating-linear-gradient(
+    135deg, #6f6f6f, #6f6f6f 3px, #8c8c8c 3px, #8c8c8c 6px);
+}

@@ -184,11 +184,16 @@ test('a row nobody will ever write does not hold the bar back', () => {
   });
   const page = render(inventory, data);
   assert.ok(
-    page.includes('| Linux | GTK4 | 1 | 0 | '),
-    'the summary counts rows that are not a host\'s to write',
+    page.includes('| Linux | GTK4 | 1 of 1, 100% |'),
+    'the number counts rows that are not a host\'s to write',
   );
-  assert.ok(page.includes('100%'));
-  assert.match(page, /█{20}/);
+  // The bar still shows them, because it is the whole inventory: a third each.
+  for (const kind of ['yes', 'upstream', 'ignored']) {
+    assert.ok(
+      page.includes(`className="support-${kind}"`),
+      `the bar is missing its ${kind} segment`,
+    );
+  }
 });
 
 test('the page carries one row per attribute, a mark per status and a bar per platform', () => {
@@ -206,12 +211,32 @@ test('the page carries one row per attribute, a mark per status and a bar per pl
   }
   // One of two rows ours and done, so the bar is half full and the breakdown
   // says which half: one done, one not yet, nothing anywhere else.
-  assert.ok(page.includes('| Linux | GTK4 | 1 | 1 | '));
-  assert.ok(page.includes('50%'));
-  assert.match(page, /█{10}░{10}/);
+  assert.ok(page.includes('| Linux | GTK4 | 1 of 2, 50% |'));
+  // Half the bar is the done segment, and the segments add to the whole bar.
+  assert.ok(page.includes(`<span className="support-yes" style={{width: '50.00%'}}`));
+  assert.ok(page.includes(`<span className="support-no" style={{width: '50.00%'}}`));
   // The why is a link rather than bare text, and the struct's header is named.
   assert.ok(page.includes('[because](https://example.com/)'));
   assert.ok(page.includes('a/header.h'));
+});
+
+test('the segments of a bar add up to the whole bar', () => {
+  // Three rows into five segments is 33.33 each, and three of those is 99.99.
+  // The last segment takes the remainder for exactly this reason: a bar that
+  // falls short leaves a sliver of the page showing through the end of it.
+  const page = render(
+    inventoryOf(['opacity', 'cursor', 'onLayout']),
+    dataOf({
+      'BaseViewProps.opacity': {linux: 'yes', macos: 'yes'},
+      'BaseViewProps.cursor': {linux: 'no', macos: 'partial', why: 'because'},
+      'BaseViewProps.onLayout': {linux: 'upstream', macos: 'upstream', why: 'because'},
+    }),
+  );
+  for (const bar of page.match(/<span className="support-bar">.*?<\/span>/g) ?? []) {
+    const widths = [...bar.matchAll(/width: '([\d.]+)%'/g)].map((m) => Number(m[1]));
+    assert.equal(widths.length, 3, bar);
+    assert.equal(widths.reduce((a, b) => a + b, 0), 100, bar);
+  }
 });
 
 test('an unknown status renders rather than throwing', () => {

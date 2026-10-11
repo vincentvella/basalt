@@ -47,35 +47,33 @@ is the one in the row and ReactCommon's is under it; where several names land
 in one field, as thirteen corner radii land in `borderRadii`, they are listed
 under the row that implements them.
 
-| Host | Toolkit | Done | Left | |
-| --- | --- | --- | --- | --- |
-| Linux | GTK4 | 118 | 24 | `█████████████████░░░` 83% |
-| macOS | AppKit | 119 | 23 | `█████████████████░░░` 84% |
-| Windows | Win32 | 115 | 26 | `████████████████░░░░` 82% |
+| Host | Toolkit | Written itself | All 280 rows |
+| --- | --- | --- | --- |
+| Linux | GTK4 | 118 of 142, 83% | <span className="support-bar"><span className="support-yes" style={{width: '42.14%'}} title="118 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '5.71%'}} title="16 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
+| macOS | AppKit | 119 of 142, 84% | <span className="support-bar"><span className="support-yes" style={{width: '42.50%'}} title="119 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '5.36%'}} title="15 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.85%'}} title="64 deliberately not done" /></span> |
+| Windows | Win32 | 115 of 141, 82% | <span className="support-bar"><span className="support-yes" style={{width: '41.07%'}} title="115 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-no" style={{width: '5.71%'}} title="16 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.22%'}} title="65 deliberately not done" /></span> |
 
-Out of the 280 rows below, those are the ones a host writes
-itself. The rest are nobody's work left:
+**Written itself** is out of the rows that host writes: what it has written,
+what it has half written, and what is still missing. The hatched part of the
+bar is the rest, and it is nobody's work left.
 
-- 74 are **done for every host already**, by ReactCommon or
-  Yoga, before a prop reaches a toolkit at all: Yoga lays out
-  `flex` and `padding` off the shadow tree, and ReactCommon parses and
-  animates `opacity` the same way everywhere. Nothing for a host to write,
-  and nothing for this platform to claim.
-- 64 or 65 are **deliberately not done**, each with its reason in
-  the Why column: an Android-only field, a prop upstream itself
-  ignores, a knob no desktop has. These will not move.
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| <span className="support-chip support-yes" /> ✅ done | 118 | 119 | 115 |
+| <span className="support-chip support-partial" /> ◐ partly done | 8 | 8 | 10 |
+| <span className="support-chip support-no" /> ✖ not yet | 16 | 15 | 16 |
+| <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
+| <span className="support-chip support-ignored" /> – deliberately not done | 64 | 64 | 65 |
 
-Counting either group would move the bar without anybody writing anything, so
-neither is in it. `Left` is the partly-done and the not-yet rows together, and
-the marks in the tables below say which is which.
-
-| | |
-| --- | --- |
-| ✅ | done |
-| ◐ | partly done |
-| ✖ | not yet |
-| △ | ReactCommon's or Yoga's |
-| – | deliberately not done |
+- **ReactCommon's or Yoga's** is a prop that never reaches one of
+  these toolkits. Yoga lays out `flex` and `padding` off the shadow tree before
+  a host sees a view, and ReactCommon parses and animates `opacity` the same
+  way everywhere. Nothing for a host to write, and nothing for this platform
+  to claim.
+- **Deliberately not done** is a prop with its reason in the Why
+  column: an Android-only field, a prop upstream itself ignores, a knob no
+  desktop has. These will not move, so counting them as work left would make
+  the bar never fill.
 
 **A tick is an index entry, not a proof.** What proves a prop behaves is the
 end-to-end scenario that exercises it on every host, in
