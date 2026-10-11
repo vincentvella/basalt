@@ -12,6 +12,25 @@ Basalt adds a desktop to a React Native app that already exists. It does not
 create one: `create-expo-app` does that, and the division is deliberate: this
 is a platform you add, not a way to start a project.
 
+## Which React Native
+
+This is decided when the app is created rather than when Basalt is added, and
+it is the one choice worth making deliberately.
+
+**0.87 is the one to be on.** It is what CI pins, it is what every host is
+built and tested against, and it is the only supported version with Fast
+Refresh. `react-native@latest` is 0.87.1 today, so an app created from React
+Native's own template is already there.
+
+**An Expo app does not get to choose.** SDK 57 installs React Native 0.86.3,
+which Basalt supports and which has no Fast Refresh: a reload collapses the
+host, from a bug in React Native's own teardown that upstream fixed in 0.87 by
+deleting three lines. Everything else works; you restart to see a change. SDK
+58 installs 0.88.0-rc, which Basalt has never been built against and does not
+claim.
+
+So: on 0.86, expect to restart the app after an edit. On 0.87, do not.
+
 ## Before you start
 
 Install the toolchain for the desktop you are building on. You only need the
@@ -136,8 +155,9 @@ npm run linux -- --mode release --build
 
 | React Native | Status |
 | --- | --- |
-| **0.87** | Supported. What CI pins, and verified on 0.87.1. |
-| **0.86** | Supported, verified on 0.86.3, but **no Fast Refresh**. |
+| 0.88 | Not yet. `0.88.0-rc` is what Expo SDK 58 installs, and nothing here has been built against it. |
+| **0.87** | Supported. What CI pins, verified on 0.87.1, and the only version with Fast Refresh. |
+| **0.86** | Supported, verified on 0.86.3, but **no Fast Refresh**: a reload collapses the host, which upstream fixed in 0.87. What Expo SDK 57 installs. |
 | 0.83 – 0.85 | Never built or tested. Nothing suggests they would not work; nothing has checked. |
 | 0.82 and older | Attempted and deliberately stopped. Needs a second host construction path and a websocket client React Native does not ship there. |
 
