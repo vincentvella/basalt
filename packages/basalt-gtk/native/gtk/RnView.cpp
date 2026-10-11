@@ -1,5 +1,7 @@
 #include "RnView.h"
 
+#include "RnTextDashes.h"
+
 #include "Backface.h"
 #include "ScrollIndicator.h"
 #include "ImageAnimation.h"
@@ -1242,6 +1244,81 @@ static void rn_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
         g_free(ranges);
       } while (pango_layout_iter_next_line(iter));
       pango_layout_iter_free(iter);
+    }
+    // Dotted and dashed underlines, which Pango has no value for: the
+    // attribute was left off those ranges when the layout was built and the
+    // pieces are drawn here. See RnTextDashes.h for why the runs travel on the
+    // layout rather than beside it.
+    //
+    // Before the glyphs, which is where an underline goes: a descender
+    // crossing the line is drawn on top of it, the same order Pango's own
+    // underline is drawn in.
+    if (GArray *dashes = rn_text_dash_runs(self->text_layout)) {
+      PangoContext *context = pango_layout_get_context(self->text_layout);
+      const PangoFontDescription *font = pango_layout_get_font_description(self->text_layout);
+      if (font == nullptr && context != nullptr) {
+        // Null means the layout takes the context's, which is where a font set
+        // on the whole paragraph ends up.
+        font = pango_context_get_font_description(context);
+      }
+      PangoFontMetrics *metrics =
+          context != nullptr ? pango_context_get_metrics(context, font, nullptr) : nullptr;
+      if (metrics != nullptr) {
+        // The font's own geometry, so the dashes sit where its underline would
+        // have. Both numbers are in Pango units, and the position is measured
+        // *up* from the baseline -- negative for a line below it, which every
+        // underline is.
+        const float thickness = MAX(
+            1.0f,
+            static_cast<float>(pango_font_metrics_get_underline_thickness(metrics)) / PANGO_SCALE);
+        const float position =
+            static_cast<float>(pango_font_metrics_get_underline_position(metrics)) / PANGO_SCALE;
+
+        for (guint d = 0; d < dashes->len; d++) {
+          const RnTextDashRun &run = g_array_index(dashes, RnTextDashRun, d);
+          const GdkRGBA color = run.has_color ? run.color : self->text_color;
+          // Direct2D's own patterns, counted in multiples of the line's
+          // thickness, so that the three hosts draw the same shape and the
+          // dots of a 40pt underline are as far apart, in proportion, as the
+          // dots of a 12pt one. DOT is a dot with two widths of gap; DASH is
+          // two widths on and two off. See `decorationDashes` in
+          // RnWin32TextLayout.cpp, which is where the pair comes from.
+          const float piece = run.dotted ? thickness : thickness * 2.0f;
+          const float gap = thickness * 2.0f;
+
+          PangoLayoutIter *iter = pango_layout_get_iter(self->text_layout);
+          do {
+            PangoLayoutLine *line = pango_layout_iter_get_line_readonly(iter);
+            const float baseline =
+                static_cast<float>(pango_layout_iter_get_baseline(iter)) / PANGO_SCALE;
+
+            // One range per visual run on this line, the same call the
+            // selection highlight makes and for the same reason: a
+            // bidirectional line is not one span.
+            int *ranges = nullptr;
+            int range_count = 0;
+            pango_layout_line_get_x_ranges(line, static_cast<int>(run.start),
+                                           static_cast<int>(run.end), &ranges, &range_count);
+            for (int i = 0; i < range_count; i++) {
+              const float from = static_cast<float>(ranges[2 * i]) / PANGO_SCALE;
+              const float to = static_cast<float>(ranges[2 * i + 1]) / PANGO_SCALE;
+              for (float x = from; x < to; x += piece + gap) {
+                graphene_rect_t rect;
+                rect.origin.x = x;
+                rect.origin.y = baseline - position;
+                // Clipped to the range rather than overrunning it, so the last
+                // piece of a line stops where the text does.
+                rect.size.width = MIN(piece, to - x);
+                rect.size.height = thickness;
+                gtk_snapshot_append_color(snapshot, &color, &rect);
+              }
+            }
+            g_free(ranges);
+          } while (pango_layout_iter_next_line(iter));
+          pango_layout_iter_free(iter);
+        }
+        pango_font_metrics_unref(metrics);
+      }
     }
     gtk_snapshot_append_layout(snapshot, self->text_layout, &self->text_color);
     if (shadows_text) {
