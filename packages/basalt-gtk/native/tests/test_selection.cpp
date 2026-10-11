@@ -307,3 +307,170 @@ TEST(selection_the_copy_role_copies_the_selection_rather_than_the_focused_widget
   basalt::setClipboardText(original);
   Paragraph::pump();
 }
+
+#if GTK_CHECK_VERSION(4, 14, 0)
+// --- What a screen reader can read ------------------------------------------
+//
+// The other half of this entry: a paragraph is a PangoLayout drawn into a
+// widget, so AT-SPI had a name for it and no text, and a selection made with
+// the mouse was invisible to Orca. `GtkAccessibleText` on RnView answers the
+// questions Pango can already answer; see the block in RnView.cpp.
+//
+// Offsets in that interface are characters and Pango counts bytes, so every
+// case here uses text where the two differ. An ASCII assertion would pass with
+// the conversion removed, which is the mistake these are written against.
+
+namespace {
+
+// Through the interface rather than through a public getter, because GTK
+// exposes none: `gtk_accessible_text_*` is `update_caret_position`,
+// `update_selection_bound` and `update_contents`, which are the *notifications*
+// a widget sends. The questions are vfuncs, and GTK's AT-SPI bridge is what
+// calls them -- so these tests call them the way the bridge does, which is
+// also the only way to reach them without a screen reader attached.
+GtkAccessibleTextInterface *textInterface(RnView *view) {
+  return GTK_ACCESSIBLE_TEXT_GET_IFACE(GTK_ACCESSIBLE_TEXT(view));
+}
+
+std::string accessibleContents(RnView *view, unsigned int start, unsigned int end) {
+  GBytes *bytes =
+      textInterface(view)->get_contents(GTK_ACCESSIBLE_TEXT(view), start, end);
+  if (bytes == nullptr) {
+    return {};
+  }
+  gsize size = 0;
+  const char *data = static_cast<const char *>(g_bytes_get_data(bytes, &size));
+  std::string text(data, size);
+  g_bytes_unref(bytes);
+  return text;
+}
+
+std::string accessibleContentsAt(RnView *view,
+                                 unsigned int offset,
+                                 GtkAccessibleTextGranularity granularity,
+                                 unsigned int *start,
+                                 unsigned int *end) {
+  GBytes *bytes = textInterface(view)->get_contents_at(GTK_ACCESSIBLE_TEXT(view), offset,
+                                                       granularity, start, end);
+  if (bytes == nullptr) {
+    return {};
+  }
+  gsize size = 0;
+  const char *data = static_cast<const char *>(g_bytes_get_data(bytes, &size));
+  std::string text(data, size);
+  g_bytes_unref(bytes);
+  return text;
+}
+
+unsigned int accessibleCaret(RnView *view) {
+  return textInterface(view)->get_caret_position(GTK_ACCESSIBLE_TEXT(view));
+}
+
+gboolean accessibleSelection(RnView *view, gsize *count, GtkAccessibleTextRange **ranges) {
+  return textInterface(view)->get_selection(GTK_ACCESSIBLE_TEXT(view), count, ranges);
+}
+
+// Two Hebrew letters, which are two characters and four bytes.
+const char *const kMixed = "\xd7\xa9\xd7\x9c hello world";
+
+} // namespace
+
+TEST(selection_a_paragraph_hands_a_screen_reader_its_text) {
+  Paragraph paragraph("hello world", 400.0F, 60.0F);
+  EXPECT_EQ(accessibleContents(paragraph.view, 0, G_MAXUINT), std::string("hello world"));
+  EXPECT_EQ(accessibleContents(paragraph.view, 6, 11), std::string("world"));
+  // Past the end is clamped rather than read off the end of the string.
+  EXPECT_EQ(accessibleContents(paragraph.view, 6, 9999), std::string("world"));
+  EXPECT_EQ(accessibleContents(paragraph.view, 99, 100), std::string(""));
+}
+
+TEST(selection_a_view_with_no_paragraph_has_no_text_to_read) {
+  // The interface belongs to the type, so a plain <View> carries it; what it
+  // must not do is invent text. The role is what tells a screen reader which
+  // kind of view it is looking at.
+  RnView *view = rn_view_new(3);
+  EXPECT_EQ(accessibleContents(view, 0, G_MAXUINT), std::string(""));
+  EXPECT_EQ((int)accessibleCaret(view), 0);
+  g_object_ref_sink(view);
+  g_object_unref(view);
+}
+
+TEST(selection_a_screen_reader_walks_a_paragraph_by_word_and_by_line) {
+  Paragraph paragraph(kMixed, 400.0F, 60.0F);
+  unsigned int start = 0;
+  unsigned int end = 0;
+
+  // Offset 3 is the `h` of hello: two Hebrew characters and a space before it,
+  // which is five bytes and three characters. A byte offset here would land
+  // inside the second Hebrew letter.
+  EXPECT_EQ(accessibleContentsAt(paragraph.view, 3, GTK_ACCESSIBLE_TEXT_GRANULARITY_WORD,
+                                 &start, &end),
+            std::string("hello"));
+  EXPECT_EQ((int)start, 3);
+  EXPECT_EQ((int)end, 8);
+
+  // One character, which is one Hebrew letter rather than one byte of one.
+  EXPECT_EQ(accessibleContentsAt(paragraph.view, 0, GTK_ACCESSIBLE_TEXT_GRANULARITY_CHARACTER,
+                                 &start, &end),
+            std::string("\xd7\xa9"));
+
+  // The whole thing is one line in a box this wide, which is the answer a
+  // screen reader reading line by line gets.
+  EXPECT_EQ(accessibleContentsAt(paragraph.view, 4, GTK_ACCESSIBLE_TEXT_GRANULARITY_LINE,
+                                 &start, &end),
+            std::string(kMixed));
+  EXPECT_EQ((int)start, 0);
+}
+
+TEST(selection_a_selection_is_reported_in_characters_rather_than_bytes) {
+  Paragraph paragraph(kMixed, 400.0F, 60.0F);
+  // The two Hebrew letters: four bytes, which is what this host selects in and
+  // what `rn_view_copy_selected_text` reads.
+  rn_view_set_text_selection(paragraph.view, 0, 4);
+
+  gsize count = 0;
+  GtkAccessibleTextRange *ranges = nullptr;
+  EXPECT(accessibleSelection(paragraph.view, &count, &ranges));
+  EXPECT_EQ((int)count, 1);
+  EXPECT(ranges != nullptr);
+  if (ranges != nullptr) {
+    EXPECT_EQ((int)ranges[0].start, 0);
+    // Two characters, not the four bytes they take.
+    EXPECT_EQ((int)ranges[0].length, 2);
+    g_free(ranges);
+  }
+  // The caret is where the drag stopped, in the same unit.
+  EXPECT_EQ((int)accessibleCaret(paragraph.view), 2);
+
+  rn_view_set_text_selection(paragraph.view, 0, 0);
+  EXPECT(!accessibleSelection(paragraph.view, &count, &ranges));
+}
+
+TEST(selection_a_drag_is_what_a_screen_reader_sees_selected) {
+  // The two halves together, which is the point of the entry: the pointer
+  // makes the selection and the accessibility interface reports it, with
+  // nothing in between remembering it twice.
+  Paragraph paragraph("Selectable text", 400.0F, 60.0F);
+  basalt::GtkMountingManager manager;
+  basalt::GtkTouchDispatcher dispatcher(&manager, paragraph.root);
+
+  dispatcher.synthesiseDrag(2.0, 10.0, 150.0, 10.0, 10);
+
+  gsize count = 0;
+  GtkAccessibleTextRange *ranges = nullptr;
+  EXPECT(accessibleSelection(paragraph.view, &count, &ranges));
+  EXPECT_EQ((int)count, 1);
+  char *copied = rn_view_copy_selected_text(paragraph.view);
+  EXPECT(copied != nullptr);
+  if (copied != nullptr && ranges != nullptr) {
+    // The same span, said twice: what the clipboard would take is what the
+    // screen reader is told is selected.
+    EXPECT_EQ(accessibleContents(paragraph.view, (unsigned int)ranges[0].start,
+                                 (unsigned int)(ranges[0].start + ranges[0].length)),
+              std::string(copied));
+  }
+  g_free(copied);
+  g_free(ranges);
+  Paragraph::pump();
+}
+#endif

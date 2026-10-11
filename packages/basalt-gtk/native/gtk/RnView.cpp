@@ -424,6 +424,10 @@ void rn_view_set_resize_callback(RnView *self, RnViewResizeFunc callback, gpoint
   self->resize_data = user_data;
 }
 
+// Two accessible interfaces, each behind the version that introduced the
+// vfuncs it needs, and both declared up here because `G_DEFINE_TYPE_WITH_CODE`
+// takes them as an argument. The macros are empty on an older GTK, which is
+// how one type definition serves every version this project supports.
 #if GTK_CHECK_VERSION(4, 22, 0)
 // `testID` reaches AT-SPI as the accessible id, and the only way to say what it
 // is is to answer for it: `GtkAccessibleIface::get_accessible_id` is a vfunc and
@@ -439,10 +443,25 @@ void rn_view_set_resize_callback(RnView *self, RnViewResizeFunc callback, gpoint
 // all, so the whole thing is compiled out and backlog/accessibility.md records
 // the version: Ubuntu 24.04, which CI runs, has 4.14.
 static void rn_view_accessible_init(GtkAccessibleInterface *iface);
+#define RN_VIEW_IMPLEMENTS_ACCESSIBLE \
+  G_IMPLEMENT_INTERFACE(GTK_TYPE_ACCESSIBLE, rn_view_accessible_init)
+#else
+#define RN_VIEW_IMPLEMENTS_ACCESSIBLE
+#endif
+
+#if GTK_CHECK_VERSION(4, 14, 0)
+static void rn_view_accessible_text_init(GtkAccessibleTextInterface *iface);
+#define RN_VIEW_IMPLEMENTS_ACCESSIBLE_TEXT \
+  G_IMPLEMENT_INTERFACE(GTK_TYPE_ACCESSIBLE_TEXT, rn_view_accessible_text_init)
+#else
+#define RN_VIEW_IMPLEMENTS_ACCESSIBLE_TEXT
+#endif
 
 G_DEFINE_TYPE_WITH_CODE(RnView, rn_view, GTK_TYPE_WIDGET,
-                        G_IMPLEMENT_INTERFACE(GTK_TYPE_ACCESSIBLE, rn_view_accessible_init))
+                        RN_VIEW_IMPLEMENTS_ACCESSIBLE
+                        RN_VIEW_IMPLEMENTS_ACCESSIBLE_TEXT)
 
+#if GTK_CHECK_VERSION(4, 22, 0)
 static char *rn_view_get_accessible_id(GtkAccessible *accessible) {
   RnView *self = RN_VIEW(accessible);
   return self->test_id != nullptr ? g_strdup(self->test_id) : nullptr;
@@ -451,8 +470,312 @@ static char *rn_view_get_accessible_id(GtkAccessible *accessible) {
 static void rn_view_accessible_init(GtkAccessibleInterface *iface) {
   iface->get_accessible_id = rn_view_get_accessible_id;
 }
-#else
-G_DEFINE_TYPE(RnView, rn_view, GTK_TYPE_WIDGET)
+#endif
+
+#if GTK_CHECK_VERSION(4, 14, 0)
+// --- GtkAccessibleText: what a screen reader reads out of a paragraph --------
+//
+// A `<Text>` here is a PangoLayout drawn into an RnView, not a GtkLabel, so
+// AT-SPI saw a widget with a *name* and no text at all: Orca could read the
+// whole string as a label, and could not move through it by word or by line,
+// could not be told where the caret was, and could not see a selection the
+// person had just made with the mouse. backlog/text.md's selection entry
+// records that half as the one left after the selecting worked.
+//
+// GTK's answer since 4.14 is this interface, and it is a better fit than it
+// first looks: every question it asks is one Pango already answers, in the
+// same units Pango uses, over the layout this view is already holding.
+//
+// Offsets here are *characters*, where Pango counts bytes and this file's
+// selection is in bytes. Every boundary below therefore converts, and the two
+// helpers exist so that no call site has to remember which side it is on. An
+// ASCII paragraph makes the two identical, which is exactly how a conversion
+// bug survives a test suite, so the suite has a Hebrew case and an emoji one.
+//
+// A view with no paragraph answers an empty string. The interface belongs to
+// the *type* -- GObject has no way to implement one per instance -- so a plain
+// `<View>` carries it too; what separates them is the accessible role, which a
+// paragraph gets at construction from GtkMountingManager.
+static const char *rn_view_text_contents(RnView *self) {
+  if (self->text_layout == nullptr) {
+    return "";
+  }
+  const char *text = pango_layout_get_text(self->text_layout);
+  return text != nullptr ? text : "";
+}
+
+static unsigned int rn_view_text_chars(const char *text) {
+  return static_cast<unsigned int>(g_utf8_strlen(text, -1));
+}
+
+// Byte offset to character offset, clamped: a selection is in bytes and may
+// have come from a hit test on a layout that has since been replaced.
+static unsigned int rn_view_text_char_for_byte(const char *text, int byte) {
+  const gsize bytes = strlen(text);
+  if (byte <= 0) {
+    return 0;
+  }
+  if (static_cast<gsize>(byte) >= bytes) {
+    return rn_view_text_chars(text);
+  }
+  return static_cast<unsigned int>(g_utf8_pointer_to_offset(text, text + byte));
+}
+
+static const char *rn_view_text_pointer_for_char(const char *text, unsigned int offset) {
+  const unsigned int chars = rn_view_text_chars(text);
+  return g_utf8_offset_to_pointer(text, offset >= chars ? chars : offset);
+}
+
+static GBytes *rn_view_accessible_text_get_contents(GtkAccessibleText *accessible,
+                                                    unsigned int start,
+                                                    unsigned int end) {
+  RnView *self = RN_VIEW(accessible);
+  const char *text = rn_view_text_contents(self);
+  const unsigned int chars = rn_view_text_chars(text);
+  // G_MAXUINT means "to the end", which is the documented way to ask for all
+  // of it and is what Orca sends first.
+  const unsigned int to = end == G_MAXUINT || end > chars ? chars : end;
+  const unsigned int from = start > to ? to : start;
+  const char *begin = rn_view_text_pointer_for_char(text, from);
+  const char *finish = rn_view_text_pointer_for_char(text, to);
+  return g_bytes_new(begin, static_cast<gsize>(finish - begin));
+}
+
+// The line containing a character offset, in characters. Pango's lines are the
+// *visual* ones, which is what a screen reader reading line by line wants: a
+// wrapped sentence is several lines to the person listening to it.
+static gboolean rn_view_text_line_bounds(RnView *self,
+                                         const char *text,
+                                         unsigned int offset,
+                                         unsigned int *start,
+                                         unsigned int *end) {
+  if (self->text_layout == nullptr) {
+    return FALSE;
+  }
+  const int byte = static_cast<int>(rn_view_text_pointer_for_char(text, offset) - text);
+  const int lines = pango_layout_get_line_count(self->text_layout);
+  for (int index = 0; index < lines; index++) {
+    PangoLayoutLine *line = pango_layout_get_line_readonly(self->text_layout, index);
+    if (line == nullptr) {
+      continue;
+    }
+    const int lineEnd = line->start_index + line->length;
+    // The last line owns the offset at the very end of the text, which is
+    // where a caret sits after the final character.
+    if (byte < lineEnd || (index == lines - 1 && byte <= lineEnd)) {
+      *start = rn_view_text_char_for_byte(text, line->start_index);
+      *end = rn_view_text_char_for_byte(text, lineEnd);
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+// A paragraph in the AT-SPI sense is what a newline separates, which is not
+// what Pango calls a line: one `<Text>` holding "a\nb" is two of them.
+static void rn_view_text_paragraph_bounds(const char *text,
+                                          unsigned int offset,
+                                          unsigned int *start,
+                                          unsigned int *end) {
+  const unsigned int chars = rn_view_text_chars(text);
+  unsigned int from = 0;
+  unsigned int to = chars;
+  unsigned int at = 0;
+  for (const char *cursor = text; *cursor != '\0'; cursor = g_utf8_next_char(cursor), at++) {
+    if (*cursor != '\n') {
+      continue;
+    }
+    if (at < offset) {
+      from = at + 1;
+    } else {
+      to = at;
+      break;
+    }
+  }
+  *start = from;
+  *end = to > from ? to : from;
+}
+
+static GBytes *rn_view_accessible_text_get_contents_at(GtkAccessibleText *accessible,
+                                                       unsigned int offset,
+                                                       GtkAccessibleTextGranularity granularity,
+                                                       unsigned int *start,
+                                                       unsigned int *end) {
+  RnView *self = RN_VIEW(accessible);
+  const char *text = rn_view_text_contents(self);
+  const unsigned int chars = rn_view_text_chars(text);
+  const unsigned int at = offset > chars ? chars : offset;
+  unsigned int from = at;
+  unsigned int to = at;
+
+  switch (granularity) {
+    case GTK_ACCESSIBLE_TEXT_GRANULARITY_CHARACTER:
+      to = at < chars ? at + 1 : at;
+      break;
+
+    // Words and sentences come from Pango's own break table, which is
+    // Unicode's: one `PangoLogAttr` per character plus a terminator, so the
+    // indices are already the characters this interface counts.
+    case GTK_ACCESSIBLE_TEXT_GRANULARITY_WORD:
+    case GTK_ACCESSIBLE_TEXT_GRANULARITY_SENTENCE: {
+      if (self->text_layout == nullptr || chars == 0) {
+        break;
+      }
+      gint count = 0;
+      const PangoLogAttr *attrs = pango_layout_get_log_attrs_readonly(self->text_layout, &count);
+      if (attrs == nullptr || count <= 0) {
+        break;
+      }
+      const unsigned int last = static_cast<unsigned int>(count - 1);
+      const unsigned int here = at > last ? last : at;
+      const gboolean word = granularity == GTK_ACCESSIBLE_TEXT_GRANULARITY_WORD;
+      from = here;
+      while (from > 0 && !(word ? attrs[from].is_word_start : attrs[from].is_sentence_start)) {
+        from--;
+      }
+      to = here < last ? here + 1 : last;
+      while (to < last && !(word ? attrs[to].is_word_end : attrs[to].is_sentence_end)) {
+        to++;
+      }
+      break;
+    }
+
+    case GTK_ACCESSIBLE_TEXT_GRANULARITY_LINE:
+      if (!rn_view_text_line_bounds(self, text, at, &from, &to)) {
+        from = 0;
+        to = chars;
+      }
+      break;
+
+    case GTK_ACCESSIBLE_TEXT_GRANULARITY_PARAGRAPH:
+      rn_view_text_paragraph_bounds(text, at, &from, &to);
+      break;
+
+    default:
+      from = 0;
+      to = chars;
+      break;
+  }
+
+  *start = from;
+  *end = to;
+  return rn_view_accessible_text_get_contents(accessible, from, to);
+}
+
+// Where the caret is, which for a paragraph nobody can type into is the moving
+// end of the selection: the character the drag stopped on. A paragraph with no
+// selection has it at the start, which is what GtkLabel reports too.
+static unsigned int rn_view_accessible_text_get_caret_position(GtkAccessibleText *accessible) {
+  RnView *self = RN_VIEW(accessible);
+  const char *text = rn_view_text_contents(self);
+  return rn_view_text_char_for_byte(text,
+                                    self->text_selection_start + self->text_selection_length);
+}
+
+static gboolean rn_view_accessible_text_get_selection(GtkAccessibleText *accessible,
+                                                      gsize *n_ranges,
+                                                      GtkAccessibleTextRange **ranges) {
+  RnView *self = RN_VIEW(accessible);
+  if (self->text_selection_length <= 0) {
+    return FALSE;
+  }
+  const char *text = rn_view_text_contents(self);
+  const unsigned int start = rn_view_text_char_for_byte(text, self->text_selection_start);
+  const unsigned int end = rn_view_text_char_for_byte(
+      text, self->text_selection_start + self->text_selection_length);
+  if (end <= start) {
+    return FALSE;
+  }
+  *n_ranges = 1;
+  if (ranges != nullptr) {
+    *ranges = g_new0(GtkAccessibleTextRange, 1);
+    (*ranges)[0].start = start;
+    (*ranges)[0].length = end - start;
+  }
+  return TRUE;
+}
+
+// No attribute runs. A paragraph here is drawn from fragments that can differ
+// in font and colour, and reporting that honestly means walking the attribute
+// list Pango was given and turning each run into a name and a value -- which
+// is worth doing and is not this entry; backlog/accessibility.md has it. False
+// with no ranges is the documented way to say "nothing to report", and it is
+// what GtkLabel answers for text with no attributes.
+static gboolean rn_view_accessible_text_get_attributes(GtkAccessibleText *accessible,
+                                                       unsigned int offset,
+                                                       gsize *n_ranges,
+                                                       GtkAccessibleTextRange **ranges,
+                                                       char ***attribute_names,
+                                                       char ***attribute_values) {
+  (void)accessible;
+  (void)offset;
+  *n_ranges = 0;
+  if (ranges != nullptr) {
+    *ranges = nullptr;
+  }
+  if (attribute_names != nullptr) {
+    *attribute_names = nullptr;
+  }
+  if (attribute_values != nullptr) {
+    *attribute_values = nullptr;
+  }
+  return FALSE;
+}
+
+// The font the paragraph is in, which a screen reader reads as the default for
+// every character in it. Taken from the layout rather than from the widget's
+// style: the style is GTK's and the paragraph's font is React Native's.
+static void rn_view_accessible_text_get_default_attributes(GtkAccessibleText *accessible,
+                                                           char ***attribute_names,
+                                                           char ***attribute_values) {
+  RnView *self = RN_VIEW(accessible);
+  GPtrArray *names = g_ptr_array_new();
+  GPtrArray *values = g_ptr_array_new();
+
+  const PangoFontDescription *font =
+      self->text_layout != nullptr ? pango_layout_get_font_description(self->text_layout) : nullptr;
+  if (font == nullptr && self->text_layout != nullptr) {
+    // Null means the layout takes the context's, which is where a font set on
+    // the whole paragraph ends up.
+    PangoContext *context = pango_layout_get_context(self->text_layout);
+    font = context != nullptr ? pango_context_get_font_description(context) : nullptr;
+  }
+  if (font != nullptr) {
+    const char *family = pango_font_description_get_family(font);
+    if (family != nullptr) {
+      g_ptr_array_add(names, g_strdup(GTK_ACCESSIBLE_ATTRIBUTE_FAMILY));
+      g_ptr_array_add(values, g_strdup(family));
+    }
+    const int size = pango_font_description_get_size(font);
+    if (size > 0) {
+      const double points = static_cast<double>(size) / PANGO_SCALE;
+      g_ptr_array_add(names, g_strdup(GTK_ACCESSIBLE_ATTRIBUTE_SIZE));
+      g_ptr_array_add(values, g_strdup_printf("%g", points));
+    }
+  }
+
+  g_ptr_array_add(names, nullptr);
+  g_ptr_array_add(values, nullptr);
+  if (attribute_names != nullptr) {
+    *attribute_names = reinterpret_cast<char **>(g_ptr_array_free(names, FALSE));
+  } else {
+    g_ptr_array_free(names, TRUE);
+  }
+  if (attribute_values != nullptr) {
+    *attribute_values = reinterpret_cast<char **>(g_ptr_array_free(values, FALSE));
+  } else {
+    g_ptr_array_free(values, TRUE);
+  }
+}
+
+static void rn_view_accessible_text_init(GtkAccessibleTextInterface *iface) {
+  iface->get_contents = rn_view_accessible_text_get_contents;
+  iface->get_contents_at = rn_view_accessible_text_get_contents_at;
+  iface->get_caret_position = rn_view_accessible_text_get_caret_position;
+  iface->get_selection = rn_view_accessible_text_get_selection;
+  iface->get_attributes = rn_view_accessible_text_get_attributes;
+  iface->get_default_attributes = rn_view_accessible_text_get_default_attributes;
+}
 #endif
 
 // Declared here and defined beside the other paragraph calls: the snapshot
@@ -2083,6 +2406,15 @@ void rn_view_set_text_selection(RnView *self, int start, int length) {
   self->text_selection_start = start;
   self->text_selection_length = length;
   gtk_widget_queue_draw(GTK_WIDGET(self));
+
+#if GTK_CHECK_VERSION(4, 14, 0)
+  // A screen reader is told rather than left to poll: both of these push an
+  // AT-SPI notification, and without them a selection made with the mouse is
+  // readable only by something that asks again. See the GtkAccessibleText
+  // block above.
+  gtk_accessible_text_update_selection_bound(GTK_ACCESSIBLE_TEXT(self));
+  gtk_accessible_text_update_caret_position(GTK_ACCESSIBLE_TEXT(self));
+#endif
 }
 
 int rn_view_get_text_selection_start(RnView *self) {

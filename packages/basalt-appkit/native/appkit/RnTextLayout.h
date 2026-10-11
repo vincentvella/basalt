@@ -102,6 +102,15 @@ NS_ASSUME_NONNULL_BEGIN
 // a substring rather than a pair of offsets.
 - (nullable NSString *)selectedText;
 
+// The character range of each line this paragraph breaks into at `maxWidth`,
+// as NSValue-wrapped NSRanges, after `numberOfLines` and any truncation.
+//
+// For a screen reader, which reads a paragraph line by line and asks which
+// line an index is on. The lines are the visual ones -- a wrapped sentence is
+// several, which is what the person listening hears -- and they are Core
+// Text's own, so they match what is drawn rather than approximating it.
+- (NSArray<NSValue *> *)lineRangesForWidth:(CGFloat)maxWidth;
+
 // How far down a box `size` the paragraph is drawn: 0 unless `verticalFlush`
 // says otherwise, and the number the draw and the hit test both use.
 //

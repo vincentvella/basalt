@@ -14,6 +14,15 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 - Not tested against a real screen reader. GTK's assertions say the properties
   are set; Orca on the Linux box is the check that matters.
+
+  **More so since 2026-10-11**, when a paragraph gained a text interface on GTK
+  and AppKit -- `GtkAccessibleText` and the NSAccessibility range methods, so a
+  screen reader can walk a `<Text>` by word and by line and hear what is
+  selected; backlog/text.md's selection entry has the whole of it. Those
+  assertions call the vfuncs the AT-SPI bridge calls and the selectors
+  VoiceOver sends, which says the answers are right and not that the reading
+  sounds right. Word boundaries, where a line break falls, and what Orca says
+  about a selection are all things only a person listening can report.
 - Accessible actions are unimplemented: `IMountingManager` declares
   `accessibleClickAction`, `setAccessibilityFocusedView`,
   `accessibleScrollInDirection` and `accessibleSetText`, and all are no-ops, so

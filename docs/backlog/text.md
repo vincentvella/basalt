@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (3):**
 
 1. ~~Inline views (<Text><View/></Text>) measure as zero-sized attachments~~
 2. No baseline, so alignItems: 'baseline' is wrong for text, and the plumbing is
@@ -14,7 +14,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    ~~fontVariant~~ and ~~a fragment's opacity~~ are done)
 5. One PangoLayout is rebuilt per Paragraph per mutation, including layout-only u
 6. ~~All measurement serialises on one mutex; see docs/DECISIONS.md~~
-7. A selected paragraph reports nothing to a screen reader
+7. ~~A selected paragraph reports nothing to a screen reader~~
 9. ~~`textAlign: 'end'` is physical right on GTK and AppKit, and relative on
    Windows~~
 10. ~~`verticalAlign` reaches ReactCommon under a name it does not read~~
@@ -539,10 +539,57 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     `IDWriteTextAnalyzer`. The model would gain two transitions and the hosts a
     boundary call each.
 
-  AT-SPI is the other half of this entry and a separate piece of work: a
-  selectable paragraph has to implement `AtkText` for a screen reader to read it
-  by word and by line, and the same is true of `NSAccessibilityStaticText` and
-  UIA's `ITextProvider`.
+  **The screen-reader half is done on GTK and AppKit, 2026-10-11**, and it is
+  what the title of this entry was about: the selecting worked and nothing
+  outside the window could tell.
+
+  A paragraph here is a `PangoLayout` or an `RnTextLayout` drawn into a view,
+  not a GtkLabel or an NSTextField, so AT had a *name* for it and no text:
+  Orca and VoiceOver could read the whole string and could not move through it
+  by word or by line, could not be told where the caret was, and could not see
+  a selection a person had just dragged out with the mouse.
+
+  GTK is `GtkAccessibleText` on `RnView`, which arrived in 4.14 and is behind
+  that version check -- CI's Ubuntu 24.04 has exactly 4.14. Six vfuncs, and
+  every one of them is a question Pango already answers over the layout the
+  view is holding: contents and a slice of them, contents at a granularity
+  (`pango_layout_get_log_attrs_readonly` for words and sentences, the layout's
+  own lines for lines, newlines for paragraphs), the caret, the selection, and
+  the font as the default attributes. `gtk_accessible_text_update_selection_bound`
+  and `_update_caret_position` fire from `rn_view_set_text_selection`, so a
+  screen reader is told rather than left to ask again.
+
+  AppKit is the NSAccessibility range methods on `RnAppKitView`:
+  `accessibilityStringForRange:` and its attributed twin, the selected text and
+  its range, `accessibilityLineForIndex:` and `accessibilityRangeForLine:` over
+  Core Text's own lines through a new `-lineRangesForWidth:`, and
+  `accessibilityRangeForIndex:` answering a composed character so an emoji is
+  one step rather than two halves of a surrogate pair. `accessibilityValue` is
+  left alone deliberately: React Native models it as a slider's range and a
+  checkbox's state, which `applyAccessibility` already puts there.
+
+  **The units are each host's own and nothing converts between them**, which is
+  the same rule the selecting half follows. GTK's interface counts characters
+  while Pango counts bytes, so the GTK side converts *within* itself and the
+  suite's cases are Hebrew rather than ASCII, where the two numbers differ.
+  NSAccessibility counts UTF-16 code units, which is what `NSAttributedString`
+  and `RnTextLayout.selection` already count, so the AppKit side converts
+  nothing and its case is an emoji.
+
+  **Windows is the host left, and it is blocked rather than unwritten.** UIA's
+  text interface is a *pattern*, `ITextProvider` answering `UIA_TextPatternId`,
+  and every range it hands back is an `ITextRangeProvider` whose `GetEnclosingElement`
+  and `GetBoundingRectangles` need a fragment. `RnWin32Accessible.h` already
+  records why there is no fragment: `IRawElementProviderFragment` needs a
+  fragment root and a fragment root is a window, so this host answers
+  properties and implements no patterns at all. The text pattern lands with
+  the rest of them, which is one piece of work rather than four.
+
+  **What no test here can show is whether a screen reader likes it.** The
+  assertions call the same vfuncs the AT-SPI bridge calls and the same
+  selectors VoiceOver sends, which proves the answers are right and not that
+  Orca reads the paragraph the way a person expects. That is entry 1 of
+  backlog/accessibility.md, and it needs a person.
 
 - ~~**`textShadowColor`, `textShadowOffset` and `textShadowRadius`.**~~ Done on
   GTK and AppKit 2026-10-09. Three props every pre-CSS React Native title sets

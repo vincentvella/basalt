@@ -260,3 +260,90 @@ TEST(appkit_selection_the_copy_role_copies_the_selection) {
     manager.destroySurfaceRoot(1);
   }
 }
+
+// --- What a screen reader can read -------------------------------------------
+//
+// The other half of this entry. A paragraph is an RnTextLayout drawn into a
+// view, so VoiceOver had a label for it and nothing to move through; these are
+// the NSAccessibility answers added for that, and the selection one is the
+// pair of the GTK suite's. Indices are UTF-16 code units everywhere here,
+// which is what NSAttributedString counts and what VoiceOver asks in.
+
+namespace {
+
+// An emoji outside the basic plane, which is two UTF-16 code units: text where
+// a count of characters and a count of code units disagree, so an assertion
+// cannot pass by accident.
+const char *const kWithEmoji = "a \xf0\x9f\x8e\xb8 b";
+
+} // namespace
+
+TEST(appkit_selection_a_paragraph_hands_a_screen_reader_its_text) {
+  RnAppKitView *view = paragraphView("hello world", 400, 60, YES);
+  EXPECT_EQ((int)[view accessibilityNumberOfCharacters], 11);
+  EXPECT_EQ(std::string([[view accessibilityStringForRange:NSMakeRange(6, 5)] UTF8String]),
+            std::string("world"));
+  // Past the end is clamped rather than throwing, which is what VoiceOver asks
+  // for the moment a paragraph shrinks under it.
+  EXPECT_EQ(std::string([[view accessibilityStringForRange:NSMakeRange(6, 99)] UTF8String]),
+            std::string("world"));
+  EXPECT_EQ(std::string([[view accessibilityStringForRange:NSMakeRange(99, 1)] UTF8String]),
+            std::string(""));
+  // The attributed form carries the run's font, which is what the plain one
+  // cannot say.
+  NSAttributedString *rich = [view accessibilityAttributedStringForRange:NSMakeRange(0, 5)];
+  EXPECT_EQ((int)rich.length, 5);
+  EXPECT(rich.length > 0 && [rich attribute:NSFontAttributeName atIndex:0 effectiveRange:nullptr] != nil);
+}
+
+TEST(appkit_selection_a_view_with_no_paragraph_has_nothing_to_read) {
+  RnAppKitView *view = [RnAppKitView viewWithTag:3];
+  EXPECT_EQ((int)[view accessibilityNumberOfCharacters], 0);
+  EXPECT_EQ(std::string([[view accessibilityStringForRange:NSMakeRange(0, 5)] UTF8String]),
+            std::string(""));
+  EXPECT_EQ((int)[view accessibilitySelectedTextRange].length, 0);
+}
+
+TEST(appkit_selection_a_selection_is_what_a_screen_reader_is_told_is_selected) {
+  RnAppKitView *view = paragraphView("Selectable text", 400, 60, YES);
+  [view setRnTextSelectionStart:0 length:10];
+
+  EXPECT_EQ(std::string([[view accessibilitySelectedText] UTF8String]), std::string("Selectable"));
+  const NSRange range = [view accessibilitySelectedTextRange];
+  EXPECT_EQ((int)range.location, 0);
+  EXPECT_EQ((int)range.length, 10);
+  // The same span said twice: what the clipboard would take is what VoiceOver
+  // is told is selected.
+  EXPECT_EQ(std::string([[view accessibilityStringForRange:range] UTF8String]),
+            std::string([[view accessibilitySelectedText] UTF8String]));
+
+  [view setRnTextSelectionStart:0 length:0];
+  EXPECT_EQ((int)[view accessibilitySelectedTextRange].length, 0);
+  EXPECT_EQ(std::string([[view accessibilitySelectedText] UTF8String]), std::string(""));
+}
+
+TEST(appkit_selection_a_screen_reader_can_ask_which_line_an_index_is_on) {
+  // Narrow enough to wrap, so there is more than one line to be on.
+  RnAppKitView *view = paragraphView("hello wonderful world", 120, 200, YES);
+  const NSRange first = [view accessibilityRangeForLine:0];
+  EXPECT_EQ((int)first.location, 0);
+  EXPECT(first.length > 0);
+  EXPECT(first.length < 21);
+  EXPECT_EQ((int)[view accessibilityLineForIndex:0], 0);
+  // An index on the second line is on a later line than one on the first,
+  // which is the claim that does not depend on where this font wraps.
+  EXPECT([view accessibilityLineForIndex:(NSInteger)NSMaxRange(first)] > 0);
+  // A line nobody has is NSNotFound rather than an empty range at zero.
+  EXPECT_EQ((int)[view accessibilityRangeForLine:99].location, (int)NSNotFound);
+}
+
+TEST(appkit_selection_an_index_is_a_whole_character_rather_than_half_a_pair) {
+  RnAppKitView *view = paragraphView(kWithEmoji, 400, 60, YES);
+  // "a ", then the guitar, which is two code units and one character.
+  const NSRange composed = [view accessibilityRangeForIndex:2];
+  EXPECT_EQ((int)composed.location, 2);
+  EXPECT_EQ((int)composed.length, 2);
+  // Asked about the second half, the answer is still the whole thing.
+  EXPECT_EQ((int)[view accessibilityRangeForIndex:3].location, 2);
+  EXPECT_EQ((int)[view accessibilityRangeForIndex:99].location, (int)NSNotFound);
+}

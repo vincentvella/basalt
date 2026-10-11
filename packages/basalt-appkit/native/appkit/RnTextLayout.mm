@@ -94,6 +94,25 @@
   return collected;
 }
 
+// The lines as ranges, which is the one thing accessibility needs and drawing
+// does not: a truncated last line reports the range it *shows*, so an index
+// past the ellipsis belongs to no line and is clamped to the last one by the
+// caller.
+- (NSArray<NSValue *> *)lineRangesForWidth:(CGFloat)maxWidth {
+  NSMutableArray *lines = [NSMutableArray array];
+  [self linesForWidth:maxWidth outLines:lines];
+  NSMutableArray<NSValue *> *ranges = [NSMutableArray arrayWithCapacity:lines.count];
+  for (id line in lines) {
+    const CFRange range = CTLineGetStringRange((__bridge CTLineRef)line);
+    if (range.location == kCFNotFound) {
+      continue;
+    }
+    [ranges addObject:[NSValue valueWithRange:NSMakeRange((NSUInteger)range.location,
+                                                          (NSUInteger)range.length)]];
+  }
+  return ranges;
+}
+
 // Line metrics, summed. Not CTFramesetterSuggestFrameSizeWithConstraints: that
 // measures the whole text and cannot be told about a line limit, so a
 // numberOfLines={2} paragraph would be laid out two lines tall and measured

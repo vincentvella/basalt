@@ -783,6 +783,121 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   return _lastAnnouncement;
 }
 
+// --- What a screen reader reads out of a paragraph ---------------------------
+//
+// A `<Text>` here is an `RnTextLayout` drawn into a view, not an NSTextField,
+// so VoiceOver saw an element with a label and nothing to move through: no
+// caret, no lines, and no sign of a selection the person had just dragged out
+// with the mouse. backlog/text.md's selection entry records that half as the
+// one left after the selecting worked, and these are the AppKit side of it.
+//
+// Every index is a UTF-16 code unit, which is what `NSAttributedString`
+// counts, what `RnTextLayout.selection` already holds, and what NSAccessibility
+// asks in -- so unlike the GTK half, which converts bytes to characters,
+// nothing here converts. The ranges are clamped rather than trusted:
+// VoiceOver asks about ranges a paragraph has shrunk out of.
+//
+// `accessibilityValue` is deliberately left alone. React Native models it as a
+// range for a slider and as the checked state for a checkbox, both of which
+// -applyAccessibility already puts there; a paragraph's string is its
+// accessibilityLabel, which is set from the same place.
+- (NSString *)rnAccessibilityText {
+  NSString *text = _textLayout.attributedString.string;
+  return text != nil ? text : @"";
+}
+
+- (NSRange)rnClampedRange:(NSRange)range {
+  const NSUInteger length = [self rnAccessibilityText].length;
+  if (range.location >= length) {
+    return NSMakeRange(length, 0);
+  }
+  return NSMakeRange(range.location, MIN(range.length, length - range.location));
+}
+
+- (NSInteger)accessibilityNumberOfCharacters {
+  return (NSInteger)[self rnAccessibilityText].length;
+}
+
+- (NSRange)accessibilityVisibleCharacterRange {
+  // All of it: a paragraph here is drawn whole or clipped by `numberOfLines`,
+  // and the clipped case already reports the shown lines through
+  // -lineRangesForWidth:, which is what the line queries below use.
+  return NSMakeRange(0, [self rnAccessibilityText].length);
+}
+
+- (NSString *)accessibilityStringForRange:(NSRange)range {
+  const NSRange wanted = [self rnClampedRange:range];
+  if (wanted.length == 0) {
+    return @"";
+  }
+  return [[self rnAccessibilityText] substringWithRange:wanted];
+}
+
+- (NSAttributedString *)accessibilityAttributedStringForRange:(NSRange)range {
+  const NSRange wanted = [self rnClampedRange:range];
+  if (_textLayout == nil || wanted.length == 0) {
+    return [[NSAttributedString alloc] initWithString:@""];
+  }
+  // The real attributed string, so the font and colour of each run reach
+  // VoiceOver rather than a plain copy of the characters.
+  return [_textLayout.attributedString attributedSubstringFromRange:wanted];
+}
+
+- (NSString *)accessibilitySelectedText {
+  NSString *selected = [_textLayout selectedText];
+  return selected != nil ? selected : @"";
+}
+
+- (NSRange)accessibilitySelectedTextRange {
+  if (_textLayout == nil) {
+    return NSMakeRange(0, 0);
+  }
+  return [self rnClampedRange:_textLayout.selection];
+}
+
+- (NSArray<NSValue *> *)accessibilitySelectedTextRanges {
+  return @[ [NSValue valueWithRange:[self accessibilitySelectedTextRange]] ];
+}
+
+// The lines are Core Text's own, at the width this view is, so they are the
+// ones on the screen rather than a second guess at where the text wrapped.
+- (NSArray<NSValue *> *)rnAccessibilityLineRanges {
+  if (_textLayout == nil) {
+    return @[];
+  }
+  return [_textLayout lineRangesForWidth:self.bounds.size.width];
+}
+
+- (NSInteger)accessibilityLineForIndex:(NSInteger)index {
+  NSArray<NSValue *> *lines = [self rnAccessibilityLineRanges];
+  for (NSUInteger line = 0; line < lines.count; line++) {
+    const NSRange range = lines[line].rangeValue;
+    if ((NSUInteger)index < NSMaxRange(range)) {
+      return (NSInteger)line;
+    }
+  }
+  // Past the end, which is where a caret after the last character sits.
+  return lines.count > 0 ? (NSInteger)lines.count - 1 : 0;
+}
+
+- (NSRange)accessibilityRangeForLine:(NSInteger)line {
+  NSArray<NSValue *> *lines = [self rnAccessibilityLineRanges];
+  if (line < 0 || (NSUInteger)line >= lines.count) {
+    return NSMakeRange(NSNotFound, 0);
+  }
+  return lines[(NSUInteger)line].rangeValue;
+}
+
+- (NSRange)accessibilityRangeForIndex:(NSInteger)index {
+  const NSUInteger length = [self rnAccessibilityText].length;
+  if (index < 0 || (NSUInteger)index >= length) {
+    return NSMakeRange(NSNotFound, 0);
+  }
+  // One composed character, so an emoji or a flag is one step rather than two
+  // halves of a surrogate pair.
+  return [[self rnAccessibilityText] rangeOfComposedCharacterSequenceAtIndex:(NSUInteger)index];
+}
+
 - (void)setRnLabelledBy:(NSArray<RnAppKitView *> *)labels {
   _labelledBy.clear();
   for (RnAppKitView *label in labels) {
