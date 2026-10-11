@@ -67,6 +67,32 @@ static void RnApplyEditorColours(NSTextView *_Nullable editor,
   return [super menuForEvent:event];
 }
 
+// The same refusal, for the menu this field does not own.
+//
+// A focused single-line field is edited through the *window's shared field
+// editor*, a plain NSTextView nobody here subclasses, and that view is the one
+// under the pointer: -menuForEvent: above is never asked, so the flag reached
+// the field and stopped there. Assigning `menu = nil` on the editor does not
+// help either, which a probe established before this was written -- the editor
+// rebuilds its menu inside its own -menuForEvent:.
+//
+// This is the documented way into that rebuild. A field editor's delegate is
+// the control it is editing for, which is this field, and NSTextView asks its
+// delegate to approve the menu it has just built. Returning nil is the whole
+// of it.
+- (NSMenu *)textView:(NSTextView *)view
+                menu:(NSMenu *)menu
+            forEvent:(NSEvent *)event
+             atIndex:(NSUInteger)index {
+  (void)view;
+  (void)event;
+  (void)index;
+  if (_rnContextMenuHidden) {
+    return nil;
+  }
+  return menu;
+}
+
 - (BOOL)becomeFirstResponder {
   const BOOL became = [super becomeFirstResponder];
   if (became) {
@@ -104,6 +130,32 @@ static void RnApplyEditorColours(NSTextView *_Nullable editor,
     return nil;
   }
   return [super menuForEvent:event];
+}
+
+// The same refusal, for the menu this field does not own.
+//
+// A focused single-line field is edited through the *window's shared field
+// editor*, a plain NSTextView nobody here subclasses, and that view is the one
+// under the pointer: -menuForEvent: above is never asked, so the flag reached
+// the field and stopped there. Assigning `menu = nil` on the editor does not
+// help either, which a probe established before this was written -- the editor
+// rebuilds its menu inside its own -menuForEvent:.
+//
+// This is the documented way into that rebuild. A field editor's delegate is
+// the control it is editing for, which is this field, and NSTextView asks its
+// delegate to approve the menu it has just built. Returning nil is the whole
+// of it.
+- (NSMenu *)textView:(NSTextView *)view
+                menu:(NSMenu *)menu
+            forEvent:(NSEvent *)event
+             atIndex:(NSUInteger)index {
+  (void)view;
+  (void)event;
+  (void)index;
+  if (_rnContextMenuHidden) {
+    return nil;
+  }
+  return menu;
 }
 
 - (BOOL)becomeFirstResponder {

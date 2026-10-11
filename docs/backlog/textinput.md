@@ -348,16 +348,25 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
     GtkText's own gesture sees it, which is the documented way to stop another
     gesture. The Menu key and Shift+F10 are bound *inside* GtkText and
     GtkTextView to an action nothing outside them has a handle on.
-  - **AppKit covers a multiline field and not a single-line one.** The multiline
-    peer is this project's own `NSTextView` subclass, so `-menuForEvent:`
-    returning nil is the whole of it. A single-line field is different: the menu
-    belongs to the window's shared *field editor*, which is a plain `NSTextView`
-    nobody here subclasses, and it rebuilds its menu inside `-menuForEvent:` --
-    assigning `menu = nil` on it does not stop it, which a probe test
-    established before the comment was written. What would close it is supplying
-    the field editor through `-windowWillReturnFieldEditor:toObject:`, which is
-    the documented hook for exactly that and is a window-level change rather
-    than a prop-level one.
+  - **AppKit is complete as of 2026-10-11**, and the single-line half cost two
+    lines rather than the window-level change this entry expected. The
+    multiline peer is this project's own `NSTextView` subclass, so
+    `-menuForEvent:` returning nil was always the whole of it. A single-line
+    field is edited through the window's shared *field editor*, a plain
+    `NSTextView` nobody here subclasses, which is the view under the pointer --
+    so the field's own `-menuForEvent:` was never asked, and assigning `menu =
+    nil` on the editor does not help, the editor rebuilding its menu inside its
+    own `-menuForEvent:`.
+
+    This entry proposed supplying a field editor of this project's own through
+    `-windowWillReturnFieldEditor:toObject:`, which is a window-delegate change
+    and would have needed every window a field can appear in to carry the hook.
+    The smaller way in was already there: **a field editor's delegate is the
+    control it is editing for**, and `NSTextView` asks that delegate to approve
+    the menu it has just built, through
+    `textView:menu:forEvent:atIndex:`. Both field peers implement it and return
+    nil while the prop is set. Written down because the first answer was the
+    bigger one and the entry had been carrying it.
 
   Both are in each host's tree dump, as `caret=hidden` and
   `context-menu=hidden`, which is the only thing the cross-host diff can read:

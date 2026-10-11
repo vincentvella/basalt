@@ -181,8 +181,8 @@
       "text": "the label on a soft keyboard's return key, and no desktop has one",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
-    "ti-context-menu": {
-      "text": "GTK covers the pointer and not the Menu key; AppKit covers a multiline field and not the shared field editor of a single-line one",
+    "gtk-menu-key": {
+      "text": "GTK covers the pointer and not the Menu key, which GtkText binds internally",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "ti-ignored": {
@@ -1676,9 +1676,9 @@
     },
     "TextInputTraits.contextMenuHidden": {
       "linux": "partial",
-      "macos": "partial",
+      "macos": "yes",
       "windows": "yes",
-      "why": "ti-context-menu",
+      "why": "gtk-menu-key",
       "reads": [
         "traits.contextMenuHidden"
       ]

@@ -50,7 +50,7 @@ under the row that implements them.
 | Host | Toolkit | Written itself | All 280 rows |
 | --- | --- | --- | --- |
 | Linux | GTK4 | 121 of 142, 85% | <span className="support-bar"><span className="support-yes" style={{width: '43.21%'}} title="121 done" /><span className="support-partial" style={{width: '2.50%'}} title="7 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
-| macOS | AppKit | 121 of 142, 85% | <span className="support-bar"><span className="support-yes" style={{width: '43.21%'}} title="121 done" /><span className="support-partial" style={{width: '2.50%'}} title="7 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
+| macOS | AppKit | 122 of 142, 86% | <span className="support-bar"><span className="support-yes" style={{width: '43.57%'}} title="122 done" /><span className="support-partial" style={{width: '2.14%'}} title="6 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
 | Windows | Win32 | 117 of 141, 83% | <span className="support-bar"><span className="support-yes" style={{width: '41.79%'}} title="117 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-no" style={{width: '5.00%'}} title="14 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.21%'}} title="65 deliberately not done" /></span> |
 
 **Written itself** is out of the rows that host writes: what it has written,
@@ -59,8 +59,8 @@ bar is the rest, and it is nobody's work left.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| <span className="support-chip support-yes" /> ✅ done | 121 | 121 | 117 |
-| <span className="support-chip support-partial" /> ◐ partly done | 7 | 7 | 10 |
+| <span className="support-chip support-yes" /> ✅ done | 121 | 122 | 117 |
+| <span className="support-chip support-partial" /> ◐ partly done | 7 | 6 | 10 |
 | <span className="support-chip support-no" /> ✖ not yet | 14 | 14 | 14 |
 | <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
 | <span className="support-chip support-ignored" /> – deliberately not done | 64 | 64 | 65 |
@@ -409,7 +409,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | --- | --- | --- | --- | --- |
 | `autoCapitalize` <sub>`autocapitalizationType`</sub> | ✅ | ✅ | ◐ | [ES_UPPERCASE covers `characters`; an EDIT cannot find a word or a sentence](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
 | `autoCorrect` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `contextMenuHidden` | ◐ | ◐ | ✅ | [GTK covers the pointer and not the Menu key; AppKit covers a multiline field and not the shared field editor of a single-line one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `contextMenuHidden` | ◐ | ✅ | ✅ | [GTK covers the pointer and not the Menu key, which GtkText binds internally](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `editable` | ✅ | ✅ | ✅ |  |
 | `enablesReturnKeyAutomatically` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `keyboardAppearance` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
