@@ -742,16 +742,23 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   still follows the layout, so upstream's rule is the default and this is the
   override.
 
-  **What is still open is `natural`**, which is the default and is still
-  resolved from the text by P2. So Latin text with no `textAlign` at all is
-  left-aligned on an Arabic desktop, where upstream puts it right: the same
-  file has a flattening helper that resolves `NSTextAlignmentNatural` from
-  `baseTextAttributes.layoutDirection` and the base writing direction from
-  `[NSParagraphStyle defaultWritingDirectionForLanguage:nil]`. Where that
-  helper runs was not established, so this is written down rather than
-  copied -- and changing it would also left-align Hebrew in a left-to-right
-  app, which is the other half of the same rule and is a bigger change than it
-  looks.
+  **`natural` keeps following the text, and that was checked rather than
+  assumed.** The same upstream file has a helper that resolves
+  `NSTextAlignmentNatural` from `baseTextAttributes.layoutDirection` and the
+  base writing direction from `[NSParagraphStyle
+  defaultWritingDirectionForLanguage:nil]`, which looks like the layout rule
+  applied to the default as well. It is not a rendering path:
+  `RCTIsParagraphStyleEffectivelySame` has one caller,
+  `RCTIsAttributedStringEffectivelySame`, which compares two attributed strings
+  to decide whether a `<TextInput>`'s typing attributes changed, and its own
+  comment says it resolves the directions only so that the comparison is fair.
+  The drawing path applies `RCTResolveTextAlignment` and nothing else, and that
+  function returns `Natural` untouched for the system to resolve.
+
+  So Latin text with no `textAlign` at all is left-aligned on an Arabic
+  desktop here, which is what `natural` means and what upstream does with it.
+  An app that wants it mirrored writes `textAlign: 'start'`, which is the word
+  for that.
 
   Proved by the scenario rather than the tick: "a right-to-left desktop mirrors
   the layout" reads `text-align=` out of the tree in both locales, which is the
