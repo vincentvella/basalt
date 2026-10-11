@@ -65,7 +65,11 @@ so anything importing them dies at startup.
 
   **What is not tested end to end is `inactive`**, and that is a limit of the
   harness rather than of the hosts: a scenario cannot click on another
-  application. What it can do is minimise the window through this platform's
+  application. It is observably working all the same -- the scenario asserted
+  for one run that *no* state change arrived without a gesture, and the
+  development machine reported `inactive` within two seconds of the window
+  opening, because somebody was using the computer. That assertion is gone and
+  the reason is in its place. What it can do is minimise the window through this platform's
   own API, which is `background`, and that is what the scenario asserts
   alongside `active` at startup. The mapping itself -- including that invisible
   beats focused -- is a unit test in core.

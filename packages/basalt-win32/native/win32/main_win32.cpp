@@ -1408,7 +1408,7 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
     // AppState asks -- clicking between two windows of this app is not a
     // change. See core/AppStateHost.h.
     case WM_ACTIVATEAPP:
-      reportAppState(window, wparam != FALSE);
+      reportAppState(hwnd, wparam != FALSE);
       return 0;
 
     case WM_SIZE: {
@@ -1419,7 +1419,7 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
       // is the way back. `wparam` says which; the activation half is
       // WM_ACTIVATEAPP above, and `reportAppState` combines the two.
       if (wparam == SIZE_MINIMIZED || wparam == SIZE_RESTORED || wparam == SIZE_MAXIMIZED) {
-        reportAppState(window, GetActiveWindow() == window);
+        reportAppState(hwnd, GetActiveWindow() == hwnd);
       }
       const int width = LOWORD(lparam);
       const int height = HIWORD(lparam);

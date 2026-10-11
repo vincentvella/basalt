@@ -8023,9 +8023,15 @@ def test_app_state(bundle: Path) -> str:
             "should be 'active'. Upstream's module answers the empty string, "
             f"which is not one of React Native's own states.\n{tail_text(logged)}"
         )
-    if "appstate -> " in logged:
+    # Not "no events at all": a host launched while somebody is using the
+    # machine loses focus to whatever they do next, and `inactive` then arrives
+    # correctly and unpredictably. It was asserted the other way for one run,
+    # and the development machine reported `inactive` within two seconds --
+    # which is the feature working. What cannot happen by accident is
+    # `background`: nothing minimises a window on its own.
+    if "appstate -> background" in logged:
         raise Failure(
-            "the app reported a state change with nothing to change it.\n"
+            "the app went to the background with nothing to put it there.\n"
             + tail_text(logged)
         )
 
@@ -8044,6 +8050,17 @@ def test_app_state(bundle: Path) -> str:
     after = second.stdout + second.stderr
 
     if "appstate -> background" not in after:
+        # Minimising is the window manager's to do, and CI runs the Linux host
+        # under Xvfb, which has none: the request is not refused so much as
+        # unheard, and the window stays on screen. Checked rather than assumed,
+        # the same way the full-screen scenario checks it -- where there *is* a
+        # window manager this must pass.
+        if PLATFORM == "linux" and not has_window_manager():
+            print(
+                "        (no window manager, so the window could not be "
+                "minimised and the background half could not run)"
+            )
+            return "active at startup; minimising needs a window manager"
         raise Failure(
             "minimising the window told `AppState` nothing. Nothing else takes "
             "an app off the screen, so an app that stops work while it is not "
