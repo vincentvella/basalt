@@ -1,5 +1,7 @@
 #include "CoreModules.h"
 
+#include "DeviceMetrics.h"
+
 #include "ShareFallback.h"
 #include "TestDialog.h"
 #include "UIManagerAccess.h"
@@ -590,6 +592,66 @@ Value DesktopShareModule::share(Runtime &rt, Object content, std::optional<Strin
   });
 
   return Value(rt, facebook::react::bridging::toJs(rt, *promise, jsInvoker_));
+}
+
+// ---------------------------------------------------------------------------
+// Dimensions and PixelRatio
+// ---------------------------------------------------------------------------
+
+DesktopDeviceInfoModule::DesktopDeviceInfoModule(
+    std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
+    : facebook::react::NativeDeviceInfoCxxSpec<DesktopDeviceInfoModule>(std::move(jsInvoker)) {
+  // `didUpdateDimensions`, which `Dimensions.js` subscribes to before it ever
+  // asks for the constants. The listener is core's second slot on the window
+  // bounds signal; see WindowControl.h for why there are two.
+  setDimensionsListener([this]() {
+    const basalt::DeviceMetrics metrics = currentDeviceMetrics();
+    if (metrics == lastSent_) {
+      return;
+    }
+    lastSent_ = metrics;
+    emitDeviceEvent("didUpdateDimensions",
+                    [metrics](Runtime &runtime, std::vector<Value> &args) {
+                      Object payload(runtime);
+                      const auto describe = [&runtime](const basalt::DisplayMetrics &one) {
+                        Object out(runtime);
+                        out.setProperty(runtime, "width", one.width);
+                        out.setProperty(runtime, "height", one.height);
+                        out.setProperty(runtime, "scale", one.scale);
+                        out.setProperty(runtime, "fontScale", one.fontScale);
+                        return out;
+                      };
+                      payload.setProperty(runtime, "window", describe(metrics.window));
+                      payload.setProperty(runtime, "screen", describe(metrics.screen));
+                      args.emplace_back(std::move(payload));
+                    });
+  });
+}
+
+DesktopDeviceInfoModule::~DesktopDeviceInfoModule() {
+  // The listener captured `this`. A surface torn down and started again builds
+  // a new module, and the old one must stop being called first.
+  setDimensionsListener(nullptr);
+}
+
+facebook::react::DeviceInfoConstants DesktopDeviceInfoModule::getConstants(Runtime & /*rt*/) {
+  const basalt::DeviceMetrics metrics = currentDeviceMetrics();
+  // What JavaScript now has, so the first resize after this does not re-send
+  // the same numbers.
+  lastSent_ = metrics;
+  const auto describe = [](const basalt::DisplayMetrics &one) {
+    return facebook::react::DisplayMetrics{one.width, one.height, one.scale, one.fontScale};
+  };
+  return facebook::react::DeviceInfoConstants{
+      .Dimensions = facebook::react::NativeDeviceInfoDimensionsPayload<
+          std::optional<facebook::react::DisplayMetrics>,
+          std::optional<facebook::react::DisplayMetrics>,
+          std::optional<facebook::react::DisplayMetricsAndroid>,
+          std::optional<facebook::react::DisplayMetricsAndroid>>{
+          .window = describe(metrics.window),
+          .screen = describe(metrics.screen),
+      },
+  };
 }
 
 // ---------------------------------------------------------------------------

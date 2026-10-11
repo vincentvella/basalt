@@ -70,6 +70,30 @@ void setWindowFullScreen(bool fullScreen);
 // nothing removes it.
 void setWindowBoundsListener(std::function<void(const WindowBounds &)> listener);
 
+// How big the area React lays out in is, which is not the window's frame: a
+// title bar belongs to the window and not to the app.
+//
+// Reported by each host wherever it starts or re-constrains its *main* surface,
+// which is the one place that already knows this number -- and the number
+// `Dimensions.get('window')` should answer with, since it is what an app can
+// put something in. A second window and the error inspector have surfaces of
+// their own and are deliberately not reported: `Dimensions` is singular, and
+// the app's window is the one it means.
+void notifySurfaceSize(double width, double height);
+
+// The last size reported, or zeroes before the first surface starts. Readable
+// from any thread, like the bounds above and for the same reason.
+void lastKnownSurfaceSize(double *outWidth, double *outHeight);
+
+// A second slot on the same signal, for `Dimensions`.
+//
+// Two rather than one because the two listeners have different lifetimes and
+// neither owns the other: `useWindow()`'s module exists only in an app that
+// imports this package, and React Native's `DeviceInfo` module exists in every
+// app -- `Dimensions.js` requires it at import. A single slot would mean
+// whichever was constructed second silently took the other's events.
+void setDimensionsListener(std::function<void()> listener);
+
 // The host's half of that: called from wherever it already learns the window
 // moved or resized, on the UI thread. Also updates the cache below, so it is
 // worth calling once when the window is first shown even if nothing is

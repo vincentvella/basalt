@@ -29,10 +29,12 @@
 #pragma once
 
 #include "ActionSheet.h"
+#include "DeviceMetrics.h"
 #include "PlatformServices.h"
 #include "SettingsStore.h"
 
 #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
+#include <react/coremodules/DeviceInfoModule.h>
 
 #include <optional>
 #include <string>
@@ -199,6 +201,38 @@ class DesktopSettingsManagerModule
 // directly, so the module alone is enough. An iOS-named API is not
 // automatically one whose JavaScript refuses to run off iOS, and the only way
 // to know which kind it is, is to read it.
+// `Dimensions` and `PixelRatio`, which every app reads and which answered with
+// a fiction until 2026-10-10.
+//
+// ReactCxxPlatform *does* provide a `DeviceInfo` module -- the module audit
+// records it as answered -- and what it answers is a hardcoded 1280x720 with a
+// `// TODO: Wire this to come from the actual app size` beside it and no seam
+// to wire. `scale` came back zero and `fontScale` was never initialised, so
+// `PixelRatio.get()` was 0 and `PixelRatio.roundToNearestPixel(x)` was NaN in
+// every app on every desktop. "The module answers" and "the module answers
+// correctly" are different claims, and only the first was ever checked.
+//
+// The numbers are core's: see core/DeviceMetrics.h. What is here is the module
+// and the event -- `didUpdateDimensions`, which is how `Dimensions.js` learns
+// that a window was resized, and without which every layout computed from
+// `Dimensions.get('window')` is stale the moment somebody drags a corner.
+class DesktopDeviceInfoModule
+    : public facebook::react::NativeDeviceInfoCxxSpec<DesktopDeviceInfoModule> {
+ public:
+  explicit DesktopDeviceInfoModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker);
+  ~DesktopDeviceInfoModule() override;
+
+  static constexpr const char *kModuleName = "DeviceInfo";
+
+  facebook::react::DeviceInfoConstants getConstants(facebook::jsi::Runtime &rt);
+
+ private:
+  // What was last sent, so that a window *moved* rather than resized says
+  // nothing: the bounds signal fires for both, and `Dimensions.set` re-emits
+  // its `change` event for every call whether or not anything differs.
+  DeviceMetrics lastSent_;
+};
+
 class DesktopActionSheetModule
     : public facebook::react::NativeActionSheetManagerCxxSpec<DesktopActionSheetModule> {
  public:

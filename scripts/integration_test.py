@@ -7829,6 +7829,143 @@ def test_disabled_switch_colour(bundle: Path) -> str:
     return f"off {off}, on {on}, and on-but-disabled {disabled} of colour"
 
 
+def test_dimensions(bundle: Path) -> str:
+    """`Dimensions` and `PixelRatio` report the window the host actually made.
+
+    They reported a fiction until 2026-10-10. ReactCxxPlatform provides a
+    `DeviceInfo` module -- `scripts/audit_modules.py` records it as answered,
+    which is true and was never the question -- and what it answers is a
+    hardcoded 1280x720 with a `// TODO: Wire this to come from the actual app
+    size` beside it and no seam to wire. `scale` came back zero and `fontScale`
+    was never initialised, so `PixelRatio.get()` was 0 and
+    `PixelRatio.roundToNearestPixel(x)` was NaN in every app on every desktop.
+
+    Four things are asserted, and the first is the one a dump cannot show: the
+    numbers an app *computes* from. So the app logs them rather than rendering
+    them.
+
+    The window is the area React lays out in rather than the window's frame,
+    which differ by a title bar on AppKit; the screen is the display the window
+    is on, which is the distinction React Native draws and which only matters on
+    a desktop. `scale` is the display's, so `roundToNearestPixel` is a number
+    again. And `didUpdateDimensions` arrives when the window is resized, which
+    nothing emitted before: the app resizes itself through this platform's own
+    window API and asserts that React Native's `Dimensions` noticed.
+    """
+    app = bundle_app(bundle.parent, "dimensions")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "8000"
+    for name in ("BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL", "BASALT_TEST_MENU",
+                 "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    # The resize button, found in the tree rather than guessed: it is the only
+    # view with a background in the app.
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        measuring = dict(env)
+        measuring["BASALT_DUMP_TREE"] = str(dump)
+        measuring["BASALT_QUIT_AFTER_MS"] = "3000"
+        measuring.pop("BASALT_TEST_TAP", None)
+        first = run_host_process(
+            [str(HOST), str(app), "BasaltDimensions"],
+            cwd=REPO, env=measuring, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(first.stderr)
+        check_output(first.stderr, first.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text(encoding="utf-8")
+        logged = first.stdout + first.stderr
+
+    root = [size for body, _position, size in _views(tree) if body.startswith("view tag=")]
+    if not root:
+        raise Failure(f"no views in the tree at all\n{tree[:800]}")
+    rootWidth, rootHeight = root[0]
+
+    reported = re.search(r"on mount window ([0-9.]+)x([0-9.]+) scale ([0-9.]+) "
+                         r"fontScale ([0-9.]+)", logged)
+    if reported is None:
+        raise Failure(
+            "the app logged no window size at all, so `Dimensions` did not "
+            f"answer.\n{tail_text(logged)}"
+        )
+    width, height, scale, fontScale = (float(group) for group in reported.groups())
+
+    # The surface React is laid out in, which is the root view's own size.
+    if (round(width), round(height)) != (round(rootWidth), round(rootHeight)):
+        raise Failure(
+            f"Dimensions says the window is {width:g}x{height:g} and React is "
+            f"laid out at {rootWidth:g}x{rootHeight:g}. Upstream's module answers "
+            "1280x720 whatever the window is."
+        )
+    if scale < 1:
+        raise Failure(
+            f"the window's scale is {scale:g}. `PixelRatio.get()` is this number "
+            "and `roundToNearestPixel` divides by it, so a zero is a NaN in an "
+            "app's own arithmetic."
+        )
+    if fontScale <= 0:
+        raise Failure(f"the window's fontScale is {fontScale:g}")
+    if "round NaN" in logged:
+        raise Failure(
+            "`PixelRatio.roundToNearestPixel` answered NaN, which is what a zero "
+            f"scale does to it.\n{tail_text(logged)}"
+        )
+
+    # The screen is the display, not the window: on a desktop a window is a
+    # fraction of a screen, and an app placing itself wants the second.
+    screen = re.search(r"on mount screen ([0-9.]+)x([0-9.]+)", logged)
+    if screen is None:
+        raise Failure(f"the app logged no screen size\n{tail_text(logged)}")
+    screenWidth, screenHeight = (float(group) for group in screen.groups())
+    if screenWidth < width or screenHeight < height:
+        raise Failure(
+            f"the screen ({screenWidth:g}x{screenHeight:g}) is smaller than the "
+            f"window ({width:g}x{height:g})"
+        )
+
+    # And the event. The app resizes itself to 700 wide through this platform's
+    # own window API; what is asserted is that React Native's `Dimensions`
+    # noticed, which nothing told it before.
+    button = [(position, size) for body, position, size in _views(tree) if "bg=#2563eb" in body]
+    if len(button) != 1:
+        raise Failure(f"{len(button)} resize buttons in the tree; the app has one.\n{tree}")
+    (x, y), (buttonWidth, buttonHeight) = button[0]
+    env["BASALT_TEST_TAP"] = f"{round(x + buttonWidth / 2)},{round(y + buttonHeight / 2)}"
+    second = run_host_process(
+        [str(HOST), str(app), "BasaltDimensions"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(second.stderr)
+    check_output(second.stderr, second.returncode)
+    after = second.stdout + second.stderr
+
+    changes = re.findall(r"changed window ([0-9.]+)x([0-9.]+)", after)
+    if not changes:
+        raise Failure(
+            "resizing the window told `Dimensions` nothing: no `change` event "
+            "arrived, so every layout computed from `Dimensions.get('window')` "
+            f"is stale until the app restarts.\n{tail_text(after)}"
+        )
+    if round(float(changes[-1][0])) != 700:
+        raise Failure(
+            f"the window was resized to 700 wide and `Dimensions` reports "
+            f"{changes[-1][0]}.\n{tail_text(after)}"
+        )
+    # One event for one resize. The bounds signal fires for a move as well, and
+    # `Dimensions.set` re-emits whether or not anything differs.
+    if len(changes) != 1:
+        raise Failure(
+            f"{len(changes)} change events for one resize: {changes}"
+        )
+
+    return (f"{width:g}x{height:g} in a {screenWidth:g}x{screenHeight:g} screen at "
+            f"{scale:g}x, and a resize that said so")
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -8287,6 +8424,7 @@ SCENARIOS = [
     ("React Native's own Button looks like one, and presses", test_button),
     ("the ScrollView props that decide where a fling ends", test_scroll_snapping),
     ("a disabled Switch that is on still looks on", test_disabled_switch_colour),
+    ("Dimensions and PixelRatio report the real window", test_dimensions),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),
     ("the desktop says what displays it has", test_displays),

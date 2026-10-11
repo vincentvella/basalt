@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (21):**
+**Open (22):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -50,6 +50,46 @@ workaround and the comment explaining it, which is already written.
 20. `accessibilityViewIsModal` is parsed for every platform and declared only by iOS
 21. Fourteen `Platform.select` tables have no `default`, and `<Button>` is four
     of them
+22. `DeviceInfoModule` answers `Dimensions` with a hardcoded 1280x720 and has no
+    seam to wire
+
+- **`DeviceInfoModule` answers `Dimensions` with a hardcoded 1280x720, and
+  there is no seam to wire it to anything.** ReactCxxPlatform's
+  `DeviceInfoModule::getConstants` is nine lines with a TODO in them:
+
+      // TODO: Wire this to come from the actual app
+      // size (T161837708)
+      return DeviceInfoConstants{
+          .Dimensions = {.window = DisplayMetrics{1280, 720}},
+      };
+
+  It takes no arguments, holds no state and is constructed by
+  `ReactCxxTurboModuleProvider` with nothing, so there is no way for a host to
+  supply the window it actually made. Every app on every ReactCxxPlatform
+  desktop was told it had a 1280x720 window.
+
+  **Two more things fall out of those nine lines**, and both are worse than the
+  size:
+
+  `DisplayMetrics` is brace-initialised with two of its four fields, so `scale`
+  is zero -- `PixelRatio.get()` returns it, and `PixelRatio.roundToNearestPixel`
+  *divides* by it, so that function answered NaN in every app. Anything laying
+  out from it got NaN frames.
+
+  And `fontScale` is not initialised at all. The generated struct declares
+  `P3 fontScale;` with no `{}` where the other three have one, so a
+  brace-initialisation that omits it leaves it as whatever was on the stack.
+  That is in the codegen rather than in this module, and it is the more
+  reportable of the two.
+
+  Nothing emits `didUpdateDimensions` either, which is how `Dimensions.js`
+  learns a window changed size -- so even a correct answer would be stale after
+  the first resize.
+
+  **Answered here** rather than waited for: `basalt::DesktopDeviceInfoModule` in
+  `core/CoreModules.h` replaces it by name, the way the `ImageLoader` module is
+  replaced, and `core/DeviceMetrics.h` does the arithmetic from what the hosts
+  already report. [core-modules.md](core-modules.md) has the shape.
 
 - **Fourteen `Platform.select` tables in React Native's own JavaScript have
   neither a `default` key nor a desktop one**, so every one of them answers

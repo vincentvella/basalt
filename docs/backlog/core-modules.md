@@ -39,6 +39,33 @@ falls back or silently does nothing; the API appears to work and simply has no
 effect. `Clipboard` and `Vibration` use `getEnforcing`, which throws at import,
 so anything importing them dies at startup.
 
+- ~~**`Dimensions` and `PixelRatio` answered with a fiction.**~~ Fixed
+  2026-10-10 on all three hosts, and found by logging what an app reads rather
+  than by any audit: `scripts/audit_modules.py` records `DeviceInfo` as
+  *answered*, which was true -- by ReactCxxPlatform, with a hardcoded 1280x720,
+  a zero `scale` and an uninitialised `fontScale`. "The module answers" and
+  "the module answers correctly" are different claims and only the first had
+  ever been checked.
+
+  What an app saw: `Dimensions.get('window')` was 1280x720 whatever the window
+  was, `PixelRatio.get()` was 0, and `PixelRatio.roundToNearestPixel(x)` was
+  **NaN** -- it divides by the scale -- so any layout computed through it was
+  NaN too.
+
+  `DesktopDeviceInfoModule` answers now, from `core/DeviceMetrics.h`, which
+  turns three things the hosts already report into React Native's two payloads:
+  the main surface's size for `window` -- the area React lays out in, which is
+  the window's frame minus a title bar -- the display the window's centre is on
+  for `screen` and for `scale`, and `core/FontScaling.h`'s text scale for
+  `fontScale`. Which display, and the never-zero rules, are unit-tested in core;
+  the chain from a host to an app is a scenario.
+
+  It also emits `didUpdateDimensions`, which nothing did: a window resized told
+  `Dimensions` nothing at all, so every layout an app computed from it was
+  stale until the app restarted. Core carries a second listener slot on the
+  window-bounds signal for it, because `useWindow()`'s module owns the first and
+  the two have different lifetimes -- this one exists in every app, since
+  `Dimensions.js` requires the module at import.
 - ~~**`Appearance`**~~ **done in phase 30**, on both desktops. What is left of
   it: live system switching is subscribed to and has never been watched firing,
   there is no `AppearanceProvider` or per-view override, and nothing native

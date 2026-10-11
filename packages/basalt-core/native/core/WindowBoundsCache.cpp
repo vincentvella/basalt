@@ -166,21 +166,78 @@ WindowBounds lastKnownWindowBounds() {
   return cache();
 }
 
+namespace {
+
+std::function<void()> &dimensionsListener() {
+  static std::function<void()> value;
+  return value;
+}
+
+} // namespace
+
+namespace {
+
+// The main surface's size, which is the window minus whatever the desktop drew
+// around it. See the header.
+std::pair<double, double> &surfaceSize() {
+  static std::pair<double, double> value{0.0, 0.0};
+  return value;
+}
+
+} // namespace
+
+void notifySurfaceSize(double width, double height) {
+  std::function<void()> toCall;
+  {
+    const std::lock_guard<std::mutex> guard(lock());
+    if (surfaceSize().first == width && surfaceSize().second == height) {
+      return;
+    }
+    surfaceSize() = {width, height};
+    toCall = dimensionsListener();
+  }
+  // Outside the lock, which emits into the runtime; see
+  // notifyWindowBoundsChanged below.
+  if (toCall) {
+    toCall();
+  }
+}
+
+void lastKnownSurfaceSize(double *outWidth, double *outHeight) {
+  const std::lock_guard<std::mutex> guard(lock());
+  if (outWidth != nullptr) {
+    *outWidth = surfaceSize().first;
+  }
+  if (outHeight != nullptr) {
+    *outHeight = surfaceSize().second;
+  }
+}
+
+void setDimensionsListener(std::function<void()> listener) {
+  const std::lock_guard<std::mutex> guard(lock());
+  dimensionsListener() = std::move(listener);
+}
+
 void notifyWindowBoundsChanged() {
   // Asked on the UI thread, which is where this is called from, and stored
   // where the JavaScript thread can read it.
   const WindowBounds bounds = windowBounds();
 
   std::function<void(const WindowBounds &)> toCall;
+  std::function<void()> toCallForDimensions;
   {
     const std::lock_guard<std::mutex> guard(lock());
     cache() = bounds;
     toCall = listener();
+    toCallForDimensions = dimensionsListener();
   }
-  // Called outside the lock: it emits a device event, and holding a lock across
+  // Called outside the lock: they emit device events, and holding a lock across
   // a call into the runtime is how a deadlock is built.
   if (toCall) {
     toCall(bounds);
+  }
+  if (toCallForDimensions) {
+    toCallForDimensions();
   }
 }
 

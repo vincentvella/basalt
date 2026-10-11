@@ -747,6 +747,12 @@ void onRootResized(RnView * /*view*/, int width, int height, gpointer data) {
   // bounds. Here rather than in a watcher of its own: this is already the one
   // place that learns it.
   basalt::notifyWindowBoundsChanged();
+  // And `Dimensions.get('window')`, which is the area React lays out in rather
+  // than the window's frame. The main surface only: a second window has a
+  // surface of its own and `Dimensions` is singular.
+  if (made->surfaceId == kSurfaceId) {
+    basalt::notifySurfaceSize(width, height);
+  }
 
   // The inspector covers the main window, so it resizes with it -- and only
   // with it: an error is about the app rather than about a window, and it is
@@ -856,6 +862,12 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         // something on screen costs nothing. See docs/backlog/upstream.md.
         if (name == facebook::react::ImageLoaderModule::kModuleName) {
           return std::make_shared<facebook::react::ImageLoaderModule>(jsInvoker, imageLoader);
+        }
+        // `Dimensions` and `PixelRatio`, which ReactCxxPlatform answers with a
+        // hardcoded 1280x720 and a zero scale. Ours answers with the window
+        // this host actually made; see core/DeviceMetrics.h.
+        if (name == basalt::DesktopDeviceInfoModule::kModuleName) {
+          return std::make_shared<basalt::DesktopDeviceInfoModule>(jsInvoker);
         }
         if (name == basalt::DesktopAppModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppModule>(jsInvoker);
@@ -1501,6 +1513,10 @@ void onActivate(GtkApplication *app, gpointer data) {
   // for a script to commit into through nativeFabricUIManager by hand. That is
   // how this host ran before there was a Metro bundle, and e2e/demo.js still
   // exercises it.
+  // Before the surface starts, so that an app reading `Dimensions` while its
+  // first render runs is told the size it is being laid out at rather than a
+  // zero. See core/DeviceMetrics.h.
+  basalt::notifySurfaceSize(kInitialWidth, kInitialHeight);
   host->reactHost->startSurface(kSurfaceId,
                                 host->moduleName,
                                 folly::dynamic::object(),

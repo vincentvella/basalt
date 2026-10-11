@@ -527,6 +527,12 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         if (name == facebook::react::PlatformConstantsModule::kModuleName) {
           return std::make_shared<basalt::DesktopPlatformConstantsModule>(jsInvoker);
         }
+        // `Dimensions` and `PixelRatio`, which ReactCxxPlatform answers with a
+        // hardcoded 1280x720 and a zero scale. Ours answers with the window
+        // this host actually made; see core/DeviceMetrics.h.
+        if (name == basalt::DesktopDeviceInfoModule::kModuleName) {
+          return std::make_shared<basalt::DesktopDeviceInfoModule>(jsInvoker);
+        }
         if (name == basalt::DesktopAppModule::kModuleName) {
           return std::make_shared<basalt::DesktopAppModule>(jsInvoker);
         }
@@ -1404,6 +1410,12 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
         // screen" with zero. Told here, where the window's size is already
         // being handed to Fabric.
         gHost.mountingManager->setSurfaceSize(static_cast<float>(width), static_cast<float>(height));
+        // And `Dimensions.get('window')`, which is the area React lays out in
+        // rather than the window's frame. The main surface only: a second
+        // window has a surface of its own and `Dimensions` is singular.
+        if (self->surfaceId == kSurfaceId) {
+          basalt::notifySurfaceSize(width, height);
+        }
         // The window moved or was resized, which `useWindow()` hands an app as live
         // bounds. Here rather than in a watcher of its own: this is already the one
         // place that learns it.
@@ -2417,6 +2429,10 @@ int main(int argc, char **argv) {
   // SurfaceHandler::start calls AppRegistry.runApplication. Empty: the surface
   // is registered without JS being called at all, leaving it for a script to
   // commit into through nativeFabricUIManager by hand.
+  // Before the surface starts, so that an app reading `Dimensions` while its
+  // first render runs is told the size it is being laid out at rather than a
+  // zero. See core/DeviceMetrics.h.
+  basalt::notifySurfaceSize(kInitialWidth, kInitialHeight);
   gHost.reactHost->startSurface(kSurfaceId,
                                 gHost.moduleName,
                                 folly::dynamic::object(),

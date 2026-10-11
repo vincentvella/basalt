@@ -66,7 +66,8 @@
     },
     "DeviceInfo": {
       "asked": "getEnforcing",
-      "answeredBy": "react-native"
+      "answeredBy": "basalt",
+      "effect": "`Dimensions` and `PixelRatio`. Upstream's module answers with a hardcoded 1280x720, a zero scale and a font scale the generated struct never initialises; this one answers with the window the host made, the display it is on, and emits `didUpdateDimensions` when it is resized."
     },
     "DialogManagerAndroid": {
       "asked": "get",
