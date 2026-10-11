@@ -647,16 +647,37 @@ TEST(cursor_none_hides_the_pointer_rather_than_loading_one) {
   EXPECT(nothing.cursor == nullptr);
 }
 
-// The keywords the stock set has nothing for, which is a decision rather than
-// an omission: the art exists inside shell32 as unnamed ordinals, and loading
-// an ordinal out of a system DLL works until an update moves it. The dump still
-// reports the keyword, so what the app asked for is not lost.
-TEST(cursor_a_keyword_windows_has_nothing_for_leaves_the_pointer_alone) {
+// The keywords the stock set has nothing for, which this platform draws: see
+// Win32Cursors.cpp. They used to answer null, which left the pointer an arrow
+// and made `cursor` look unimplemented for six of its values.
+//
+// Each is a cursor of its own rather than a shared one, which is the claim
+// that fails if the drawing stops happening -- a null answer, or one cursor
+// handed back for all six, would both show up here. What they *look* like is
+// not assertable from a handle, and nobody has seen them on a screen yet;
+// backlog/platform-windows.md says so.
+TEST(cursor_a_keyword_windows_has_nothing_for_is_drawn_here) {
+  std::vector<HCURSOR> drawn;
   for (const char *keyword : {"alias", "cell", "context-menu", "copy", "zoom-in", "zoom-out"}) {
     const basalt::win32::Win32Cursor answer = basalt::win32::win32CursorFor(keyword);
-    EXPECT(answer.cursor == nullptr);
+    EXPECT(answer.cursor != nullptr);
     EXPECT(!answer.hidden);
+    EXPECT(answer.cursor != LoadCursorW(nullptr, IDC_ARROW));
+    for (HCURSOR other : drawn) {
+      EXPECT(answer.cursor != other);
+    }
+    drawn.push_back(answer.cursor);
   }
+
+  // Asked for twice, answered with the same handle: these are made once and
+  // kept, where a stock cursor is looked up in a table the system owns. A
+  // cursor made per call would leak one per mouse move.
+  EXPECT(basalt::win32::win32CursorFor("zoom-in").cursor
+         == basalt::win32::win32CursorFor("zoom-in").cursor);
+
+  // And a keyword that is neither stock nor drawn still leaves the pointer
+  // alone, which is what an unknown value has to do.
+  EXPECT(basalt::win32::win32CursorFor("not-a-cursor").cursor == nullptr);
 }
 
 // ---------------------------------------------------------------------------
