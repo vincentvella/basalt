@@ -183,6 +183,53 @@ function validate(inventory, data) {
     }
   }
 
+  // Two reasons that say the same thing have to mean the same thing.
+  //
+  // `ti-ios` and `sv-ios` said "iOS's own, with no desktop equivalent" and were
+  // `ignored`; `a11y-ios` and `text-ios` said it word for word and were `no`.
+  // Eleven rows that nobody was ever going to write sat in the count of work
+  // left, which is six points of the Linux bar, and the page said both things
+  // at once on one screen. The keys differ, so nothing caught it.
+  const classes = new Map();
+  const rowsWithWhy = [];
+  for (const struct of inventory.structs) {
+    for (const prop of struct.props) {
+      const row = data.statuses[`${struct.name}.${prop.name}`];
+      if (row !== undefined) {
+        rowsWithWhy.push(row);
+      }
+    }
+  }
+  for (const area of data.areas) {
+    rowsWithWhy.push(...area.rows);
+  }
+  for (const row of rowsWithWhy) {
+    const why = data.whys[row.why];
+    if (why === undefined) {
+      continue;
+    }
+    for (const key of keys) {
+      if (row[key] === 'ignored' || row[key] === 'no') {
+        const seen = classes.get(why.text) ?? new Map();
+        const kinds = seen.get(row.why) ?? new Set();
+        kinds.add(row[key]);
+        seen.set(row.why, kinds);
+        classes.set(why.text, seen);
+      }
+    }
+  }
+  for (const [text, seen] of classes) {
+    const deliberate = [...seen].filter(([, kinds]) => kinds.has('ignored')).map(([key]) => key);
+    const pending = [...seen].filter(([, kinds]) => kinds.has('no')).map(([key]) => key);
+    if (deliberate.length > 0 && pending.length > 0) {
+      problems.push(
+        `${JSON.stringify(text)} is the reason on rows that are deliberately not done `
+          + `(${deliberate.join(', ')}) and on rows that are still to do (${pending.join(', ')}): `
+          + 'say different things or carry the same status',
+      );
+    }
+  }
+
   for (const [key, why] of Object.entries(data.whys)) {
     if (!why.text || !why.link) {
       problems.push(`the why ${key} needs text and a link`);

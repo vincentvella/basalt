@@ -129,6 +129,30 @@ test('a why that links into this repository has to point at a file that is here'
   assert.equal(here.length, 0);
 });
 
+test('two reasons that say the same thing have to mean the same thing', () => {
+  // How eleven rows nobody was ever going to write came to sit in the count of
+  // work left: `sv-ios` and `ti-ios` said "iOS's own, with no desktop
+  // equivalent" and were ignored, `a11y-ios` and `text-ios` said it word for
+  // word and were not-yet. Different keys, so nothing compared them.
+  const inventory = inventoryOf(['accessibilityTraits', 'canCancelContentTouches']);
+  const whys = {
+    'a11y-ios': {text: "iOS's own, with no desktop equivalent", link: 'https://example.com/'},
+    'sv-ios': {text: "iOS's own, with no desktop equivalent", link: 'https://example.com/'},
+  };
+  const statuses = {
+    'BaseViewProps.accessibilityTraits': {linux: 'no', macos: 'no', why: 'a11y-ios'},
+    'BaseViewProps.canCancelContentTouches': {linux: 'ignored', macos: 'ignored', why: 'sv-ios'},
+  };
+  const problems = validate(inventory, dataOf(statuses, whys));
+  assert.equal(problems.length, 1, problems.join('\n'));
+  assert.match(problems[0], /iOS's own, with no desktop equivalent/);
+
+  // The same reason with the same status on both rows is the fixed version.
+  statuses['BaseViewProps.accessibilityTraits'].linux = 'ignored';
+  statuses['BaseViewProps.accessibilityTraits'].macos = 'ignored';
+  assert.deepEqual(validate(inventory, dataOf(statuses, whys)), []);
+});
+
 test('a prop ReactCommon consumes is neither our work nor our credit', () => {
   const inventory = inventoryOf(['onLayout', 'cursor']);
   const data = dataOf({

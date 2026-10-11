@@ -492,9 +492,9 @@
       "windows": "yes"
     },
     "AccessibilityProps.accessibilityTraits": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "a11y-ios"
     },
     "AccessibilityProps.accessibilityRole": {
@@ -514,9 +514,9 @@
       "why": "a11y-language"
     },
     "AccessibilityProps.accessibilityLargeContentTitle": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "a11y-ios"
     },
     "AccessibilityProps.accessibilityValue": {
@@ -531,9 +531,9 @@
       "why": "a11y-ignored"
     },
     "AccessibilityProps.accessibilityShowsLargeContentViewer": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "a11y-ios"
     },
     "AccessibilityProps.accessibilityViewIsModal": {
@@ -550,9 +550,9 @@
       "windows": "yes"
     },
     "AccessibilityProps.accessibilityIgnoresInvertColors": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "a11y-ios"
     },
     "AccessibilityProps.accessibilityRespondsToUserInteraction": {
@@ -568,15 +568,15 @@
       "why": "a11y-ignored"
     },
     "AccessibilityProps.onAccessibilityMagicTap": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "a11y-ios"
     },
     "AccessibilityProps.onAccessibilityEscape": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "a11y-ios"
     },
     "AccessibilityProps.onAccessibilityAction": {
@@ -697,9 +697,9 @@
       ]
     },
     "TextAttributes.dynamicTypeRamp": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "text-ios"
     },
     "TextAttributes.letterSpacing": {
@@ -732,9 +732,9 @@
       ]
     },
     "TextAttributes.lineBreakStrategy": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "text-ios"
     },
     "TextAttributes.lineBreakMode": {
@@ -792,15 +792,15 @@
       "why": "text-shadow-one"
     },
     "TextAttributes.isHighlighted": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "text-ios"
     },
     "TextAttributes.isPressable": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "text-ios"
     },
     "TextAttributes.layoutDirection": {
@@ -822,9 +822,9 @@
       "why": "text-ignored"
     },
     "TextAttributes.textEffects": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
       "why": "text-ios"
     },
     "YogaStylableProps.alignContent": {

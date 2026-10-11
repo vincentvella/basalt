@@ -49,9 +49,9 @@ under the row that implements them.
 
 | Host | Toolkit | Done | Left | |
 | --- | --- | --- | --- | --- |
-| Linux | GTK4 | 118 | 35 | `███████████████░░░░░` 77% |
-| macOS | AppKit | 119 | 34 | `████████████████░░░░` 78% |
-| Windows | Win32 | 115 | 37 | `███████████████░░░░░` 76% |
+| Linux | GTK4 | 118 | 24 | `█████████████████░░░` 83% |
+| macOS | AppKit | 119 | 23 | `█████████████████░░░` 84% |
+| Windows | Win32 | 115 | 26 | `████████████████░░░░` 82% |
 
 Out of the 280 rows below, those are the ones a host writes
 itself. The rest are nobody's work left:
@@ -61,7 +61,7 @@ itself. The rest are nobody's work left:
   `flex` and `padding` off the shadow tree, and ReactCommon parses and
   animates `opacity` the same way everywhere. Nothing for a host to write,
   and nothing for this platform to claim.
-- 53 or 54 are **deliberately not done**, each with its reason in
+- 64 or 65 are **deliberately not done**, each with its reason in
   the Why column: an Android-only field, a prop upstream itself
   ignores, a knob no desktop has. These will not move.
 
@@ -162,16 +162,16 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `accessibilityRole` | ✅ | ✅ | ✅ |  |
 | `accessibilityHint` | ✅ | ✅ | ✅ |  |
 | `accessibilityLanguage` | ✖ | ✖ | ✖ | [GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `accessibilityLargeContentTitle` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityLargeContentTitle` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityValue` | ✅ | ✅ | ✅ |  |
 | `accessibilityActions` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `accessibilityShowsLargeContentViewer` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityShowsLargeContentViewer` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityViewIsModal` | ✅ | ✅ | ✅ |  |
 | `accessibilityElementsHidden` | ✅ | ✅ | ✅ |  |
-| `accessibilityIgnoresInvertColors` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityIgnoresInvertColors` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityRespondsToUserInteraction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityTap` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `onAccessibilityEscape` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `onAccessibilityEscape` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `onAccessibilityAction` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `importantForAccessibility` | ✅ | ✅ | ✅ |  |
 | `role` | ✖ | ✖ | ✖ | [on the ignored list](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
@@ -183,8 +183,8 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
-| `accessibilityTraits` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
-| `onAccessibilityMagicTap` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityTraits` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `onAccessibilityMagicTap` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 
 ## TextAttributes
 
@@ -224,8 +224,8 @@ Written on the element itself, as `<View onLayout={...} />`.
 | --- | --- | --- | --- | --- |
 | `allowFontScaling` | ✅ | ✅ | ✅ |  |
 | `maxFontSizeMultiplier` | ✅ | ✅ | ✅ |  |
-| `dynamicTypeRamp` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `dynamicTypeRamp` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✖ | ✅ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `accessibilityRole` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `role` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
@@ -237,10 +237,10 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `fontSizeMultiplier` | ✅ | ✅ | ✅ |  |
-| `isHighlighted` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `isPressable` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `isHighlighted` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `isPressable` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `layoutDirection` | ✖ | ✖ | ✖ | [on the ignored list, with the call named](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `textEffects` | ✖ | ✖ | ✖ | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `textEffects` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ## ImageProps
 
