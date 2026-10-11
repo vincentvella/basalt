@@ -183,6 +183,13 @@ jobs:
         run: |
           mkdir tarballs
           for package in basalt/packages/*/; do
+            # The same rule publish.yml packs by: a private package is one
+            # that is not meant to go out yet, so it is not packed, not
+            # installed into the app below, and not uploaded.
+            if node -p "require('./${package}package.json').private === true" | grep -q true; then
+              echo "== skipping $package, which is private"
+              continue
+            fi
             RN_DIR="$GITHUB_WORKSPACE/react-native-src" \
               npm pack "$package" --pack-destination tarballs
           done

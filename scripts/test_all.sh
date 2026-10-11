@@ -156,6 +156,13 @@ if command -v node >/dev/null 2>&1; then
   # enough that nobody could say since when. Same arrangement, tests first.
   step "backlog count tests" node --test scripts/test_check_backlog.js
   step "backlog counts" node scripts/check_backlog.js
+  # What a release would upload. The version arithmetic release.yml does after
+  # a tag is pushed, plus the question nothing else asks: a package in
+  # packages/ is published unless it says `private`, and every published one
+  # needs a trusted publisher registered or its upload fails half way through
+  # a release.
+  step "release package tests" node --test scripts/test_check_packages.js
+  step "release packages" node scripts/check_packages.js
   # The platform support page, which is generated: its data file is checked for
   # shape, each host is searched for the props it claims, and the page on disk
   # has to be what the data renders to.

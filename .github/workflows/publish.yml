@@ -175,6 +175,16 @@ jobs:
           set -euo pipefail
           mkdir -p tarballs
           for package in packages/*/; do
+            # A package in packages/ is published unless it says otherwise:
+            # this loop packs and the loop below uploads whatever it finds, so
+            # a directory added here is on the registry at the next tag.
+            # `private: true` is how one says it is not ready, and
+            # scripts/check_packages.js holds that against publish.yml's
+            # trusted-publisher list so the two cannot drift.
+            if node -p "require('./${package}package.json').private === true" | grep -q true; then
+              echo "== skipping $package, which is private"
+              continue
+            fi
             RN_DIR="$RUNNER_TEMP/react-native-src" \
               npm pack "$package" --pack-destination tarballs
           done

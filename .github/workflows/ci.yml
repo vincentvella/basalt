@@ -467,6 +467,17 @@ jobs:
           node --test scripts/test_check_backlog.js
           node scripts/check_backlog.js
 
+      - name: What a release would upload
+        # The version arithmetic release.yml does once a tag has been pushed,
+        # run here where it costs a second instead of forty minutes, plus the
+        # question nothing else asks: a package in packages/ goes to the
+        # registry unless it says `private`, and a published one with no
+        # trusted publisher fails its credential exchange half way through a
+        # release. Adding a package is all it takes to need both.
+        run: |
+          node --test scripts/test_check_packages.js
+          node scripts/check_packages.js
+
       - name: The platform support page
         # website/docs/support.mdx is generated from docs/platform-support.json,
         # and three columns of ticks are exactly the kind of thing that drifts
