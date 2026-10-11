@@ -90,7 +90,7 @@ jobs:
           echo "token: ${#tok} chars"
           bad=0
           for p in basalt-core basalt-appkit \
-                   basalt-gtk basalt-notifications \
+                   basalt-gtk basalt-navigation basalt-notifications \
                    basalt-subprocess basalt-win32; do
             out=$(curl -sS -w '\n%{http_code}' -X POST \
               -H "Authorization: Bearer $tok" \
