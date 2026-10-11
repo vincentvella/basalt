@@ -45,6 +45,27 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   and whether GTK 4.14's cairo path gives that pixel, which wants a container
   rather than this machine.
 
+  **It happened again on 2026-10-11, in a different test, and the printf
+  earned itself.** `gtk_paint_a_background_can_repeat_in_one_axis_only` failed
+  on the Linux shard of a release rehearsal at commit c7cf907: the pixel the
+  tile should have covered was empty and the one outside it was full, which is
+  the picture a repeat gives when it tiles the wrong axis or not at all. Same
+  shape as the first occurrence -- not noise, but the answer to a different
+  question than the one asked.
+
+  The renderer was **GskGLRenderer**, and the line above it in the log is
+  `libEGL warning: DRI3 error: Could not get DRI3 device`, which is the
+  runner's GL falling back to software. So both occurrences are the GL path on
+  CI, both are pixel-exact wrong answers rather than noise, and the
+  development machine's GL path renders both correctly on 4.22.4. That makes
+  the suspect list "GTK 4.14's GL renderer, or llvmpipe under it" rather than
+  "unexplained", which is progress of a kind.
+
+  What would settle it is a container: Ubuntu 24.04, GTK 4.14, the suite run
+  twice -- once with `GSK_RENDERER=cairo` and once without -- against both of
+  these tests. Until somebody does that, a re-run is the workaround and this
+  paragraph is the record that it has now been needed twice.
+
 - **GTK's clipboard paste does not complete under the display CI runs on, and
   the host hung instead. The hangs are explained and fixed; the paste is not.**
   Found 2026-10-07 while asserting that a text menu
