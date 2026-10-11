@@ -757,6 +757,21 @@ void dumpTreeIfRequested() {
 void reportAppState(HWND window, bool focused) {
   const bool visible = window != nullptr && IsWindowVisible(window) != FALSE &&
       IsIconic(window) == FALSE;
+
+  // Nothing until the window has been on screen once.
+  //
+  // Windows sends WM_SIZE and WM_ACTIVATEAPP while a window is still being
+  // created, before `ShowWindow`, and an application whose window has not
+  // appeared yet is not one in the background -- it is one that is starting.
+  // Reporting those put every Windows app into `background` before its first
+  // frame, which CI caught and this machine could not: the other two hosts
+  // only hear about activation after their window exists.
+  static bool everVisible = false;
+  if (!visible && !everVisible) {
+    return;
+  }
+  everVisible = everVisible || visible;
+
   basalt::notifyAppState(basalt::appStateFor(focused, visible));
 }
 
