@@ -286,6 +286,49 @@ test('the module name comes from --module, then app.json', () => {
   fs.rmSync(project, {recursive: true, force: true});
 });
 
+test('an Expo app is "main", whatever its app.json says', () => {
+  const project = scratch();
+
+  // What `create-expo-app` writes: the name is under `expo`, because that is
+  // where Expo keeps it. Nothing is at the top level.
+  fs.writeFileSync(
+    path.join(project, 'app.json'),
+    JSON.stringify({expo: {name: 'smoke', slug: 'smoke'}}),
+  );
+  fs.writeFileSync(
+    path.join(project, 'package.json'),
+    JSON.stringify({name: 'smoke', dependencies: {expo: '~57.0.27'}}),
+  );
+
+  // Before this was a line of code rather than a sentence in a comment, this
+  // threw -- so a brand new Expo app built and then would not run.
+  assert.equal(desktop.resolveModuleName(project, {}), 'main');
+
+  // And "main" wins over a top-level name, because registerRootComponent
+  // registers "main" and nothing else. Taking the app.json name here is what
+  // turns a clear error into `"smoke" has not been registered`.
+  fs.writeFileSync(
+    path.join(project, 'app.json'),
+    JSON.stringify({name: 'smoke', expo: {name: 'smoke'}}),
+  );
+  assert.equal(desktop.resolveModuleName(project, {}), 'main');
+
+  // --module still wins over everything: an app that registers something else
+  // on purpose has to be able to say so.
+  assert.equal(desktop.resolveModuleName(project, {module: 'Other'}), 'Other');
+
+  // A bare React Native app is unaffected: no expo dependency, so app.json
+  // still decides.
+  fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({
+    name: 'bare',
+    dependencies: {'react-native': '0.86.3'},
+  }));
+  fs.writeFileSync(path.join(project, 'app.json'), JSON.stringify({name: 'Bare'}));
+  assert.equal(desktop.resolveModuleName(project, {}), 'Bare');
+
+  fs.rmSync(project, {recursive: true, force: true});
+});
+
 test('a monorepo root is only found above a real checkout', () => {
   const root = scratch();
 

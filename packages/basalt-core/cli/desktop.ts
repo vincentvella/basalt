@@ -1000,13 +1000,32 @@ export function buildHost(context: CliContext, options: RunOptions, target: Targ
 /**
  * The name the app registered with AppRegistry.
  *
- * app.json's `name`, which is what `registerRootComponent` and every template
- * use, and what run-android reads for the same purpose. Expo apps register
- * "main" regardless, so an explicit --module has to win.
+ * app.json's `name`, which is what every bare React Native template passes to
+ * `registerRootComponent`, and what run-android reads for the same purpose.
+ *
+ * **An Expo app is "main", whatever its app.json says.** `registerRootComponent`
+ * calls `AppRegistry.registerComponent('main', ...)` and nothing else, so the
+ * name in app.json is the *display* name and registering under it would be a
+ * lie. This used to be a sentence in this comment and not a line of code, and
+ * the result was that a brand new Expo app built and then refused to run:
+ *
+ *     error  no module name: add a "name" to app.json, or pass --module <name>
+ *
+ * on an app.json that had a name all along, under `expo` -- which is where
+ * `create-expo-app` puts it. Worse, the advice led further astray: adding a
+ * top-level name made the error become `"smoke" has not been registered`,
+ * because the only name registered was ever "main".
+ *
+ * Expo is detected the way cli/init.ts detects it -- the `expo` dependency in
+ * package.json -- rather than by the `expo` key in app.json, so that the two
+ * halves of this CLI cannot disagree about what an Expo app is.
  */
 export function resolveModuleName(projectRoot: string, options: RunOptions): string {
   if (typeof options.module === 'string') {
     return options.module;
+  }
+  if (dependsOnExpo(projectRoot)) {
+    return 'main';
   }
   const appJson = path.join(projectRoot, 'app.json');
   if (fs.existsSync(appJson)) {
@@ -1023,6 +1042,29 @@ export function resolveModuleName(projectRoot: string, options: RunOptions): str
     'no module name: add a "name" to app.json, or pass --module <name>.\n' +
       'It is the name the app passes to AppRegistry.registerComponent.',
   );
+}
+
+/**
+ * Whether this app is an Expo app, by the same test cli/init.ts uses.
+ *
+ * The dependency rather than the `expo` key in app.json: a bare React Native
+ * app can carry that key for `expo-modules-core` without registering "main".
+ */
+function dependsOnExpo(projectRoot: string): boolean {
+  const manifestPath = path.join(projectRoot, 'package.json');
+  if (!fs.existsSync(manifestPath)) {
+    return false;
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    return (
+      manifest.dependencies?.expo != null ||
+      manifest.devDependencies?.expo != null ||
+      manifest.peerDependencies?.expo != null
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
