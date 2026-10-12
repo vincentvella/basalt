@@ -244,20 +244,6 @@ HCURSOR cursorFromArt(const Art &art, int hotX, int hotY) {
   return cursor;
 }
 
-// `%SystemRoot%\Cursors\aero_link.cur`, the shell's own shortcut cursor, which
-// is the one of the six Windows ships as a file with a name rather than as an
-// ordinal inside a DLL. Null when it is not there, and the caller draws its own.
-HCURSOR cursorFromSystemFile(const wchar_t *leaf) {
-  wchar_t path[MAX_PATH]{};
-  const UINT length = GetWindowsDirectoryW(path, MAX_PATH);
-  if (length == 0 || length >= MAX_PATH) {
-    return nullptr;
-  }
-  std::wstring full(path);
-  full += L"\\Cursors\\";
-  full += leaf;
-  return LoadCursorFromFileW(full.c_str());
-}
 
 HCURSOR drawnCursorFor(const std::string &keyword) {
   if (keyword == "copy") {
@@ -267,9 +253,19 @@ HCURSOR drawnCursorFor(const std::string &keyword) {
     return cursorFromArt(contextMenuArt(), 0, 0);
   }
   if (keyword == "alias") {
-    if (HCURSOR shipped = cursorFromSystemFile(L"aero_link.cur")) {
-      return shipped;
-    }
+    // Drawn, like the other five, and not `%SystemRoot%\Cursors\aero_link.cur`.
+    //
+    // That file was preferred here on the reasoning that a real name beats an
+    // unnamed ordinal inside shell32, which is sound and is still why nothing
+    // else reaches into the shell. What it missed is what the file contains:
+    // on Windows 11 aero_link.cur is "Link Select", the pointing hand -- the
+    // same cursor `pointer` already gets from IDC_HAND. So `alias` and
+    // `pointer` came back pixel for pixel identical, and CSS means two
+    // different things by them.
+    //
+    // The art below is the shape `alias` is supposed to be: an arrow with the
+    // shortcut badge turning up and to the right. It was already written and
+    // never ran, because the file always loaded.
     return cursorFromArt(aliasArt(), 0, 0);
   }
   if (keyword == "cell") {

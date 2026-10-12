@@ -25,6 +25,7 @@
 #include <react/renderer/components/view/ViewProps.h>
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -395,6 +396,46 @@ TEST(win32_a_synthesised_hover_walks_the_tree_without_an_emitter) {
 // hit-test suite covers it. `auto` and `url` reach a host as no keyword at all.
 // ---------------------------------------------------------------------------
 
+// A cursor as pixels, for comparing two of them.
+//
+// DrawIconEx at a size we choose rather than the cursor's own, so that a
+// 32-pixel drawn cursor and whatever size the system hands back are the same
+// shape of answer. False when the cursor cannot be drawn at all, which the
+// caller treats as "nothing to compare" rather than as a failure.
+bool cursorPixels(HCURSOR cursor, std::vector<std::uint8_t> &out) {
+  constexpr int kSide = 32;
+  HDC screen = GetDC(nullptr);
+  HDC dc = CreateCompatibleDC(screen);
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = kSide;
+  info.bmiHeader.biHeight = -kSide;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+  void *bits = nullptr;
+  HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+  bool ok = false;
+  if (bitmap != nullptr && bits != nullptr) {
+    HGDIOBJ previous = SelectObject(dc, bitmap);
+    // Cleared first: a DIB section is not promised zeroed, and comparing two
+    // cursors over two different piles of leftover memory would never match.
+    std::memset(bits, 0, static_cast<std::size_t>(kSide) * kSide * 4);
+    ok = DrawIconEx(dc, 0, 0, cursor, kSide, kSide, 0, nullptr, DI_NORMAL) != FALSE;
+    if (ok) {
+      out.assign(static_cast<std::uint8_t *>(bits),
+                 static_cast<std::uint8_t *>(bits) + static_cast<std::size_t>(kSide) * kSide * 4);
+    }
+    SelectObject(dc, previous);
+  }
+  if (bitmap != nullptr) {
+    DeleteObject(bitmap);
+  }
+  DeleteDC(dc);
+  ReleaseDC(nullptr, screen);
+  return ok;
+}
+
 TEST(win32_every_cursor_keyword_resolves_to_a_cursor_of_its_own) {
   // CSS's list, grouped into the families that may legitimately share one
   // cursor. A family is the exception the claim allows; everything else has to
@@ -489,6 +530,47 @@ TEST(win32_every_cursor_keyword_resolves_to_a_cursor_of_its_own) {
     }
   }
   EXPECT_EQ(collided, std::string(""));
+
+  // And again by what they look like, which is not the same question.
+  //
+  // The check above compares handles, and two handles are different the
+  // moment they come from different calls -- `LoadCursorFromFileW` on a .cur
+  // and `LoadCursorW(IDC_HAND)` are two handles to the same drawing. That is
+  // exactly how `alias` and `pointer` came to be the same cursor without this
+  // test noticing: `alias` was loaded from %SystemRoot%\Cursors\aero_link.cur,
+  // which on Windows 11 is "Link Select" -- the hand IDC_HAND already gives
+  // `pointer`. Distinct handles, one picture, and the user cannot tell the two
+  // keywords apart.
+  //
+  // So this draws each one and compares the pixels. Thirty-two by thirty-two
+  // because that is the size DrawIconEx is being asked for rather than the
+  // size the cursor happens to be, which makes a system cursor and a drawn
+  // one comparable at all.
+  std::string looksTheSame;
+  for (const Resolved &left : resolved) {
+    for (const Resolved &right : resolved) {
+      if (left.family >= right.family) {
+        continue;
+      }
+      if (left.answer.cursor == nullptr || right.answer.cursor == nullptr) {
+        continue;
+      }
+      std::vector<std::uint8_t> leftBits;
+      std::vector<std::uint8_t> rightBits;
+      if (!cursorPixels(left.answer.cursor, leftBits) ||
+          !cursorPixels(right.answer.cursor, rightBits)) {
+        continue;
+      }
+      if (leftBits != rightBits) {
+        continue;
+      }
+      if (!looksTheSame.empty()) {
+        looksTheSame += ",";
+      }
+      looksTheSame += left.keyword + "=" + right.keyword;
+    }
+  }
+  EXPECT_EQ(looksTheSame, std::string(""));
 
   // And the failure this is really about, named directly rather than left to
   // the loop above: the arrow belongs to `default`. A keyword mapped onto
