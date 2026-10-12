@@ -87,12 +87,27 @@ Measured in phase 34 against a real dependency set, on both desktops.
   basalt-skia had it. Worth revisiting only with a measurement of what
   ExpoModulesCore actually needs.
 
-  **The cheaper increment is to narrow the distance, in two places.** Read
-  `expo-module.config.json` so a module's *name* is declared once rather than
-  restated in the C++, and thin `core/ExpoModules.h` toward the shape of the
-  Swift DSL -- kino's `ExpoKinoAudioModule.cpp` is already "the JavaScript
-  boundary and nothing else", so the gap there is ergonomics rather than
-  capability. And say something at build time when a local module has an
-  `apple/` or `ios/` half and no `native/` one: the failure today is
-  `Cannot find native module 'KinoProcess'` at runtime, which names the module
-  and not the reason.
+  **~~Read `expo-module.config.json` so a module's name is declared once.~~**
+  Filed on 2026-10-12 and wrong the same day, which is worth leaving here with
+  the measurement that killed it: the config does not contain the module's
+  name. kino-audio's says `"apple": {"modules": ["KinoAudioModule"]}`, which is
+  the *Swift class*; the name JavaScript asks for is `"KinoAudio"`, and it
+  lives inside the Swift source in `Name("KinoAudio")`, where only a Swift
+  compiler can see it. The C++ half restates it as `kModuleName` because there
+  is nowhere else for it to come from. Nothing can be read from the config that
+  would remove that, short of parsing the Swift.
+
+  **~~Say at build time when a local module has no desktop half.~~** Done:
+  `localModulesMissingDesktop` in cli/desktop.ts, reported as a configure note
+  that names the symptom as well as the module.
+
+  **What is left is the ergonomics, and it wants a second module before it is
+  designed.** `core/ExpoModules.h` is already thin -- `expoModule`,
+  `addExpoFunction`, `emitExpoEvent` -- and what every module writes on top of
+  it is argument reading. kino's `ExpoKinoAudioModule.cpp` declares
+  `stringArgument` and `numberArgument` of its own; core's own Expo modules
+  write the same checks inline, `if (count < 1 || !args[0].isString())`, in at
+  least three places. So the duplication is real and is not yet *shared*
+  duplication: two different shapes solving one problem, which is the worst
+  moment to extract an API from either. The thing to do when a third module
+  arrives is to take whichever shape survived contact with it.
