@@ -188,12 +188,33 @@ Found by bundling and running a real application.
     and Win32 need Dawn from source beside a Graphite-enabled Skia from source,
     which is a second `build_skia_*.sh`-shaped project each.
   - **The platform context is six virtuals rather than fifteen**, and
-    `packages/basalt-skia` already answers all six. That part is done.
+    `packages/basalt-skia` answers all six. Done, and on 3.x
+    `makeOffscreenSurface` is Graphite's own rather than raster: a recording is
+    replayed into a Graphite target, so a raster surface there is the wrong
+    kind of surface rather than a slower one, and `drawAsImage` is the path
+    that reaches it.
+  - **`RNSkiaModule` is done**, and portable: `BasaltSkiaModule` is plain C++
+    in basalt-skia rather than Objective-C++ in the AppKit package, because
+    with Dawn's Metal behind `wgpu::Surface` there is nothing platform-specific
+    left in either the module or the context. It and the 2.x
+    `AppKitSkiaModule` answer to the same name and never exist together: the
+    one is compiled only where `BASALT_SKIA` built the Ganesh half, which is
+    exactly where the version guard refused 3.x.
+  - **Eleven sources are the whole portable half**, plus
+    `apple/MetalLayerColorSpace.mm`, which is the one Apple source 3.x still
+    has that this platform needs and is React-free. `cpp/skia/modules/jsonreader/SkJSONReader.cpp`
+    is compiled too, for the reason core's Skia.cmake gives: Android links a
+    `libjsonreader.a` and Apple has no such archive, so leaving it out is
+    `skjson::Value::toString` undefined from libskottie.
+  - **What is left on macOS is `<Canvas>`**: a view owning a `CAMetalLayer`,
+    handed to `RNSkWindowSurface::attach`, plus the component registered in
+    `AppKitMountingManager`. The imperative API -- `Skia.Path`, image decoding,
+    typefaces, `drawAsImage` -- works without it, which is most of what an app
+    like kino uses outside its preview.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
   it is the one host whose binaries exist today -- `react-native-skia-graphite-apple-macos`
-  and Dawn's xcframework are both published, so what is owed there is the
-  `RNSkiaModule` over `RNSkManager` and a `CAMetalLayer` view. GTK and Win32
+  and Dawn's xcframework are both published. GTK and Win32
   wait on a Dawn build, and until then an app that wants Skia on them installs
   the 2.x line, which is still published under both names
   (`react-native-skia@release-2.x` is 2.15.1). `cmake/Skia.cmake` and the CLI

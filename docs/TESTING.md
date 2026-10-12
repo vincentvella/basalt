@@ -727,12 +727,53 @@ next scenario that moves a window would have been debugging the wrong thing.
 
 ## Skia, where the tests do not run in CI
 
-`tests/test_appkit_skia.mm` is compiled only when the build was pointed at an app
-that has `@shopify/react-native-skia`, because the package is borrowed from the
-app rather than vendored, so these run on a developer's machine and never in
-CI, which has no app. That is a real gap and is the price of not vendoning a
-300MB dependency; the rest of the suite is unaffected either way, and
-`BASALT_SKIA` unset means none of it is compiled.
+Two suites, for two renderers, and neither runs in CI because the package is
+borrowed from the app rather than vendored and CI has no app. That is a real
+gap and is the price of not vendoring a 300MB dependency; the rest of the
+suite is unaffected either way, and with nothing pointed at, none of it is
+compiled.
+
+Which suite a build gets is decided by what it was pointed at, and the two are
+mutually exclusive by construction:
+
+```
+# 2.x, Ganesh over Metal: tests/test_appkit_skia.mm, six tests.
+cmake -B build-skia2 -DBASALT_SKIA=<app>/node_modules/@shopify/react-native-skia
+
+# 3.x, Graphite over Dawn: basalt-skia's three, nine tests in all.
+cmake -B build-skia3 -G Ninja \
+  -DBASALT_SKIA_DIR=<app>/node_modules/react-native-skia \
+  -DBASALT_SKIA_LIBS=<app>/node_modules/react-native-skia-graphite-apple-macos \
+  -DBASALT_SKIA_DAWN=<app>/node_modules/react-native-webgpu-dawn
+```
+
+The three variables of the second are defaults, not requirements: basalt-skia
+looks for all three in the app's `node_modules` on its own, and they are here
+because the only app on this machine with a 3.x install is kino, which is not
+where this repository's build runs. `BASALT_SKIA` is the 2.x path and
+`cmake/Skia.cmake` refuses a 3.x install by version, so pointing both at the
+same install is not a thing that can happen; `scripts/test_skia_cmake.js` is
+that refusal's own test and does run in CI, since it needs no Skia.
+
+Both were run against this repository's AppKit suite on 2026-10-11, separately:
+786 tests with 2.14.0 and 789 with 3.4.0, all passing in both. The counts
+differ because the suites are different files, not because one skipped
+anything.
+
+**What the 3.x suite proves that is new.** `skia_module_installs_skias_javascript_api`
+builds a Hermes runtime, calls `install` through the module's own property the
+way JavaScript does, and reads `SkiaApi` back off the global object -- which is
+the only thing that can say Skia's whole JavaScript API arrived, because
+arriving is all `install` does. And
+`skia_context_makes_a_surface_that_draws` is now a GPU round trip: the
+canvas records, the recording is submitted, the texture is shared as an image
+and read back. It found out it had become a GPU surface by `peekPixels`
+answering false, which is worth knowing as a symptom -- a Graphite surface has
+no CPU pixels to peek, and the test that used to peek them passed for a year
+against raster.
+
+Dawn gets a Metal device on a machine with no window and no display, which is
+why that round trip can run at all, and would run in CI if CI had an app.
 
 What they assert is pixels, not objects. `RNSkiaModule: Skia installed` says the
 bindings were constructed, and that is a long way from a pixel: a Metal device

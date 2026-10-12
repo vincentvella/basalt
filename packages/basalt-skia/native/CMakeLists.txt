@@ -29,6 +29,7 @@
 
 set(BASALT_SKIA_DIR_DEFAULT "")
 set(BASALT_SKIA_LIBS_DEFAULT "")
+set(BASALT_SKIA_DAWN_DEFAULT "")
 
 # Two package names and two binary packages, because the library moved house.
 #
@@ -57,12 +58,22 @@ foreach(root
       get_filename_component(BASALT_SKIA_LIBS_DEFAULT ${root}/${binaries} ABSOLUTE)
     endif()
   endforeach()
+  # Dawn, which is 3.x's and only 3.x's: Graphite draws through WebGPU and the
+  # package depends on `react-native-webgpu-dawn` for the implementation. A 2.x
+  # install has no such dependency and needs none, which is why this is found
+  # separately rather than assumed to sit beside the others.
+  if(EXISTS ${root}/react-native-webgpu-dawn/include/webgpu/webgpu_cpp.h)
+    get_filename_component(BASALT_SKIA_DAWN_DEFAULT
+                           ${root}/react-native-webgpu-dawn ABSOLUTE)
+  endif()
 endforeach()
 
 set(BASALT_SKIA_DIR "${BASALT_SKIA_DIR_DEFAULT}" CACHE PATH
     "@shopify/react-native-skia, which carries the C++ and Skia's headers")
 set(BASALT_SKIA_LIBS "${BASALT_SKIA_LIBS_DEFAULT}" CACHE PATH
     "react-native-skia-apple-macos, which carries the prebuilt Skia slices")
+set(BASALT_SKIA_DAWN "${BASALT_SKIA_DAWN_DEFAULT}" CACHE PATH
+    "react-native-webgpu-dawn, which carries Dawn's headers and library (3.x only)")
 
 if(NOT APPLE)
   message(STATUS "basalt-skia: skipped, the prebuilt Skia here is Apple's")
@@ -92,9 +103,18 @@ message(STATUS "basalt-skia: Skia from ${BASALT_SKIA_DIR}")
 # All of them rather than libskia alone: paragraph, shaper and unicode are
 # separate archives and the api layer references them, so leaving one out is a
 # link error rather than a smaller binary.
+#
+# **Dependents before dependencies, so libskia is last.** A static archive is
+# searched once, in the order given, and only for symbols already undefined.
+# With libskia first this failed on `skjson::Value::toString` referenced from
+# libskottie -- skjson lives inside libskia, which the linker had already
+# walked past. There is no --start-group on Apple's ld, so the order is the
+# fix, and core's cmake/Skia.cmake records the same thing from the same
+# symbol. It only surfaced once SkottieUtils.cpp was compiled: before that
+# nothing referenced skjson and any order linked.
 set(BASALT_SKIA_SLICE macos-arm64_x86_64)
-foreach(library libskia libsvg libskshaper libskparagraph libskottie libsksg
-                libskunicode_core libskunicode_libgrapheme)
+foreach(library libskottie libsvg libskparagraph libsksg libskshaper
+                libskunicode_libgrapheme libskunicode_core libskia)
   set(archive
       ${BASALT_SKIA_LIBS}/libs/${library}.xcframework/${BASALT_SKIA_SLICE}/${library}.a)
   if(NOT EXISTS ${archive})
@@ -140,6 +160,135 @@ set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_CORE_SOURCES
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
   ${BASALT_SKIA_DIR}/cpp/rnskia
   ${BASALT_SKIA_DIR}/cpp)
+
+# --- Skia's own C++, compiled ---------------------------------------------
+#
+# The headers above are enough to *use* Skia. `RNSkManager` -- the thing a
+# module installs -- needs the package's own C++ compiled as well: eleven
+# sources across `cpp/{api,jsi,rnskia}`, which is the whole portable half.
+#
+# In an object library of its own rather than appended to core's sources,
+# because of the warning set. This project compiles with `-Wall -Wextra
+# -Wpedantic -Werror` and these are somebody else's files; core's own
+# cmake/Skia.cmake makes the same decision for the same reason, and the
+# platform context stays in core's sources because that one *is* ours.
+if(BASALT_SKIA_DAWN STREQUAL "")
+  message(STATUS
+    "basalt-skia: no react-native-webgpu-dawn, so Skia's own C++ is not "
+    "compiled -- the headers and the library are still available")
+else()
+  enable_language(CXX)
+  # One of the sources below is Objective-C++. Asked for here rather than
+  # assumed, for the reason core's cmake/Skia.cmake gives: this runs before
+  # the AppKit package that enables it for its own sources, and an app
+  # configuring a different top-level CMakeLists failed with `Missing variable
+  # is: CMAKE_OBJCXX_COMPILE_OBJECT`, which names the language and not the
+  # file. Idempotent, so asking twice costs nothing.
+  enable_language(OBJCXX)
+
+  # Dawn is where 3.x draws, and it is not optional there: `api/JsiSkApi.h`
+  # reaches `RNDawnContext.h`, so the api layer does not compile without
+  # `webgpu/webgpu_cpp.h`. 2.x is Ganesh and has neither the dependency nor
+  # these four sources, which is what the guard above is for.
+  set(BASALT_SKIA_RNSKIA_SOURCES
+      ${BASALT_SKIA_DIR}/cpp/jsi/JSICache.cpp
+      ${BASALT_SKIA_DIR}/cpp/jsi/JsiPromises.cpp
+      ${BASALT_SKIA_DIR}/cpp/jsi/Promise.cpp
+      ${BASALT_SKIA_DIR}/cpp/jsi/ViewProperty.cpp
+      ${BASALT_SKIA_DIR}/cpp/rnskia/RNDawnInterop.cpp
+      ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkGraphiteProducer.cpp
+      ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkManager.cpp
+      ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkWindowSurface.cpp
+      ${BASALT_SKIA_DIR}/cpp/api/third_party/CSSColorParser.cpp
+      ${BASALT_SKIA_DIR}/cpp/api/third_party/SkottieUtils.cpp
+      ${BASALT_SKIA_DIR}/cpp/api/third_party/base64.cpp
+      # Skia's JSON reader, which Skottie parses Lottie files with. Source
+      # rather than an archive: Android links a libjsonreader.a and no such
+      # archive is published for Apple. Leaving it out is `skjson::Value::
+      # toString` undefined from libskottie -- a missing definition in
+      # somebody else's archive, which reads like a link-order problem and is
+      # a file nobody compiled.
+      ${BASALT_SKIA_DIR}/cpp/skia/modules/jsonreader/SkJSONReader.cpp
+      # The one Apple source 3.x still has that this platform needs, and it is
+      # free: CoreGraphics, Foundation and QuartzCore, no React. `apple/` is
+      # eleven files now where 2.x had fourteen, and the other ten are the
+      # module, the view and the screenshot service -- all of them this
+      # platform's own to write. `RNSkWindowSurface.cpp` calls into this one,
+      # so leaving it out is `RNSkia::applyCAMetalLayerColorSpace` undefined.
+      ${BASALT_SKIA_DIR}/apple/MetalLayerColorSpace.mm)
+  foreach(source ${BASALT_SKIA_RNSKIA_SOURCES})
+    if(NOT EXISTS ${source})
+      message(FATAL_ERROR
+        "basalt-skia: ${source} is missing. The portable half of "
+        "react-native-skia is named file by file rather than globbed, so a "
+        "version that moved one says which rather than failing in the link.")
+    endif()
+  endforeach()
+
+  add_library(basalt_skia_rnskia OBJECT ${BASALT_SKIA_RNSKIA_SOURCES})
+  set_target_properties(basalt_skia_rnskia PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON)
+  # Somebody else's sources, so nothing of this project's warning set applies
+  # and `-w` says so once rather than a suppression per diagnostic.
+  target_compile_options(basalt_skia_rnskia PRIVATE -w)
+  target_include_directories(basalt_skia_rnskia SYSTEM PRIVATE
+    ${BASALT_SKIA_DIR}/cpp
+    ${BASALT_SKIA_DIR}/cpp/api
+    ${BASALT_SKIA_DIR}/cpp/jsi
+    ${BASALT_SKIA_DIR}/cpp/rnskia
+    ${BASALT_SKIA_DIR}/cpp/utils
+    # Skia's own headers are included as `include/core/SkSurface.h` and its
+    # private ones as `src/gpu/graphite/ContextOptionsPriv.h`, so the
+    # directory *above* both is what goes on the path.
+    ${BASALT_SKIA_DIR}/cpp/skia
+    ${BASALT_SKIA_DIR}/cpp/skia/modules
+    # For MetalLayerColorSpaceUtils.h, which the .mm beside it includes by
+    # name.
+    ${BASALT_SKIA_DIR}/apple
+    ${BASALT_SKIA_DAWN}/include
+    ${RN_DIR}/ReactCommon
+    ${RN_DIR}/ReactCommon/jsi
+    ${RN_DIR}/ReactCommon/callinvoker
+    ${RN_DIR}/ReactCommon/cxxreact
+    ${RN_DIR}/ReactCommon/runtimeexecutor)
+
+  # The objects, and Dawn under them. A universal slice like Skia's, so there
+  # is no architecture to pick.
+  set(BASALT_SKIA_DAWN_ARCHIVE
+      ${BASALT_SKIA_DAWN}/libs/apple/libwebgpu_dawn.xcframework/${BASALT_SKIA_SLICE}/libwebgpu_dawn.a)
+  if(NOT EXISTS ${BASALT_SKIA_DAWN_ARCHIVE})
+    message(FATAL_ERROR
+      "basalt-skia: ${BASALT_SKIA_DAWN_ARCHIVE} is missing; reinstall "
+      "react-native-webgpu-dawn")
+  endif()
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
+    basalt_skia_rnskia
+    ${BASALT_SKIA_DAWN_ARCHIVE}
+    # Dawn's Metal backend, and IOSurface for the textures it shares.
+    "-framework IOSurface"
+    "-framework IOKit")
+  # The platform context includes `RNDawnContext.h` once Dawn is here, so
+  # core's half of the include path grows with it.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
+    ${BASALT_SKIA_DIR}/cpp/api
+    ${BASALT_SKIA_DIR}/cpp/utils
+    ${BASALT_SKIA_DIR}/cpp/skia/modules
+    ${BASALT_SKIA_DAWN}/include)
+  # The module, which needs RNSkManager and therefore the object library
+  # above: this is the half of the package that only exists where Skia's own
+  # C++ was compiled. On a 2.x install the AppKit package's module answers to
+  # the same name instead; see BasaltSkiaModule.h for why they never collide.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_CORE_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/BasaltSkiaModule.cpp)
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TURBO_MODULES
+    makeSkiaTurboModule)
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TESTS
+    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp)
+
+  message(STATUS "basalt-skia: Dawn from ${BASALT_SKIA_DAWN}")
+endif()
 
 # Proof that the above is true, in this project's own AppKit suite rather than
 # in an app: Skia's headers compile here and its prebuilt library links and

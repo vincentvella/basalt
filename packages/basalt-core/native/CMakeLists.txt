@@ -376,7 +376,17 @@ if(DEFINED RN_DIR)
     # "iosswitch" and which are ordinary portable C++ apart from the one
     # measurement core/DesktopControls.cpp supplies. Android's needs fbjni;
     # this one needs nothing.
-    ${RN_DIR}/ReactCommon/react/renderer/components/switch/iosswitch)
+    ${RN_DIR}/ReactCommon/react/renderer/components/switch/iosswitch
+    # Hermes' public headers, which core already links and until now only its
+    # own directory could include. `include_directories()` in ThirdParty.cmake
+    # is directory-scoped, so a test in a *host* package linking core could
+    # call into Hermes and not include <hermes/hermes.h> -- which is what a
+    # test that wants a real jsi::Runtime needs, and the first one that wanted
+    # one is basalt-skia's. The same two directories ThirdParty.cmake names,
+    # for the same reason: RN's jsi is used rather than Hermes' vendored copy,
+    # so API/ and public/ only.
+    ${HERMES_DIR}/API
+    ${HERMES_DIR}/public)
   # libcurl, because core/HttpClient.cpp is here. It used to be named only on
   # basalt_gtk_mounting, which worked for exactly as long as the GTK host was the only
   # thing linking core: the archive member goes unreferenced until something

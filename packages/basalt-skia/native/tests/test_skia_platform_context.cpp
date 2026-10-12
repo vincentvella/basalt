@@ -21,6 +21,14 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
+
+// Graphite, where the installed Skia has it: the same probe the platform
+// context makes, for the same reason.
+#if __has_include(<webgpu/webgpu_cpp.h>)
+#define BASALT_SKIA_GRAPHITE 1
+#include "RNDawnContext.h"
+#include "include/gpu/graphite/Surface.h"
+#endif
 #pragma clang diagnostic pop
 
 #include <chrono>
@@ -77,10 +85,40 @@ TEST(skia_context_makes_a_surface_that_draws) {
   surface->getCanvas()->clear(SK_ColorTRANSPARENT);
   surface->getCanvas()->drawRect(SkRect::MakeWH(16, 16), paint);
 
+  // Which the surface is decides how its pixels come back, and the difference
+  // is the whole of what 3.x changed here.
+  //
+  // On Graphite the canvas only *records*: nothing has been drawn until the
+  // recording is snapped and inserted, and the result lives in a GPU texture
+  // with no CPU pixels to peek -- `peekPixels` answers false, which is how
+  // this test first found out it had become a GPU surface. So the three steps
+  // upstream's own JsiSkSurface takes: submit the recording, share the
+  // texture as an image, and read that image back. A round trip to the GPU
+  // and back, inside a test, which is also the proof that Dawn found a device
+  // on a machine with no window and no display.
+#if BASALT_SKIA_GRAPHITE
+  EXPECT(surface->recorder() != nullptr);
+  if (auto *recorder = surface->recorder()) {
+    RNSkia::DawnContext::getInstance().submitRecording(recorder->snap().get());
+  }
+  sk_sp<SkImage> drawn = SkSurfaces::AsImage(surface);
+  EXPECT(drawn != nullptr);
+  sk_sp<SkImage> raster =
+      drawn == nullptr
+          ? nullptr
+          : RNSkia::DawnContext::getInstance().MakeRasterImage(drawn);
+  EXPECT(raster != nullptr);
+  SkPixmap pixels;
+  EXPECT(raster != nullptr && raster->peekPixels(&pixels));
+#else
+  // 2.x, where the surface is raster and its pixels are already here.
+  EXPECT(surface->recorder() == nullptr);
   SkPixmap pixels;
   EXPECT(surface->peekPixels(&pixels));
+#endif
   if (pixels.addr() != nullptr) {
     EXPECT_EQ(static_cast<int>(SkColorGetG(pixels.getColor(8, 8))), 255);
+    EXPECT_EQ(static_cast<int>(SkColorGetA(pixels.getColor(8, 8))), 255);
   }
 
   // A size no surface can have, which Skia would otherwise answer with an

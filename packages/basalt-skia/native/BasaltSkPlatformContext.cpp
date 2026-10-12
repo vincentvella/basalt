@@ -12,6 +12,18 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
 #include "include/ports/SkFontMgr_mac_ct.h"
+
+// Graphite, where the installed Skia has it.
+//
+// `webgpu/webgpu_cpp.h` is on the include path exactly when basalt-skia found
+// `react-native-webgpu-dawn`, which only a 3.x install depends on -- so this
+// asks the one question that distinguishes the two renderers, rather than a
+// version number that would have to be plumbed here to say the same thing.
+// 2.x is Ganesh and has no DawnContext at all.
+#if __has_include(<webgpu/webgpu_cpp.h>)
+#define BASALT_SKIA_GRAPHITE 1
+#include "RNDawnContext.h"
+#endif
 #pragma clang diagnostic pop
 
 #include <thread>
@@ -76,15 +88,24 @@ void BasaltSkPlatformContext::raiseError(const std::exception &err) {
 
 sk_sp<SkSurface> BasaltSkPlatformContext::makeOffscreenSurface(int width, int height,
                                                                bool useP3ColorSpace) {
-  // The colour space is accepted and not yet honoured: a Display P3 surface
-  // wants the GPU path, and this one is raster. An app asking for P3 gets
-  // sRGB rather than nothing, which is the same trade core/TextDecorations.h
-  // makes for a dotted underline.
-  (void)useP3ColorSpace;
   if (width <= 0 || height <= 0) {
     return nullptr;
   }
+#if BASALT_SKIA_GRAPHITE
+  // Graphite's own, which is what upstream's Apple context answers with, and
+  // on 3.x it is not an optimisation: a recording is replayed into a Graphite
+  // target, so a raster surface here would be the wrong kind of surface rather
+  // than a slower one. `drawAsImage` is the path that reaches this.
+  return RNSkia::DawnContext::getInstance().MakeOffscreen(width, height,
+                                                          useP3ColorSpace);
+#else
+  // 2.x, where this platform has no GPU context of its own yet. The colour
+  // space is accepted and not honoured: a Display P3 surface wants the GPU
+  // path, and an app asking for P3 gets sRGB rather than nothing, which is the
+  // same trade core/TextDecorations.h makes for a dotted underline.
+  (void)useP3ColorSpace;
   return SkSurfaces::Raster(SkImageInfo::MakeN32Premul(width, height));
+#endif
 }
 
 sk_sp<SkFontMgr> BasaltSkPlatformContext::createFontMgr() {
