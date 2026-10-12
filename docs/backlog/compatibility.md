@@ -222,20 +222,23 @@ Found by bundling and running a real application.
     an id that moved re-registers, and the teardown detaches before the layer
     leaves the tree.
 
-    **What is left is a frame.** No test puts a picture on the layer, because a
-    picture reaches a view only through `RNSkView::setJsiProperties` with an
-    `RNJsi::ViewProperty`, which constructs from a `jsi::Value` and nothing
-    else -- so it is a test that goes through the installed JavaScript API, and
-    `test_skia_module.cpp` already has the Hermes runtime for it. Until that
-    exists, nothing here has seen a 3.x canvas draw: `e2e/skia.tsx` is the only
-    thing that would, and it needs an app with Skia installed. The imperative
-    API is in better shape -- `Skia.Path`, image decoding, typefaces,
-    `drawAsImage` -- since `skia_context_makes_a_surface_that_draws` reads real
-    pixels back off the GPU.
+    **And it draws.** `SkiaApi` builds a picture in JavaScript,
+    `SkiaViewApi.setJsiProperty` pushes it to the view by id, and
+    `SkiaViewApi.makeImageSnapshot` reads back what the view rendered -- the
+    same three calls `e2e/skia.tsx` makes, with no app and no window. Green
+    over the left half and red over the right, sampled either side of the
+    boundary, so that "drew something" and "drew it where it was asked to" are
+    separate claims.
 
-    And **basalt-skia is still `private: true`**, so an app cannot install any
-    of this yet. kino pins `basalt-*@0.0.0-rc5`; the Graphite half ships when
-    the frame test does.
+    What is still unproven is the *window* half: `makeImageSnapshot` renders
+    through an offscreen surface, so what these tests have never watched is a
+    frame reaching the CAMetalLayer and the compositor. There is nothing to
+    read back off a swapchain texture that has been presented, so that one is
+    `e2e/skia.tsx` against a real app, and it is the last thing between this
+    and kino.
+
+    **basalt-skia is still `private: true`**, so an app cannot install any of
+    this yet. kino pins `basalt-*@0.0.0-rc5`.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
   it is the one host whose binaries exist today -- `react-native-skia-graphite-apple-macos`

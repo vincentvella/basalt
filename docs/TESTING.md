@@ -781,8 +781,19 @@ the test:
   the layer. The surface's own size is what says, and
   `skiaCanvasAttachedSize` exists for that.
 
-What still has no test is a frame on the layer. A picture reaches a view only
-through a `jsi::Value`, so that one goes through the installed JavaScript API.
+**And a frame, which is the claim none of the rest makes.**
+`skia_canvas_draws_a_picture_and_reads_it_back` goes the way an app goes:
+`SkiaApi` builds a picture in JavaScript, `SkiaViewApi.setJsiProperty` pushes
+it to the view by id, and `SkiaViewApi.makeImageSnapshot` reads back what the
+view rendered. The same three calls `e2e/skia.tsx` makes, with no app and no
+window, in the Hermes runtime the module test already needed.
+
+Green over the left half of a 32x24 canvas and red over the right, sampled at
+(8,12) and (24,12): two rectangles rather than one fill, so that "drew
+something" and "drew it where it was asked to" are separate claims. Verified
+falsifiable by swapping the two samples, which prints the colours the other
+way round, and by removing the peer's `registerSkiaView`, which turns it into
+`No Skia View currently available.` -- the exception an app would get.
 
 **What the 3.x suite proves that is new.** `skia_module_installs_skias_javascript_api`
 builds a Hermes runtime, calls `install` through the module's own property the

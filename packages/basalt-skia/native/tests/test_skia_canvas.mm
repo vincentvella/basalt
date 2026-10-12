@@ -104,7 +104,28 @@ NSUInteger sublayerCount(RnAppKitView *view) {
   return view.layer.sublayers == nil ? 0 : view.layer.sublayers.count;
 }
 
+// Evaluates `source` in the runtime the module was installed into, and answers
+// the result as a string. A JavaScript error is caught and returned with its
+// message, so an assertion says what went wrong rather than taking the whole
+// suite down through JSI.
+std::string evaluate(const char *source) {
+  Installed &state = installed();
+  if (state.runtime == nullptr) {
+    return "no runtime";
+  }
+  try {
+    facebook::jsi::Value value = state.runtime->evaluateJavaScript(
+        std::make_shared<facebook::jsi::StringBuffer>(source), "test_skia_canvas.js");
+    return value.toString(*state.runtime).utf8(*state.runtime);
+  } catch (const facebook::jsi::JSError &error) {
+    return std::string("JSError: ") + error.getMessage();
+  } catch (const std::exception &error) {
+    return std::string("exception: ") + error.what();
+  }
+}
+
 } // namespace
+
 
 TEST(skia_canvas_is_not_interested_in_other_components) {
   // A filter rather than a question asked twice: the mounting manager calls
@@ -249,4 +270,68 @@ TEST(skia_canvas_follows_a_native_id_that_moved) {
   // while everything else is being destroyed.
   basalt::forgetSkiaCanvas(tag);
   basalt::forgetSkiaCanvas(9999);
+}
+
+TEST(skia_canvas_draws_a_picture_and_reads_it_back) {
+  // The claim nothing else here makes: a `<Canvas>` on 3.x *draws*. Everything
+  // above is about mounting -- a layer in the tree, a surface at the right
+  // size -- and a canvas that mounts and shows nothing looks identical from
+  // the outside, which is the trap docs/TESTING.md spends a section on.
+  //
+  // A picture reaches a view only through `RNSkView::setJsiProperties` with an
+  // `RNJsi::ViewProperty`, which constructs from a `jsi::Value` and nothing
+  // else -- so this goes the way an app goes: `SkiaApi` builds the picture in
+  // JavaScript, `SkiaViewApi.setJsiProperty` pushes it to the view by id, and
+  // `SkiaViewApi.makeImageSnapshot` reads back what the view rendered. The
+  // same three calls e2e/skia.tsx makes, with no app and no window.
+  EXPECT(installed().runtime != nullptr);
+  EXPECT(basalt::BasaltSkiaModule::manager() != nullptr);
+
+  // Both globals, which is the install this depends on.
+  EXPECT_EQ(evaluate("typeof SkiaApi"), std::string("object"));
+  EXPECT_EQ(evaluate("typeof SkiaViewApi"), std::string("object"));
+
+  const Tag tag = 50;
+  RnAppKitView *view = makeView(@"50");
+  EXPECT(basalt::applySkiaCanvas(
+      view, makeShadowView(facebook::react::SkiaViewComponentName, tag, 32, 24)));
+  EXPECT(basalt::skiaCanvasAttachedSize(tag).has_value());
+
+  // Green over the left half of a 32x24 canvas, red over the right: two
+  // rectangles rather than one fill, so that "drew something" and "drew it
+  // where it was asked to" are separate claims. The pair e2e/skia.tsx uses,
+  // and the reason test_appkit_image.mm gives for sampling away from edges:
+  // antialiasing puts a boundary half a pixel either way.
+  const std::string result = evaluate(R"JS(
+    (function () {
+      var green = SkiaApi.Paint();
+      green.setColor(SkiaApi.Color('rgb(0, 255, 0)'));
+      var red = SkiaApi.Paint();
+      red.setColor(SkiaApi.Color('rgb(255, 0, 0)'));
+
+      var recorder = SkiaApi.PictureRecorder();
+      var canvas = recorder.beginRecording(SkiaApi.XYWHRect(0, 0, 32, 24));
+      canvas.drawRect(SkiaApi.XYWHRect(0, 0, 16, 24), green);
+      canvas.drawRect(SkiaApi.XYWHRect(16, 0, 16, 24), red);
+      var picture = recorder.finishRecordingAsPicture();
+
+      SkiaViewApi.setJsiProperty(50, 'picture', picture);
+
+      var image = SkiaViewApi.makeImageSnapshot(50);
+      var pixels = image.readPixels();
+      function at(x, y) {
+        var i = (y * image.width() + x) * 4;
+        return pixels[i] + ',' + pixels[i + 1] + ',' + pixels[i + 2] + ',' + pixels[i + 3];
+      }
+      return image.width() + 'x' + image.height() + ' ' + at(8, 12) + ' ' + at(24, 12);
+    })()
+  )JS");
+
+  // The size the canvas was laid out at, then the two samples. Spelled as one
+  // string so that a failure prints everything at once: a snapshot of the
+  // wrong size and a snapshot of the wrong colour are different bugs and the
+  // first makes the second meaningless.
+  EXPECT_EQ(result, std::string("32x24 0,255,0,255 255,0,0,255"));
+
+  basalt::forgetSkiaCanvas(tag);
 }
