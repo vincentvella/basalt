@@ -293,14 +293,18 @@ jobs:
             #
             # `--prefer-online`, because npm's cache will otherwise answer
             # with what it knew before the publish.
+            # Five minutes per package, not ten. The release waits for this
+            # whole job, so a budget that can only be spent serially is a
+            # budget the waiter has to cover eight times over; four minutes is
+            # the longest propagation measured and this leaves room above it.
             local landed=""
-            for _ in $(seq 1 40); do
+            for _ in $(seq 1 20); do
               landed=$(npm view "$name@$version" version --prefer-online 2>/dev/null || true)
               [ "$landed" = "$version" ] && break
               sleep 15
             done
             if [ "$landed" != "$version" ]; then
-              echo "!! $name@$version did not appear on the registry within ten minutes"
+              echo "!! $name@$version did not appear on the registry within five minutes"
               echo "   npm said it published. A wait this long is not propagation, and a"
               echo "   staged publish looks exactly like this: check Allowed actions on"
               echo "   the package's trusted publisher, which needs npm publish and not"

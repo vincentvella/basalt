@@ -346,7 +346,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for _ in $(seq 1 60); do
+          # Forty-five minutes, which is sized off a measurement rather than a
+          # guess. On 2026-10-12 this waited ten and gave up on a publish that
+          # took 14.1 and worked: all eight packages went out at 0.2.1 and the
+          # release reported failure, which is the worst shape a release can
+          # have in the other direction -- the tag is good, the registry is
+          # good, and the only broken thing is the report.
+          #
+          # What made it slow is the Publish step reading each version back off
+          # the registry before moving on. That is worth its minutes: npm's
+          # publish is eventually consistent and a staged publish is
+          # indistinguishable from a slow one without it. Eight packages at up
+          # to five minutes of polling each is forty, so the waiter has to
+          # outlast that and not the other way round.
+          for _ in $(seq 1 270); do
             sleep 10
             id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow=publish.yml \
               --limit 1 --json databaseId,status,conclusion \
@@ -359,5 +372,5 @@ jobs:
               "completed "*) echo "publish failed: $state"; exit 1 ;;
             esac
           done
-          echo "publish.yml did not finish within ten minutes"
+          echo "publish.yml did not finish within forty-five minutes"
           exit 1
