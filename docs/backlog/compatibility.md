@@ -206,11 +206,26 @@ Found by bundling and running a real application.
     is compiled too, for the reason core's Skia.cmake gives: Android links a
     `libjsonreader.a` and Apple has no such archive, so leaving it out is
     `skjson::Value::toString` undefined from libskottie.
-  - **What is left on macOS is `<Canvas>`**: a view owning a `CAMetalLayer`,
-    handed to `RNSkWindowSurface::attach`, plus the component registered in
-    `AppKitMountingManager`. The imperative API -- `Skia.Path`, image decoding,
-    typefaces, `drawAsImage` -- works without it, which is most of what an app
-    like kino uses outside its preview.
+  - **What is left on macOS is `<Canvas>`**: an `NSView` owning a
+    `CAMetalLayer`, handed to `RNSkWindowSurface::attach` on every layout, plus
+    a `"SkiaView"` component descriptor -- 3.x renamed the native component
+    from `SkiaPictureView` -- and the peer registered in
+    `AppKitMountingManager`. `apple/SkiaView.mm` is the template, and its macOS
+    path is the simpler of the two: no `CADisplayLink`, just `presentFrame()` on
+    the main thread. The imperative API -- `Skia.Path`, image decoding,
+    typefaces, `drawAsImage` -- works without any of it, which is most of what
+    an app like kino uses outside its preview.
+
+    And it is testable here, which the 2.x canvas never was. Measured
+    2026-10-11: a `CAMetalLayer` off the view hierarchy, with no window and no
+    screen, *does* become a Dawn surface -- `attach` succeeds, `getTargetInfo`
+    answers, a resize reconfigures the swapchain, and an `RNSkView` binds to
+    it. `tests/test_skia_window_surface.mm` holds that. What it cannot yet do
+    is present a frame, because a picture reaches a view only through
+    `RNSkView::setJsiProperties` with an `RNJsi::ViewProperty`, and that
+    constructs from a `jsi::Value` and nothing else -- so a frame on the layer
+    is a test that goes through the installed JavaScript API, which the module
+    test already has a runtime for.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
   it is the one host whose binaries exist today -- `react-native-skia-graphite-apple-macos`

@@ -285,7 +285,8 @@ else()
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TURBO_MODULES
     makeSkiaTurboModule)
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TESTS
-    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp)
+    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm)
 
   message(STATUS "basalt-skia: Dawn from ${BASALT_SKIA_DAWN}")
 endif()
