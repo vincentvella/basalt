@@ -127,8 +127,23 @@ set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
   "-framework CoreGraphics"
   "-framework CoreServices")
 
+# The platform context: what Skia asks a platform for, answered by this one.
+# Compiled into core rather than into the host, because none of it is
+# AppKit's -- see the header for why that is true and what it would mean for
+# a Linux or Windows Skia.
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_CORE_SOURCES
+  ${CMAKE_CURRENT_LIST_DIR}/BasaltSkPlatformContext.cpp)
+
+# Skia's own C++, which this platform compiles rather than vendors: the
+# `rnskia` layer the context derives from, and the JSI and api layers the
+# manager installs. Also a system include, for the reason the headers are.
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
+  ${BASALT_SKIA_DIR}/cpp/rnskia
+  ${BASALT_SKIA_DIR}/cpp)
+
 # Proof that the above is true, in this project's own AppKit suite rather than
 # in an app: Skia's headers compile here and its prebuilt library links and
 # draws. Everything else this capability will do stands on that.
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TESTS
-  ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia.cpp)
+  ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_platform_context.cpp)
