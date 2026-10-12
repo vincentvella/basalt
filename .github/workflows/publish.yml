@@ -81,12 +81,11 @@ jobs:
       # the package is missing.
       #
       # What 201 does *not* mean is that the credential may publish. Allowed
-      # actions are inside the registration, the exchange does not report
-      # them, and a publisher granted only `npm stage publish` exchanges 201
-      # and then stages every tarball. All eight packages answered 201 on
-      # 2026-10-12 while five of them could only stage, so this probe is a
-      # check that the registration *exists*. The Publish step below asks the
-      # registry afterwards, which is the question this one cannot ask.
+      # actions live inside the registration and the exchange does not report
+      # them, so a publisher granted only `npm stage publish` exchanges 201
+      # and then stages every tarball. This probe says the registration
+      # exists; the Publish step below reads each version back off the
+      # registry, which is the question this one cannot ask.
       # Fields are case-sensitive, and Allowed actions must permit
       # `npm publish`; only `npm stage publish` is granted by default.
       - name: Is this workflow trusted?
@@ -273,35 +272,39 @@ jobs:
             # `latest` is the tag that matters: it is what a plain
             # `npm install basalt-core` resolves to.
             npm publish "$1" --access public --tag latest
-            # And then ask the registry, because `npm publish` exiting 0 is
-            # not the same as a published package.
+            # And then ask the registry, with patience, because a publish is
+            # not visible the moment it returns.
             #
-            # On 2026-10-12 this step printed `+ basalt-core@0.2.0` for seven
-            # tarballs, succeeded, and put three of them on the registry.
-            # `npm view basalt-core versions` still answered
-            # `['0.0.0-rc5', '0.1.0']` afterwards, and the release that
-            # contained it was green -- so a tag, a forty-minute gauntlet and
-            # a successful publish job meant nothing had been released, and
-            # the next thing to notice was an app failing to install.
+            # Measured on 2026-10-12, because it looked like a failed release
+            # and was not: the step printed `+ basalt-core@0.2.0` at 03:53 and
+            # `npm view basalt-core versions` answered `['0.0.0-rc5',
+            # '0.1.0']` at 03:56. The version's own registry timestamp is
+            # 03:57:13. So it took about four minutes to appear, it varied
+            # per package -- three of eight were visible immediately -- and a
+            # check without a wait would have failed a release that worked.
             #
-            # A staged publish looks exactly like this: when a trusted
-            # publisher grants only `npm stage publish`, npm stages the
-            # tarball, prints the same `+ name@version`, and exits 0. The
-            # `0.0.0-stage` version sitting on basalt-win32 is debris from
-            # one. The trusted-publisher probe above cannot see it either: it
-            # exchanges a credential and reports 201 whatever that credential
-            # is allowed to do.
+            # What the wait is for is the case that does not resolve: a
+            # trusted publisher granted only `npm stage publish` stages the
+            # tarball, prints the same `+ name@version` and exits 0, and
+            # nothing ever appears. basalt-win32 carries a `0.0.0-stage`
+            # version from one. The probe above cannot tell the two apart
+            # either -- it reports 201 whatever the credential may do -- so
+            # this is the only place the difference shows.
             #
-            # `--prefer-online`, because npm's cache will happily answer this
-            # question with what it knew a minute ago.
-            local landed
-            landed=$(npm view "$name@$version" version --prefer-online 2>/dev/null || true)
+            # `--prefer-online`, because npm's cache will otherwise answer
+            # with what it knew before the publish.
+            local landed=""
+            for _ in $(seq 1 40); do
+              landed=$(npm view "$name@$version" version --prefer-online 2>/dev/null || true)
+              [ "$landed" = "$version" ] && break
+              sleep 15
+            done
             if [ "$landed" != "$version" ]; then
-              echo "!! $name@$version is not on the registry after publishing it"
-              echo "   npm said it published and the registry does not have it, which is"
-              echo "   what a staged publish looks like. Check Allowed actions on the"
-              echo "   package's trusted publisher: it needs npm publish, not only"
-              echo "   npm stage publish."
+              echo "!! $name@$version did not appear on the registry within ten minutes"
+              echo "   npm said it published. A wait this long is not propagation, and a"
+              echo "   staged publish looks exactly like this: check Allowed actions on"
+              echo "   the package's trusted publisher, which needs npm publish and not"
+              echo "   only npm stage publish."
               return 1
             fi
             echo "== $name@$version is on the registry"
