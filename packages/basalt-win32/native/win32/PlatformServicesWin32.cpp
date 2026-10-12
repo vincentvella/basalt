@@ -116,6 +116,22 @@ bool hasUiThread() {
   return uiThread().window != nullptr;
 }
 
+void uninstallUiThread() {
+  HWND window = uiThread().window;
+  if (window == nullptr) {
+    return;
+  }
+  // Cleared before the window is destroyed, so that anything posted from
+  // another thread between these two lines runs inline rather than through a
+  // PostMessage to a handle that is going away.
+  uiThread().window = nullptr;
+  uiThread().threadId = std::thread::id{};
+  DestroyWindow(window);
+  // And whatever was queued and never pumped, which is now nobody's: running
+  // it here is what the no-window path would have done with it anyway.
+  drainPendingWork();
+}
+
 bool isUiThread() {
   // With no UI thread installed there is only one thread that matters, so
   // saying yes is both true and what keeps the tests from marshalling into a

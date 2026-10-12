@@ -291,6 +291,13 @@ if(APPLE)
   # everything beside this CMakeLists is portable.
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_INCLUDES
     ${CMAKE_CURRENT_LIST_DIR}/appkit)
+elseif(WIN32)
+  # Same, for this host's canvas. A directory of its own for a different
+  # reason: one of the files in it is named RNSkWindowSurface.cpp and stands
+  # in for upstream's, which is a thing to keep where it cannot be mistaken
+  # for the portable half.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_INCLUDES
+    ${CMAKE_CURRENT_LIST_DIR}/win32)
 endif()
 
 # What Skia's backend for this platform calls into.
@@ -412,7 +419,6 @@ else()
       ${BASALT_SKIA_DIR}/cpp/rnskia/RNDawnInterop.cpp
       ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkGraphiteProducer.cpp
       ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkManager.cpp
-      ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkWindowSurface.cpp
       ${BASALT_SKIA_DIR}/cpp/api/third_party/CSSColorParser.cpp
       ${BASALT_SKIA_SKOTTIE_UTILS}
       ${BASALT_SKIA_DIR}/cpp/api/third_party/base64.cpp
@@ -423,6 +429,18 @@ else()
       # somebody else's archive, which reads like a link-order problem and is
       # a file nobody compiled.
       ${BASALT_SKIA_DIR}/cpp/skia/modules/jsonreader/SkJSONReader.cpp)
+  # The window surface, except on the one host that does not have a window to
+  # give it. Win32 owns a single HWND and paints every view into it with
+  # Direct2D, so there is no child surface for Dawn to configure as a
+  # swapchain and upstream's file cannot do its job here. basalt supplies the
+  # bodies of that class instead -- same class, same header, different present
+  # -- and the replacement goes into this host's own sources further down
+  # rather than into this object library, because it is ours and is held to
+  # this project's warnings rather than exempted from them.
+  if(NOT WIN32)
+    list(APPEND BASALT_SKIA_RNSKIA_SOURCES
+         ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkWindowSurface.cpp)
+  endif()
   if(APPLE)
     # The one Apple source 3.x still has that this platform needs, and it is
     # free: CoreGraphics, Foundation and QuartzCore, no React. `apple/` is
@@ -555,14 +573,19 @@ else()
       ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
       ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm
       ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_canvas.mm)
-  else()
-    # No canvas here yet, so no window-surface or canvas tests: this host has
-    # the module and everything under it, and nothing that presents. Win32
-    # will not present through a swapchain at all -- see
-    # backlog/compatibility.md -- so the file that lands here is basalt's own
-    # RNSkWindowSurface.cpp rather than a canvas beside upstream's.
+  elseif(WIN32)
+    # And this host's canvas, which is two files rather than one. The second
+    # is basalt's RNSkWindowSurface.cpp: this host presents a Graphite texture
+    # into the Direct2D walk rather than through a swapchain, which is a
+    # change to the bodies of upstream's class rather than a canvas beside it.
+    # Both are here rather than in the object library above because they are
+    # this project's own code; the file comments say the rest.
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_SOURCES
+      ${CMAKE_CURRENT_LIST_DIR}/win32/BasaltSkiaCanvasWin32.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/win32/RNSkWindowSurface.cpp)
     set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_TESTS
-      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp)
+      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_canvas_win32.cpp)
   endif()
 
   # Said out loud rather than probed for. `__has_include(<webgpu/webgpu_cpp.h>)`

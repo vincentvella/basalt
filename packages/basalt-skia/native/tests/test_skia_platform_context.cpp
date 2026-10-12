@@ -154,8 +154,11 @@ TEST(skia_context_answers_a_uri_it_cannot_read_rather_than_going_quiet) {
 TEST(skia_context_has_no_view_to_photograph_yet) {
   basalt::BasaltSkPlatformContext context = makeContext();
   // Null rather than an empty image, and a test rather than a comment,
-  // because this is the one answer here that is a placeholder: it changes the
-  // day a `<Canvas>` mounts.
+  // because this is the one answer here that is a placeholder. A `<Canvas>`
+  // does mount now, on Win32; what this still has no way to do is go from a
+  // React tag to the view, which is a seam each host's canvas would fill.
+  // The API a `<Canvas>` actually draws and snapshots through is
+  // `SkiaViewApi`, which goes by nativeId and does not come past here.
   EXPECT(context.takeScreenshotFromViewTag(1) == nullptr);
 }
 

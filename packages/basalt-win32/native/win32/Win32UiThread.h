@@ -24,4 +24,15 @@ void installUiThread();
 // Whether `postToUiThread` will actually marshal, rather than running inline.
 bool hasUiThread();
 
+// Takes it down again, and runs anything still queued on the calling thread so
+// that nothing posted is lost. For tests, and this is the one that needs it:
+// react-native-skia 3.x records a frame on a thread pool of its own and asks
+// the UI thread to present it, and the producer holds a lock across that ask.
+// Run inline -- which is what posting with no window installed means on a
+// worker, exactly as the note above warns -- it re-enters the producer on the
+// thread that already holds the lock, and the suite dies with no message. So
+// the canvas test installs a real loop, pumps it, and puts things back for the
+// tests after it, which are written against the inline behaviour.
+void uninstallUiThread();
+
 } // namespace basalt

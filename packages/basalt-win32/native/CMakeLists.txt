@@ -355,6 +355,16 @@ if(TARGET basalt_core)
   add_executable(mount_harness_win32 win32/mount_harness_win32.cpp)
   target_compile_options(mount_harness_win32 PRIVATE ${BASALT_WIN32_WARNINGS})
   target_link_libraries(mount_harness_win32 PRIVATE basalt_win32_mounting)
+  # The same package libraries the host and the suite take, and for a reason
+  # that only showed up once a capability contributed something the mounting
+  # manager calls: a static library hands over the objects somebody references,
+  # so basalt-skia's module sat unreferenced here for as long as nothing but
+  # the TurboModule registry asked for it. The 3.x canvas is called straight
+  # from updateView, so the harness pulls it in and needs what it links.
+  if(BASALT_PACKAGE_WIN32_LINK_LIBRARIES)
+    target_link_libraries(mount_harness_win32
+                          PRIVATE ${BASALT_PACKAGE_WIN32_LINK_LIBRARIES})
+  endif()
 
   list(APPEND BASALT_WIN32_TEST_SOURCES
     ${BASALT_CORE_TESTS}

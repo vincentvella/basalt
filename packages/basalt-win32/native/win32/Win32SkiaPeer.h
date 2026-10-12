@@ -1,4 +1,25 @@
-// The Win32 half of a `<Canvas>`: a raster surface drawn in the paint walk.
+// The Win32 half of a `<Canvas>`: a surface drawn in the paint walk.
+//
+// ## Two implementations, one pair of functions
+//
+// Both generations of react-native-skia answer to the two functions at the
+// bottom of this file, and they are never both linked: the 2.x one is
+// `Win32SkiaPeer.cpp` beside this header, compiled when core's cmake/Skia.cmake
+// found a 2.x install, and the 3.x one is basalt-skia's
+// `win32/BasaltSkiaCanvasWin32.cpp`, compiled when it found a 3.x one.
+// cmake/Skia.cmake refuses a 3.x install by version, so exactly one definition
+// of each exists. Win32MountingManager.cpp calls them under a guard that
+// covers either, the way the AppKit one does -- see AppKitSkiaPeer.h, which is
+// this arrangement on the other host.
+//
+// They differ in the component they answer to, which is 3.x's rename: a 2.x
+// `<Canvas>` mounts a `SkiaPictureView` and a 3.x one a `SkiaView`. Both
+// descriptors are registered on all three hosts.
+//
+// What follows describes the 2.x one. The 3.x one reaches the same place by a
+// different route -- it renders on the GPU through Dawn and D3D12 and reads
+// the frame back, rather than rasterising on the CPU -- and for the same
+// reason, which is the next paragraph. BasaltSkiaCanvasWin32.h has its half.
 //
 // The other two hosts give the package a layer of its own -- a CAMetalLayer on
 // macOS, a GL surface on GTK -- and let it present straight to the compositor.
@@ -39,9 +60,10 @@ namespace win32 {
 class RnWin32View;
 }
 
-// Gives `view` a Skia canvas if `shadowView` is a SkiaPictureView, updating its
-// size if it already has one. False when the component is something else, so
-// the caller can treat this as a filter rather than asking twice.
+// Gives `view` a Skia canvas if `shadowView` is a canvas view -- a
+// SkiaPictureView on 2.x, a SkiaView on 3.x -- updating its size if it
+// already has one. False when the component is something else, so the caller
+// can treat this as a filter rather than asking twice.
 //
 // `requestRepaint` is how a picture pushed from JavaScript reaches the screen.
 // Windows repaints on demand, so rendering a frame into the surface changes

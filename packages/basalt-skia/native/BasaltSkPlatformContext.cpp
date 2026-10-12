@@ -59,10 +59,18 @@ void BasaltSkPlatformContext::runOnMainThread(std::function<void()> func) {
 }
 
 sk_sp<SkImage> BasaltSkPlatformContext::takeScreenshotFromViewTag(size_t tag) {
-  // No `<Canvas>` mounts here yet, so there is no view to photograph. Null is
-  // the answer the base class's `makeViewScreenshot` hands to the app, which
-  // is better than an empty image: one says "not here" and the other says
-  // "here, and blank".
+  // Still null, and no longer for want of a view: a `<Canvas>` does mount on
+  // Win32 now. What is missing is the lookup. This takes a *React tag*, and
+  // the map from one of those to an `RNSkView` belongs to whichever host's
+  // canvas was compiled -- `appkit/BasaltSkiaCanvasAppKit.mm` or
+  // `win32/BasaltSkiaCanvasWin32.cpp` -- while this file is the half both
+  // share. Giving it one means a seam each host fills, and this is not the
+  // API a `<Canvas>` draws through: `SkiaViewApi.makeImageSnapshot` goes
+  // straight to the view by nativeId and works today. See
+  // backlog/compatibility.md.
+  //
+  // Null rather than an empty image either way: one says "not here" and the
+  // other says "here, and blank".
   (void)tag;
   return nullptr;
 }

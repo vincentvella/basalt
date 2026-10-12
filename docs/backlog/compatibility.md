@@ -279,14 +279,63 @@ Found by bundling and running a real application.
     `e2e/skia.tsx` against a real app, and it is the last thing between this
     and kino.
 
-    **basalt-skia is still `private: true`**, so an app cannot install any of
-    this yet. kino pins `basalt-*@0.0.0-rc5`.
+    **basalt-skia ships.** It is `0.2.1` and no longer `private: true`, so an
+    app can install it. kino's `skia-v3` branch pins `basalt-*@0.2.1`.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
-  it is the one host whose binaries exist today -- `react-native-skia-graphite-apple-macos`
-  and Dawn's xcframework are both published. GTK and Win32
-  wait on a Dawn build, and until then an app that wants Skia on them installs
-  the 2.x line, which is still published under both names
+  it is the one host whose binaries anyone publishes --
+  `react-native-skia-graphite-apple-macos` and Dawn's xcframework are both up
+  there. Windows second, because the binaries nobody publishes turned out to be
+  buildable: `scripts/build_skia_windows.sh` produces a Graphite `skia.lib` and
+  a monolithic `webgpu_dawn.lib`, and against them the module, the platform
+  context, the whole portable layer and now a `<Canvas>` compile, link, draw
+  and pass.
+
+    Win32 could not borrow macOS's canvas: this host owns one HWND and paints
+    every view into it with Direct2D, so there is no child surface to hand
+    Dawn and no swapchain to present. Nor could it present through an
+    `RNSkSurface` of its own -- `RNSkView::_surface` and
+    `RNSkGraphiteTarget::_surface` are `shared_ptr<RNSkWindowSurface>` by
+    concrete type, and `RNSkSurface&` appears only as a parameter. So basalt
+    supplies the *bodies* of that class on this host
+    (`basalt-skia/native/win32/RNSkWindowSurface.cpp`): upstream's header,
+    unpatched, over an offscreen Graphite target that the Direct2D walk draws.
+
+    Which also means the canvas is clipped by `overflow: hidden`, moved by a
+    ScrollView, faded by `opacity` and turned by `transform` for free, because
+    the view above it did those before calling down -- none of which a sibling
+    layer gets. And **it draws, all the way to the pixels**, which is the one
+    claim macOS still cannot make: `win32_skia_canvas_draws_a_picture_into_the`
+    `_paint_walk` pushes a picture from JavaScript the way `e2e/skia.tsx` does
+    and samples the result out of the paint walk against a WIC target, green
+    over the left half and red over the right. There is nothing to read back
+    off a presented swapchain texture, so the AppKit suite stops at
+    `makeImageSnapshot`; this host presents into a bitmap, so there is.
+
+    One thing a canvas on this host still does not answer is
+    `RNSkPlatformContext::takeScreenshotFromViewTag`. It takes a React tag and
+    the tag-to-view map lives in each host's canvas, while the platform
+    context is the half they share, so filling it means a seam both hosts
+    implement -- and `SkiaViewApi.makeImageSnapshot`, which is what a
+    `<Canvas>` is snapshotted through, goes by nativeId and does not come past
+    there. So it is a gap in Skia's screenshot API and not in the canvas.
+
+    What it costs is a readback per frame. Asynchronous -- DawnContext polls
+    for completions on a thread of its own, so the main thread submits and
+    returns, and frames carry a sequence number because they can then land out
+    of order. It is still a copy over PCIe, and it replaces 2.x's CPU
+    rasteriser rather than 2.x's GPU path, so the frame is cheaper than it
+    was. The way out, when a preview pane wants it, is a shared DXGI handle
+    from the Graphite texture into an `ID2D1Bitmap` -- which needs this host to
+    own its D3D11 device, and `CreateHwndRenderTarget` does not expose one.
+    That is a change to how basalt-win32 makes its render target, behind the
+    same `RnWin32Painter` seam.
+
+  GTK is the one still waiting on a build. `scripts/build_skia_linux.sh` is the
+  2.x one -- `skia_enable_graphite=false`, `skia_use_dawn=false`,
+  `skia_use_gl=true` -- so Linux needs a Graphite and Dawn build of its own
+  before any of the rest is worth writing. Until then an app that wants Skia
+  there installs the 2.x line, which is still published under both names
   (`react-native-skia@release-2.x` is 2.15.1). `cmake/Skia.cmake` and the CLI
   both refuse a 3.x install by version and say that, rather than failing on a
   `MetalContext.mm` nobody deleted.

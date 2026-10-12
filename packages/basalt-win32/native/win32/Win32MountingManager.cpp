@@ -15,7 +15,10 @@
 #include "PlatformServices.h"
 #include "UIManagerAccess.h"
 
-#ifdef BASALT_HAS_SKIA
+// Either Skia: the 2.x peer in this package or the 3.x one in basalt-skia,
+// which share this header's two functions and are never both linked. See
+// Win32SkiaPeer.h.
+#if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
 #include "Win32SkiaPeer.h"
 #endif
 
@@ -343,7 +346,7 @@ void Win32MountingManager::forgetTag(Tag tag) {
   labels_.forget(tag);
   liveRegions_.forget(tag);
   liveRegionLabels_.erase(tag);
-#ifdef BASALT_HAS_SKIA
+#if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
   // Unregisters the canvas. This is the one moment a view is known to be
   // finished with, and a canvas left registered is a surface the package will
   // keep rendering into for a tag nothing will ever draw again.
@@ -360,7 +363,7 @@ void Win32MountingManager::updateView(RnWin32View *view, const ShadowView &shado
   applyText(view, shadowView);
   applyImage(view, shadowView);
   applyAccessibility(view, shadowView);
-#ifdef BASALT_HAS_SKIA
+#if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
   // After applyProps, which is what puts nativeID on the view -- a canvas
   // registers itself by that id and cannot attach before it is there. The size
   // it reads comes from the shadow view rather than from the frame
