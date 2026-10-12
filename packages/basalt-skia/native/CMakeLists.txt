@@ -135,7 +135,11 @@ endforeach()
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
   ${BASALT_SKIA_DIR}/cpp/skia)
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_INCLUDES
-  ${CMAKE_CURRENT_LIST_DIR})
+  ${CMAKE_CURRENT_LIST_DIR}
+  # The canvas's own header, which the AppKit half and its tests include by
+  # name. A directory of its own because the file in it is Objective-C++ and
+  # everything beside this CMakeLists is portable.
+  ${CMAKE_CURRENT_LIST_DIR}/appkit)
 
 # The frameworks Skia's Apple backend calls into. Metal is for the GPU surface
 # a `<Canvas>` will need; the rest are the CPU path, text and colour.
@@ -284,9 +288,23 @@ else()
     ${CMAKE_CURRENT_LIST_DIR}/BasaltSkiaModule.cpp)
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TURBO_MODULES
     makeSkiaTurboModule)
+  # The canvas, which is the only AppKit-specific file this package has: a
+  # CAMetalLayer and its lifecycle. Contributed to the host's sources rather
+  # than core's, because it includes RnAppKitView.h and compiles inside the
+  # AppKit target, and only here because the prebuilt Dawn is Apple's.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/appkit/BasaltSkiaCanvasAppKit.mm)
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TESTS
     ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm)
+    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm
+    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_canvas.mm)
+
+  # Said out loud rather than probed for. `__has_include(<webgpu/webgpu_cpp.h>)`
+  # answers the same question and three files were asking it, which is three
+  # places to be wrong about what the include path happens to carry. One
+  # definition, from the configure that made the decision.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_DEFINITIONS
+    BASALT_HAS_SKIA_GRAPHITE=1)
 
   message(STATUS "basalt-skia: Dawn from ${BASALT_SKIA_DAWN}")
 endif()

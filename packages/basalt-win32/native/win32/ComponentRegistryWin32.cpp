@@ -87,6 +87,16 @@ ComponentRegistryFactory getDefaultComponentRegistryFactory() {
       // RCTSinglelineTextInputView to, so nothing here renames anything.
       registry->add(concreteComponentDescriptorProvider<TextInputComponentDescriptor>());
 
+      // React Native Skia's <Canvas>, under both of its names: 2.x mounts a
+      // "SkiaPictureView" and 3.x a "SkiaView". Neither was registered here
+      // until 2026-10-11, which was an oversight rather than a decision and a
+      // quiet one: this host has had a Skia peer since the canvas landed, and
+      // that peer matches on the component name, so a <Canvas> mounted as an
+      // unregistered component and the peer that would have drawn into it
+      // never saw it. The AppKit registry had the line and these two did not.
+      registry->add(concreteComponentDescriptorProvider<SkiaPictureViewComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<SkiaViewComponentDescriptor>());
+
       // Deliberately absent, and the absence is a decision rather than an
       // oversight: ExpoImage's seam exists in core/ExpoImageComponent.h and its
       // props class is portable, but nothing here mounts one yet.

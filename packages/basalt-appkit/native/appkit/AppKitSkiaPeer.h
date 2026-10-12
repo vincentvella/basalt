@@ -1,5 +1,20 @@
 // The AppKit half of a `<Canvas>`: a Metal layer inside an ordinary view.
 //
+// **Two implementations, one at a time.** This header is the contract; which
+// file defines it depends on which Skia the app installed. 2.x is Ganesh over
+// Metal and its half is `AppKitSkiaPeer.mm` beside this, compiled when
+// `BASALT_HAS_SKIA` says core's cmake/Skia.cmake built the Ganesh sources. 3.x
+// is Graphite over Dawn and its half is
+// `basalt-skia/native/appkit/BasaltSkiaCanvasAppKit.mm`, compiled when
+// `BASALT_HAS_SKIA_GRAPHITE` says that package found Dawn. The two cannot both
+// be true -- Skia.cmake refuses a 3.x install by version -- so exactly one
+// definition of each function below is linked, and the mounting manager calls
+// them under a guard that covers either.
+//
+// They differ in the component they answer to as well, which is 3.x's rename:
+// a 2.x `<Canvas>` mounts a `SkiaPictureView` and a 3.x one a `SkiaView`. Both
+// descriptors are registered on all three hosts.
+//
 // The package's SkiaUIView is an RCTViewComponentView that does three things --
 // creates a drawing view, adds its layer as a sublayer of its own, and registers
 // it with RNSkManager under the nativeId. None of the three needs React Native;

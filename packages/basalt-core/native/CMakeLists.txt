@@ -199,6 +199,16 @@ if(DEFINED RN_DIR)
   # package says which of its include directories are its own and which are a
   # dependency's.
   get_property(basalt_package_system_includes GLOBAL PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES)
+  # And what a package wants *said* about itself, as preprocessor definitions.
+  #
+  # The hosts already have `BASALT_HAS_SKIA` and `BASALT_HAS_WORKLETS`, both set
+  # by a cmake/ file in this package for a dependency this package knows about.
+  # A capability package in somebody else's node_modules cannot reach either, and
+  # the first one that needed to is basalt-skia: whether the installed Skia is
+  # Graphite decides which of two canvases the AppKit mounting manager calls, and
+  # which surface the platform context makes. PUBLIC, so it reaches the host
+  # packages and their tests and not only core's own sources.
+  get_property(basalt_package_definitions GLOBAL PROPERTY BASALT_PACKAGE_DEFINITIONS)
 
   # A semicolon by character code: CMake treats `;` as a list separator, and
   # escaping it as `\;` survives into the generated file rather than becoming
@@ -316,6 +326,7 @@ if(DEFINED RN_DIR)
     core/TestQuitFile.cpp
     # What a <Canvas> from @shopify/react-native-skia mounts; see the header.
     core/SkiaPictureViewComponent.cpp
+    core/SkiaViewComponent.cpp
     # globalThis.__turboModuleProxy, which a bridgeless runtime does not get; see
     # the header.
     core/TurboModuleProxy.cpp
@@ -360,6 +371,9 @@ if(DEFINED RN_DIR)
   target_compile_definitions(basalt_core PUBLIC
     BASALT_REACT_NATIVE_VERSION="${RN_VERSION}"
     BASALT_RN_MINOR=${RN_MINOR})
+  if(basalt_package_definitions)
+    target_compile_definitions(basalt_core PUBLIC ${basalt_package_definitions})
+  endif()
   target_include_directories(basalt_core PUBLIC core ${basalt_package_includes})
   if(basalt_package_system_includes)
     target_include_directories(basalt_core SYSTEM PUBLIC ${basalt_package_system_includes})

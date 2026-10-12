@@ -22,10 +22,9 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
 
-// Graphite, where the installed Skia has it: the same probe the platform
-// context makes, for the same reason.
-#if __has_include(<webgpu/webgpu_cpp.h>)
-#define BASALT_SKIA_GRAPHITE 1
+// Graphite, where the installed Skia has it: the same condition the platform
+// context compiles under, from basalt-skia's configure.
+#if BASALT_HAS_SKIA_GRAPHITE
 #include "RNDawnContext.h"
 #include "include/gpu/graphite/Surface.h"
 #endif
@@ -96,7 +95,7 @@ TEST(skia_context_makes_a_surface_that_draws) {
   // texture as an image, and read that image back. A round trip to the GPU
   // and back, inside a test, which is also the proof that Dawn found a device
   // on a machine with no window and no display.
-#if BASALT_SKIA_GRAPHITE
+#if BASALT_HAS_SKIA_GRAPHITE
   EXPECT(surface->recorder() != nullptr);
   if (auto *recorder = surface->recorder()) {
     RNSkia::DawnContext::getInstance().submitRecording(recorder->snap().get());

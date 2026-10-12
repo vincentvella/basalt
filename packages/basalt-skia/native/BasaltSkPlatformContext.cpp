@@ -15,13 +15,11 @@
 
 // Graphite, where the installed Skia has it.
 //
-// `webgpu/webgpu_cpp.h` is on the include path exactly when basalt-skia found
-// `react-native-webgpu-dawn`, which only a 3.x install depends on -- so this
-// asks the one question that distinguishes the two renderers, rather than a
-// version number that would have to be plumbed here to say the same thing.
-// 2.x is Ganesh and has no DawnContext at all.
-#if __has_include(<webgpu/webgpu_cpp.h>)
-#define BASALT_SKIA_GRAPHITE 1
+// The definition comes from basalt-skia's own CMakeLists, which sets it when it
+// found `react-native-webgpu-dawn` -- a dependency only a 3.x install has. So
+// the condition is the renderer rather than a version number plumbed here to
+// say the same thing, and 2.x, which is Ganesh, has no DawnContext at all.
+#if BASALT_HAS_SKIA_GRAPHITE
 #include "RNDawnContext.h"
 #endif
 #pragma clang diagnostic pop
@@ -91,7 +89,7 @@ sk_sp<SkSurface> BasaltSkPlatformContext::makeOffscreenSurface(int width, int he
   if (width <= 0 || height <= 0) {
     return nullptr;
   }
-#if BASALT_SKIA_GRAPHITE
+#if BASALT_HAS_SKIA_GRAPHITE
   // Graphite's own, which is what upstream's Apple context answers with, and
   // on 3.x it is not an optimisation: a recording is replayed into a Graphite
   // target, so a raster surface here would be the wrong kind of surface rather

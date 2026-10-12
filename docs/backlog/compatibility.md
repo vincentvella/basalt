@@ -206,26 +206,36 @@ Found by bundling and running a real application.
     is compiled too, for the reason core's Skia.cmake gives: Android links a
     `libjsonreader.a` and Apple has no such archive, so leaving it out is
     `skjson::Value::toString` undefined from libskottie.
-  - **What is left on macOS is `<Canvas>`**: an `NSView` owning a
-    `CAMetalLayer`, handed to `RNSkWindowSurface::attach` on every layout, plus
-    a `"SkiaView"` component descriptor -- 3.x renamed the native component
-    from `SkiaPictureView` -- and the peer registered in
-    `AppKitMountingManager`. `apple/SkiaView.mm` is the template, and its macOS
-    path is the simpler of the two: no `CADisplayLink`, just `presentFrame()` on
-    the main thread. The imperative API -- `Skia.Path`, image decoding,
-    typefaces, `drawAsImage` -- works without any of it, which is most of what
-    an app like kino uses outside its preview.
+  - **`<Canvas>` is built on macOS**, and it is a smaller thing than 2.x's: an
+    `NSView` owning a `CAMetalLayer` and forwarding its lifecycle, because
+    `RNSkWindowSurface` owns the swapchain. `"SkiaView"` is the component --
+    3.x renamed it from `SkiaPictureView` -- and both descriptors are
+    registered on all three hosts. No frame scheduler, which is upstream's own
+    macOS answer: iOS arms a `CADisplayLink` and macOS presents as soon as the
+    main thread gets to it.
 
-    And it is testable here, which the 2.x canvas never was. Measured
-    2026-10-11: a `CAMetalLayer` off the view hierarchy, with no window and no
-    screen, *does* become a Dawn surface -- `attach` succeeds, `getTargetInfo`
-    answers, a resize reconfigures the swapchain, and an `RNSkView` binds to
-    it. `tests/test_skia_window_surface.mm` holds that. What it cannot yet do
-    is present a frame, because a picture reaches a view only through
-    `RNSkView::setJsiProperties` with an `RNJsi::ViewProperty`, and that
-    constructs from a `jsi::Value` and nothing else -- so a frame on the layer
-    is a test that goes through the installed JavaScript API, which the module
-    test already has a runtime for.
+    It is also testable here, which the 2.x canvas never was. A `CAMetalLayer`
+    off the view hierarchy, with no window and no screen, does become a Dawn
+    surface, so the peer is driven in the AppKit suite with a real view, a real
+    layer and a real swapchain: the layer goes in at the pixel size, a resize
+    reconfigures rather than reattaches, a zero-sized layout attaches nothing,
+    an id that moved re-registers, and the teardown detaches before the layer
+    leaves the tree.
+
+    **What is left is a frame.** No test puts a picture on the layer, because a
+    picture reaches a view only through `RNSkView::setJsiProperties` with an
+    `RNJsi::ViewProperty`, which constructs from a `jsi::Value` and nothing
+    else -- so it is a test that goes through the installed JavaScript API, and
+    `test_skia_module.cpp` already has the Hermes runtime for it. Until that
+    exists, nothing here has seen a 3.x canvas draw: `e2e/skia.tsx` is the only
+    thing that would, and it needs an app with Skia installed. The imperative
+    API is in better shape -- `Skia.Path`, image decoding, typefaces,
+    `drawAsImage` -- since `skia_context_makes_a_surface_that_draws` reads real
+    pixels back off the GPU.
+
+    And **basalt-skia is still `private: true`**, so an app cannot install any
+    of this yet. kino pins `basalt-*@0.0.0-rc5`; the Graphite half ships when
+    the frame test does.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
   it is the one host whose binaries exist today -- `react-native-skia-graphite-apple-macos`

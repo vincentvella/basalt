@@ -17,7 +17,10 @@
 #include "Gradients.h"
 #include "ExpoImageComponent.h"
 #include "ImageProgress.h"
-#ifdef BASALT_HAS_SKIA
+// Either Skia: the 2.x peer in this package or the 3.x one in basalt-skia,
+// which share this header's two functions and are never both linked. See
+// AppKitSkiaPeer.h.
+#if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
 #include "AppKitSkiaPeer.h"
 #endif
 #include "UIManagerAccess.h"
@@ -395,7 +398,7 @@ void AppKitMountingManager::forgetTag(Tag tag) {
   textInputs_.remove(tag);
   imageUris_.erase(tag);
   switchValues_.erase(tag);
-#ifdef BASALT_HAS_SKIA
+#if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
   // Unregisters the canvas and takes its layer off the view. This is the one
   // moment a view is known to be finished with, which matters more here than
   // elsewhere: a canvas left registered keeps a Metal layer and a GPU surface
@@ -663,7 +666,7 @@ void AppKitMountingManager::updateView(RnAppKitView *view, const ShadowView &sha
   // needed the same swap for the same reason.
   applyTextInput(view, shadowView);
   applyAccessibility(view, shadowView);
-#ifdef BASALT_HAS_SKIA
+#if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
   // After applyProps, which is what puts nativeID on the view -- a canvas
   // registers itself by that id and cannot be attached before it is there. And
   // before applyLayoutMetrics only incidentally: the size it reads comes from the

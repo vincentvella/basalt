@@ -3,6 +3,8 @@
 
 #include "ComponentRegistry.h"
 #include "ExpoImageComponent.h"
+#include "SkiaPictureViewComponent.h"
+#include "SkiaViewComponent.h"
 #include "SafeAreaComponent.h"
 #include "ScreensComponent.h"
 
@@ -66,6 +68,15 @@ ComponentRegistryFactory getDefaultComponentRegistryFactory() {
       // through a TextLayoutManager, which here is the Pango one. Android's
       // needs fbjni. Its component name is "TextInput".
       registry->add(concreteComponentDescriptorProvider<TextInputComponentDescriptor>());
+      // React Native Skia's <Canvas>, under both of its names: 2.x mounts a
+      // "SkiaPictureView" and 3.x a "SkiaView". Neither was registered here
+      // until 2026-10-11, which was an oversight rather than a decision and a
+      // quiet one: this host has had a Skia peer since the canvas landed, and
+      // that peer matches on the component name, so a <Canvas> mounted as an
+      // unregistered component and the peer that would have drawn into it
+      // never saw it. The AppKit registry had the line and these two did not.
+      registry->add(concreteComponentDescriptorProvider<SkiaPictureViewComponentDescriptor>());
+      registry->add(concreteComponentDescriptorProvider<SkiaViewComponentDescriptor>());
       // expo-image's view. Registered whether or not the build has Expo in it:
       // the descriptor is ordinary Fabric C++, and an app that never renders
       // one pays a registry entry. See core/ExpoImageComponent.h.

@@ -760,6 +760,30 @@ Both were run against this repository's AppKit suite on 2026-10-11, separately:
 differ because the suites are different files, not because one skipped
 anything.
 
+**The canvas, and what a test of one can see.** `test_skia_canvas.mm` drives
+the AppKit peer with a real `RnAppKitView`, a real `CAMetalLayer` and a real
+Dawn swapchain, which the 2.x canvas could never be tested with. Two of its
+assertions were vacuous when first written and the sabotage pass is what said
+so, which is worth recording because both failures are invisible from reading
+the test:
+
+- **Points and pixels are the same number here.** `RNSkWindowSurface::attach`
+  takes pixels where 2.x took points, and the scale is 1 in a test -- it comes
+  from `currentDeviceMetrics()`, which answers from what a host reported, and
+  there is no host. So passing `frame.size` straight through passed every
+  assertion. The multiplication is now a function, `skiaCanvasPixelSize`,
+  called with the density the test chooses; the one line that feeds the real
+  density into it is still not covered and cannot be until something can set
+  the scale.
+- **`CAMetalLayer` ignores a `drawableSize` of zero** and keeps the last one,
+  so attaching a zero-sized layout -- the case the peer guards, because Yoga
+  hands out zero sizes before the first real layout -- looked identical from
+  the layer. The surface's own size is what says, and
+  `skiaCanvasAttachedSize` exists for that.
+
+What still has no test is a frame on the layer. A picture reaches a view only
+through a `jsi::Value`, so that one goes through the installed JavaScript API.
+
 **What the 3.x suite proves that is new.** `skia_module_installs_skias_javascript_api`
 builds a Hermes runtime, calls `install` through the module's own property the
 way JavaScript does, and reads `SkiaApi` back off the global object -- which is

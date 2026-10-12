@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (10):**
+**Open (11):**
 
 1. ~~No rendering assertions on GTK~~, but one of them flaked on CI once
 2. A GTK blend-mode pixel assertion flaked on CI and is unexplained
@@ -16,6 +16,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 9. An app build compiles this repository's test suites
 10. A cancelled job reads as a job that ran
 11. GTK's clipboard paste does not complete under CI's display
+12. Nothing checks that the three component registries agree
 
 - **A GTK blend-mode pixel assertion flaked on CI, once, and nothing explains
   it yet.** `gtk_paint_a_blend_sees_the_siblings_beneath_it` failed on one of
@@ -896,3 +897,21 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   two scenarios instead of the suite. `ci_status.py` was right that the job
   reached a verdict; it had no way to know the job had been swapped out from
   under the name. A temporary job wants a temporary name.
+
+- **Nothing checks that the three component registries agree.** Found on
+  2026-10-11 while adding a second Skia component: `ComponentRegistryGtk.cpp`
+  and `ComponentRegistryWin32.cpp` never registered
+  `SkiaPictureViewComponentDescriptor`, which `ComponentRegistryAppKit.mm` has
+  had since the canvas landed. Both of those hosts have a Skia peer that
+  matches on the component name, so a `<Canvas>` there mounted as an
+  unregistered component and the peer that would have drawn into it never saw
+  it. Win32 was also missing `ExpoImageComponentDescriptor`, which *is* a
+  decision and says so in a comment beside it.
+
+  Fixed, and the fix is three lines, which is the problem: the three files are
+  near-identical lists maintained by hand, and the only thing that noticed was
+  a `diff` of two greps. A checker in the shape of `scripts/check_includes.js`
+  would compare the three sets and require a comment naming the reason for any
+  deliberate difference -- Win32's ExpoImage absence is the one that exists
+  today. Until then the lists drift the way the backlog's own counts did
+  before `check_backlog.js`.
