@@ -1,6 +1,6 @@
 {
   "name": "basalt-navigation",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Native screens for react-navigation on the desktop, through react-native-screens' own ScreenContext. No patch and no fork.",
   "license": "MIT",
   "repository": {
