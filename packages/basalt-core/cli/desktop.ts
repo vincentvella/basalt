@@ -396,6 +396,58 @@ export function localNativeModules(projectRoot: string): string[] {
   return found;
 }
 
+/**
+ * The app's own modules that have a half for somewhere else and none for here.
+ *
+ * `localNativeModules` skips these, correctly: a module with no
+ * `native/CMakeLists.txt` contributes nothing and must not break the build.
+ * But skipping silently is how the gap is found at the worst moment. kino's
+ * `kino-process` has a Swift module and no desktop half, and what that looks
+ * like from inside the app is `Cannot find native module 'KinoProcess'`,
+ * thrown out of `requireNativeModule` on a line that names the module and not
+ * the reason -- after a forty-minute build, at the first render.
+ *
+ * So the configure says it. Named by what is there rather than by what is
+ * missing: an `expo-module.config.json` is the thing that makes a directory an
+ * Expo local module at all, and a platform directory beside it is the evidence
+ * that somebody wrote a half. A directory under `modules/` with neither is not
+ * a module anybody forgot to finish.
+ *
+ * Not an error. An app may have a module it only ever uses on iOS, and an app
+ * may route around a missing half in JavaScript -- kino does exactly that,
+ * falling back to basalt-subprocess -- so this is a note and the build goes on.
+ */
+export function localModulesMissingDesktop(projectRoot: string): string[] {
+  const modulesDir = path.join(projectRoot, 'modules');
+  let entries;
+  try {
+    entries = fs.readdirSync(modulesDir, {withFileTypes: true});
+  } catch {
+    return [];
+  }
+  const missing = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+      continue;
+    }
+    const dir = path.join(modulesDir, entry.name);
+    if (!fs.existsSync(path.join(dir, 'expo-module.config.json'))) {
+      continue;
+    }
+    if (fs.existsSync(path.join(dir, 'native', 'CMakeLists.txt'))) {
+      continue;
+    }
+    // The names Expo's own template uses for a platform half.
+    const halves = ['apple', 'ios', 'android'].filter(half =>
+      fs.existsSync(path.join(dir, half)),
+    );
+    if (halves.length > 0) {
+      missing.push(`${entry.name} (${halves.join(', ')})`);
+    }
+  }
+  return missing;
+}
+
 export function optionalNativeModules(
   projectRoot: string,
   platform: PackagePlatform,
@@ -533,6 +585,19 @@ export function optionalNativeModules(
     for (const dir of packages) {
       notes.push(`capability package, from ${dir}`);
     }
+  }
+
+  const unfinished = localModulesMissingDesktop(projectRoot);
+  if (unfinished.length > 0) {
+    notes.push(
+      `${unfinished.length === 1 ? 'a local module has' : 'local modules have'} ` +
+        `no desktop half: ${unfinished.join(', ')}. Each is an Expo module with a ` +
+        'platform directory and no `native/CMakeLists.txt`, so nothing here ' +
+        'compiles it and `requireNativeModule` will not find it -- which an app ' +
+        'sees as "Cannot find native module", naming the module and not this. ' +
+        'Write the desktop half beside the others, or reach it another way: an ' +
+        "app that does neither is one render away from that error.",
+    );
   }
 
   return {args, notes};

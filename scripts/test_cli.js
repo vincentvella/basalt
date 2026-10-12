@@ -976,6 +976,54 @@ test('a local module with no desktop half contributes nothing', () => {
   assert.deepEqual(desktop.localNativeModules(root), []);
 });
 
+test('a local module with no desktop half is said out loud', () => {
+  // Contributing nothing is right; contributing nothing *quietly* is how the
+  // gap is found at the first render, as `Cannot find native module`, which
+  // names the module and not the reason. kino's kino-process is this exact
+  // shape.
+  const root = appWithLocalModules({
+    'kino-audio': ['expo-module.config.json', 'ios/KinoAudioModule.swift'],
+    'kino-process': ['expo-module.config.json', 'apple/KinoProcessModule.swift'],
+  });
+  assert.deepEqual(desktop.localModulesMissingDesktop(root), [
+    'kino-audio (ios)',
+    'kino-process (apple)',
+  ]);
+  const note = desktop
+    .optionalNativeModules(root, 'macos')
+    .notes.find(n => n.includes('no desktop half'));
+  assert.ok(note, 'the configure said nothing about an unfinished module');
+  assert.ok(note.includes('kino-audio'), note);
+  assert.ok(note.includes('Cannot find native module'), 'the note does not name the symptom');
+});
+
+test('a finished local module is not reported as missing one', () => {
+  const root = appWithLocalModules({
+    'kino-audio': [
+      'expo-module.config.json',
+      'ios/KinoAudioModule.swift',
+      'native/CMakeLists.txt',
+    ],
+  });
+  assert.deepEqual(desktop.localModulesMissingDesktop(root), []);
+  assert.ok(
+    !desktop
+      .optionalNativeModules(root, 'macos')
+      .notes.some(n => n.includes('no desktop half')),
+  );
+});
+
+test('a directory under modules/ that is not an Expo module is nobody business', () => {
+  // Named by what is there rather than by what is missing: without an
+  // expo-module.config.json there is no module anybody forgot to finish, and a
+  // note about one would be this platform inventing a convention.
+  const root = appWithLocalModules({
+    scratch: ['ios/Whatever.swift'],
+    notes: ['README.md'],
+  });
+  assert.deepEqual(desktop.localModulesMissingDesktop(root), []);
+});
+
 test('an app with no modules directory is not an error', () => {
   const root = appWithLocalModules({});
   assert.deepEqual(desktop.localNativeModules(root), []);

@@ -830,6 +830,31 @@ that is the pair that tells them apart. Corners rather than edges, for the reaso
 `test_appkit_image.mm` gives: antialiasing puts a boundary half a pixel either
 way and pinning it fails on a future Skia for no useful reason.
 
+## A sabotage that does not build is not a passing test
+
+Breaking the thing a test covers and watching it fail is the only way to know
+the test covers it. The hazard is that the two ways a sabotage can end look
+identical in a grep: the test failed, or the sabotage never ran. Three times on
+2026-10-12:
+
+| what was broken | how the sabotage died |
+| --- | --- |
+| the Win32 registry's includes | `-Werror=unused-parameter` on a `name` the gutted branch stopped using |
+| the Skia TurboModule's factory name check | the same, one argument over |
+| `localModulesMissingDesktop` | TypeScript lost `missing`'s inferred type once nothing was pushed to it, so `dist/` kept the good build and the suite passed on it |
+
+The third is the nastiest, because the suite genuinely passed: `scripts/test_cli.js`
+requires the built package, a failed `build_ts.sh` leaves the previous `dist/`
+in place, and the test then exercises code with no sabotage in it at all. The
+first run of the Skia CLI sabotages did exactly this three times over and
+proved nothing.
+
+Two habits make it visible. Keep the sabotage *compiling* -- change a
+condition's threshold rather than deleting its body, so every variable stays
+used and every type stays inferable -- and read the build's exit status rather
+than only the test's output. A sabotage that prints no failing test and no
+error is the case to look at twice.
+
 ## Knowing whether CI actually passed
 
 `scripts/ci_status.py` says what each job last *decided*, which is not what `gh
