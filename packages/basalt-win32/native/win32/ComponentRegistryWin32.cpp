@@ -16,6 +16,8 @@
 #include "ComponentRegistry.h"
 #include "SafeAreaComponent.h"
 #include "ScreensComponent.h"
+#include "SkiaPictureViewComponent.h"
+#include "SkiaViewComponent.h"
 
 #include <react/renderer/componentregistry/ComponentDescriptorProviderRegistry.h>
 #include <react/renderer/components/FBReactNativeSpec/ComponentDescriptors.h>

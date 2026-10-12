@@ -915,3 +915,22 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   deliberate difference -- Win32's ExpoImage absence is the one that exists
   today. Until then the lists drift the way the backlog's own counts did
   before `check_backlog.js`.
+
+  **And the fix itself broke the Windows build**, which is the other half of
+  this entry. The two `registry->add` lines went into all three files and the
+  two `#include`s went into only two of them: the edit anchored on an
+  `ExpoImageComponent.h` include that Win32 deliberately does not have. CI's
+  Windows job caught it in twenty minutes with `unknown type name
+  'SkiaViewComponentDescriptor'`.
+
+  A registry checker would not have caught that one -- it is a missing
+  include, and only a compiler finds those. What did find it locally, after
+  the fact, was borrowing the *GTK* registry's own compile command out of
+  `build/compile_commands.json`, pointing it at the Win32 file with
+  `-fsyntax-only` and adding one include directory: it reproduced both errors
+  exactly and then passed. That works because `ComponentRegistryWin32.cpp`
+  includes no `windows.h`, and only 3 of the 35 sources in that directory are
+  like it, so this is a thing to do by hand when touching one of the three
+  rather than a script worth writing. The three:
+  `ComponentRegistryWin32.cpp`, `DirectWriteLayoutManager.cpp`,
+  `Win32SkiaUnicode.cpp`.
