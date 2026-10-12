@@ -204,14 +204,24 @@ CODEGEN = REPO / "third_party/codegen"
 def audit(rn_dir: Path) -> dict:
     react_native = rn_dir / "packages/react-native"
 
+    # Two shapes of package. A host package keeps its headers a directory down
+    # -- `basalt-appkit/native/appkit/` -- and a capability package keeps them
+    # directly under `native/`, which the deeper glob alone does not see. The
+    # first module to be named by a host and *defined* in a capability package
+    # was basalt-skia's, and the audit reported it as an unresolved provider
+    # class on macOS: it could find the registration and not the class.
+    ours = list(REPO.glob("packages/*/native/*/*.h")) + list(
+        REPO.glob("packages/*/native/*.h")
+    )
+
     names = module_names(
-        list(REPO.glob("packages/*/native/*/*.h"))
+        ours
         + headers(REPO / "third_party/codegen")
         + headers(react_native / "ReactCommon")
         + headers(react_native / "ReactCxxPlatform")
     )
     bases = base_classes(
-        list(REPO.glob("packages/*/native/*/*.h"))
+        ours
         + headers(react_native / "ReactCommon")
         + headers(react_native / "ReactCxxPlatform")
     )

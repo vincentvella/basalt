@@ -323,7 +323,7 @@
       "answeredBy": "basalt",
       "what": "react-native-skia's module, which installs Skia's whole JavaScript API. Host-specific: each desktop has its own canvas.",
       "hostSpecific": true,
-      "conditional": "only when the build was pointed at an app with @shopify/react-native-skia, behind BASALT_HAS_SKIA"
+      "conditional": "only when the build was pointed at an app with a React Native Skia, and which module depends on which: the 2.x line is Ganesh and gives each host its own (AppKitSkiaModule, GtkSkiaModule, Win32SkiaModule) behind BASALT_HAS_SKIA, while 3.x is Graphite over Dawn and gives macOS basalt-skia's BasaltSkiaModule behind BASALT_HAS_SKIA_GRAPHITE. The two are never both built -- cmake/Skia.cmake refuses a 3.x install by version -- and 3.x has no Linux or Windows half because the prebuilt Dawn is Apple's and Android's."
     },
     "ReanimatedModule": {
       "asked": "nothing upstream",
