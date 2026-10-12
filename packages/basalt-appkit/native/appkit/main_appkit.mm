@@ -51,6 +51,13 @@
 #ifdef BASALT_HAS_SKIA
 #include "AppKitSkiaModule.h"
 #endif
+#if BASALT_HAS_SKIA_GRAPHITE
+// The 3.x module, from basalt-skia. Registered here rather than through
+// BASALT_PACKAGE_TURBO_MODULES because that property has core generate the
+// call, and core is shared with hosts that cannot link Apple's Skia -- see
+// that package's CMakeLists. The same arrangement the 2.x module above has.
+#include "BasaltSkiaModule.h"
+#endif
 #include "TestSettle.h"
 #import "AppKitRunLoopObserver.h"
 #import "AppKitFocus.h"
@@ -428,11 +435,22 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
           return std::make_shared<basalt::DesktopGestureHandlerModule>(jsInvoker);
         }
 #ifdef BASALT_HAS_SKIA
-        // @shopify/react-native-skia, when the build was pointed at an app that
-        // has it. Its `install` is what puts Skia's whole JavaScript API on the
-        // global object; see appkit/AppKitSkiaModule.h.
+        // React Native Skia's 2.x line, when the build was pointed at an app
+        // that has it. Its `install` is what puts Skia's whole JavaScript API
+        // on the global object; see appkit/AppKitSkiaModule.h.
         if (name == basalt::AppKitSkiaModule::kModuleName) {
           return std::make_shared<basalt::AppKitSkiaModule>(jsInvoker);
+        }
+#endif
+#if BASALT_HAS_SKIA_GRAPHITE
+        // And 3.x, which is Graphite over Dawn and a different module for the
+        // same name. Never both: cmake/Skia.cmake refuses a 3.x install by
+        // version, so BASALT_HAS_SKIA is defined in exactly the builds this is
+        // not.
+        if (name == basalt::BasaltSkiaModule::kModuleName) {
+          if (auto module = basalt::makeSkiaTurboModule(name, jsInvoker)) {
+            return module;
+          }
         }
 #endif
 #ifdef BASALT_HAS_WORKLETS

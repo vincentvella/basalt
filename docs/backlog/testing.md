@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (11):**
+**Open (12):**
 
 1. ~~No rendering assertions on GTK~~, but one of them flaked on CI once
 2. A GTK blend-mode pixel assertion flaked on CI and is unexplained
@@ -17,6 +17,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 10. A cancelled job reads as a job that ran
 11. GTK's clipboard paste does not complete under CI's display
 12. Nothing checks that the three component registries agree
+13. Nothing builds every target with a Skia installed, and three did not link
 
 - **A GTK blend-mode pixel assertion flaked on CI, once, and nothing explains
   it yet.** `gtk_paint_a_blend_sees_the_siblings_beneath_it` failed on one of
@@ -934,3 +935,34 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   rather than a script worth writing. The three:
   `ComponentRegistryWin32.cpp`, `DirectWriteLayoutManager.cpp`,
   `Win32SkiaUnicode.cpp`.
+
+- **Nothing builds every target with a Skia installed, and three did not
+  link.** Every Skia build in this repository has been `ninja <one target>`,
+  and CI builds everything but has no Skia -- so the combination "all targets,
+  Skia present" had never run until 2026-10-12, when running kino forced it.
+  Three binaries were broken, in two different configurations:
+
+  | configuration | target | symbol |
+  | --- | --- | --- |
+  | 3.x Graphite | `mount_harness_appkit` | `applySkiaCanvas`, then `sk_abort_no_print` |
+  | 2.x Ganesh | `mount_harness_gtk` | `_ConvertFromTextToUnicode` from libskia's DNG decoder |
+  | 2.x Ganesh | `basalt_core_probe` | the same |
+
+  The first was this platform's own mistake and is fixed: a capability
+  package's AppKit sources went into the two executables, while the library
+  that *calls* them -- `basalt_appkit_mounting`, whose mounting manager calls
+  `applySkiaCanvas` -- had neither the sources nor the archives. They are
+  `target_sources` and a PUBLIC `target_link_libraries` on that library now,
+  which is the shape the 2.x peer beside them has always had.
+
+  The other two are older and are a missing framework: libskia bundles Adobe's
+  DNG SDK, which calls CoreServices' text conversion, and those two binaries
+  link Skia's archives without `-framework CoreServices`. Confirmed older than
+  the Graphite work by stashing it and rebuilding. Nothing reaches them -- the
+  probe is a link check and the harness is a mounting test -- so it has sat
+  there.
+
+  What would have caught all three is one build of `all` with a Skia pointed
+  at, which is now the thing to do before trusting a Skia change. It cannot be
+  CI's job without vendoring a 300MB dependency; see the Skia section of
+  docs/TESTING.md.

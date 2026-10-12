@@ -43,7 +43,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | [macOS](backlog/platform-macos.md) | 1 | A screen reader nobody has run, and the `dropShadow` difference that stays recorded. |
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |
-| [Testing](backlog/testing.md) | 11 | What the suites cannot see, and one GTK pixel assertion that flaked on CI. |
+| [Testing](backlog/testing.md) | 12 | What the suites cannot see, and one GTK pixel assertion that flaked on CI. |
 | [Upstream](backlog/upstream.md) | 23 | Bugs and gaps in React Native and Expo, with the workarounds here. |
 
 ## How to use this

@@ -152,10 +152,22 @@ set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
   "-framework CoreServices")
 
 # The platform context: what Skia asks a platform for, answered by this one.
-# Compiled into core rather than into the host, because none of it is
-# AppKit's -- see the header for why that is true and what it would mean for
-# a Linux or Windows Skia.
-set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_CORE_SOURCES
+#
+# Into the *host's* sources rather than core's, and the reason is the linker
+# rather than the language. None of this file is AppKit's -- it is portable
+# C++ and will serve a Linux or Windows Skia unchanged -- but the Skia it
+# calls into is `react-native-skia-graphite-apple-macos`, which only this
+# host links. In core it goes into every host built from the same configure,
+# and on a Mac that includes GTK: `basalt_gtk` failed to link with
+# `sk_abort_no_print` undefined, referenced from BasaltSkPlatformContext.cpp
+# inside libbasalt_core.a, because the GTK binary has no Skia archives and
+# never will have Apple's.
+#
+# Found by building every target instead of one. The repository's own CI
+# cannot see it -- it has no Skia installed, so this package contributes
+# nothing there -- and the target built by hand while writing this was
+# basalt_appkit_tests, which links the archives.
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/BasaltSkPlatformContext.cpp)
 
 # Skia's own C++, which this platform compiles rather than vendors: the
@@ -284,17 +296,23 @@ else()
   # above: this is the half of the package that only exists where Skia's own
   # C++ was compiled. On a 2.x install the AppKit package's module answers to
   # the same name instead; see BasaltSkiaModule.h for why they never collide.
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_CORE_SOURCES
+  #
+  # Into the host's sources for the reason the platform context is, and *not*
+  # through BASALT_PACKAGE_TURBO_MODULES, which would be worse than the same
+  # bug: that property has core generate a declaration and a call for the
+  # factory, so a GTK binary built from this configure would reference
+  # `makeSkiaTurboModule` and find no definition. The AppKit host registers it
+  # by name instead, beside the 2.x module and under the same kind of guard --
+  # which is how 2.x has always done it.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/BasaltSkiaModule.cpp)
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TURBO_MODULES
-    makeSkiaTurboModule)
   # The canvas, which is the only AppKit-specific file this package has: a
   # CAMetalLayer and its lifecycle. Contributed to the host's sources rather
   # than core's, because it includes RnAppKitView.h and compiles inside the
   # AppKit target, and only here because the prebuilt Dawn is Apple's.
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/appkit/BasaltSkiaCanvasAppKit.mm)
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TESTS
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_TESTS
     ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
     ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm
     ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_canvas.mm)
@@ -312,6 +330,10 @@ endif()
 # Proof that the above is true, in this project's own AppKit suite rather than
 # in an app: Skia's headers compile here and its prebuilt library links and
 # draws. Everything else this capability will do stands on that.
-set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TESTS
+# BASALT_PACKAGE_APPKIT_TESTS rather than BASALT_PACKAGE_TESTS, which every
+# host's suite takes: two of these are Objective-C++ and all of them link
+# Skia, so the GTK suite compiling them failed on an `AppKitSkiaPeer.h` it has
+# no path to -- and would have failed on the archives even if it had.
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_TESTS
   ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia.cpp
   ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_platform_context.cpp)

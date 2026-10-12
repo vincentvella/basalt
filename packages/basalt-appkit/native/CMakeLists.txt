@@ -88,6 +88,13 @@ get_property(BASALT_PACKAGE_APPKIT_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE
 # with a platform half has nowhere else to be tested: it is compiled into the
 # host binary, so the host's suite is the only binary that has it.
 get_property(BASALT_PACKAGE_TESTS GLOBAL PROPERTY BASALT_PACKAGE_TESTS)
+# And the ones only this host can compile. A capability whose platform half is
+# Apple's -- basalt-skia, whose Skia archives and Dawn are Apple binaries --
+# has tests that are Objective-C++ or link those archives, and
+# BASALT_PACKAGE_TESTS goes to all three suites. The GTK suite took them and
+# failed on an `AppKitSkiaPeer.h` it has no path to, which is the cheap half of
+# what it would have failed on.
+get_property(BASALT_PACKAGE_APPKIT_TESTS GLOBAL PROPERTY BASALT_PACKAGE_APPKIT_TESTS)
 
 if(NOT APPLE)
   # Not an error. A checkout builds every package it finds, and on anything but
@@ -223,6 +230,34 @@ if(TARGET basalt_core)
   # has to provide is a link error rather than a discovery. It failed on exactly
   # those three symbols, which is the probe doing its job: this is a host's
   # dependency, not a portable one.
+  # What capability packages contributed for this host, compiled into the
+  # mounting library rather than into each executable that wants it.
+  #
+  # They were on the two executables (basalt_appkit and basalt_appkit_tests)
+  # and that was wrong in a way nothing here could see: this library *calls*
+  # into them -- AppKitMountingManager.mm calls applySkiaCanvas and
+  # forgetSkiaCanvas -- so every binary linking it needs the definitions, and
+  # mount_harness_appkit links it and got none. Found by building kino, where
+  # the link failed on exactly those two symbols; the repository's own build
+  # never caught it because basalt-skia contributes nothing without a Skia
+  # installed, and the one target built by hand while writing the canvas was
+  # basalt_appkit_tests, which had them.
+  #
+  # The 2.x peer beside this has always been a `target_sources` on this
+  # library, which is the shape this follows.
+  if(BASALT_PACKAGE_APPKIT_SOURCES)
+    target_sources(basalt_appkit_mounting PRIVATE ${BASALT_PACKAGE_APPKIT_SOURCES})
+  endif()
+  # And whatever those sources need linked, PUBLIC so it travels to every
+  # binary that links this library. The two executables name it themselves as
+  # well, which costs nothing -- a static archive named twice is searched
+  # twice -- and mount_harness_appkit names nothing, which is why this is
+  # here: it failed on `sk_abort_no_print` referenced from a
+  # BasaltSkPlatformContext.cpp now sitting in libbasalt_appkit_mounting.a.
+  if(BASALT_PACKAGE_APPKIT_LINK_LIBRARIES)
+    target_link_libraries(basalt_appkit_mounting PUBLIC ${BASALT_PACKAGE_APPKIT_LINK_LIBRARIES})
+  endif()
+
   if(TARGET skia_core)
     target_link_libraries(basalt_appkit_mounting PUBLIC skia_core "-framework AppKit")
     target_sources(basalt_appkit_mounting PUBLIC $<TARGET_OBJECTS:skia_core>)
@@ -250,8 +285,6 @@ if(TARGET basalt_core)
     appkit/AppKitAnimationChoreographer.mm
     appkit/AppKitFocus.mm
     appkit/AppKitKeyEvents.mm
-    # Why macOS cannot show a notification; see the file.
-    ${BASALT_PACKAGE_APPKIT_SOURCES}
     appkit/AppKitTouchDispatcher.mm)
   target_compile_options(basalt_appkit PRIVATE -Wall -Wextra -fobjc-arc)
   target_link_libraries(basalt_appkit PRIVATE basalt_appkit_mounting)
@@ -274,6 +307,7 @@ if(TARGET basalt_core)
     # no React Native, so no core -- compiles neither, rather than failing on a
     # package header it was never given the include path for.
     ${BASALT_PACKAGE_TESTS}
+    ${BASALT_PACKAGE_APPKIT_TESTS}
     tests/test_appkit_mounting.mm
     # Fonts loaded at runtime: core/FontRegistry.h's macOS half, and the
     # measurement cache a late registration has to invalidate. Needs React
@@ -283,8 +317,10 @@ if(TARGET basalt_core)
     # tests need it too, and it pulls in nothing else.
     appkit/AppKitFocus.mm
     appkit/AppKitKeyEvents.mm
-    # Why macOS cannot show a notification; see the file.
-    ${BASALT_PACKAGE_APPKIT_SOURCES}
+    # A capability package's AppKit sources are *not* listed here: with a
+    # mounting library they are compiled into it and arrive with the link, and
+    # compiling them again here would be a duplicate symbol in every one. The
+    # view-only branch, which has no mounting library, adds them below.
     appkit/AppKitTouchDispatcher.mm
     tests/test_appkit_input.mm
     tests/test_appkit_key_events.mm
@@ -294,6 +330,14 @@ if(TARGET basalt_core)
     # takes a view and an emitter lookup, so the offset a prop asks for is
     # observable with no display at all.
     tests/test_appkit_scrollview.mm)
+endif()
+
+# Without a mounting library there is nowhere else for a package's AppKit
+# sources to go, so the suite carries them. This is the view-only build: no
+# React Native, no core, and a package source that needs either does not
+# compile here anyway -- which is the honest place to find that out.
+if(NOT TARGET basalt_appkit_mounting AND BASALT_PACKAGE_APPKIT_SOURCES)
+  list(APPEND BASALT_APPKIT_TEST_SOURCES ${BASALT_PACKAGE_APPKIT_SOURCES})
 endif()
 
 add_executable(basalt_appkit_tests ${BASALT_APPKIT_TEST_SOURCES})
