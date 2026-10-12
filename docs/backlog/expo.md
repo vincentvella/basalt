@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (11):**
+**Open (12):**
 
 1. expo-image's decorative props
 2. More Expo views
@@ -15,6 +15,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 9. The gestures a cursor cannot make
 10. The rest of RNGH's relation graph
 11. A visible error when the bundle throws
+12. A local module's Apple half is Swift, and the desktop half is written again
 
 Measured in phase 34 against a real dependency set, on both desktops.
 
@@ -54,3 +55,44 @@ Measured in phase 34 against a real dependency set, on both desktops.
 - **A visible error when the bundle throws.** Today the window stays empty and
   the only evidence is a line in the host's log. Every failure above, and every
   future one, is invisible to whoever is running the app.
+
+- **A local module's Apple half is Swift, and the desktop half is written
+  again.** This platform already meets Expo's convention halfway and the
+  remaining distance is a second implementation per module, which an app pays
+  today rather than in principle.
+
+  What exists: `cli/desktop.ts` looks in `<projectRoot>/modules/*` -- the exact
+  directory Expo's autolinking looks in -- and takes any local module with a
+  `native/CMakeLists.txt`. Presence is the declaration, because
+  `create-expo-module --local` writes a config, an index and a platform
+  directory and no package.json, so there is nothing to declare it in.
+
+  What does not: `expo-module.config.json`'s `apple.modules` names Swift
+  classes and nothing here reads that key, because nothing here compiles
+  Swift. Measured in kino on 2026-10-12:
+
+  | its module | Apple half | desktop half |
+  | --- | --- | --- |
+  | `kino-audio` | `KinoAudioModule.swift` + a podspec | `ExpoKinoAudioModule.cpp`, plus appkit, gtk and win32 |
+  | `kino-process` | `KinoProcessModule.swift` | none; its index.ts falls back to basalt-subprocess |
+
+  So one module is written twice and the other is routed around in JavaScript.
+
+  **Compiling Swift is the obvious answer and probably the wrong one.** Swift
+  runs on Linux and Windows now, so the language is not the obstacle; the
+  `Module { Name(); Function() }` DSL is, because it lives in ExpoModulesCore's
+  Swift half, which is built for iOS. Porting that is an unmeasured dependency
+  project whose payoff would be modules that work on macOS and neither other
+  host -- the per-host asymmetry that cost four bugs in one evening when
+  basalt-skia had it. Worth revisiting only with a measurement of what
+  ExpoModulesCore actually needs.
+
+  **The cheaper increment is to narrow the distance, in two places.** Read
+  `expo-module.config.json` so a module's *name* is declared once rather than
+  restated in the C++, and thin `core/ExpoModules.h` toward the shape of the
+  Swift DSL -- kino's `ExpoKinoAudioModule.cpp` is already "the JavaScript
+  boundary and nothing else", so the gap there is ergonomics rather than
+  capability. And say something at build time when a local module has an
+  `apple/` or `ios/` half and no `native/` one: the failure today is
+  `Cannot find native module 'KinoProcess'` at runtime, which names the module
+  and not the reason.

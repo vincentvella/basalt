@@ -7,7 +7,7 @@ An entry here is a gap, not a plan. When one is picked up it becomes a change in
 then on: the entry stays, so the catalogue remains a complete answer to "what
 is missing", and gains a pointer. Three entries have one today.
 
-**Open (31):**
+**Open (32):**
 
 1. A second window's children do not see React context
 2. `useWindow()` inside a second window reports the active window
@@ -42,6 +42,7 @@ is missing", and gains a pointer. Three entries have one today.
 31. No spell checking
 32. No dock, launcher or jump-list menu
 33. No way to do work off the JavaScript thread
+34. An app declares an icon and the bundle does not get one
 
 React Native has no cross-platform API for any of this, because it was built for
 phones. That makes each one a design question before it is an implementation
@@ -416,3 +417,25 @@ that boundary to place.
   `utilityProcess` and MessagePorts. Here the equivalent is a worklet runtime or
   a second JSI runtime, and Reanimated already brings one, so this is about
   whether an app can use it for its own work, not about building one.
+
+- **An app declares an icon and the bundle does not get one.** `cli/packageApp.ts`
+  builds the whole `.app` around the host binary -- Info.plist,
+  `CFBundleIdentifier`, `CFBundleName`, URL schemes, an ad-hoc signature -- out
+  of app.json, package.json or the Expo config, and reads none of those for an
+  icon. There is no `CFBundleIconFile` in the plist it writes, no `.icns` in
+  the Resources it fills, and the Dock shows the generic application icon.
+
+  Found on 2026-10-12 while deleting kino's leftover Xcode project, which is
+  how long it can go unnoticed: that project had a real `.appiconset` and the
+  app had looked right for as long as anyone built it with Xcode. Nothing read
+  the catalogue after the move to basalt, so the icon had already been gone for
+  weeks; what the deletion changed was that somebody looked.
+
+  Expo's own config is the obvious source -- `expo.icon`, with `expo.macos.icon`
+  and the Windows and Linux equivalents beside it -- which is the same rule the
+  rest of this file follows: the app declares, the platform does the work.
+  macOS wants an `.icns`, which `iconutil` makes from a directory of scaled
+  PNGs and `sips` resizes; Linux wants the PNG named in the `.desktop` file,
+  which this already writes; Windows wants an `.ico` in the executable's
+  resources, which is a link-time thing rather than a packaging one and is the
+  reason this is one entry and not three.
