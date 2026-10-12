@@ -178,9 +178,51 @@ Found by bundling and running a real application.
   - **But `MakeWGPUSurface` is a two-branch `#ifdef`.** `__APPLE__` gives it a
     `wgpu::SurfaceSourceMetalLayer` over a `CAMetalLayer`, and the `#else` is
     `wgpu::SurfaceSourceAndroidNativeWindow`. On GTK or Win32 that compiles and
-    produces a surface over a handle Dawn cannot use, so neither can call it:
-    each needs its own `RNSkSurface`, built on `SurfaceSourceWindowsHWND`,
-    `SurfaceSourceXlibWindow` or `SurfaceSourceWaylandSurface`, which Dawn has.
+    produces a surface over a handle Dawn cannot use. Dawn has the right
+    source for each -- `SurfaceSourceWindowsHWND`, `SurfaceSourceXlibWindow`,
+    `SurfaceSourceWaylandSurface` -- so the fix itself is five lines.
+
+    **"Each needs its own `RNSkSurface`" was this entry's first answer, and it
+    does not work.** `RNSkSurface` is an abstract interface and reads like the
+    seam, but nothing holds a view's surface through it: `RNSkView::_surface`
+    and `RNSkGraphiteTarget::_surface` are both `shared_ptr<RNSkWindowSurface>`
+    by concrete type, and `attach`/`detach` take that type too. `RNSkSurface&`
+    appears only as a *parameter* of `renderFrame` and `present`. So a host
+    cannot present its own way after all -- a second implementation can be
+    written but never attached to a view, and the only thing that can be a
+    window surface is `RNSkWindowSurface` itself.
+
+    Which is less work than it sounds, because that file is already portable:
+    every Apple-specific line in `RNSkWindowSurface.cpp` is behind `#ifdef
+    __APPLE__` and simply does not fire elsewhere. One function in one header
+    is the entire Windows delta.
+
+    **And on Win32 even that is the wrong question, because the swapchain is.**
+    `SurfaceSourceWindowsHWND` wants an HWND, and `RNSkWindowSurface` presents
+    to the window it is given. This host has one HWND for the whole surface and
+    paints every view into it with Direct2D -- `RnWin32View.h` opens by
+    rejecting a child HWND per view and gives the reasons (USER32 caps a
+    process near ten thousand handles, and an HWND clips rectangularly and
+    cannot be rotated, so `transform` and rounded `overflow: hidden` would need
+    reimplementing anyway). The one documented exception is `<TextInput>`,
+    where a real EDIT peer brings input methods and every Windows key binding
+    with it. A `<Canvas>` brings nothing of the sort, so it does not get to
+    spend that exception; a canvas on a child HWND would also sit on top of the
+    Direct2D content rather than inside it, which is visible the first time one
+    is scrolled or overlapped.
+
+    So Win32 presents a texture into the Direct2D walk, which is what the 2.x
+    peer already does with a CPU bitmap and an `ID2D1Bitmap`. That means
+    basalt's own `RNSkWindowSurface.cpp` here rather than upstream's: the
+    class and its header stay theirs, so `RNSkView` and `RNSkGraphiteTarget`
+    are satisfied, and the five method bodies present to a texture instead of a
+    swapchain. `MakeWGPUSurface` is then never called and needs no patch.
+
+    The header fixes what that implementation may hold: a `.cpp` cannot add a
+    member. It does not need to -- `attach` takes a `void *nativeHandle` and
+    this host decides what it points at, so the texture, the D3D interop and
+    the D2D bitmap live in basalt's canvas object and `_nativeHandle` is the
+    way back to it. Apple passes a `CAMetalLayer` through that same parameter.
   - **And Dawn is prebuilt for Apple and Android only.** The
     `react-native-webgpu-dawn` package carries
     `libs/apple/libwebgpu_dawn.xcframework` and `libs/android/<abi>`, nothing

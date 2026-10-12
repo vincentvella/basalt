@@ -327,7 +327,7 @@ import sys
 
 path = sys.argv[1]
 needle = '      "-DCMAKE_CXX_STANDARD=20",'
-added = '      "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",\n      "-DDAWN_SUPPORTS_CXX_MODULES=0",\n'
+added = '      "-DDAWN_SUPPORTS_CXX_MODULES=0",\n'
 with open(path, encoding="utf-8") as handle:
     text = handle.read()
 if needle not in text:
@@ -348,6 +348,22 @@ rm -rf "$WORK/skia/out/$OUT_NAME/cmake_dawn"
 
 say "configuring Skia (Graphite over Dawn)"
 
+# On extra_cflags: /MD, not Skia's default /MT. Three things have to agree on
+# a CRT -- Skia, Dawn, and the host that links them. Dawn is CMake, whose
+# Windows default is MultiThreadedDLL, and basalt-win32 sets no
+# MSVC_RUNTIME_LIBRARY so it takes that default too. Skia is the only one that
+# has to be told, and left untold it picks the other side and the link fails
+# with a wall of
+#
+#     error LNK2038: mismatch detected for 'RuntimeLibrary': value
+#     'MT_StaticRelease' doesn't match value 'MD_DynamicRelease'
+#
+# /EHsc and /GR go with it: Skia builds without exceptions or RTTI, and the
+# react-native-skia C++ that compiles against these headers uses both. The 2.x
+# Windows build that works today passes exactly these three.
+#
+# Nothing below may contain a `#`. These args are flattened to one line with
+# `tr` before gn sees them, so a comment inside would swallow the rest.
 GN_ARGS="
 skia_use_dng_sdk=false
 skia_use_piex=false
@@ -385,7 +401,8 @@ skia_use_icu=false
 skia_use_client_icu=false
 skia_use_libgrapheme=true
 
-extra_cflags_cc=[\"/std:c++20\"]
+extra_cflags=[\"/MD\"]
+extra_cflags_cc=[\"/std:c++20\", \"/EHsc\", \"/GR\"]
 "
 
 "$GN" gen "out/$OUT_NAME" --args="$(printf '%s' "$GN_ARGS" | tr '\n' ' ')" --script-executable="$PYTHON"
@@ -399,6 +416,47 @@ ninja -C "out/$OUT_NAME" skia skshaper svg skottie sksg skparagraph skunicode_co
 # monolithic `webgpu_dawn` target is CMake's. The -D set is react-native-skia's
 # from scripts/dawn-configuration.ts, with Metal and Vulkan swapped for D3D12.
 
+# On TINT_BUILD_HLSL_WRITER: redundant here, and said anyway. Tint translates
+# WGSL into the backend's shading language and HLSL is D3D12's, so Dawn
+# already derives this one -- `if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)`
+# sets TINT_DEFAULT_HLSL ON a few lines above the option. Stated explicitly
+# because Skia's build_dawn.py states it too ("The D3D backend requires the
+# HLSL writer"), and a derived default is a thing that can change under you.
+#
+# It is written down mainly to stop the next person re-deriving it the way
+# this script's author did. A draw that failed with
+#
+#     [skia] WARNING - Failed to create GraphicsPipeline!
+#     [skia] WARNING - Failed to create Pipeline for draw in RenderPass.
+#                      Dropping draw!
+#
+# looks exactly like a missing HLSL writer, and it was not one: Dawn reports
+# its answer at configure time ("Tint build HLSL writer: ON") and had been
+# saying ON all along. Adding the flag rebuilt nothing -- webgpu_dawn.lib came
+# out byte for byte identical. What the pipeline was actually missing was on
+# the caller's side, an instance built without
+# wgpu::InstanceFeatureName::TimedWaitAny, which announces itself one line
+# earlier as "Timeout waits are either not enabled or not supported" and then
+# takes pipeline creation down with it. RNDawnContext asks for that feature
+# with timedWaitAnyMaxCount = 64; anything standing in for it must too.
+#
+# On DAWN_FORCE_SYSTEM_COMPONENT_LOAD: Skia's own build_dawn.py passes it and
+# cites crbug 399358291, and a Dawn built without it cannot create a D3D12
+# device at all. Without the flag Dawn loads FXC with
+#
+#     LoadLibraryExA("d3dcompiler_47.dll", nullptr,
+#                    LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | ...DEFAULT_DIRS)
+#
+# and LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR requires a fully qualified path, so a
+# bare filename is ERROR_INVALID_PARAMETER whatever is installed and wherever
+# it sits. Shipping the SDK copy beside the binary does not help: the call is
+# invalid, not unlucky. The flag switches Dawn to LOAD_LIBRARY_SEARCH_SYSTEM32
+# against the copy Windows already has, and skips the SDK copy target that
+# would otherwise need the SDK located.
+#
+# Measured, as "device created" against:
+#     Error: DynamicLib.Open: d3dcompiler_47.dll Windows Error: 87
+#       at EnsureFXC (.../d3d/PlatformFunctions.cpp:119)
 say "building Dawn (monolithic, D3D12)"
 DAWN_SRC="$WORK/skia/third_party/externals/dawn"
 [ -d "$DAWN_SRC" ] || die "no Dawn at $DAWN_SRC -- git-sync-deps did not fetch it, which means skia_use_dawn is not in this milestone's DEPS"
@@ -425,11 +483,13 @@ cmake -S "$DAWN_SRC" -B "$DAWN_BUILD" -G Ninja \
   -DDAWN_ENABLE_D3D11=OFF \
   -DTINT_BUILD_TESTS=OFF \
   -DTINT_BUILD_CMD_TOOLS=OFF \
+  -DTINT_BUILD_HLSL_WRITER=ON \
   -DTINT_BUILD_IR_BINARY=OFF \
   -DTINT_BUILD_BENCHMARKS=OFF \
   -DDAWN_FETCH_DEPENDENCIES=ON \
   -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
-  -DDAWN_SUPPORTS_CXX_MODULES=0
+  -DDAWN_SUPPORTS_CXX_MODULES=0 \
+  -DDAWN_FORCE_SYSTEM_COMPONENT_LOAD=ON
 
 ninja -C "$DAWN_BUILD" webgpu_dawn
 
@@ -470,6 +530,25 @@ for archive in "${ARCHIVES[@]}"; do
 done
 dawnsize=$(( $(stat -c%s "$DAWN_DEST/webgpu_dawn.lib" 2>/dev/null || echo 0) / 1024 ))
 printf '    ok   %-32s %8s KB\n' "webgpu_dawn.lib" "$dawnsize"
+
+# The CRT the archive actually chose, which is not the same question as
+# whether /MD was passed -- a flag can be dropped by a GN arg it conflicts
+# with. Each object records its choice as a linker directive, so ask the
+# archive rather than trusting the argument went in.
+if ! command -v llvm-readobj >/dev/null 2>&1; then
+  note "warn no llvm-readobj, so the CRT was not checked"
+else
+  DIRECTIVES=$(llvm-readobj --coff-directives "$SKIA_DEST/skia.lib" 2>/dev/null || true)
+  STATIC=$(printf '%s' "$DIRECTIVES" | grep -c "libcmt.lib" || true)
+  DYNAMIC=$(printf '%s' "$DIRECTIVES" | grep -c "msvcrt.lib" || true)
+  if [ "${STATIC:-0}" -gt 0 ]; then
+    die "skia.lib wants the static CRT (libcmt). Dawn and the host use /MD, so this will not link."
+  elif [ "${DYNAMIC:-0}" -gt 0 ]; then
+    note "ok   CRT is /MD, matching Dawn and the host"
+  else
+    note "warn could not tell which CRT skia.lib wants"
+  fi
+fi
 
 # Graphite present: the point of the whole exercise, and cheap to confirm by
 # name rather than by trusting the GN args went in.
