@@ -79,6 +79,14 @@ jobs:
       # 201 means the registration matches and npm issued a credential. 404
       # "package not found" means npm holds nothing it will accept -- not that
       # the package is missing.
+      #
+      # What 201 does *not* mean is that the credential may publish. Allowed
+      # actions are inside the registration, the exchange does not report
+      # them, and a publisher granted only `npm stage publish` exchanges 201
+      # and then stages every tarball. All eight packages answered 201 on
+      # 2026-10-12 while five of them could only stage, so this probe is a
+      # check that the registration *exists*. The Publish step below asks the
+      # registry afterwards, which is the question this one cannot ask.
       # Fields are case-sensitive, and Allowed actions must permit
       # `npm publish`; only `npm stage publish` is granted by default.
       - name: Is this workflow trusted?
@@ -265,6 +273,38 @@ jobs:
             # `latest` is the tag that matters: it is what a plain
             # `npm install basalt-core` resolves to.
             npm publish "$1" --access public --tag latest
+            # And then ask the registry, because `npm publish` exiting 0 is
+            # not the same as a published package.
+            #
+            # On 2026-10-12 this step printed `+ basalt-core@0.2.0` for seven
+            # tarballs, succeeded, and put three of them on the registry.
+            # `npm view basalt-core versions` still answered
+            # `['0.0.0-rc5', '0.1.0']` afterwards, and the release that
+            # contained it was green -- so a tag, a forty-minute gauntlet and
+            # a successful publish job meant nothing had been released, and
+            # the next thing to notice was an app failing to install.
+            #
+            # A staged publish looks exactly like this: when a trusted
+            # publisher grants only `npm stage publish`, npm stages the
+            # tarball, prints the same `+ name@version`, and exits 0. The
+            # `0.0.0-stage` version sitting on basalt-win32 is debris from
+            # one. The trusted-publisher probe above cannot see it either: it
+            # exchanges a credential and reports 201 whatever that credential
+            # is allowed to do.
+            #
+            # `--prefer-online`, because npm's cache will happily answer this
+            # question with what it knew a minute ago.
+            local landed
+            landed=$(npm view "$name@$version" version --prefer-online 2>/dev/null || true)
+            if [ "$landed" != "$version" ]; then
+              echo "!! $name@$version is not on the registry after publishing it"
+              echo "   npm said it published and the registry does not have it, which is"
+              echo "   what a staged publish looks like. Check Allowed actions on the"
+              echo "   package's trusted publisher: it needs npm publish, not only"
+              echo "   npm stage publish."
+              return 1
+            fi
+            echo "== $name@$version is on the registry"
           }
           core=$(ls ./tarballs/basalt-core-[0-9]*.tgz)
           publish "$core"
