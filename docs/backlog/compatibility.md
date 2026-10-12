@@ -9,8 +9,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 3. Supporting React Native 0.81, which is what kino pins
 4. CI checks one React Native per run
 5. Expo starts but no Expo module works
-6. No @shopify/react-native-skia, which stops one real app dead
+6. ~~No @shopify/react-native-skia, which stops one real app dead~~, done on
+   all three hosts, for the 2.x line
 7. The version this host reports cannot express a prerelease tag
+8. React Native Skia 3.x is Graphite over Dawn, and this platform is Ganesh
 
 Found by bundling and running a real application.
 
@@ -119,7 +121,7 @@ Found by bundling and running a real application.
   exist is any Expo *module*: `ExpoAsset` and `ExponentConstants` are stubs that
   exist only so Expo's start-up survives, and `expo-font`, `expo-image` and
   every config plugin's native half are each their own port.
-- **No `@shopify/react-native-skia`**, which is the thing that stops kino dead,
+- ~~**No `@shopify/react-native-skia`**~~, which was the thing that stopped kino dead,
   and it is closer than "not this platform's to fix" suggested. Established by
   bundling kino's `apps/desktop` against basalt and running it, 2026-09-26:
 
@@ -152,8 +154,51 @@ Found by bundling and running a real application.
   `runtime/media.ts` and `store.ts` use. `<Canvas>` is only needed for
   `ui/Preview.tsx` and `ui/AnchorsPane.tsx`.
 
-  GTK and Win32 are a different proposition: no prebuilt Skia, and a GL, Vulkan
-  or D3D window context rather than Metal.
+  GTK and Win32 were a different proposition: no prebuilt Skia, and a GL, Vulkan
+  or D3D window context rather than Metal. Both are done -- Skia built from
+  source by `scripts/build_skia_linux.sh` and its Windows counterpart, and a
+  raster canvas on each, which is a CPU surface handed over as a `GdkTexture` or
+  blitted -- so what staged above as "`<Canvas>` is the real work" is finished on
+  all three. The next entry is what replaces this one.
+- **React Native Skia 3.x is Graphite over Dawn, and this platform is Ganesh.**
+  Measured against `react-native-skia@3.4.0`, published 2026-10-11, on
+  2026-10-11. This is not a version to catch up to; it is a second renderer, and
+  the host half above does not survive it:
+
+  - **Six of the seven Apple sources `cmake/Skia.cmake` borrows are deleted.**
+    `MetalContext`, `MetalWindowContext`, `SkiaCVPixelBufferUtils`,
+    `RNSkAppleVideo`, `RNSkAppleView` and `RNSkMetalCanvasProvider` are all
+    gone; only `MetalLayerColorSpace.mm` is left. `apple/` is eleven files where
+    it was fourteen, and the Ganesh ones are not among them.
+  - **What replaces them is portable C++, which is better for us.** The whole
+    swapchain is `cpp/rnskia/RNSkWindowSurface.{h,cpp}` over `wgpu::Surface`, and
+    its own comment says the platform view "only acquires the native handle and
+    forwards its lifecycle (attach, resize, detach)". `RNSkSurface` is a
+    five-method abstract interface, so a host can present its own way.
+  - **But `MakeWGPUSurface` is a two-branch `#ifdef`.** `__APPLE__` gives it a
+    `wgpu::SurfaceSourceMetalLayer` over a `CAMetalLayer`, and the `#else` is
+    `wgpu::SurfaceSourceAndroidNativeWindow`. On GTK or Win32 that compiles and
+    produces a surface over a handle Dawn cannot use, so neither can call it:
+    each needs its own `RNSkSurface`, built on `SurfaceSourceWindowsHWND`,
+    `SurfaceSourceXlibWindow` or `SurfaceSourceWaylandSurface`, which Dawn has.
+  - **And Dawn is prebuilt for Apple and Android only.** The
+    `react-native-webgpu-dawn` package carries
+    `libs/apple/libwebgpu_dawn.xcframework` and `libs/android/<abi>`, nothing
+    else, and `RNDawnContext.h` is a hard `pod install` error without it. So GTK
+    and Win32 need Dawn from source beside a Graphite-enabled Skia from source,
+    which is a second `build_skia_*.sh`-shaped project each.
+  - **The platform context is six virtuals rather than fifteen**, and
+    `packages/basalt-skia` already answers all six. That part is done.
+
+  Which stages, and the order is forced rather than chosen: macOS first, because
+  it is the one host whose binaries exist today -- `react-native-skia-graphite-apple-macos`
+  and Dawn's xcframework are both published, so what is owed there is the
+  `RNSkiaModule` over `RNSkManager` and a `CAMetalLayer` view. GTK and Win32
+  wait on a Dawn build, and until then an app that wants Skia on them installs
+  the 2.x line, which is still published under both names
+  (`react-native-skia@release-2.x` is 2.15.1). `cmake/Skia.cmake` and the CLI
+  both refuse a 3.x install by version and say that, rather than failing on a
+  `MetalContext.mm` nobody deleted.
 - **The version this host reports cannot express a prerelease tag.** The Android
   spec it answers types `prerelease` as an optional int, so there is nowhere to
   put `-rc.1`. Stable releases have none, so this only matters for somebody

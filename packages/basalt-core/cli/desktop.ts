@@ -261,6 +261,26 @@ function findPackage(name: string, from: string): string | null {
 }
 
 /**
+ * The major version an installed package declares, or null when it does not say
+ * one a number can be read out of.
+ *
+ * Only the major, because that is the granularity of the questions asked of it:
+ * a C++ API that moved between 2.x and 3.x is a major's worth of difference by
+ * definition, and a platform asking about a minor would be pinning the app's
+ * choice of graphics library to a patch release.
+ */
+function packageMajor(dir: string): number | null {
+  let declared;
+  try {
+    declared = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+  const major = Number.parseInt(String(declared?.version ?? ''), 10);
+  return Number.isNaN(major) ? null : major;
+}
+
+/**
  * The optional native halves an app brings with it, as CMake definitions.
  *
  * Expo's runtime, worklets and Reanimated each compile from the app's own copy
@@ -401,7 +421,8 @@ export function optionalNativeModules(
     notes.push(`worklets, from ${worklets}`);
   }
 
-  // @shopify/react-native-skia, if the archives for this target are there.
+  // Skia, if the archives for this target are there and the major is one this
+  // platform's host half can build.
   //
   // A question about the *archives*, not the platform. macOS has published
   // ones; Linux and Windows have whatever scripts/build_skia_linux.sh and its
@@ -423,7 +444,25 @@ export function optionalNativeModules(
   // TurboModuleRegistry.getEnforcing in its own JavaScript, so an app that
   // merely imports it does not start, and that exception carries nothing about
   // the build decision behind it. This is the only place it can be explained.
-  const skia = findPackage('@shopify/react-native-skia', projectRoot);
+  //
+  // ## Two names and two major versions, which are different questions
+  //
+  // The library moved house: `react-native-skia`, unscoped, is the same project
+  // under its maintainer's own name, and `@shopify/react-native-skia` is the
+  // 2.x line it left behind. The unscoped one publishes both -- a `release-2.x`
+  // tag at 2.15.1 and a `latest` of 3.x -- so the name does not tell you the
+  // major and the major is what decides whether this platform can build it.
+  //
+  // 3.x replaced Ganesh with Skia Graphite over Dawn. That is not a flag: the
+  // six Apple sources cmake/Skia.cmake borrows are deleted in it, and the
+  // replacement takes a `CAMetalLayer` or an `ANativeWindow` and nothing else.
+  // So a 3.x install is found, named, and declined here, which is the whole
+  // reason this reads the version at all -- handing a 3.x path to Skia.cmake
+  // fails on a missing MetalContext.mm, which reads like a broken install.
+  const skia =
+    findPackage('react-native-skia', projectRoot) ??
+    findPackage('@shopify/react-native-skia', projectRoot);
+  const skiaMajor = skia == null ? null : packageMajor(skia);
   const skiaArchive: Record<string, string> = {
     macos: path.join('libs', 'macos', 'libskia.xcframework'),
     windows: path.join('libs', 'windows', 'x86_64', 'skia.lib'),
@@ -439,7 +478,19 @@ export function optionalNativeModules(
     ),
   };
   const archive = skia != null ? path.join(skia, skiaArchive[platform] ?? '') : null;
-  if (skia != null && archive != null && fs.existsSync(archive)) {
+  if (skia != null && skiaMajor != null && skiaMajor >= 3) {
+    notes.push(
+      `not building Skia (${skia}, ${skiaMajor}.x): this platform's half is ` +
+        'Ganesh, and 3.x is Graphite over Dawn -- MetalContext, MetalWindowContext, ' +
+        'RNSkMetalCanvasProvider, RNSkAppleView, RNSkAppleVideo and ' +
+        'SkiaCVPixelBufferUtils are all deleted in it, and RNSkWindowSurface ' +
+        'replaces them over a CAMetalLayer. Install the 2.x line ' +
+        '(`react-native-skia@release-2.x`, or `@shopify/react-native-skia`) until ' +
+        "basalt-skia carries the Graphite half. This host will have no " +
+        "RNSkiaModule, and importing the package at all -- not rendering with it, " +
+        "importing it -- ends the app at getEnforcing('RNSkiaModule').",
+    );
+  } else if (skia != null && archive != null && fs.existsSync(archive)) {
     define('BASALT_SKIA', skia);
     notes.push(`Skia, from ${skia}`);
   } else if (skia != null) {
@@ -450,7 +501,7 @@ export function optionalNativeModules(
           'Android archives and nothing else. scripts/build_skia_linux.sh builds ' +
           'them, and puts them where this looked.';
     notes.push(
-      `not building @shopify/react-native-skia (${skia}): no archives at ` +
+      `not building Skia (${skia}): no archives at ` +
         `${archive}. ${how} This host will have no RNSkiaModule, and importing ` +
         'the package at all -- not rendering with it, importing it -- ends the ' +
         "app at getEnforcing('RNSkiaModule'). Import it behind a check if this " +

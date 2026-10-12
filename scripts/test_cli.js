@@ -337,10 +337,10 @@ test('an installed react-native is built from, not refused', () => {
 
 test('the native halves an app has installed are the ones built', () => {
   const project = scratch();
-  const install = (under, name) => {
+  const install = (under, name, version) => {
     const dir = path.join(under, 'node_modules', name);
     fs.mkdirSync(dir, {recursive: true});
-    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name}));
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name, version}));
     return dir;
   };
   const cmakePath = dir => dir.split(path.sep).join('/');
@@ -378,7 +378,7 @@ test('the native halves an app has installed are the ones built', () => {
   // Skia -- which was true of the platform gate it was written against and
   // became false the day those hosts got an RNSkiaModule. Asserting a rule
   // rather than the behaviour behind it is how a test outlives its subject.
-  const skia = install(project, '@shopify/react-native-skia');
+  const skia = install(project, '@shopify/react-native-skia', '2.11.1');
   const archives = {
     macos: ['libs', 'macos', 'libskia.xcframework'],
     windows: ['libs', 'windows', 'x86_64', 'skia.lib'],
@@ -429,6 +429,55 @@ test('the native halves an app has installed are the ones built', () => {
     );
     fs.rmSync(archive, {recursive: true, force: true});
   }
+
+  // The unscoped name, which is where the library lives now. Installed beside
+  // the scoped one and preferred over it, because an app with both has the
+  // scoped one only as somebody's transitive dependency.
+  const unscoped = install(project, 'react-native-skia', '2.15.1');
+  const unscopedArchive = path.join(unscoped, ...archives.macos);
+  fs.mkdirSync(unscopedArchive, {recursive: true});
+  found = desktop.optionalNativeModules(project, 'macos');
+  assert.ok(
+    found.args.includes(`-DBASALT_SKIA=${cmakePath(unscoped)}`),
+    'the unscoped package was installed with its archive and was not the one built',
+  );
+
+  // 3.x, which is a different graphics backend rather than a newer one: it is
+  // found, named with its major, and declined. Declining it here is the point.
+  // Handing the path to Skia.cmake fails on a MetalContext.mm that 3.x deleted,
+  // which reads like a broken install rather than a version this host's half
+  // cannot build.
+  fs.writeFileSync(
+    path.join(unscoped, 'package.json'),
+    JSON.stringify({name: 'react-native-skia', version: '3.4.0'}),
+  );
+  found = desktop.optionalNativeModules(project, 'macos');
+  assert.ok(
+    !found.args.some(arg => arg.startsWith('-DBASALT_SKIA')),
+    'a 3.x install was handed to the Ganesh half',
+  );
+  const graphite = found.notes.find(note => note.includes('react-native-skia'));
+  assert.ok(graphite, '3.x was declined without saying so');
+  assert.ok(graphite.includes('3.x'), 'the note does not say which major was declined');
+  assert.ok(graphite.includes('Graphite'), 'the note does not say why');
+  assert.ok(
+    graphite.includes('release-2.x'),
+    'the note does not say what to install instead',
+  );
+
+  // A package that declares no version is not a 3.x package. The archive is
+  // still there, so the only thing that could have changed the answer is the
+  // version having gone missing, and an unreadable version must not read as a
+  // major this platform declines.
+  fs.writeFileSync(
+    path.join(unscoped, 'package.json'),
+    JSON.stringify({name: 'react-native-skia'}),
+  );
+  found = desktop.optionalNativeModules(project, 'macos');
+  assert.ok(
+    found.args.includes(`-DBASALT_SKIA=${cmakePath(unscoped)}`),
+    'a package with no declared version was treated as one this host cannot build',
+  );
 
   fs.rmSync(project, {recursive: true, force: true});
 });

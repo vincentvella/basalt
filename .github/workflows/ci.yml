@@ -413,6 +413,12 @@ jobs:
         # writes into somebody else's repository.
         run: node --test scripts/test_cli.js
 
+      - name: Skia CMake tests
+        if: matrix.shard == 1
+        # The version guard in cmake/Skia.cmake, over `cmake -P`. Needs no Skia
+        # installed and no build: the refusal is about a package.json.
+        run: node --test scripts/test_skia_cmake.js
+
       - name: Platform JavaScript tests
         # Once per job, not once per shard: these read the same files and
         # give the same answer three times over, and the CLI suite alone is a
@@ -746,6 +752,12 @@ jobs:
         # minute and a half of the saving sharding just bought.
         if: matrix.shard == 1
         run: node --test scripts/test_cli.js
+
+      - name: Skia CMake tests
+        if: matrix.shard == 1
+        # The version guard in cmake/Skia.cmake, over `cmake -P`. Needs no Skia
+        # installed and no build: the refusal is about a package.json.
+        run: node --test scripts/test_skia_cmake.js
 
 
       - name: Bundle the demo
@@ -1085,6 +1097,12 @@ jobs:
         # extension, and `isExecutable` has to answer a different question on a
         # filesystem with no executable bit.
         run: node --test scripts/test_cli.js
+
+      - name: Skia CMake tests
+        if: matrix.shard == 1
+        # The version guard in cmake/Skia.cmake, over `cmake -P`. Needs no Skia
+        # installed and no build: the refusal is about a package.json.
+        run: node --test scripts/test_skia_cmake.js
 
       - name: The demo's tree, and its picture
         # Both modes of demo_layout_win32, because they fail differently: the

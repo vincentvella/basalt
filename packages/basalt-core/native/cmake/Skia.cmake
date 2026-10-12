@@ -65,9 +65,35 @@ endif()
 
 if(NOT EXISTS ${SKIA_CPP_DIR}/rnskia/RNSkManager.cpp)
   message(FATAL_ERROR
-          "no @shopify/react-native-skia C++ at ${SKIA_CPP_DIR}.\n"
-          "BASALT_SKIA should name an installed @shopify/react-native-skia, "
-          "the one in the app's node_modules.")
+          "no React Native Skia C++ at ${SKIA_CPP_DIR}.\n"
+          "BASALT_SKIA should name an installed react-native-skia or "
+          "@shopify/react-native-skia, the one in the app's node_modules.")
+endif()
+
+file(READ ${SKIA_DIR}/package.json SKIA_PACKAGE_JSON)
+string(JSON SKIA_VERSION GET "${SKIA_PACKAGE_JSON}" version)
+
+# 3.x is a different renderer, not a newer one.
+#
+# It replaced Ganesh with Skia Graphite over Dawn, and this file is the Ganesh
+# half: six of the seven Apple sources it borrows below do not exist in 3.x, and
+# their replacement -- RNSkWindowSurface, which is portable C++ rather than
+# Objective-C++ -- configures a CAMetalLayer or an ANativeWindow as a Dawn
+# surface and nothing else, so neither GTK nor Win32 can use it as shipped
+# either. backlog/compatibility.md records what each of the three would take.
+#
+# Said here as well as in the CLI because BASALT_SKIA can be set by hand, and
+# the failure it saves is a bad one: `MetalContext.mm does not exist`, from a
+# source list, naming a file nobody deleted. A version is the actual reason and
+# this is the first place that knows it.
+string(REGEX MATCH "^[0-9]+" SKIA_MAJOR "${SKIA_VERSION}")
+if(SKIA_MAJOR AND SKIA_MAJOR GREATER_EQUAL 3)
+  message(FATAL_ERROR
+          "Skia ${SKIA_VERSION} at ${SKIA_DIR} is Graphite over Dawn, and this "
+          "platform's half is Ganesh.\n"
+          "Install the 2.x line -- `react-native-skia@release-2.x`, or "
+          "`@shopify/react-native-skia` -- or configure without BASALT_SKIA, "
+          "until basalt-skia carries the Graphite half.")
 endif()
 
 # The binaries are not in the package's `files`: they are downloaded, by the
@@ -95,9 +121,6 @@ if(NOT APPLE AND NOT WIN32 AND NOT EXISTS ${SKIA_LIBS_DIR}/libskia.a)
           "scripts/build_skia_linux.sh, in WSL2 or on a Linux machine, and copy "
           "its libs/linux/x86_64 here.")
 endif()
-
-file(READ ${SKIA_DIR}/package.json SKIA_PACKAGE_JSON)
-string(JSON SKIA_VERSION GET "${SKIA_PACKAGE_JSON}" version)
 
 # Every prebuilt archive the package imports on Apple, each a universal slice.
 # Named rather than globbed: a missing one is a link error in somebody else's

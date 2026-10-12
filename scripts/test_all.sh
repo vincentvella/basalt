@@ -143,6 +143,9 @@ if command -v node >/dev/null 2>&1; then
   # names, so this checks all three wherever it runs.
   step "javascript build" "$root/scripts/build_ts.sh"
   step "cli" node --test scripts/test_cli.js
+  # cmake/Skia.cmake's version guard, over `cmake -P` rather than a configure:
+  # the refusal it tests fires before anything script mode cannot do.
+  step "skia cmake" node --test scripts/test_skia_cmake.js
   # basalt-core's JavaScript that needs no React Native to run.
   step "platform javascript" node --test scripts/test_platform_js.js
   # A header reaching <cstdint> through windows.h took CI down for twenty-three
