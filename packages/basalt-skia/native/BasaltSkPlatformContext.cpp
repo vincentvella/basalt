@@ -11,7 +11,16 @@
 #include "include/core/SkData.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
+
+// The system font manager, which is the one thing in this file that is not
+// the same call on both platforms. Skia ships a backend per platform and
+// each has its own header; the rest of what this context does is portable
+// because Dawn made it so.
+#ifdef __APPLE__
 #include "include/ports/SkFontMgr_mac_ct.h"
+#elif defined(_WIN32)
+#include "include/ports/SkTypeface_win.h"
+#endif
 
 // Graphite, where the installed Skia has it.
 //
@@ -107,7 +116,17 @@ sk_sp<SkSurface> BasaltSkPlatformContext::makeOffscreenSurface(int width, int he
 }
 
 sk_sp<SkFontMgr> BasaltSkPlatformContext::createFontMgr() {
+#ifdef __APPLE__
   return SkFontMgr_New_CoreText(nullptr);
+#elif defined(_WIN32)
+  // A null factory asks Skia for the process-wide one, which is what
+  // CoreText does above and what the Win32 host already draws its own text
+  // through -- so a typeface this returns and a typeface DirectWriteLayout
+  // measured come from the same place.
+  return SkFontMgr_New_DirectWrite();
+#else
+#error "basalt-skia: no system font manager for this platform"
+#endif
 }
 
 } // namespace basalt

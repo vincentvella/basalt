@@ -96,6 +96,10 @@ get_property(BASALT_PACKAGE_WIN32_LINK_LIBRARIES GLOBAL PROPERTY BASALT_PACKAGE_
 # with a platform half has nowhere else to be tested: it is compiled into the
 # host binary, so the host's suite is the only binary that has it.
 get_property(BASALT_PACKAGE_TESTS GLOBAL PROPERTY BASALT_PACKAGE_TESTS)
+# And the ones only this host can compile, for the reason the AppKit package
+# gives: BASALT_PACKAGE_TESTS goes to all three suites, and a capability whose
+# platform half links prebuilt Skia has tests the other two cannot build.
+get_property(BASALT_PACKAGE_WIN32_TESTS GLOBAL PROPERTY BASALT_PACKAGE_WIN32_TESTS)
 
 if(NOT WIN32)
   # Not an error. A checkout builds every package it finds, and on anything but
@@ -302,10 +306,22 @@ if(TARGET basalt_core)
       # AppKitSkiaPeer.mm's opposite number. Where that one hands the package a
       # Metal layer, this renders into memory and lets the Direct2D walk draw
       # the result -- this host has no layer tree to hang a canvas in.
-      win32/Win32SkiaPeer.cpp
-      # The unicode factory the package asks for by name on anything that is
-      # not Apple, answered with the backend that is actually linked here.
-      win32/Win32SkiaUnicode.cpp)
+      win32/Win32SkiaPeer.cpp)
+  endif()
+
+  # The unicode factory the package asks for by name on anything that is not
+  # Apple, answered with the backend that is actually linked here.
+  #
+  # Outside the 2.x block because both generations need it and for the same
+  # reason: JsiSkParagraphBuilder takes SkUnicodes::ICU::Make() off Apple, and
+  # the Skia this platform builds for Windows carries libgrapheme rather than
+  # ICU in either generation. Inside it, a 3.x build -- which makes no
+  # skia_core -- linked everything else and then failed on one symbol.
+  get_property(BASALT_WIN32_PACKAGE_DEFINITIONS
+               GLOBAL PROPERTY BASALT_PACKAGE_DEFINITIONS)
+  if(TARGET skia_core OR
+     "BASALT_HAS_SKIA_GRAPHITE=1" IN_LIST BASALT_WIN32_PACKAGE_DEFINITIONS)
+    target_sources(basalt_win32_mounting PRIVATE win32/Win32SkiaUnicode.cpp)
   endif()
   # shell32 for ShellExecute; comctl32 for SetWindowSubclass, which is how a
   # <TextInput>'s EDIT peer is subclassed without breaking anything else that
@@ -363,6 +379,7 @@ if(TARGET basalt_core)
     win32/Win32KeyEvents.cpp
     # A package's own tests; see the AppKit package for why they sit with core's.
     ${BASALT_PACKAGE_TESTS}
+    ${BASALT_PACKAGE_WIN32_TESTS}
     # Deliberately the same nine questions tests/test_mounting.cpp asks of GTK
     # and tests/test_appkit_mounting.mm asks of AppKit, in the same order with
     # the same tags. Most of what they test is whether the sharing still holds.

@@ -22,14 +22,16 @@
 # ## Absent is not an error
 #
 # A host build with no Skia installed contributes nothing and says so. That is
-# the normal case for this repository's own CI, for Linux and for Windows:
-# there is no prebuilt Skia for either of those yet, and no window context --
-# Metal is what the Apple binaries ship. backlog/compatibility.md records what
-# the other two would take.
+# the normal case for this repository's own CI and for Linux, which has no
+# prebuilt Skia yet. Windows has one, but nobody publishes it:
+# scripts/build_skia_windows.sh builds Graphite and a monolithic Dawn from
+# source, and this file looks where that script leaves them.
+# backlog/compatibility.md records what Linux would take.
 
 set(BASALT_SKIA_DIR_DEFAULT "")
 set(BASALT_SKIA_LIBS_DEFAULT "")
 set(BASALT_SKIA_DAWN_DEFAULT "")
+set(BASALT_SKIA_DAWN_LIB_DEFAULT "")
 
 # Two package names and two binary packages, because the library moved house.
 #
@@ -58,6 +60,14 @@ foreach(root
       get_filename_component(BASALT_SKIA_LIBS_DEFAULT ${root}/${binaries} ABSOLUTE)
     endif()
   endforeach()
+  # Windows, where there is no package to find because nobody publishes one.
+  # The name a published one would have is tried anyway, so that the day it
+  # exists this stops being special; what exists today is whatever
+  # scripts/build_skia_windows.sh produced, found just below.
+  if(EXISTS ${root}/react-native-skia-graphite-windows/libs/windows/x86_64/skia.lib)
+    get_filename_component(BASALT_SKIA_LIBS_DEFAULT
+                           ${root}/react-native-skia-graphite-windows/libs/windows/x86_64 ABSOLUTE)
+  endif()
   # Dawn, which is 3.x's and only 3.x's: Graphite draws through WebGPU and the
   # package depends on `react-native-webgpu-dawn` for the implementation. A 2.x
   # install has no such dependency and needs none, which is why this is found
@@ -68,21 +78,67 @@ foreach(root
   endif()
 endforeach()
 
+# Failing that, on Windows, where scripts/build_skia_windows.sh leaves its
+# output. An unusual thing for a CMakeLists to know, and the alternative is
+# worse: these archives cannot live in node_modules, because `bun install`
+# removes what it did not put there and took the 2.x Windows archives with it
+# twice while this was being written. SKIA_BUILD_DIR relocates the whole tree
+# on the script side and is honoured here for the same reason it exists there.
+if(WIN32 AND BASALT_SKIA_LIBS_DEFAULT STREQUAL "")
+  if(DEFINED ENV{SKIA_BUILD_DIR})
+    set(BASALT_SKIA_BUILD_DIR $ENV{SKIA_BUILD_DIR})
+  else()
+    set(BASALT_SKIA_BUILD_DIR $ENV{USERPROFILE}/skia-windows-graphite)
+  endif()
+  if(EXISTS ${BASALT_SKIA_BUILD_DIR}/libs/windows/x86_64/skia.lib)
+    set(BASALT_SKIA_LIBS_DEFAULT ${BASALT_SKIA_BUILD_DIR}/libs/windows/x86_64)
+    set(BASALT_SKIA_DAWN_LIB_DEFAULT ${BASALT_SKIA_BUILD_DIR}/dawn/windows/x86_64)
+  endif()
+endif()
+
 set(BASALT_SKIA_DIR "${BASALT_SKIA_DIR_DEFAULT}" CACHE PATH
     "@shopify/react-native-skia, which carries the C++ and Skia's headers")
 set(BASALT_SKIA_LIBS "${BASALT_SKIA_LIBS_DEFAULT}" CACHE PATH
-    "react-native-skia-apple-macos, which carries the prebuilt Skia slices")
+    "where the prebuilt Skia is: the Apple binary package, or a directory of .lib files on Windows")
 set(BASALT_SKIA_DAWN "${BASALT_SKIA_DAWN_DEFAULT}" CACHE PATH
     "react-native-webgpu-dawn, which carries Dawn's headers and library (3.x only)")
+# Windows splits what Apple keeps together. The headers still come from the
+# npm package -- they are generated from the Dawn revision react-native-skia
+# was built against, which is the whole point of using theirs -- but the
+# library beside them holds Apple and Android slices only, so the archive
+# comes from the local build instead.
+set(BASALT_SKIA_DAWN_LIB "${BASALT_SKIA_DAWN_LIB_DEFAULT}" CACHE PATH
+    "the directory holding webgpu_dawn.lib (Windows only)")
 
-if(NOT APPLE)
-  message(STATUS "basalt-skia: skipped, the prebuilt Skia here is Apple's")
+# Which host this is contributing to. Everything below goes to one of
+# BASALT_PACKAGE_<HOST>_SOURCES and friends, and naming the host once is what
+# keeps the two arms from drifting into two files.
+#
+# Not GTK: Linux has no prebuilt Skia and no script to build one yet, and a
+# host that cannot link the archives has nothing to contribute. Said here
+# rather than left to fail in the link, which is how the GTK binary first
+# found out it was being handed Apple's.
+if(APPLE)
+  set(BASALT_SKIA_HOST APPKIT)
+elseif(WIN32)
+  set(BASALT_SKIA_HOST WIN32)
+else()
+  message(STATUS "basalt-skia: skipped, no prebuilt Skia for this platform")
   return()
 endif()
+
 if(BASALT_SKIA_DIR STREQUAL "" OR BASALT_SKIA_LIBS STREQUAL "")
-  message(STATUS
-    "basalt-skia: skipped, no @shopify/react-native-skia and "
-    "react-native-skia-apple-macos in the app's node_modules")
+  if(WIN32)
+    message(STATUS
+      "basalt-skia: skipped, no react-native-skia in the app's node_modules "
+      "or no prebuilt Skia. Nobody publishes one for Windows: "
+      "scripts/build_skia_windows.sh builds it, and this looks in "
+      "%USERPROFILE%/skia-windows-graphite or -DBASALT_SKIA_LIBS=<dir>.")
+  else()
+    message(STATUS
+      "basalt-skia: skipped, no @shopify/react-native-skia and "
+      "react-native-skia-apple-macos in the app's node_modules")
+  endif()
   return()
 endif()
 
@@ -112,16 +168,44 @@ message(STATUS "basalt-skia: Skia from ${BASALT_SKIA_DIR}")
 # fix, and core's cmake/Skia.cmake records the same thing from the same
 # symbol. It only surfaced once SkottieUtils.cpp was compiled: before that
 # nothing referenced skjson and any order linked.
-set(BASALT_SKIA_SLICE macos-arm64_x86_64)
-foreach(library libskottie libsvg libskparagraph libsksg libskshaper
-                libskunicode_libgrapheme libskunicode_core libskia)
-  set(archive
-      ${BASALT_SKIA_LIBS}/libs/${library}.xcframework/${BASALT_SKIA_SLICE}/${library}.a)
-  if(NOT EXISTS ${archive})
-    message(FATAL_ERROR "basalt-skia: ${archive} is missing; reinstall react-native-skia-apple-macos")
-  endif()
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES ${archive})
-endforeach()
+if(APPLE)
+  set(BASALT_SKIA_SLICE macos-arm64_x86_64)
+  foreach(library libskottie libsvg libskparagraph libsksg libskshaper
+                  libskunicode_libgrapheme libskunicode_core libskia)
+    set(archive
+        ${BASALT_SKIA_LIBS}/libs/${library}.xcframework/${BASALT_SKIA_SLICE}/${library}.a)
+    if(NOT EXISTS ${archive})
+      message(FATAL_ERROR "basalt-skia: ${archive} is missing; reinstall react-native-skia-apple-macos")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES ${archive})
+  endforeach()
+else()
+  # The same list in the same order, as loose .lib files rather than
+  # xcframeworks. A source build emits them separately where the Apple
+  # binary package bundles each one; the order argument above applies
+  # unchanged, and skia.lib is still last.
+  foreach(library skottie svg skparagraph sksg skshaper
+                  skunicode_libgrapheme skunicode_core skia)
+    set(archive ${BASALT_SKIA_LIBS}/${library}.lib)
+    if(NOT EXISTS ${archive})
+      message(FATAL_ERROR
+        "basalt-skia: ${archive} is missing. scripts/build_skia_windows.sh "
+        "builds these; if it ran, check BASALT_SKIA_LIBS points at its output.")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_LINK_LIBRARIES ${archive})
+  endforeach()
+  # And the third-party archives beside them, which the Apple xcframeworks
+  # carry inside. Globbed rather than listed because which ones a build emits
+  # depends on the GN args it was built with -- the same reason the build
+  # script copies them if present rather than demanding each one.
+  foreach(extra harfbuzz libpng libjpeg libwebp libwebp_sse41 zlib expat wuffs
+                libgrapheme skcms)
+    if(EXISTS ${BASALT_SKIA_LIBS}/${extra}.lib)
+      set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_LINK_LIBRARIES
+                   ${BASALT_SKIA_LIBS}/${extra}.lib)
+    endif()
+  endforeach()
+endif()
 
 # What Skia's own headers are included as -- `include/core/SkSurface.h` --
 # which is why the directory above them is on the path rather than the
@@ -132,24 +216,101 @@ endforeach()
 # `__VA_ARGS__`, which is a GNU extension and an error here. Somebody else's
 # headers are not this project's to keep warning-clean, which is the same
 # reason React Native's are behind `-isystem`.
+# Upstream's, unless the Windows arm below rewrites it.
+set(BASALT_SKIA_SKOTTIE_UTILS
+    ${BASALT_SKIA_DIR}/cpp/api/third_party/SkottieUtils.cpp)
+
+# --- the stubs that only Windows trips over ------------------------------
+#
+# api/third_party/SkottieUtils.h defines six of skottie::PropertyObserver's
+# virtuals inline, as no-ops. They are there because the Skia upstream ships
+# does not carry SkottieProperty.obj, so without them the api layer would not
+# link. A Skia built from source does carry it, and then there are two
+# definitions of each:
+#
+#     lld-link: error: duplicate symbol:
+#       public: virtual void __cdecl skottie::PropertyObserver::onColorProperty(...)
+#     >>> defined at cpp/api/third_party/SkottieUtils.h:31
+#     >>> defined at skottie.lib(skottie.SkottieProperty.obj)
+#
+# Only here, and that is the interesting part: the stubs are `inline`, so
+# ELF and Mach-O let the real definition win and nobody notices. COFF calls
+# it a duplicate and stops. So this is a Windows-only symptom of something
+# that is not Windows-specific at all, and the fix belongs upstream -- the
+# stubs want a guard, or deleting now that Skia exports them.
+#
+# Until then the header is rewritten into the build tree with the six
+# definitions removed, and the directory holding it goes on the include path
+# ahead of the package's own. Rewritten rather than forked: a copy of
+# somebody else's header in this repository would go stale silently, and the
+# count check below turns a version that moved into a configure error that
+# names the file.
+#
+# The .cpp is copied beside it because it includes its header as a sibling,
+# `#include "SkottieUtils.h"`, which resolves next to itself before any -I
+# and so would reach around the rewrite and emit the stubs anyway.
+if(WIN32)
+  set(BASALT_SKIA_SHIM ${CMAKE_CURRENT_BINARY_DIR}/skia-shim/api/third_party)
+  file(MAKE_DIRECTORY ${BASALT_SKIA_SHIM})
+  set(BASALT_SKIA_SKOTTIE_H ${BASALT_SKIA_DIR}/cpp/api/third_party/SkottieUtils.h)
+  file(READ ${BASALT_SKIA_SKOTTIE_H} BASALT_SKIA_SKOTTIE_SOURCE)
+  # No whitespace classes in the pattern: the parameter lists wrap, and
+  # `[^;{}]` crosses the newlines on its own while being unable to run past
+  # the end of a definition, so each match is exactly one stub.
+  set(BASALT_SKIA_STUB_PATTERN
+      "inline void[^;{}]*PropertyObserver::[^;{}]*{}")
+  string(REGEX MATCHALL "${BASALT_SKIA_STUB_PATTERN}"
+         BASALT_SKIA_STUBS "${BASALT_SKIA_SKOTTIE_SOURCE}")
+  list(LENGTH BASALT_SKIA_STUBS BASALT_SKIA_STUB_COUNT)
+  if(NOT BASALT_SKIA_STUB_COUNT EQUAL 6)
+    message(FATAL_ERROR
+      "basalt-skia: expected 6 PropertyObserver stubs in "
+      "${BASALT_SKIA_SKOTTIE_H} and found ${BASALT_SKIA_STUB_COUNT}. "
+      "react-native-skia changed that header, so the rewrite this build "
+      "does for Windows needs looking at rather than guessing.")
+  endif()
+  string(REGEX REPLACE "${BASALT_SKIA_STUB_PATTERN}"
+         "" BASALT_SKIA_SKOTTIE_PATCHED "${BASALT_SKIA_SKOTTIE_SOURCE}")
+  file(GENERATE OUTPUT ${BASALT_SKIA_SHIM}/SkottieUtils.h
+       CONTENT "${BASALT_SKIA_SKOTTIE_PATCHED}")
+  configure_file(${BASALT_SKIA_DIR}/cpp/api/third_party/SkottieUtils.cpp
+                 ${BASALT_SKIA_SHIM}/SkottieUtils.cpp COPYONLY)
+  set(BASALT_SKIA_SHIM_ROOT ${CMAKE_CURRENT_BINARY_DIR}/skia-shim)
+  set(BASALT_SKIA_SKOTTIE_UTILS ${BASALT_SKIA_SHIM}/SkottieUtils.cpp)
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
+               ${BASALT_SKIA_SHIM_ROOT})
+endif()
+
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
   ${BASALT_SKIA_DIR}/cpp/skia)
 set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_INCLUDES
-  ${CMAKE_CURRENT_LIST_DIR}
+  ${CMAKE_CURRENT_LIST_DIR})
+if(APPLE)
   # The canvas's own header, which the AppKit half and its tests include by
   # name. A directory of its own because the file in it is Objective-C++ and
   # everything beside this CMakeLists is portable.
-  ${CMAKE_CURRENT_LIST_DIR}/appkit)
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_INCLUDES
+    ${CMAKE_CURRENT_LIST_DIR}/appkit)
+endif()
 
-# The frameworks Skia's Apple backend calls into. Metal is for the GPU surface
-# a `<Canvas>` will need; the rest are the CPU path, text and colour.
-set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
-  "-framework Metal"
-  "-framework MetalKit"
-  "-framework QuartzCore"
-  "-framework CoreText"
-  "-framework CoreGraphics"
-  "-framework CoreServices")
+# What Skia's backend for this platform calls into.
+if(APPLE)
+  # Metal is for the GPU surface a `<Canvas>` will need; the rest are the CPU
+  # path, text and colour.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
+    "-framework Metal"
+    "-framework MetalKit"
+    "-framework QuartzCore"
+    "-framework CoreText"
+    "-framework CoreGraphics"
+    "-framework CoreServices")
+else()
+  # DirectWrite and WIC for text and images, which Skia's Windows backend
+  # uses the same way the Apple one uses CoreText and CoreGraphics.
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_LINK_LIBRARIES
+    dwrite.lib usp10.lib windowscodecs.lib ole32.lib oleaut32.lib user32.lib
+    gdi32.lib advapi32.lib)
+endif()
 
 # The platform context: what Skia asks a platform for, answered by this one.
 #
@@ -167,7 +328,7 @@ set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
 # cannot see it -- it has no Skia installed, so this package contributes
 # nothing there -- and the target built by hand while writing this was
 # basalt_appkit_tests, which links the archives.
-set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_${BASALT_SKIA_HOST}_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/BasaltSkPlatformContext.cpp)
 
 # Skia's own C++, which this platform compiles rather than vendors: the
@@ -177,6 +338,39 @@ set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
   ${BASALT_SKIA_DIR}/cpp/rnskia
   ${BASALT_SKIA_DIR}/cpp)
 
+# The one thing upstream has no Windows answer for, and it is a constant.
+#
+# DawnUtils::getMatchedAdapter picks the backend to ask Dawn for, and names
+# it in a two-branch conditional with no else:
+#
+#     #ifdef __APPLE__
+#       constexpr auto kDefaultBackendType = wgpu::BackendType::Metal;
+#     #elif __ANDROID__
+#       constexpr auto kDefaultBackendType = wgpu::BackendType::Vulkan;
+#     #endif
+#
+# so on Windows the name is simply never declared and both uses below it are
+# `error: use of undeclared identifier`. That is the whole Windows delta in
+# the eleven sources this package compiles: everything else conditioned on
+# __APPLE__ or __ANDROID__ in these headers is thread naming and scheduling
+# priority, which correctly does nothing here.
+#
+# A macro rather than a patch. The declarations are inside branches that do
+# not fire here, so this substitutes at the two use sites and nowhere else,
+# and it needs no cooperation from the app -- which matters because bun
+# allows one patch file per package and an app may already be spending it
+# (kino is). If upstream grows an #else, this turns that declaration into
+# nonsense and the build says so loudly rather than quietly picking a
+# backend nobody chose.
+#
+# The real fix is a `#elif defined(_WIN32)` branch upstream, next to the one
+# MakeWGPUSurface needs. MakeWGPUSurface is not patched here because this
+# host never calls it: a Win32 canvas presents into the Direct2D walk and
+# creates no wgpu::Surface at all. See backlog/compatibility.md.
+if(WIN32)
+  set(BASALT_SKIA_BACKEND_DEFINE
+      kDefaultBackendType=wgpu::BackendType::D3D12)
+endif()
 # --- Skia's own C++, compiled ---------------------------------------------
 #
 # The headers above are enough to *use* Skia. `RNSkManager` -- the thing a
@@ -194,13 +388,17 @@ if(BASALT_SKIA_DAWN STREQUAL "")
     "compiled -- the headers and the library are still available")
 else()
   enable_language(CXX)
-  # One of the sources below is Objective-C++. Asked for here rather than
-  # assumed, for the reason core's cmake/Skia.cmake gives: this runs before
-  # the AppKit package that enables it for its own sources, and an app
-  # configuring a different top-level CMakeLists failed with `Missing variable
-  # is: CMAKE_OBJCXX_COMPILE_OBJECT`, which names the language and not the
-  # file. Idempotent, so asking twice costs nothing.
-  enable_language(OBJCXX)
+  if(APPLE)
+    # One of the sources below is Objective-C++. Asked for here rather than
+    # assumed, for the reason core's cmake/Skia.cmake gives: this runs before
+    # the AppKit package that enables it for its own sources, and an app
+    # configuring a different top-level CMakeLists failed with `Missing
+    # variable is: CMAKE_OBJCXX_COMPILE_OBJECT`, which names the language and
+    # not the file. Idempotent, so asking twice costs nothing. Guarded
+    # because there is no Objective-C++ compiler on Windows, and asking for a
+    # language the toolchain lacks is a hard configure error.
+    enable_language(OBJCXX)
+  endif()
 
   # Dawn is where 3.x draws, and it is not optional there: `api/JsiSkApi.h`
   # reaches `RNDawnContext.h`, so the api layer does not compile without
@@ -216,7 +414,7 @@ else()
       ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkManager.cpp
       ${BASALT_SKIA_DIR}/cpp/rnskia/RNSkWindowSurface.cpp
       ${BASALT_SKIA_DIR}/cpp/api/third_party/CSSColorParser.cpp
-      ${BASALT_SKIA_DIR}/cpp/api/third_party/SkottieUtils.cpp
+      ${BASALT_SKIA_SKOTTIE_UTILS}
       ${BASALT_SKIA_DIR}/cpp/api/third_party/base64.cpp
       # Skia's JSON reader, which Skottie parses Lottie files with. Source
       # rather than an archive: Android links a libjsonreader.a and no such
@@ -224,14 +422,21 @@ else()
       # toString` undefined from libskottie -- a missing definition in
       # somebody else's archive, which reads like a link-order problem and is
       # a file nobody compiled.
-      ${BASALT_SKIA_DIR}/cpp/skia/modules/jsonreader/SkJSONReader.cpp
-      # The one Apple source 3.x still has that this platform needs, and it is
-      # free: CoreGraphics, Foundation and QuartzCore, no React. `apple/` is
-      # eleven files now where 2.x had fourteen, and the other ten are the
-      # module, the view and the screenshot service -- all of them this
-      # platform's own to write. `RNSkWindowSurface.cpp` calls into this one,
-      # so leaving it out is `RNSkia::applyCAMetalLayerColorSpace` undefined.
-      ${BASALT_SKIA_DIR}/apple/MetalLayerColorSpace.mm)
+      ${BASALT_SKIA_DIR}/cpp/skia/modules/jsonreader/SkJSONReader.cpp)
+  if(APPLE)
+    # The one Apple source 3.x still has that this platform needs, and it is
+    # free: CoreGraphics, Foundation and QuartzCore, no React. `apple/` is
+    # eleven files now where 2.x had fourteen, and the other ten are the
+    # module, the view and the screenshot service -- all of them this
+    # platform's own to write. `RNSkWindowSurface.cpp` calls into this one,
+    # so leaving it out is `RNSkia::applyCAMetalLayerColorSpace` undefined.
+    #
+    # Apple-only because every call to it is behind `#ifdef __APPLE__`, so
+    # nowhere else is the symbol referenced -- which is also why upstream's
+    # RNSkWindowSurface.cpp compiles here unchanged.
+    list(APPEND BASALT_SKIA_RNSKIA_SOURCES
+         ${BASALT_SKIA_DIR}/apple/MetalLayerColorSpace.mm)
+  endif()
   foreach(source ${BASALT_SKIA_RNSKIA_SOURCES})
     if(NOT EXISTS ${source})
       message(FATAL_ERROR
@@ -247,9 +452,26 @@ else()
     CXX_STANDARD_REQUIRED ON
     POSITION_INDEPENDENT_CODE ON)
   # Somebody else's sources, so nothing of this project's warning set applies
-  # and `-w` says so once rather than a suppression per diagnostic.
-  target_compile_options(basalt_skia_rnskia PRIVATE -w)
+  # and one flag says so rather than a suppression per diagnostic. Spelt both
+  # ways because the Windows host drives the MSVC-style driver, which reads
+  # `-w` as the name of an input file.
+  if(MSVC)
+    target_compile_options(basalt_skia_rnskia PRIVATE /w)
+  else()
+    target_compile_options(basalt_skia_rnskia PRIVATE -w)
+  endif()
+  if(BASALT_SKIA_BACKEND_DEFINE)
+    target_compile_definitions(basalt_skia_rnskia PRIVATE
+                               ${BASALT_SKIA_BACKEND_DEFINE})
+  endif()
+  if(APPLE)
+    # For MetalLayerColorSpaceUtils.h, which the .mm beside it includes by
+    # name.
+    target_include_directories(basalt_skia_rnskia SYSTEM PRIVATE
+                               ${BASALT_SKIA_DIR}/apple)
+  endif()
   target_include_directories(basalt_skia_rnskia SYSTEM PRIVATE
+    ${BASALT_SKIA_SHIM_ROOT}
     ${BASALT_SKIA_DIR}/cpp
     ${BASALT_SKIA_DIR}/cpp/api
     ${BASALT_SKIA_DIR}/cpp/jsi
@@ -260,9 +482,6 @@ else()
     # directory *above* both is what goes on the path.
     ${BASALT_SKIA_DIR}/cpp/skia
     ${BASALT_SKIA_DIR}/cpp/skia/modules
-    # For MetalLayerColorSpaceUtils.h, which the .mm beside it includes by
-    # name.
-    ${BASALT_SKIA_DIR}/apple
     ${BASALT_SKIA_DAWN}/include
     ${RN_DIR}/ReactCommon
     ${RN_DIR}/ReactCommon/jsi
@@ -270,21 +489,40 @@ else()
     ${RN_DIR}/ReactCommon/cxxreact
     ${RN_DIR}/ReactCommon/runtimeexecutor)
 
-  # The objects, and Dawn under them. A universal slice like Skia's, so there
-  # is no architecture to pick.
-  set(BASALT_SKIA_DAWN_ARCHIVE
-      ${BASALT_SKIA_DAWN}/libs/apple/libwebgpu_dawn.xcframework/${BASALT_SKIA_SLICE}/libwebgpu_dawn.a)
-  if(NOT EXISTS ${BASALT_SKIA_DAWN_ARCHIVE})
-    message(FATAL_ERROR
-      "basalt-skia: ${BASALT_SKIA_DAWN_ARCHIVE} is missing; reinstall "
-      "react-native-webgpu-dawn")
+  # The objects, and Dawn under them.
+  if(APPLE)
+    # A universal slice like Skia's, so there is no architecture to pick.
+    set(BASALT_SKIA_DAWN_ARCHIVE
+        ${BASALT_SKIA_DAWN}/libs/apple/libwebgpu_dawn.xcframework/${BASALT_SKIA_SLICE}/libwebgpu_dawn.a)
+    if(NOT EXISTS ${BASALT_SKIA_DAWN_ARCHIVE})
+      message(FATAL_ERROR
+        "basalt-skia: ${BASALT_SKIA_DAWN_ARCHIVE} is missing; reinstall "
+        "react-native-webgpu-dawn")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
+      basalt_skia_rnskia
+      ${BASALT_SKIA_DAWN_ARCHIVE}
+      # Dawn's Metal backend, and IOSurface for the textures it shares.
+      "-framework IOSurface"
+      "-framework IOKit")
+  else()
+    set(BASALT_SKIA_DAWN_ARCHIVE ${BASALT_SKIA_DAWN_LIB}/webgpu_dawn.lib)
+    if(NOT EXISTS ${BASALT_SKIA_DAWN_ARCHIVE})
+      message(FATAL_ERROR
+        "basalt-skia: ${BASALT_SKIA_DAWN_ARCHIVE} is missing. "
+        "scripts/build_skia_windows.sh builds it beside Skia; point "
+        "-DBASALT_SKIA_DAWN_LIB=<dir> at it if it lives elsewhere.")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_LINK_LIBRARIES
+      basalt_skia_rnskia
+      ${BASALT_SKIA_DAWN_ARCHIVE}
+      d3d12.lib dxgi.lib dxguid.lib
+      # CompareObjectHandles, which Dawn's D3D12 shared-fence code calls. A
+      # KernelBase export with no entry in kernel32.lib, so the SDK offers it
+      # through onecore and nowhere more obvious; without this it is the one
+      # unresolved external in a 64MB archive.
+      onecore.lib)
   endif()
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_LINK_LIBRARIES
-    basalt_skia_rnskia
-    ${BASALT_SKIA_DAWN_ARCHIVE}
-    # Dawn's Metal backend, and IOSurface for the textures it shares.
-    "-framework IOSurface"
-    "-framework IOKit")
   # The platform context includes `RNDawnContext.h` once Dawn is here, so
   # core's half of the include path grows with it.
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES
@@ -304,25 +542,39 @@ else()
   # `makeSkiaTurboModule` and find no definition. The AppKit host registers it
   # by name instead, beside the 2.x module and under the same kind of guard --
   # which is how 2.x has always done it.
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
+  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_${BASALT_SKIA_HOST}_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/BasaltSkiaModule.cpp)
   # The canvas, which is the only AppKit-specific file this package has: a
   # CAMetalLayer and its lifecycle. Contributed to the host's sources rather
   # than core's, because it includes RnAppKitView.h and compiles inside the
   # AppKit target, and only here because the prebuilt Dawn is Apple's.
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/appkit/BasaltSkiaCanvasAppKit.mm)
-  set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_TESTS
-    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm
-    ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_canvas.mm)
+  if(APPLE)
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_SOURCES
+      ${CMAKE_CURRENT_LIST_DIR}/appkit/BasaltSkiaCanvasAppKit.mm)
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_TESTS
+      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_window_surface.mm
+      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_canvas.mm)
+  else()
+    # No canvas here yet, so no window-surface or canvas tests: this host has
+    # the module and everything under it, and nothing that presents. Win32
+    # will not present through a swapchain at all -- see
+    # backlog/compatibility.md -- so the file that lands here is basalt's own
+    # RNSkWindowSurface.cpp rather than a canvas beside upstream's.
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_WIN32_TESTS
+      ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_module.cpp)
+  endif()
 
   # Said out loud rather than probed for. `__has_include(<webgpu/webgpu_cpp.h>)`
   # answers the same question and three files were asking it, which is three
   # places to be wrong about what the include path happens to carry. One
   # definition, from the configure that made the decision.
   set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_DEFINITIONS
-    BASALT_HAS_SKIA_GRAPHITE=1)
+    BASALT_HAS_SKIA_GRAPHITE=1
+    # And the backend constant, for the host's own sources: the platform
+    # context and the module both include RNDawnContext.h and so reach
+    # RNDawnUtils.h the same way the object library does.
+    ${BASALT_SKIA_BACKEND_DEFINE})
 
   message(STATUS "basalt-skia: Dawn from ${BASALT_SKIA_DAWN}")
 endif()
@@ -330,10 +582,10 @@ endif()
 # Proof that the above is true, in this project's own AppKit suite rather than
 # in an app: Skia's headers compile here and its prebuilt library links and
 # draws. Everything else this capability will do stands on that.
-# BASALT_PACKAGE_APPKIT_TESTS rather than BASALT_PACKAGE_TESTS, which every
-# host's suite takes: two of these are Objective-C++ and all of them link
-# Skia, so the GTK suite compiling them failed on an `AppKitSkiaPeer.h` it has
-# no path to -- and would have failed on the archives even if it had.
-set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_APPKIT_TESTS
+# The host's own test property rather than BASALT_PACKAGE_TESTS, which every
+# host's suite takes: all of these link Skia, so the GTK suite compiling them
+# failed on an `AppKitSkiaPeer.h` it has no path to -- and would have failed
+# on the archives even if it had.
+set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_${BASALT_SKIA_HOST}_TESTS
   ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia.cpp
   ${CMAKE_CURRENT_LIST_DIR}/tests/test_skia_platform_context.cpp)

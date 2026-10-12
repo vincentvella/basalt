@@ -596,7 +596,9 @@ echo
 note "Skia:  $SKIA_DEST"
 note "Dawn:  $DAWN_DEST"
 echo
-note "These do not make anything render on their own. basalt-skia's CMakeLists"
-note "is Apple-only today -- xcframework paths throughout -- and MakeWGPUSurface"
-note "in RNDawnContext.h is a two-branch #ifdef that gives Windows the Android"
-note "one. A Win32 RNSkSurface over SurfaceSourceWindowsHWND is the other half."
+note "basalt-skia looks here by default, so a configure on this machine picks"
+note "these up with nothing passed. What they do not yet do is render: the"
+note "module, the platform context and the whole portable half of"
+note "react-native-skia compile and link against them, and a <Canvas> still"
+note "needs this host's own RNSkWindowSurface.cpp -- a texture presented into"
+note "the Direct2D walk rather than a swapchain. See backlog/compatibility.md."
