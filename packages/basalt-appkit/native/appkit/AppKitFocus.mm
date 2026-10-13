@@ -237,6 +237,18 @@ void collectFocusStops(RnAppKitView *view, NSMutableArray<RnAppKitView *> *stops
 }
 
 // What AppKit should be asked to make first responder for a stop.
+// The peer, even when the peer is a scroll view -- which a multiline field's
+// is, since `scrollEnabled` is React Native's default. Measured rather than
+// assumed, because the obvious reading is that this needs the text view
+// instead: `NSScrollView` answers YES to `acceptsFirstResponder`,
+// `makeFirstResponder:` on one succeeds, and AppKit hands first responder to
+// its document view -- so the responder ends up being the text view by
+// AppKit's own doing. Checked on macOS 26 with a window, a scroller and a text
+// view, printing the class of the resulting responder.
+//
+// Said here because asking the seam for the editor instead would read as
+// load-bearing and is not: removing it again changes no behaviour, which is
+// the one thing a test cannot tell anybody afterwards.
 NSResponder *responderForStop(RnAppKitView *view) {
   return view.rnEditable != nil ? (NSResponder *)view.rnEditable : (NSResponder *)view;
 }

@@ -1833,7 +1833,10 @@ RnView *rn_view_new_with_role(int tag, GtkAccessibleRole role) {
   return self;
 }
 
-GtkWidget *rn_view_set_editable(RnView *self, gboolean editable, gboolean multiline) {
+GtkWidget *rn_view_set_editable(RnView *self,
+                                gboolean editable,
+                                gboolean multiline,
+                                gboolean scroll_enabled) {
   g_return_val_if_fail(RN_IS_VIEW(self), nullptr);
 
   if (!editable) {
@@ -1847,9 +1850,16 @@ GtkWidget *rn_view_set_editable(RnView *self, gboolean editable, gboolean multil
   // `multiline` is not a property either peer has: a field that changes between
   // the two is a different widget, so the old one goes. React Native does this
   // to `secureTextEntry` on AppKit for the same reason.
+  // `scrollEnabled` is part of the same decision: a multiline field that
+  // scrolls is a GtkScrolledWindow around the text view and one that does not
+  // is the bare text view, and neither becomes the other under a live widget.
+  // Compared only where the prop means something, so a single-line field that
+  // sets it is not rebuilt for nothing.
+  const gboolean wants_scroller = multiline && scroll_enabled ? TRUE : FALSE;
   char *carried = nullptr;
   if (self->editable != nullptr &&
-      rn_peer_is_multiline(self->editable) != (multiline ? TRUE : FALSE)) {
+      (rn_peer_is_multiline(self->editable) != (multiline ? TRUE : FALSE) ||
+       rn_peer_scrolls(self->editable) != wants_scroller)) {
     // The contents come across. Nothing asked for the field to be cleared --
     // React changed one prop -- and the controlled loop will not put the text
     // back by itself, because from its side the `text` prop did not change.
@@ -1861,13 +1871,20 @@ GtkWidget *rn_view_set_editable(RnView *self, gboolean editable, gboolean multil
   }
 
   if (self->editable == nullptr) {
-    self->editable = rn_peer_new(multiline);
+    self->editable = rn_peer_new(multiline, scroll_enabled);
     if (carried != nullptr) {
       rn_peer_set_text(self->editable, carried);
     }
     // No frame of its own: the RnView draws the background and border from
     // React Native's props, and a second one underneath would double them.
+    //
+    // On the editor as well as on the peer, because for a scrolling field they
+    // are two widgets and both paint: the class is what makes a GtkTextView's
+    // own themed background transparent, and a scrolled window draws one too.
     gtk_widget_add_css_class(self->editable, "rn-text-input");
+    if (GtkWidget *editor = rn_peer_editor(self->editable); editor != self->editable) {
+      gtk_widget_add_css_class(editor, "rn-text-input");
+    }
     gtk_widget_set_parent(self->editable, GTK_WIDGET(self));
   }
   g_free(carried);
@@ -3887,7 +3904,7 @@ static void rn_view_describe_into(RnView *self, GString *out, int depth) {
     g_string_append_printf(out, " editable=\"%s\"", escaped);
     g_free(owned);
     g_free(escaped);
-    if (gtk_widget_has_focus(self->editable)) {
+    if (gtk_widget_has_focus(rn_peer_editor(self->editable))) {
       g_string_append(out, " focused");
     }
   }

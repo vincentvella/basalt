@@ -18,6 +18,7 @@
 #include "EventRecorder.h"
 
 #import "AppKitDropTarget.h"
+#import "AppKitFocus.h"
 #import "AppKitMountingManager.h"
 
 #include "DragAndDrop.h"
@@ -112,10 +113,22 @@ RnAppKitView *mountField(basalt::AppKitMountingManager &manager,
   return manager.viewForTag(tag);
 }
 
-// Through the seam, because a multiline peer is an NSTextView and asking it
-// for NSTextField's properties does not compile.
+// Through the seam, because the two peers agree on almost nothing and asking
+// one for the other's properties does not compile.
 NSView *fieldOf(RnAppKitView *view) {
   return view.rnEditable;
+}
+
+// The text view inside a multiline peer.
+//
+// Not the peer itself: a field that scrolls -- React Native's default -- is an
+// NSScrollView with the text view as its document view, which is how AppKit
+// scrolls text. `RnPeerEditorView` is the seam's answer to "which view holds
+// the text", and a test that casts the peer instead is asserting an
+// arrangement rather than a behaviour. Several did, and this is where they
+// crashed when the arrangement changed.
+NSTextView *editorOf(RnAppKitView *view) {
+  return (NSTextView *)RnPeerEditorView(view.rnEditable);
 }
 
 // What a person typing does, as far as the manager is concerned: the field's
@@ -399,13 +412,254 @@ TEST(textinput_multiline_builds_a_text_view) {
     NSView *peer = fieldOf(view);
     EXPECT(peer != nil);
     EXPECT(RnPeerIsMultiline(peer));
-    EXPECT([peer isKindOfClass:[NSTextView class]]);
+    // An NSScrollView with the text view inside it, because the field scrolls
+    // by default: `scrollEnabled` is true unless an app says otherwise, and
+    // that is how AppKit scrolls text. The seam is what answers which view
+    // holds it, and the scrolling tests below are what prove it scrolls.
+    EXPECT([peer isKindOfClass:[NSScrollView class]]);
+    if (![peer isKindOfClass:[NSScrollView class]]) {
+      // EXPECT does not stop the test and the line below asks the peer for its
+      // document view: a host that built something else would crash here
+      // rather than fail, which is a worse way to find out. See docs/TESTING.md.
+      return;
+    }
+    EXPECT([RnPeerEditorView(peer) isKindOfClass:[NSTextView class]]);
+    EXPECT(((NSScrollView *)peer).documentView == RnPeerEditorView(peer));
+    // Neither draws a background, because the RnAppKitView behind them draws
+    // the one React Native asked for -- and a scroller that painted its own
+    // would hide it. The GTK twin of this is a pixel test, that host being the
+    // one that can rasterise a view without a window; here it is the two
+    // properties that decide the same thing.
+    EXPECT(!((NSScrollView *)peer).drawsBackground);
+    EXPECT(!((NSTextView *)RnPeerEditorView(peer)).drawsBackground);
 
     // And a plain field is still an NSTextField, which is the half that must
     // not have moved.
     RnAppKitView *single = mountField(manager, 61, folly::dynamic::object("text", "hello"));
     EXPECT(!RnPeerIsMultiline(fieldOf(single)));
     EXPECT([fieldOf(single) isKindOfClass:[NSTextField class]]);
+  }
+}
+
+// --- scrollEnabled -----------------------------------------------------------
+//
+// A multiline field scrolls, which until 2026-10-13 it did not: the peer was a
+// bare NSTextView that grew to fit its text, and the RnAppKitView behind it
+// clipped -- so the caret could walk off the bottom of the box with no way for
+// the user to follow. `scrollEnabled`, React Native's trait, is now what
+// decides between a scroller and that.
+//
+// The structure and the behaviour, because either alone would be satisfied by
+// something that does not work: a scroll view that cannot scroll, or a
+// `scrollRangeToVisible:` that moved nothing because there was no scroller to
+// walk up to.
+
+namespace {
+
+// Long enough to wrap well past the bottom of a 40pt field.
+NSString *const kManyLines = @"one two three four five six seven eight nine ten "
+                             @"eleven twelve thirteen fourteen fifteen sixteen "
+                             @"seventeen eighteen nineteen twenty twenty-one";
+
+} // namespace
+
+TEST(textinput_a_multiline_field_scrolls_to_its_caret) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 64, folly::dynamic::object("text", kManyLines.UTF8String)("multiline", true));
+
+    NSView *peer = fieldOf(view);
+    EXPECT([peer isKindOfClass:[NSScrollView class]]);
+    if (![peer isKindOfClass:[NSScrollView class]]) {
+      return;
+    }
+    NSScrollView *scroller = (NSScrollView *)peer;
+    NSTextView *editor = editorOf(view);
+    EXPECT(editor != nil);
+
+    // There is something to scroll: the text is taller than the box it is in.
+    // Without this the assertion below would pass by having nowhere to go.
+    [editor.layoutManager ensureLayoutForTextContainer:editor.textContainer];
+    EXPECT(editor.frame.size.height > scroller.contentSize.height);
+
+    // And asking to see the end moves the visible window down, which is what a
+    // caret leaving the bottom of the field does. This is the assertion that
+    // needs the scroller: `scrollRangeToVisible:` walks up to an enclosing
+    // scroll view, and against the bare text view this platform used to build
+    // it moved nothing.
+    EXPECT_EQ((int)scroller.documentVisibleRect.origin.y, 0);
+    [editor scrollRangeToVisible:NSMakeRange(editor.string.length, 0)];
+    EXPECT(scroller.documentVisibleRect.origin.y > 0);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// `scrollEnabled: false`, which is the bare text view every multiline field
+// used to be: it grows and the view behind it clips, so the text below the box
+// is not shown and not reachable. That is what the prop asks for, and what the
+// other two hosts do with it.
+TEST(textinput_a_multiline_field_that_refuses_to_scroll_has_no_scroller) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 65,
+                   folly::dynamic::object("text", kManyLines.UTF8String)("multiline", true)(
+                       "scrollEnabled", false));
+
+    NSView *peer = fieldOf(view);
+    EXPECT(peer != nil);
+    // Still a multiline field, the prop being about scrolling and nothing else.
+    EXPECT(RnPeerIsMultiline(peer));
+    EXPECT(![peer isKindOfClass:[NSScrollView class]]);
+    EXPECT([peer isKindOfClass:[NSTextView class]]);
+    EXPECT(RnPeerEditorView(peer) == peer);
+    // And it still holds the text, which is what makes this a display decision
+    // rather than a limit.
+    EXPECT([RnPeerText(peer) isEqualToString:kManyLines]);
+    // Nothing to scroll within: no enclosing scroller is the whole mechanism.
+    EXPECT(((NSTextView *)peer).enclosingScrollView == nil);
+
+    // And it stays inside its box, which is the half that was wrong when the
+    // scroller first went in beside it. A bare NSTextView resizes itself to
+    // fit its text and nothing above it clips -- React Native's `overflow`
+    // defaults to `visible` -- so the field drew three lines out of a one-line
+    // box and down the page behind it. Found by looking at the running app,
+    // after this suite, the GTK suite and the Windows one had all passed.
+    //
+    // 40 is the height mountField lays a field out at; the peer is placed
+    // inside the content inset, so at most that.
+    NSTextView *editor = (NSTextView *)peer;
+    EXPECT(!editor.isVerticallyResizable);
+    EXPECT(editor.frame.size.height <= 40);
+    // The text that does not fit is not laid out at all, which is what makes
+    // "not drawn" true rather than "drawn somewhere nobody looks".
+    [editor.layoutManager ensureLayoutForTextContainer:editor.textContainer];
+    const NSRect used = [editor.layoutManager usedRectForTextContainer:editor.textContainer];
+    EXPECT(used.size.height <= 40);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// The shape of the peer is a creation-time decision, like `multiline` and like
+// Windows' style bit, so a field that changes the prop is rebuilt -- and the
+// text comes across, which is correct for a controlled field and is the half a
+// rebuild can silently lose.
+TEST(textinput_changing_scroll_enabled_rebuilds_the_peer) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    const folly::dynamic scrolling =
+        folly::dynamic::object("text", "kept")("multiline", true);
+    RnAppKitView *view = mountField(manager, 66, scrolling);
+
+    NSView *before = fieldOf(view);
+    EXPECT([before isKindOfClass:[NSScrollView class]]);
+
+    ShadowViewMutationList update;
+    update.push_back(ShadowViewMutation::UpdateMutation(
+        makeTextInput(66, scrolling),
+        makeTextInput(66, folly::dynamic::object("text", "kept")("multiline", true)(
+                              "scrollEnabled", false)),
+        kSurfaceId));
+    apply(manager, std::move(update));
+
+    NSView *after = fieldOf(view);
+    EXPECT(after != before);
+    EXPECT(![after isKindOfClass:[NSScrollView class]]);
+    EXPECT([RnPeerText(after) isEqualToString:@"kept"]);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// A single-line field is unaffected: React Native documents the prop as
+// multiline-only, and a field that sets it there must not be rebuilt for
+// nothing -- nor lose the horizontal scroll that lets its caret leave the
+// right-hand edge.
+TEST(textinput_a_single_line_field_ignores_the_scroll_prop) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 67, folly::dynamic::object("text", "hello")("scrollEnabled", false));
+
+    NSView *peer = fieldOf(view);
+    EXPECT([peer isKindOfClass:[NSTextField class]]);
+    EXPECT(!RnPeerIsMultiline(peer));
+    EXPECT([RnPeerText(peer) isEqualToString:@"hello"]);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// Tab has to land on the thing that edits, and for a scrolling field that is
+// no longer the peer: an NSScrollView does not edit text and does not even
+// accept first responder, so focusing one focuses nothing and the field looks
+// skipped. `RnPeerEditorView` is what the focus chain asks, and this is the
+// test that noticed -- the whole suite passed with the scroll view as the
+// target, which is how close that went unseen.
+TEST(textinput_tab_focuses_the_text_view_inside_a_scrolling_field) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view =
+        mountField(manager, 70, folly::dynamic::object("text", "hello")("multiline", true));
+    RnAppKitView *root = manager.viewForTag(kSurfaceId);
+
+    // A real window, because first responder belongs to one.
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 400)
+                                                   styleMask:NSWindowStyleMaskBorderless
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.contentView = root;
+
+    basalt::AppKitFocusManager focus(&manager, root);
+    // Tab moved focus at all, which is the half the scroll view fails: it does
+    // not accept first responder, so `makeFirstResponder:` answers NO and this
+    // returns false.
+    EXPECT(focus.moveFocus(true));
+    // And it landed on the text view rather than the scroller around it. Not
+    // `focusedTag`, which is deliberately 0 here: a <TextInput> holds focus
+    // through its peer and never reports a tag to the focus manager, as
+    // AppKitFocus.mm says where it asks the responder instead.
+    EXPECT(window.firstResponder == editorOf(view));
+    EXPECT(window.firstResponder != fieldOf(view));
+
+    window.contentView = nil;
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// A field's accessibility label goes on the thing that edits, which the
+// mounting manager moves off the wrapper for the reason it explains there: two
+// nested elements for one control is a worse tree than one, and VoiceOver reads
+// the inner one.
+//
+// For a scrolling multiline field that thing is the text view, not the scroll
+// view around it -- a label on an AXScrollArea is a label on the furniture, and
+// the element a screen reader lands on carries nothing. Untested until the
+// scroller arrived, and it stayed green through a sabotage that put the label
+// back on the peer, which is why it is here.
+TEST(textinput_a_label_lands_on_the_editor_and_not_the_scroller) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 71,
+        folly::dynamic::object("multiline", true)("accessibilityLabel", "Notes"));
+
+    EXPECT([editorOf(view).accessibilityLabel isEqualToString:@"Notes"]);
+    // And not on the scroller, nor left on the wrapper.
+    EXPECT(fieldOf(view).accessibilityLabel == nil);
+    EXPECT(view.accessibilityLabel == nil);
+
+    // The single-line half, which has no scroller and never had this problem:
+    // the field itself is the editor.
+    RnAppKitView *single = mountField(
+        manager, 72, folly::dynamic::object("accessibilityLabel", "Name"));
+    EXPECT([editorOf(single).accessibilityLabel isEqualToString:@"Name"]);
+    EXPECT(editorOf(single) == fieldOf(single));
+
+    manager.destroySurfaceRoot(kSurfaceId);
   }
 }
 
@@ -785,7 +1039,7 @@ TEST(textinput_spell_check_and_autocorrect_are_asked_for_on_a_multiline_field) {
     EXPECT(RnPeerSpellCheck(field) == RnTextCheckingOn);
     EXPECT(RnPeerAutoCorrect(field) == RnTextCheckingOn);
 
-    NSTextView *editor = (NSTextView *)field;
+    NSTextView *editor = editorOf(view);
     // No gate on this one.
     EXPECT(editor.isAutomaticSpellingCorrectionEnabled);
     if (continuousSpellCheckingAllowed()) {
@@ -804,7 +1058,7 @@ TEST(textinput_spell_check_and_autocorrect_can_be_refused) {
                                     folly::dynamic::object("multiline", true)(
                                         "spellCheck", false)("autoCorrect", false));
 
-    NSTextView *editor = (NSTextView *)fieldOf(view);
+    NSTextView *editor = editorOf(view);
     EXPECT(RnPeerSpellCheck(editor) == RnTextCheckingOff);
     EXPECT(RnPeerAutoCorrect(editor) == RnTextCheckingOff);
     // Refusing always sticks: the user setting above can only take the feature
@@ -830,7 +1084,7 @@ TEST(textinput_an_unset_checking_flag_leaves_appkits_own_answer) {
     const BOOL correctByDefault = bare.isAutomaticSpellingCorrectionEnabled;
 
     RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("multiline", true));
-    NSTextView *editor = (NSTextView *)fieldOf(view);
+    NSTextView *editor = editorOf(view);
     EXPECT(RnPeerSpellCheck(editor) == RnTextCheckingUnset);
     EXPECT(RnPeerAutoCorrect(editor) == RnTextCheckingUnset);
     EXPECT_EQ(editor.isContinuousSpellCheckingEnabled, spellByDefault);
@@ -1080,7 +1334,7 @@ TEST(textinput_a_multiline_field_takes_the_colours_directly) {
     NSView *field = fieldOf(view);
     EXPECT(RnPeerIsMultiline(field));
 
-    NSTextView *editor = (NSTextView *)field;
+    NSTextView *editor = editorOf(view);
     NSColor *caret =
         [editor.insertionPointColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
     EXPECT(caret != nil && caret.blueComponent > 0.9);
@@ -1315,9 +1569,11 @@ TEST(textinput_context_menu_hidden_refuses_to_build_one_on_a_multiline_field) {
         manager, 10, folly::dynamic::object("multiline", true)("contextMenuHidden", true));
     NSView *area = fieldOf(view);
     EXPECT(RnPeerContextMenuHidden(area));
-    // The behaviour rather than the flag: nil is how a view tells AppKit it has
-    // no context menu.
-    EXPECT([area menuForEvent:secondaryClick()] == nil);
+    // Asked of the text view and not of the peer, which for a scrolling field
+    // is the scroll view around it: a scroll view has no text menu to refuse,
+    // so this assertion passed against it whatever the prop said. It is also
+    // the view AppKit asks, the right-click landing on the document view.
+    EXPECT([editorOf(view) menuForEvent:secondaryClick()] == nil);
 
     manager.destroySurfaceRoot(kSurfaceId);
   }
@@ -1329,7 +1585,7 @@ TEST(textinput_a_multiline_field_that_did_not_ask_keeps_its_context_menu) {
     RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("multiline", true));
     NSView *area = fieldOf(view);
     EXPECT(!RnPeerContextMenuHidden(area));
-    EXPECT([area menuForEvent:secondaryClick()] != nil);
+    EXPECT([editorOf(view) menuForEvent:secondaryClick()] != nil);
 
     manager.destroySurfaceRoot(kSurfaceId);
   }

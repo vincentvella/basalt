@@ -133,7 +133,7 @@ static void ensure_peer_css(void) {
   g_object_unref(provider);
 }
 
-GtkWidget *rn_peer_new(gboolean multiline) {
+GtkWidget *rn_peer_new(gboolean multiline, gboolean scroll_enabled) {
   if (!multiline) {
     return gtk_text_new();
   }
@@ -154,15 +154,72 @@ GtkWidget *rn_peer_new(gboolean multiline) {
   gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(view), 0);
   gtk_text_view_set_left_margin(GTK_TEXT_VIEW(view), 0);
   gtk_text_view_set_right_margin(GTK_TEXT_VIEW(view), 0);
-  return view;
+
+  if (!scroll_enabled) {
+    // `scrollEnabled: false`, and the bare text view every multiline field
+    // used to be: it grows to fit its text and the RnView behind it clips, so
+    // the text below the box is not shown. That is what the prop asks for, and
+    // what the other two hosts do with it -- an `EDIT` without
+    // `ES_AUTOVSCROLL` on Windows, and no NSScrollView on AppKit.
+    return view;
+  }
+
+  // Scrolling, which is the default. A GtkScrolledWindow around the text view
+  // is how GTK scrolls one, and not a wrapper over something that would
+  // otherwise work: a GtkTextView is a GtkScrollable, and the adjustments it
+  // scrolls through come *from* its scrolled window. Without one it has none,
+  // so `gtk_text_view_scroll_to_mark` -- which is what follows a moving cursor
+  // -- moves nothing, and the caret walks off the bottom of the box with no
+  // way for anyone to follow it. That is what this platform did until now.
+  GtkWidget *scroller = gtk_scrolled_window_new();
+  // Vertical only: the text wraps, so there is nothing to scroll sideways to.
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroller), GTK_POLICY_NEVER,
+                                 GTK_POLICY_AUTOMATIC);
+  // `propagate-natural-height` is deliberately left alone, and that is worth a
+  // line because setting it looks like the thing that stops a field growing to
+  // fit its text. It is not, here: the RnView allocates the peer at the size
+  // Yoga resolved and never asks it what it would like, so only the *minimum*
+  // could matter and that does not change. Measured on a field of wrapped text
+  // in a 40px box: natural goes 46 -> 70 with the property on, and the minimum
+  // stays 46 either way.
+  // Overlay scrollbars, which is what GTK shows by default and what keeps a
+  // styled field from gaining furniture React Native did not ask for.
+  gtk_scrolled_window_set_overlay_scrolling(GTK_SCROLLED_WINDOW(scroller), TRUE);
+  // The RnView behind it draws the background and border from React Native's
+  // props, so the scroller frames nothing of its own.
+  gtk_scrolled_window_set_has_frame(GTK_SCROLLED_WINDOW(scroller), FALSE);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), view);
+  return scroller;
 }
 
+gboolean rn_peer_scrolls(GtkWidget *peer) {
+  return peer != nullptr && GTK_IS_SCROLLED_WINDOW(peer) ? TRUE : FALSE;
+}
+
+GtkWidget *rn_peer_editor(GtkWidget *peer) {
+  if (peer == nullptr) {
+    return nullptr;
+  }
+  if (GTK_IS_SCROLLED_WINDOW(peer)) {
+    return gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(peer));
+  }
+  return peer;
+}
+
+
 gboolean rn_peer_is_multiline(GtkWidget *peer) {
-  return peer != nullptr && GTK_IS_TEXT_VIEW(peer);
+  GtkWidget *editor = rn_peer_editor(peer);
+  return editor != nullptr && GTK_IS_TEXT_VIEW(editor);
+}
+
+// The text widget, as a GtkTextView. Only valid for a multiline peer, which is
+// what every caller has already established.
+static GtkTextView *text_view_of(GtkWidget *peer) {
+  return GTK_TEXT_VIEW(rn_peer_editor(peer));
 }
 
 static GtkTextBuffer *buffer_of(GtkWidget *peer) {
-  return gtk_text_view_get_buffer(GTK_TEXT_VIEW(peer));
+  return gtk_text_view_get_buffer(text_view_of(peer));
 }
 
 char *rn_peer_get_text(GtkWidget *peer) {
@@ -287,9 +344,9 @@ void rn_peer_set_spell_check(GtkWidget *peer, int flag) {
         GTK_TEXT(peer), static_cast<GtkInputHints>((hints & ~unwanted) | wanted));
     return;
   }
-  const GtkInputHints hints = gtk_text_view_get_input_hints(GTK_TEXT_VIEW(peer));
+  const GtkInputHints hints = gtk_text_view_get_input_hints(text_view_of(peer));
   gtk_text_view_set_input_hints(
-      GTK_TEXT_VIEW(peer), static_cast<GtkInputHints>((hints & ~unwanted) | wanted));
+      text_view_of(peer), static_cast<GtkInputHints>((hints & ~unwanted) | wanted));
 }
 
 void rn_peer_set_auto_capitalize(GtkWidget *peer, int type) {
@@ -324,8 +381,8 @@ void rn_peer_set_auto_capitalize(GtkWidget *peer, int type) {
                              static_cast<GtkInputHints>((hints & ~owned) | wanted));
     return;
   }
-  const GtkInputHints hints = gtk_text_view_get_input_hints(GTK_TEXT_VIEW(peer));
-  gtk_text_view_set_input_hints(GTK_TEXT_VIEW(peer),
+  const GtkInputHints hints = gtk_text_view_get_input_hints(text_view_of(peer));
+  gtk_text_view_set_input_hints(text_view_of(peer),
                                 static_cast<GtkInputHints>((hints & ~owned) | wanted));
 }
 
@@ -337,7 +394,7 @@ void rn_peer_set_input_purpose(GtkWidget *peer, int purpose) {
     gtk_text_set_input_purpose(GTK_TEXT(peer), static_cast<GtkInputPurpose>(purpose));
     return;
   }
-  gtk_text_view_set_input_purpose(GTK_TEXT_VIEW(peer),
+  gtk_text_view_set_input_purpose(text_view_of(peer),
                                   static_cast<GtkInputPurpose>(purpose));
 }
 
@@ -349,10 +406,10 @@ void rn_peer_set_editable(GtkWidget *peer, gboolean editable) {
     gtk_editable_set_editable(GTK_EDITABLE(peer), editable);
     return;
   }
-  gtk_text_view_set_editable(GTK_TEXT_VIEW(peer), editable);
+  gtk_text_view_set_editable(text_view_of(peer), editable);
   // Without this a read-only view still shows a blinking caret, which reads as
   // a field that has focus and refuses to type.
-  gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(peer), editable);
+  gtk_text_view_set_cursor_visible(text_view_of(peer), editable);
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +497,7 @@ void rn_peer_set_attributes(GtkWidget *peer, PangoAttrList *attributes) {
   // and a controlled field updates on every keystroke.
   // Kept for the placeholder, which is drawn rather than laid out by the
   // buffer and so needs the font and colour in its own right.
-  RnTextView *self = RN_TEXT_VIEW(peer);
+  RnTextView *self = RN_TEXT_VIEW(rn_peer_editor(peer));
   g_clear_pointer(&self->attributes, pango_attr_list_unref);
   self->attributes = attributes != nullptr ? pango_attr_list_ref(attributes) : nullptr;
 
@@ -492,7 +549,7 @@ void rn_peer_set_placeholder(GtkWidget *peer, const char *placeholder) {
     return;
   }
 
-  RnTextView *self = RN_TEXT_VIEW(peer);
+  RnTextView *self = RN_TEXT_VIEW(rn_peer_editor(peer));
   g_clear_pointer(&self->placeholder, g_free);
   self->placeholder = value != nullptr ? g_strdup(value) : nullptr;
   gtk_widget_queue_draw(peer);
@@ -505,7 +562,7 @@ const char *rn_peer_get_placeholder(GtkWidget *peer) {
   if (!rn_peer_is_multiline(peer)) {
     return gtk_text_get_placeholder_text(GTK_TEXT(peer));
   }
-  return RN_TEXT_VIEW(peer)->placeholder;
+  return RN_TEXT_VIEW(rn_peer_editor(peer))->placeholder;
 }
 
 // ---------------------------------------------------------------------------
@@ -655,7 +712,7 @@ void rn_peer_set_colors(GtkWidget *peer,
   // node for the rule above to reach and takes the colour as a value instead.
   // The other two are CSS on either peer.
   if (rn_peer_is_multiline(peer)) {
-    RnTextView *self = RN_TEXT_VIEW(peer);
+    RnTextView *self = RN_TEXT_VIEW(rn_peer_editor(peer));
     self->has_placeholder_color = placeholder != nullptr ? TRUE : FALSE;
     if (placeholder != nullptr) {
       self->placeholder_color = *placeholder;
@@ -718,7 +775,7 @@ gboolean rn_peer_get_placeholder_color(GtkWidget *peer, GdkRGBA *out) {
   if (peer == nullptr || !rn_peer_is_multiline(peer)) {
     return FALSE;
   }
-  RnTextView *self = RN_TEXT_VIEW(peer);
+  RnTextView *self = RN_TEXT_VIEW(rn_peer_editor(peer));
   if (!self->has_placeholder_color) {
     return FALSE;
   }

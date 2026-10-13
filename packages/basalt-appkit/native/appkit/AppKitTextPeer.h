@@ -32,9 +32,26 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Builds the peer. `secure` and `multiline` are exclusive: React Native has no
 // multiline secure field, and NSTextView has no way to be one.
-NSView *RnPeerNew(BOOL multiline, BOOL secure, NSInteger tag, id owner, id delegate);
+//
+// `scrollEnabled` is React Native's trait of that name and only means anything
+// for a multiline field, which is what upstream documents. It decides the
+// *shape* of the peer rather than a property on it: a field that scrolls is an
+// NSScrollView with the text view inside, and one that does not is the bare
+// text view. See the comment on the branch, and AppKitTextInput.mm for the
+// rebuild a change of it causes.
+NSView *RnPeerNew(BOOL multiline, BOOL secure, BOOL scrollEnabled, NSInteger tag, id owner,
+                  id delegate);
 
 BOOL RnPeerIsMultiline(NSView *_Nullable peer);
+
+// The view inside the peer that holds the text: the text view for a multiline
+// field however it is wrapped, and the peer itself for a single-line one.
+//
+// This is what AppKit should be made first responder, and what a screen reader
+// should be told about -- a scroll view is neither an editor nor the element an
+// app labelled. Not `RnPeerEditor` below, which answers who is editing *now*
+// and is nil for an unfocused NSTextField.
+NSView *_Nullable RnPeerEditorView(NSView *_Nullable peer);
 
 NSString *RnPeerText(NSView *_Nullable peer);
 void RnPeerSetText(NSView *_Nullable peer, NSString *text);

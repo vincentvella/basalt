@@ -33,6 +33,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1f2129',
   },
+  // Short and narrow, so a dozen words wrap to more lines than fit: a field
+  // whose text does not overflow exercises nothing a scroller does.
+  note: {
+    width: 240,
+    height: 44,
+    marginBottom: 20,
+    paddingHorizontal: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    fontSize: 16,
+    color: '#1f2129',
+  },
   echo: {fontSize: 16, color: '#1f2129'},
 });
 
@@ -74,6 +86,28 @@ function App() {
         // hosts report what was asked so the dumps compare.
         autoCapitalize="none"
         keyboardType="email-address"
+      />
+
+      {/* Multiline, which no scenario app had until 2026-10-13 -- so the peer
+          every host builds for one had never been mounted by a real React tree
+          on any of them. It is a different widget from a single-line field on
+          all three (a GtkTextView, an NSTextView, an ES_MULTILINE EDIT), and
+          since `scrollEnabled` defaults to true it is now wrapped in a
+          scroller on two of them. Enough text to need one. */}
+      <TextInput
+        style={styles.note}
+        multiline={true}
+        value={'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen'}
+        placeholder="notes"
+      />
+
+      {/* And the same field with scrolling refused, which is the shape the
+          prop asks for: the text is clipped rather than reachable. */}
+      <TextInput
+        style={styles.note}
+        multiline={true}
+        scrollEnabled={false}
+        value={'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen'}
       />
 
       <Text style={styles.echo}>{shouted === '' ? '(nothing yet)' : shouted}</Text>

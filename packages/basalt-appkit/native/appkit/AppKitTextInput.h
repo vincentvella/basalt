@@ -127,6 +127,12 @@ class AppKitTextInputManager {
     // change here rebuilds the peer exactly as `secure` does.
     bool multiline{false};
 
+    // `scrollEnabled`, which decides whether that text view is wrapped in an
+    // NSScrollView -- so it rebuilds the peer for the same reason the two
+    // above do. True as ReactCommon's trait is. Only consulted for a multiline
+    // field, the prop being multiline-only.
+    bool scrollEnabled{true};
+
     // `clearTextOnFocus` and `selectTextOnFocus`: what happens when the field
     // takes focus. Kept here because focus arrives long after the props do, and
     // because the second has to be known in `flushAutoFocus` as well -- a field
@@ -165,7 +171,7 @@ class AppKitTextInputManager {
 
   // Builds the field, or rebuilds it when secureTextEntry changed: a secure
   // field is a different class on AppKit, not a property.
-  void makeField(Entry &entry, bool secure, bool multiline);
+  void makeField(Entry &entry, bool secure, bool multiline, bool scrollEnabled);
 
   EmitterLookup lookup_;
   std::unordered_map<facebook::react::Tag, Entry> entries_;

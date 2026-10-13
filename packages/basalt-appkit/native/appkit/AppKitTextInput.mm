@@ -205,7 +205,10 @@ AppKitTextInputManager::Entry *AppKitTextInputManager::entryFor(Tag tag) {
 // Mutations
 // ---------------------------------------------------------------------------
 
-void AppKitTextInputManager::makeField(Entry &entry, bool secure, bool multiline) {
+void AppKitTextInputManager::makeField(Entry &entry,
+                                      bool secure,
+                                      bool multiline,
+                                      bool scrollEnabled) {
   // The contents come across. Nothing asked for the field to be cleared --
   // React changed one prop -- and the controlled loop will not put the text
   // back, because from its side `text` did not change. The GTK side carries it
@@ -213,13 +216,14 @@ void AppKitTextInputManager::makeField(Entry &entry, bool secure, bool multiline
   NSString *existing = RnPeerText(entry.field);
   [entry.field removeFromSuperview];
 
-  NSView *peer = RnPeerNew(multiline ? YES : NO, secure ? YES : NO, entry.tag,
-                           (id)delegate_, (id)delegate_);
+  NSView *peer = RnPeerNew(multiline ? YES : NO, secure ? YES : NO,
+                           scrollEnabled ? YES : NO, entry.tag, (id)delegate_, (id)delegate_);
   RnPeerSetText(peer, existing);
 
   entry.field = peer;
   entry.secure = secure;
   entry.multiline = multiline;
+  entry.scrollEnabled = scrollEnabled;
   entry.view.rnEditable = peer;
   [entry.view addSubview:peer];
 }
@@ -248,11 +252,19 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
       : basalt::DropAcceptsNone;
 
   const bool multiline = props != nullptr && props->multiline;
-  if (inserted || entry.field == nil || entry.secure != secure || entry.multiline != multiline) {
+  // `scrollEnabled`, which decides whether the multiline peer is wrapped in a
+  // scroll view and so is as much a creation-time decision as `multiline` --
+  // the same place Windows reads it, for the same reason. Compared only for a
+  // multiline field, React Native documenting the prop as multiline-only, so a
+  // single-line field that sets it is not rebuilt for nothing.
+  const bool scrollEnabled = props == nullptr || props->traits.scrollEnabled;
+  const bool scrollChanged = multiline && scrollEnabled != entry.scrollEnabled;
+  if (inserted || entry.field == nil || entry.secure != secure || entry.multiline != multiline ||
+      scrollChanged) {
     // A secure field is a different class on AppKit, not a property, so
     // toggling secureTextEntry means building a new one. The text comes across;
     // focus does not, which is the honest limit of doing it this way.
-    makeField(entry, secure, multiline);
+    makeField(entry, secure, multiline, scrollEnabled);
   }
 
   // Yoga has resolved border and padding into the content inset; the field is
@@ -535,7 +547,7 @@ void AppKitTextInputManager::remove(Tag tag) {
   // Both peers carry a delegate, and neither is an NSView property -- so it is
   // cleared through the class that has it.
   if (RnPeerIsMultiline(it->second.field)) {
-    ((NSTextView *)it->second.field).delegate = nil;
+    ((NSTextView *)RnPeerEditorView(it->second.field)).delegate = nil;
   } else {
     ((NSTextField *)it->second.field).delegate = nil;
   }

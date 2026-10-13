@@ -23,9 +23,34 @@ G_BEGIN_DECLS
 // which is the whole visible difference: the measured box is already the right
 // height, and without wrapping the text would run off the end of one line
 // inside it.
-GtkWidget *rn_peer_new(gboolean multiline);
+//
+// `scroll_enabled` is React Native's `scrollEnabled` trait and only means
+// anything for a multiline field, which is what upstream documents. It decides
+// the *shape* of the peer rather than a property on it: a field that scrolls is
+// a GtkScrolledWindow with the text view inside, because that is how GTK
+// scrolls a GtkTextView -- the scrolled window owns the adjustments, and
+// without one the text view has none and `gtk_text_view_scroll_to_mark` moves
+// nothing. A field that asked not to scroll is the bare text view, which grows
+// and is clipped by the RnView around it.
+GtkWidget *rn_peer_new(gboolean multiline, gboolean scroll_enabled);
 
 gboolean rn_peer_is_multiline(GtkWidget *peer);
+
+// Whether this peer is the scrolling kind, which is what a change of
+// `scrollEnabled` is compared against: the shape cannot change under a live
+// widget, so the peer is rebuilt instead.
+gboolean rn_peer_scrolls(GtkWidget *peer);
+
+// The widget inside the peer that holds the text: the text view for a
+// multiline field however it is wrapped, and the peer itself for a single-line
+// one.
+//
+// This is what takes keyboard focus and what a screen reader should be told
+// about -- a scrolled window is neither an editor nor the thing an app
+// labelled. Everything in this file that needs the text widget goes through it,
+// so the wrapping is one function's business rather than twenty-three call
+// sites'.
+GtkWidget *rn_peer_editor(GtkWidget *peer);
 
 // The peer's whole contents. Never NULL; free with g_free.
 char *rn_peer_get_text(GtkWidget *peer);

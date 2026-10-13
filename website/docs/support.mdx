@@ -49,8 +49,8 @@ under the row that implements them.
 
 | Host | Toolkit | Written itself | All 280 rows |
 | --- | --- | --- | --- |
-| Linux | GTK4 | 125 of 136, 92% | <span className="support-bar"><span className="support-yes" style={{width: '44.64%'}} title="125 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-no" style={{width: '0.36%'}} title="1 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '25.00%'}} title="70 deliberately not done" /></span> |
-| macOS | AppKit | 129 of 140, 92% | <span className="support-bar"><span className="support-yes" style={{width: '46.07%'}} title="129 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-no" style={{width: '0.36%'}} title="1 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.57%'}} title="66 deliberately not done" /></span> |
+| Linux | GTK4 | 126 of 136, 93% | <span className="support-bar"><span className="support-yes" style={{width: '45.00%'}} title="126 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '25.00%'}} title="70 deliberately not done" /></span> |
+| macOS | AppKit | 130 of 140, 93% | <span className="support-bar"><span className="support-yes" style={{width: '46.43%'}} title="130 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.57%'}} title="66 deliberately not done" /></span> |
 | Windows | Win32 | 124 of 136, 91% | <span className="support-bar"><span className="support-yes" style={{width: '44.29%'}} title="124 done" /><span className="support-partial" style={{width: '4.29%'}} title="12 partly done" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '24.99%'}} title="70 deliberately not done" /></span> |
 
 **Written itself** is out of the rows that host writes: what it has written,
@@ -59,9 +59,9 @@ bar is the rest, and it is nobody's work left.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| <span className="support-chip support-yes" /> ✅ done | 125 | 129 | 124 |
+| <span className="support-chip support-yes" /> ✅ done | 126 | 130 | 124 |
 | <span className="support-chip support-partial" /> ◐ partly done | 10 | 10 | 12 |
-| <span className="support-chip support-no" /> ✖ not yet | 1 | 1 | 0 |
+| <span className="support-chip support-no" /> ✖ not yet | 0 | 0 | 0 |
 | <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
 | <span className="support-chip support-ignored" /> – deliberately not done | 70 | 66 | 70 |
 
@@ -416,7 +416,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `spellCheck` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `caretHidden` | ✅ | ✅ | ✅ |  |
 | `clearButtonMode` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `scrollEnabled` | ✖ | ✖ | ✅ | [Windows withholds ES_AUTOVSCROLL; GTK and AppKit put a multiline field in no scroller, so neither scrolls to begin with](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `scrollEnabled` | ✅ | ✅ | ✅ |  |
 | `secureTextEntry` | ✅ | ✅ | ✅ |  |
 | `clearTextOnFocus` | ✅ | ✅ | ✅ |  |
 | `keyboardType` | ✅ | ✅ | ✅ |  |

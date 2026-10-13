@@ -229,7 +229,8 @@ static void RnApplyEditorColours(NSTextView *_Nullable editor,
 }
 @end
 
-NSView *RnPeerNew(BOOL multiline, BOOL secure, NSInteger tag, id owner, id delegate) {
+NSView *RnPeerNew(BOOL multiline, BOOL secure, BOOL scrollEnabled, NSInteger tag, id owner,
+                  id delegate) {
   if (multiline) {
     RnAppKitTextView *view = [[RnAppKitTextView alloc] initWithFrame:NSZeroRect];
     view.rnTag = tag;
@@ -255,7 +256,71 @@ NSView *RnPeerNew(BOOL multiline, BOOL secure, NSInteger tag, id owner, id deleg
     // text would let a paste bring its own font in.
     view.richText = NO;
     view.allowsUndo = YES;
-    return view;
+
+    if (!scrollEnabled) {
+      // `scrollEnabled: false`: the text is clipped to the field rather than
+      // scrolled to, which is what the prop asks for and what the other two
+      // hosts do with it -- an `EDIT` without `ES_AUTOVSCROLL` on Windows, and
+      // no scrolled window on GTK.
+      //
+      // Clipped by refusing to grow, and this is the part that was wrong when
+      // the scroller went in beside it. A bare NSTextView with
+      // `verticallyResizable` resizes itself to fit its text, and nothing above
+      // it clips: React Native's `overflow` defaults to `visible`, so the
+      // RnAppKitView does not. The field drew three lines of text out of a
+      // one-line box and down the page behind it -- which is what every
+      // multiline field on this host did before today, and what looking at the
+      // running app found in a minute after three test suites had not.
+      //
+      // So the container tracks the view in both directions and the view stops
+      // resizing: text past the bottom is never laid out, and so never drawn.
+      view.verticallyResizable = NO;
+      view.textContainer.widthTracksTextView = YES;
+      view.textContainer.heightTracksTextView = YES;
+      return view;
+    }
+
+    // Scrolling, which is the default. A scroll view with the text view as its
+    // document view is how AppKit scrolls text, and not a wrapper over
+    // something that would otherwise work: the clipping, the scroller, the
+    // wheel and the elastic edges are the scroll view's, and
+    // `scrollRangeToVisible:` -- which is what an NSTextView calls when the
+    // caret moves -- walks up to one. Without it the caret can leave the box
+    // and the user cannot follow it, which is what this platform did until now.
+    //
+    // Creation-time, like `multiline` and like Windows' style bit, so a field
+    // that changes the prop has its peer rebuilt. The alternative is a scroll
+    // view that is told not to scroll, which means overriding the wheel, the
+    // scrollers *and* `scrollRangeToVisible:` to undo what it is for.
+    NSScrollView *scroller = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+    // The RnAppKitView behind it draws the background, border and corner
+    // radius from React Native's style props, so the scroller paints none of
+    // its own -- the same reason the text view does not.
+    scroller.drawsBackground = NO;
+    scroller.borderType = NSNoBorder;
+    // Vertical only: the text wraps, so there is nothing to scroll sideways
+    // to, and `horizontallyResizable` is NO below for the same reason.
+    scroller.hasVerticalScroller = YES;
+    scroller.hasHorizontalScroller = NO;
+    // Hidden until it is needed, because a scroller standing in a styled field
+    // is furniture React Native did not ask for -- and the overlay style is
+    // what every Mac app with a trackpad shows anyway.
+    scroller.autohidesScrollers = YES;
+    scroller.scrollerStyle = NSScrollerStyleOverlay;
+
+    // The document view's width follows the clip view's, and its height
+    // follows its text. This is upstream AppKit's own recipe for a text view in
+    // a scroller, and each line matters: without the autoresizing mask the text
+    // view keeps the width it was made with (zero), and without the container
+    // tracking it the text lays out against a width the field does not have.
+    view.autoresizingMask = NSViewWidthSizable;
+    view.minSize = NSMakeSize(0, 0);
+    view.maxSize = NSMakeSize(FLT_MAX, FLT_MAX);
+    view.textContainer.containerSize = NSMakeSize(0, FLT_MAX);
+    view.textContainer.widthTracksTextView = YES;
+
+    scroller.documentView = view;
+    return scroller;
   }
 
   NSTextField *field;
@@ -293,8 +358,42 @@ NSView *RnPeerNew(BOOL multiline, BOOL secure, NSInteger tag, id owner, id deleg
   return field;
 }
 
+// The text view inside a multiline peer, or nil for a single-line one.
+//
+// A multiline peer is not always the text view any more. A field that scrolls
+// -- `scrollEnabled`, which is React Native's default -- is an NSScrollView
+// with the text view as its document view, because that is how AppKit scrolls
+// text: the scroll view owns the clipping, the scrollers and the wheel, and
+// `scrollRangeToVisible:` moves the caret into view through it. A field that
+// asked not to scroll is the bare text view it always was, which clips.
+//
+// Everything in this file that used to cast the peer goes through here, so the
+// arrangement is one function's business rather than twenty-eight call sites'.
+static RnAppKitTextView *_Nullable RnPeerTextView(NSView *_Nullable peer) {
+  if (peer == nil) {
+    return nil;
+  }
+  if ([peer isKindOfClass:RnAppKitTextView.class]) {
+    return (RnAppKitTextView *)peer;
+  }
+  if ([peer isKindOfClass:[NSScrollView class]]) {
+    NSView *document = ((NSScrollView *)peer).documentView;
+    if ([document isKindOfClass:RnAppKitTextView.class]) {
+      return (RnAppKitTextView *)document;
+    }
+  }
+  return nil;
+}
+
 BOOL RnPeerIsMultiline(NSView *peer) {
-  return peer != nil && [peer isKindOfClass:[NSTextView class]];
+  return RnPeerTextView(peer) != nil;
+}
+
+NSView *RnPeerEditorView(NSView *peer) {
+  if (RnAppKitTextView *view = RnPeerTextView(peer)) {
+    return view;
+  }
+  return peer;
 }
 
 NSString *RnPeerText(NSView *peer) {
@@ -302,7 +401,7 @@ NSString *RnPeerText(NSView *peer) {
     return @"";
   }
   if (RnPeerIsMultiline(peer)) {
-    NSString *text = ((NSTextView *)peer).string;
+    NSString *text = RnPeerTextView(peer).string;
     return text != nil ? text : @"";
   }
   NSString *value = ((NSTextField *)peer).stringValue;
@@ -315,7 +414,7 @@ void RnPeerSetText(NSView *peer, NSString *text) {
   }
   NSString *value = text != nil ? text : @"";
   if (RnPeerIsMultiline(peer)) {
-    ((NSTextView *)peer).string = value;
+    RnPeerTextView(peer).string = value;
     return;
   }
   ((NSTextField *)peer).stringValue = value;
@@ -328,7 +427,7 @@ NSRange RnPeerSelection(NSView *peer) {
   if (RnPeerIsMultiline(peer)) {
     // An NSTextView is its own editor, so the selection is always available --
     // which is the one place multiline is simpler than single line here.
-    return ((NSTextView *)peer).selectedRange;
+    return RnPeerTextView(peer).selectedRange;
   }
   NSTextField *field = (NSTextField *)peer;
   if (NSText *editor = field.currentEditor) {
@@ -342,7 +441,7 @@ void RnPeerSetSelection(NSView *peer, NSRange range) {
     return;
   }
   if (RnPeerIsMultiline(peer)) {
-    NSTextView *view = (NSTextView *)peer;
+    RnAppKitTextView *view = RnPeerTextView(peer);
     const NSUInteger length = view.string.length;
     const NSUInteger location = MIN(range.location, length);
     [view setSelectedRange:NSMakeRange(location, MIN(range.length, length - location))];
@@ -363,9 +462,9 @@ void RnPeerSetTextChecking(NSView *peer,
     // An NSTextView is its own editor, so this is the simple case -- the
     // request is still remembered, because AppKit may decline it and a test
     // needs to know what was asked.
-    ((RnAppKitTextView *)peer).rnSpellCheck = spellCheck;
-    ((RnAppKitTextView *)peer).rnAutoCorrect = autoCorrect;
-    RnApplyTextChecking((NSTextView *)peer, spellCheck, autoCorrect);
+    RnPeerTextView(peer).rnSpellCheck = spellCheck;
+    RnPeerTextView(peer).rnAutoCorrect = autoCorrect;
+    RnApplyTextChecking(RnPeerTextView(peer), spellCheck, autoCorrect);
     return;
   }
   // Remembered first, because a field that is not focused has no editor to put
@@ -391,9 +490,9 @@ void RnPeerSetEditorColours(NSView *peer, NSColor *selection, NSColor *caret) {
     // Its own editor, so the colours could go straight on -- they are still
     // remembered, so that reading them back answers what the app asked for
     // rather than what AppKit currently holds.
-    ((RnAppKitTextView *)peer).rnSelectionColour = selection;
-    ((RnAppKitTextView *)peer).rnCaretColour = caret;
-    RnApplyEditorColours((NSTextView *)peer, selection, caret);
+    RnPeerTextView(peer).rnSelectionColour = selection;
+    RnPeerTextView(peer).rnCaretColour = caret;
+    RnApplyEditorColours(RnPeerTextView(peer), selection, caret);
     return;
   }
   // Remembered first, because a field with no focus has no field editor to put
@@ -411,8 +510,8 @@ void RnPeerSetEditorColours(NSView *peer, NSColor *selection, NSColor *caret) {
 }
 
 NSColor *RnPeerSelectionColour(NSView *peer) {
-  if ([peer isKindOfClass:RnAppKitTextView.class]) {
-    return ((RnAppKitTextView *)peer).rnSelectionColour;
+  if (RnPeerTextView(peer) != nil) {
+    return RnPeerTextView(peer).rnSelectionColour;
   }
   if ([peer isKindOfClass:RnAppKitTextField.class]) {
     return ((RnAppKitTextField *)peer).rnSelectionColour;
@@ -424,8 +523,8 @@ NSColor *RnPeerSelectionColour(NSView *peer) {
 }
 
 NSColor *RnPeerCaretColour(NSView *peer) {
-  if ([peer isKindOfClass:RnAppKitTextView.class]) {
-    return ((RnAppKitTextView *)peer).rnCaretColour;
+  if (RnPeerTextView(peer) != nil) {
+    return RnPeerTextView(peer).rnCaretColour;
   }
   if ([peer isKindOfClass:RnAppKitTextField.class]) {
     return ((RnAppKitTextField *)peer).rnCaretColour;
@@ -448,8 +547,8 @@ RnTextChecking RnPeerSpellCheck(NSView *peer) {
   if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
     return ((RnAppKitSecureTextField *)peer).rnSpellCheck;
   }
-  if ([peer isKindOfClass:RnAppKitTextView.class]) {
-    return ((RnAppKitTextView *)peer).rnSpellCheck;
+  if (RnPeerTextView(peer) != nil) {
+    return RnPeerTextView(peer).rnSpellCheck;
   }
   return RnTextCheckingUnset;
 }
@@ -464,8 +563,8 @@ RnTextChecking RnPeerAutoCorrect(NSView *peer) {
   if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
     return ((RnAppKitSecureTextField *)peer).rnAutoCorrect;
   }
-  if ([peer isKindOfClass:RnAppKitTextView.class]) {
-    return ((RnAppKitTextView *)peer).rnAutoCorrect;
+  if (RnPeerTextView(peer) != nil) {
+    return RnPeerTextView(peer).rnAutoCorrect;
   }
   return RnTextCheckingUnset;
 }
@@ -477,8 +576,8 @@ void RnPeerSetContextMenuHidden(NSView *peer, BOOL hidden) {
   // Every peer class this file makes carries the flag, and they are the only
   // classes that reach here: a secure field is not an NSTextField subclass of
   // this one's, so the three are named rather than tested for a common base.
-  if ([peer isKindOfClass:RnAppKitTextView.class]) {
-    ((RnAppKitTextView *)peer).rnContextMenuHidden = hidden;
+  if (RnPeerTextView(peer) != nil) {
+    RnPeerTextView(peer).rnContextMenuHidden = hidden;
     return;
   }
   if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
@@ -491,8 +590,8 @@ void RnPeerSetContextMenuHidden(NSView *peer, BOOL hidden) {
 }
 
 BOOL RnPeerContextMenuHidden(NSView *peer) {
-  if ([peer isKindOfClass:RnAppKitTextView.class]) {
-    return ((RnAppKitTextView *)peer).rnContextMenuHidden;
+  if (RnPeerTextView(peer) != nil) {
+    return RnPeerTextView(peer).rnContextMenuHidden;
   }
   if ([peer isKindOfClass:RnAppKitSecureTextField.class]) {
     return ((RnAppKitSecureTextField *)peer).rnContextMenuHidden;
@@ -508,7 +607,7 @@ void RnPeerSetEditable(NSView *peer, BOOL editable) {
     return;
   }
   if (RnPeerIsMultiline(peer)) {
-    NSTextView *view = (NSTextView *)peer;
+    RnAppKitTextView *view = RnPeerTextView(peer);
     view.editable = editable;
     view.selectable = YES;
     return;
@@ -523,7 +622,7 @@ void RnPeerSetTextStyle(NSView *peer, NSFont *font, NSColor *colour, NSTextAlign
     return;
   }
   if (RnPeerIsMultiline(peer)) {
-    NSTextView *view = (NSTextView *)peer;
+    RnAppKitTextView *view = RnPeerTextView(peer);
     if (font != nil) {
       view.font = font;
     }
@@ -558,7 +657,7 @@ void RnPeerSetPlaceholder(NSView *peer, NSAttributedString *placeholder) {
     return;
   }
   if (RnPeerIsMultiline(peer)) {
-    RnAppKitTextView *view = (RnAppKitTextView *)peer;
+    RnAppKitTextView *view = RnPeerTextView(peer);
     view.rnPlaceholder = placeholder;
     view.needsDisplay = YES;
     return;
@@ -571,7 +670,7 @@ NSAttributedString *RnPeerPlaceholder(NSView *peer) {
     return nil;
   }
   if (RnPeerIsMultiline(peer)) {
-    return ((RnAppKitTextView *)peer).rnPlaceholder;
+    return RnPeerTextView(peer).rnPlaceholder;
   }
   return ((NSTextField *)peer).placeholderAttributedString;
 }
@@ -621,7 +720,7 @@ void RnPeerSetMaxLength(NSView *peer, NSInteger maxLength) {
   if (RnPeerIsMultiline(peer)) {
     // Stored, and read back by the delegate through RnPeerAllowsChange. An
     // NSTextView has no formatter.
-    objc_setAssociatedObject(peer, @selector(RnPeerSetMaxLength), @(maxLength),
+    objc_setAssociatedObject(RnPeerTextView(peer), @selector(RnPeerSetMaxLength), @(maxLength),
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return;
   }
@@ -640,12 +739,12 @@ BOOL RnPeerAllowsChange(NSView *peer, NSRange range, NSString *replacement) {
   if (peer == nil || !RnPeerIsMultiline(peer)) {
     return YES;
   }
-  NSNumber *limit = objc_getAssociatedObject(peer, @selector(RnPeerSetMaxLength));
+  NSNumber *limit = objc_getAssociatedObject(RnPeerTextView(peer), @selector(RnPeerSetMaxLength));
   const NSInteger maxLength = limit != nil ? limit.integerValue : 0;
   if (maxLength <= 0) {
     return YES;
   }
-  const NSInteger current = (NSInteger)((NSTextView *)peer).string.length;
+  const NSInteger current = (NSInteger)RnPeerTextView(peer).string.length;
   const NSInteger after = current - (NSInteger)range.length + (NSInteger)replacement.length;
   return after <= maxLength;
 }
@@ -656,5 +755,6 @@ NSResponder *RnPeerEditor(NSView *peer) {
   }
   // An NSTextView is the editor; an NSTextField borrows one from the window
   // and only while it has focus.
-  return RnPeerIsMultiline(peer) ? (NSResponder *)peer : ((NSTextField *)peer).currentEditor;
+  return RnPeerIsMultiline(peer) ? (NSResponder *)RnPeerTextView(peer)
+                                 : ((NSTextField *)peer).currentEditor;
 }

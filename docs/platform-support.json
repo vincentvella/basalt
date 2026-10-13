@@ -233,10 +233,6 @@
       "text": "macOS has NSAccessibilityCustomAction and the other two have nothing to map it onto: GTK 4 ships no accessible-action interface, and UIA has no custom-action pattern",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     },
-    "ti-scroll": {
-      "text": "Windows withholds ES_AUTOVSCROLL; GTK and AppKit put a multiline field in no scroller, so neither scrolls to begin with",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
-    },
     "ti-sync": {
       "text": "React Native parses and registers both and nothing anywhere dispatches them: TextInputEventEmitter has no method for either, and neither is a public TextInput prop",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
@@ -1780,10 +1776,9 @@
       "why": "ti-ios"
     },
     "TextInputTraits.scrollEnabled": {
-      "linux": "no",
-      "macos": "no",
+      "linux": "yes",
+      "macos": "yes",
       "windows": "yes",
-      "why": "ti-scroll",
       "reads": [
         "traits.scrollEnabled"
       ]

@@ -14,6 +14,10 @@
 // means these tests exercise the same parse the real thing does.
 
 #include "TestHarness.h"
+
+// For the pixel test at the end: a field that holds its text and draws none
+// of it is the failure a scroller invites.
+#include "GtkPixels.h"
 #include "EventRecorder.h"
 
 #include "GtkMountingManager.h"
@@ -417,7 +421,21 @@ TEST(textinput_multiline_builds_a_text_view) {
   GtkWidget *peer = rn_view_get_editable(view);
   EXPECT(peer != nullptr);
   EXPECT(rn_peer_is_multiline(peer));
-  EXPECT(GTK_IS_TEXT_VIEW(peer));
+  // A GtkScrolledWindow with the text view inside it, because the field
+  // scrolls by default: `scrollEnabled` is true unless an app says otherwise,
+  // and a GtkTextView's adjustments come from its scrolled window. The seam is
+  // what answers which widget holds the text; the scrolling tests below are
+  // what prove it scrolls.
+  EXPECT(rn_peer_scrolls(peer));
+  EXPECT(GTK_IS_TEXT_VIEW(rn_peer_editor(peer)));
+  if (!rn_peer_scrolls(peer)) {
+    // EXPECT does not stop the test and what follows reaches into the
+    // scroller: a host that built something else should fail rather than
+    // crash. See docs/TESTING.md.
+    g_object_unref(view);
+    return;
+  }
+  EXPECT(gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(peer)) == rn_peer_editor(peer));
 
   // And a plain field is still a GtkText, which is the half that must not have
   // moved.
@@ -427,6 +445,149 @@ TEST(textinput_multiline_builds_a_text_view) {
   EXPECT(!rn_peer_is_multiline(rn_view_get_editable(single)));
 
   g_object_unref(single);
+  g_object_unref(view);
+}
+
+// --- scrollEnabled -----------------------------------------------------------
+//
+// A multiline field scrolls, which until 2026-10-13 it did not: the peer was a
+// bare GtkTextView that grew to fit its text while the RnView behind it
+// clipped, so the cursor could walk off the bottom of the box with no way for
+// anyone to follow. `scrollEnabled`, React Native's trait, now decides between
+// a GtkScrolledWindow and that.
+//
+// The structure and the behaviour, because either alone would be satisfied by
+// something that does not work: a scrolled window that expands instead of
+// scrolling, or a `scroll_to_mark` that moved nothing because the text view had
+// no adjustments to move.
+
+namespace {
+
+// Long enough to wrap well past the bottom of a 40px field.
+const char *const kManyLines = "one two three four five six seven eight nine ten "
+                               "eleven twelve thirteen fourteen fifteen sixteen "
+                               "seventeen eighteen nineteen twenty twenty-one";
+
+} // namespace
+
+TEST(textinput_a_multiline_field_scrolls_to_its_cursor) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+  manager.update(view,
+                 makeTextInput(10, folly::dynamic::object("text", kManyLines)("multiline", true)));
+
+  GtkWidget *peer = rn_view_get_editable(view);
+  EXPECT(rn_peer_scrolls(peer));
+  if (!rn_peer_scrolls(peer)) {
+    g_object_unref(view);
+    return;
+  }
+  GtkTextView *editor = GTK_TEXT_VIEW(rn_peer_editor(peer));
+
+  // The adjustment is the mechanism: a GtkTextView scrolls through the one its
+  // scrolled window gives it, and a bare text view has none. Without this the
+  // assertions below would be measuring nothing.
+  GtkAdjustment *vertical =
+      gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(peer));
+  EXPECT(vertical != nullptr);
+
+  // Lay the field out at the size Yoga would give it, which is what makes the
+  // text taller than its box.
+  gtk_widget_set_size_request(peer, 200, 40);
+  gtk_widget_allocate(peer, 200, 40, -1, nullptr);
+  while (g_main_context_iteration(nullptr, FALSE)) {
+  }
+
+  // There is something to scroll: the text wants more height than the box has.
+  int minimum = 0;
+  int natural = 0;
+  gtk_widget_measure(GTK_WIDGET(editor), GTK_ORIENTATION_VERTICAL, 200, &minimum, &natural,
+                     nullptr, nullptr);
+  EXPECT(natural > 40);
+
+  // And asking to see the end moves the adjustment, which is what a cursor
+  // leaving the bottom of the field does. This is the assertion that needs the
+  // scrolled window: against the bare text view this platform used to build,
+  // `scroll_to_mark` has no adjustment and moves nothing.
+  EXPECT_EQ((int)gtk_adjustment_get_value(vertical), 0);
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer(editor);
+  GtkTextIter end;
+  gtk_text_buffer_get_end_iter(buffer, &end);
+  gtk_text_buffer_place_cursor(buffer, &end);
+  gtk_text_view_scroll_to_mark(editor, gtk_text_buffer_get_insert(buffer), 0.0, TRUE, 0.0, 1.0);
+  while (g_main_context_iteration(nullptr, FALSE)) {
+  }
+  EXPECT(gtk_adjustment_get_value(vertical) > 0);
+
+  g_object_unref(view);
+}
+
+// `scrollEnabled: false`, which is the bare text view every multiline field
+// used to be: it grows and the RnView clips, so the text below the box is not
+// shown and not reachable. That is what the prop asks for, and what the other
+// two hosts do with it.
+TEST(textinput_a_multiline_field_that_refuses_to_scroll_has_no_scroller) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+  manager.update(view,
+                 makeTextInput(10, folly::dynamic::object("text", kManyLines)("multiline", true)(
+                                       "scrollEnabled", false)));
+
+  GtkWidget *peer = rn_view_get_editable(view);
+  EXPECT(peer != nullptr);
+  // Still a multiline field, the prop being about scrolling and nothing else.
+  EXPECT(rn_peer_is_multiline(peer));
+  EXPECT(!rn_peer_scrolls(peer));
+  EXPECT(GTK_IS_TEXT_VIEW(peer));
+  EXPECT(rn_peer_editor(peer) == peer);
+  // And it still holds the text, which is what makes this a display decision
+  // rather than a limit.
+  EXPECT_EQ(textOf(view), std::string(kManyLines));
+
+  g_object_unref(view);
+}
+
+// The shape of the peer is a creation-time decision, like `multiline` and like
+// Windows' style bit, so a field that changes the prop is rebuilt -- and the
+// text comes across, which is correct for a controlled field and is the half a
+// rebuild can silently lose.
+TEST(textinput_changing_scroll_enabled_rebuilds_the_peer) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+
+  manager.update(view, makeTextInput(10, folly::dynamic::object("text", "kept")("multiline", true)));
+  GtkWidget *before = rn_view_get_editable(view);
+  EXPECT(rn_peer_scrolls(before));
+
+  manager.update(view,
+                 makeTextInput(10, folly::dynamic::object("text", "kept")("multiline", true)(
+                                       "scrollEnabled", false)));
+  GtkWidget *after = rn_view_get_editable(view);
+  EXPECT(after != before);
+  EXPECT(!rn_peer_scrolls(after));
+  EXPECT_EQ(textOf(view), std::string("kept"));
+
+  g_object_unref(view);
+}
+
+// A single-line field is unaffected: React Native documents the prop as
+// multiline-only, and one that sets it there must not be rebuilt for nothing.
+TEST(textinput_a_single_line_field_ignores_the_scroll_prop) {
+  RnView *view = rn_view_new(10);
+  g_object_ref_sink(view);
+  auto manager = makeManager();
+  manager.update(view,
+                 makeTextInput(10, folly::dynamic::object("text", "hello")("scrollEnabled", false)));
+
+  GtkWidget *peer = rn_view_get_editable(view);
+  EXPECT(peer != nullptr);
+  EXPECT(!rn_peer_is_multiline(peer));
+  EXPECT(!rn_peer_scrolls(peer));
+  EXPECT_EQ(textOf(view), std::string("hello"));
+
   g_object_unref(view);
 }
 
@@ -888,7 +1049,9 @@ TEST(textinput_spell_check_reaches_a_multiline_peer) {
   manager.update(
       view,
       makeTextInput(10, folly::dynamic::object("multiline", true)("spellCheck", false)));
-  GtkWidget *editable = rn_view_get_editable(view);
+  // Through the seam: the input hints live on the text view, which for a
+  // scrolling field is inside the peer rather than being it.
+  GtkWidget *editable = rn_peer_editor(rn_view_get_editable(view));
   EXPECT(editable != nullptr && GTK_IS_TEXT_VIEW(editable));
   EXPECT(editable != nullptr
          && (gtk_text_view_get_input_hints(GTK_TEXT_VIEW(editable))
@@ -1320,4 +1483,165 @@ TEST(textinput_submit_behavior_blur_and_submit_gives_up_focus) {
 
   gtk_window_set_child(GTK_WINDOW(window), nullptr);
   gtk_window_destroy(GTK_WINDOW(window));
+}
+
+// --- Does the field still draw? ----------------------------------------------
+//
+// The tests above assert the shape of the peer and the adjustment it scrolls
+// through, and a tree dump says the text is in there. None of that would notice
+// the failure a scroller invites: a field that holds its text and draws none of
+// it. GTK is the host that can answer in pixels without a display, so it does.
+//
+// Two things are asserted and the second is the reason this exists. A
+// GtkTextView paints a themed background of its own straight over the one the
+// RnView drew from React Native's props -- which is what the `rn-text-input`
+// class exists to turn off, and a scrolling field is now *two* widgets that
+// both paint. So: the field's own background survives, and there are dark
+// pixels in it where the text is.
+
+TEST(textinput_a_scrolling_field_draws_its_text_over_its_own_background) {
+  RnView *root = rn_view_new(1);
+  g_object_ref_sink(root);
+  rn_view_set_frame(root, 0, 0, 200, 60);
+
+  RnView *view = rn_view_new(10);
+  rn_view_set_frame(view, 0, 0, 200, 60);
+  // A colour no GTK theme would choose, which is the point: a GtkTextView
+  // paints its own themed background, and the `rn-text-input` class is what
+  // turns that off. A white field cannot tell the two apart -- Adwaita's text
+  // background is white too -- so this one is blue, and black text on it.
+  const GdkRGBA blue_background = {0.2F, 0.4F, 1.0F, 1.0F};
+  rn_view_set_background_color(view, TRUE, &blue_background);
+  rn_view_insert_child(root, view, 0);
+
+  auto manager = makeManager();
+  manager.update(view,
+                 makeTextInput(10, folly::dynamic::object("text", "Hamburgefonstiv")(
+                                       "multiline", true)("color", 0xff000000)));
+  EXPECT(rn_peer_scrolls(rn_view_get_editable(view)));
+
+  const basalt::testing::RnPixels pixels = basalt::testing::renderView(root, 200, 60);
+  EXPECT(pixels.valid());
+
+  // The field's own background, not GTK's theme over the top of it.
+  const auto count = [](const basalt::testing::RnPixels &image, int &blue, int &dark) {
+    blue = 0;
+    dark = 0;
+    for (int y = 0; y < 30; y++) {
+      for (int x = 0; x < 200; x++) {
+        const basalt::testing::RnPixel pixel = image.at(x, y);
+        if (pixel.alpha < 200) {
+          continue;
+        }
+        if (pixel.blue > 200 && pixel.red < 120 && pixel.green > 60 && pixel.green < 180) {
+          blue++;
+        } else if (pixel.red < 120 && pixel.green < 120 && pixel.blue < 120) {
+          dark++;
+        }
+      }
+    }
+  };
+
+  int blue = 0;
+  int dark = 0;
+  count(pixels, blue, dark);
+  // Mostly the field's blue, which is what says React Native's background came
+  // through rather than the peer's own. This is the assertion that fails when
+  // the text widget inside the scroller keeps its themed background.
+  EXPECT(blue > 1000);
+  // And text in it, measured against the empty field below rather than against
+  // a number: a field of the same shape with no string still draws its caret,
+  // which is 15 dark pixels at this size, and a threshold chosen above that by
+  // eye is a threshold nobody can check later. Measured here: 338 with the
+  // text and 15 without.
+
+  // The control, and not a formality: this file's own history has a test that
+  // passed before the feature worked. An empty field of the same shape must
+  // have the background and no text, which is what says the count above is
+  // measuring glyphs rather than furniture.
+  RnView *blank_root = rn_view_new(2);
+  g_object_ref_sink(blank_root);
+  rn_view_set_frame(blank_root, 0, 0, 200, 60);
+  RnView *blank = rn_view_new(11);
+  rn_view_set_frame(blank, 0, 0, 200, 60);
+  rn_view_set_background_color(blank, TRUE, &blue_background);
+  rn_view_insert_child(blank_root, blank, 0);
+  manager.update(blank,
+                 makeTextInput(11, folly::dynamic::object("text", "")("multiline", true)(
+                                       "color", 0xff000000)));
+
+  const basalt::testing::RnPixels empty = basalt::testing::renderView(blank_root, 200, 60);
+  int blank_blue = 0;
+  int blank_dark = 0;
+  count(empty, blank_blue, blank_dark);
+  EXPECT(blank_blue > 1000);
+  // The caret and nothing else, which is the floor the assertion above needs.
+  EXPECT(blank_dark > 0);
+  EXPECT(blank_dark < 50);
+  // An order of magnitude more dark pixels with the text than without it. A
+  // field that held its string and drew nothing -- the failure a scroller
+  // invites, and the one neither the tree dump nor the adjustment would notice
+  // -- lands on the floor instead.
+  EXPECT(dark > blank_dark * 4);
+
+  g_object_unref(blank_root);
+  g_object_unref(root);
+}
+
+// A field that refuses to scroll must still keep its text inside its box.
+//
+// The sibling of this question on AppKit was a real bug, found by looking at
+// the running app rather than by any suite: a bare NSTextView resizes itself to
+// fit its text, nothing above it clips -- React Native's `overflow` defaults to
+// `visible` -- and a one-line field drew three lines down the page behind it.
+// GTK is asked the same question here, in pixels, because a tree dump and an
+// adjustment both say nothing about where ink lands.
+TEST(textinput_a_field_that_refuses_to_scroll_keeps_its_text_inside) {
+  RnView *root = rn_view_new(1);
+  g_object_ref_sink(root);
+  rn_view_set_frame(root, 0, 0, 200, 90);
+
+  RnView *view = rn_view_new(10);
+  // A box far shorter than the text needs, so anything that grows shows.
+  rn_view_set_frame(view, 0, 0, 200, 24);
+  const GdkRGBA blue = {0.2F, 0.4F, 1.0F, 1.0F};
+  rn_view_set_background_color(view, TRUE, &blue);
+  rn_view_insert_child(root, view, 0);
+
+  auto manager = makeManager();
+  manager.update(view,
+                 makeTextInput(10, folly::dynamic::object("text", kManyLines)("multiline", true)(
+                                       "scrollEnabled", false)("color", 0xff000000)));
+  EXPECT(!rn_peer_scrolls(rn_view_get_editable(view)));
+
+  const basalt::testing::RnPixels pixels = basalt::testing::renderView(root, 200, 90);
+  EXPECT(pixels.valid());
+
+  // Ink below the field, where the page is and the field is not. A field that
+  // grew to fit its text puts several lines of it here.
+  int belowDark = 0;
+  for (int y = 30; y < 90; y++) {
+    for (int x = 0; x < 200; x++) {
+      const basalt::testing::RnPixel pixel = pixels.at(x, y);
+      if (pixel.alpha > 200 && pixel.red < 120 && pixel.green < 120 && pixel.blue < 120) {
+        belowDark++;
+      }
+    }
+  }
+  EXPECT_EQ(belowDark, 0);
+
+  // And the harness is looking in the right place: the field itself does have
+  // ink in it, so a zero above means clipped rather than blank.
+  int insideDark = 0;
+  for (int y = 0; y < 24; y++) {
+    for (int x = 0; x < 200; x++) {
+      const basalt::testing::RnPixel pixel = pixels.at(x, y);
+      if (pixel.alpha > 200 && pixel.red < 120 && pixel.green < 120 && pixel.blue < 120) {
+        insideDark++;
+      }
+    }
+  }
+  EXPECT(insideDark > 20);
+
+  g_object_unref(root);
 }

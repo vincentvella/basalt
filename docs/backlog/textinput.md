@@ -339,33 +339,58 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   "sync" in the name promises, and the thing an app would then depend on is
   this project's guess rather than React Native's behaviour.
 
-  **`scrollEnabled` is done on Windows and is a missing feature on the other
-  two, rather than a missing prop.** A multiline field there is an `EDIT` with
+  **`scrollEnabled` is done on all three, 2026-10-13, and on two of them it
+  meant making a multiline field scroll at all.**
+
+  Windows already did: a multiline field there is an `EDIT` with
   `ES_MULTILINE | ES_AUTOVSCROLL`, and the prop is that second style bit
   withheld -- a creation-time decision, like `multiline` itself, so a field
   that changes it has its peer rebuilt. The control still *accepts* text it
-  will not scroll to show, which is what makes this a display decision and not
-  a limit.
+  will not scroll to show, which is what makes this a display decision rather
+  than a limit.
 
-  GTK and AppKit cannot honour the prop because neither scrolls to begin with:
-  the multiline peer is a bare `GtkTextView` and a bare `NSTextView`, in no
-  scroller at all, so text past the bottom of the box is clipped and the prop's
-  `false` is already what happens. Its default, `true`, is the half that is
-  missing, and the user-visible shape of that is a field whose caret can leave
-  the box.
+  GTK and AppKit could not honour it because neither scrolled: the multiline
+  peer was a bare GtkTextView and a bare NSTextView in no scroller at all, so
+  the caret could leave the bottom of the box with no way for anyone to follow
+  it. Both now build the platform's own arrangement when the prop is true,
+  which is the default: a `GtkScrolledWindow` around the text view, and an
+  `NSScrollView` with it as the document view. Neither is a wrapper over
+  something that already worked. A GtkTextView is a GtkScrollable whose
+  adjustments *come from* its scrolled window, so without one
+  `gtk_text_view_scroll_to_mark` has nothing to move; `scrollRangeToVisible:`
+  walks up to an enclosing NSScrollView and does nothing without one.
 
-  Two routes, written down because the obvious one is the expensive one. The
-  obvious one is a scroller around the peer -- `NSScrollView` with the text
-  view as its `documentView`, a `GtkScrolledWindow` around the `RnTextView` --
-  and it is expensive because "the peer *is* the editor" is an invariant
-  threaded through both hosts: `AppKitTextPeer.mm` alone casts the peer to
-  `NSTextView` two dozen times, and focus, the delegate wiring and the
-  placeholder drawing all assume it. The cheaper route, unverified and worth
-  measuring first: on AppKit, scroll by hand with `setBoundsOrigin:` against
-  the caret rect the layout manager gives, which needs no scroll view and so
-  no change to the invariant; on GTK, hand the `GtkTextView` a `GtkAdjustment`
-  through `gtk_scrollable_set_vadjustment` without a scrolled window, which is
-  the object `gtk_text_view_scroll_to_mark` moves and may be all it needs.
+  **The cost was the peer no longer being the editor**, which both hosts had
+  assumed everywhere -- `AppKitTextPeer.mm` alone cast the peer to NSTextView
+  two dozen times, and GTK's twin twelve. Each file grew one unwrap the rest go
+  through (`RnPeerEditorView`, `rn_peer_editor`), which is also what focus and
+  the accessibility label now ask: a label on a scroll view names the
+  furniture, and the element a screen reader lands on would carry nothing.
+
+  Two things measured rather than assumed while doing it. AppKit's focus chain
+  needs no change: `NSScrollView` answers YES to `acceptsFirstResponder` and
+  hands first responder to its document view, so asking for the editor instead
+  would read as load-bearing and is not. And `propagate-natural-height` on the
+  GTK scroller is inert here, because the RnView allocates the peer at the size
+  Yoga resolved and never asks it what it would like -- natural goes 46 to 70
+  with the property on, and the minimum stays 46 either way.
+
+  **And `scrollEnabled: false` on AppKit was a real bug, found by looking at
+  the running app.** A bare NSTextView with `verticallyResizable` resizes
+  itself to fit its text, and nothing above it clips -- React Native's
+  `overflow` defaults to `visible`, so the RnAppKitView does not. A one-line
+  field drew three lines of text down the page behind it, and had done for
+  every multiline field on that host since the day it got one. Three unit
+  suites, a cross-host tree comparison and two integration scenarios all passed
+  over it; a screenshot of `e2e/input.tsx` showed it immediately. The field now
+  refuses to grow -- the text container tracks the view in both directions --
+  so text past the bottom is never laid out and so never drawn. GTK was asked
+  the same question in pixels and already clipped.
+
+  `e2e/input.tsx` gained the two fields that found it. No scenario app had a
+  multiline `<TextInput>` at all until then, which is to say the peer every
+  host builds for one had never been mounted by a real React tree on any of
+  them.
 
   **`acceptDragAndDropTypes` is done on all three, 2026-10-13, and it reused
   everything.** Android's implementation is the thing to copy and it is a

@@ -135,7 +135,11 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
 
   // Before the signals, because a field that switches between single and
   // multiline is a different widget and the old one's handlers go with it.
-  GtkWidget *peer = rn_view_set_editable(view, TRUE, multiline ? TRUE : FALSE);
+  // `scrollEnabled`, which decides the shape of the multiline peer and so
+  // rebuilds it on a change, the same place Windows and AppKit read it.
+  const bool scrollEnabled = props == nullptr || props->traits.scrollEnabled;
+  GtkWidget *peer = rn_view_set_editable(view, TRUE, multiline ? TRUE : FALSE,
+                                         scrollEnabled ? TRUE : FALSE);
   const bool rebuilt = peer != entry.editable;
   entry.editable = peer;
 
@@ -439,7 +443,7 @@ void GtkTextInputManager::remove(Tag tag) {
   // view is alive by the time this runs, and a type check could not tell if it
   // were not.
   if (it->second.view != nullptr) {
-    rn_view_set_editable(it->second.view, FALSE, FALSE);
+    rn_view_set_editable(it->second.view, FALSE, FALSE, TRUE);
   }
   entries_.erase(it);
 }

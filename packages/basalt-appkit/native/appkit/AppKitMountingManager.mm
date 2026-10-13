@@ -8,6 +8,9 @@
 #include "AccessibilityRole.h"
 #include "KeyboardFocusable.h"
 
+// For RnPeerEditorView: a field's label belongs on the editor inside the peer.
+#import "AppKitTextPeer.h"
+
 #include <react/renderer/components/view/BaseViewEventEmitter.h>
 #include "ImagePlaceholder.h"
 #include "ComponentRegistry.h"
@@ -1514,7 +1517,11 @@ void AppKitMountingManager::applyAccessibility(RnAppKitView *view, const ShadowV
   // The wrapper then stops being an element of its own, because two nested
   // elements for one control is a worse tree than one: a screen reader stops
   // twice and says the name once.
-  if (NSView *peer = view.rnEditable) {
+  // The editor inside the peer, which for a scrolling multiline field is the
+  // text view rather than the scroll view around it: a label on the scroller
+  // is a label on the wrong element, and the one a screen reader lands on
+  // would carry nothing.
+  if (NSView *peer = RnPeerEditorView(view.rnEditable)) {
     peer.accessibilityLabel = labelText;
     if (hintText != nil) {
       peer.accessibilityHelp = hintText;

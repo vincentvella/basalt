@@ -1,5 +1,8 @@
 #include "AccessibilityRole.h"
 #include "KeyboardFocusable.h"
+
+// For rn_peer_editor: a field's label belongs on the editor inside the peer.
+#include "GtkTextPeer.h"
 #include "ImagePlaceholder.h"
 #include "GtkMountingManager.h"
 
@@ -876,7 +879,11 @@ void GtkMountingManager::applyAccessibility(RnView *view, const ShadowView &shad
   // AppKit's, a GtkAccessible role is construct-only, so a wrapper that should
   // be presentational cannot become one here. That is the smaller half of the
   // problem and is in docs/BACKLOG.md.
-  if (GtkWidget *peer = rn_view_get_editable(view)) {
+  // The editor inside the peer, which for a scrolling multiline field is the
+  // text view rather than the scrolled window around it: a label on the
+  // scroller names the furniture, and the element AT-SPI presents as the text
+  // box would carry nothing.
+  if (GtkWidget *peer = rn_peer_editor(rn_view_get_editable(view))) {
     gtk_accessible_update_property(GTK_ACCESSIBLE(peer),
                                    GTK_ACCESSIBLE_PROPERTY_LABEL,
                                    label.c_str(),

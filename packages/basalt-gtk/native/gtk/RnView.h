@@ -551,7 +551,10 @@ char *rn_view_describe_tree(RnView *self);
 // which is worth reimplementing.
 //
 // Returns the editable, or NULL after clearing.
-GtkWidget *rn_view_set_editable(RnView *self, gboolean editable, gboolean multiline);
+GtkWidget *rn_view_set_editable(RnView *self,
+                                gboolean editable,
+                                gboolean multiline,
+                                gboolean scroll_enabled);
 
 // The border and padding to hold the native peer inside. Yoga has already
 // resolved these into React Native's content inset; without them a <TextInput>
