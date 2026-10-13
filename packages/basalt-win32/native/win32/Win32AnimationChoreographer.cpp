@@ -1,31 +1,17 @@
 #include "Win32AnimationChoreographer.h"
 
-#include <windows.h>
+#include "Win32UiTimer.h"
 
 #include <chrono>
 
 namespace basalt {
 namespace {
 
-// Roughly sixty hertz. SetTimer's resolution is the message queue's -- it
-// cannot do better than about ten to sixteen milliseconds and it coalesces --
-// so this is an upper bound on the frame rate rather than a promise of one.
-// See the header for what would be needed to do it properly.
-constexpr UINT kFrameIntervalMs = 16;
-
-// SetTimer's callback carries the timer id and nothing else, so the
-// choreographer has to be found from it. One host means one choreographer, and
-// a map would be pretending otherwise.
-Win32AnimationChoreographer *&currentChoreographer() {
-  static Win32AnimationChoreographer *instance = nullptr;
-  return instance;
-}
-
-void CALLBACK onTimer(HWND, UINT, UINT_PTR, DWORD) {
-  if (auto *choreographer = currentChoreographer()) {
-    choreographer->onFrame();
-  }
-}
+// Roughly sixty hertz. The delay is a floor rather than a promise -- the frame
+// is posted to the loop and arrives behind whatever the loop is already
+// holding -- so this is an upper bound on the frame rate. See the header for
+// what would be needed to do it properly.
+constexpr unsigned kFrameIntervalMs = 16;
 
 } // namespace
 
@@ -37,28 +23,25 @@ void Win32AnimationChoreographer::resume() {
   if (running_.exchange(true)) {
     return;
   }
-  currentChoreographer() = this;
-  // A timer with no window: the callback is delivered as WM_TIMER to the
-  // thread's queue and dispatched by the loop, which means it lands on the UI
-  // thread like everything else and needs no synchronisation of its own.
-  timer_ = static_cast<std::uintptr_t>(SetTimer(nullptr, 0, kFrameIntervalMs, onTimer));
+  // Not `SetTimer`. A sixty-hertz WM_TIMER is exactly the arrangement that
+  // stops working in an app that repaints continuously, which is to say in
+  // every app with an animation worth running. See win32/Win32UiTimer.h.
+  timer_ = scheduleUiTimer(kFrameIntervalMs, true, [this] { onFrame(); });
 }
 
 void Win32AnimationChoreographer::pause() {
   if (!running_.exchange(false)) {
     return;
   }
-  if (timer_ != 0) {
-    KillTimer(nullptr, static_cast<UINT_PTR>(timer_));
-    timer_ = 0;
-  }
+  // Before this returns, nothing of ours is still in flight: `cancelUiTimer`
+  // waits out a delivery already on a pool thread, which is what makes the
+  // `this` captured above safe to destroy afterwards.
+  cancelUiTimer(timer_);
+  timer_ = 0;
 }
 
 void Win32AnimationChoreographer::detach() {
   pause();
-  if (currentChoreographer() == this) {
-    currentChoreographer() = nullptr;
-  }
 }
 
 void Win32AnimationChoreographer::onFrame() {

@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "PlatformServices.h"
+#include "Win32UiTimer.h"
 
 #include <react/renderer/components/scrollview/ScrollEvent.h>
 #include <react/renderer/components/scrollview/ScrollViewEventEmitter.h>
@@ -437,34 +438,6 @@ void Win32ScrollViewManager::endWheelDrag(Tag tag, std::uint64_t generation) {
 // Offset, events and state
 // ---------------------------------------------------------------------------
 
-namespace {
-
-// Which manager and view a timer is animating. A TIMERPROC carries no state, so
-// the id is the key -- and the map is the reason `stopAnimation` must run before
-// an entry goes, exactly as the display link does on AppKit.
-std::unordered_map<UINT_PTR, std::pair<Win32ScrollViewManager *, facebook::react::Tag>> &
-animations() {
-  static std::unordered_map<UINT_PTR, std::pair<Win32ScrollViewManager *, facebook::react::Tag>>
-      value;
-  return value;
-}
-
-} // namespace
-
-void CALLBACK Win32ScrollViewManager::onAnimationTimer(HWND /*hwnd*/,
-                                                       UINT /*message*/,
-                                                       UINT_PTR id,
-                                                       DWORD now) {
-  const auto it = animations().find(id);
-  if (it == animations().end()) {
-    KillTimer(nullptr, id);
-    return;
-  }
-  Win32ScrollViewManager *manager = it->second.first;
-  const facebook::react::Tag tag = it->second.second;
-  manager->advanceAnimation(tag, static_cast<double>(now) / 1000.0);
-}
-
 void Win32ScrollViewManager::scrollTowards(Entry &entry, double x, double y, bool animated) {
   stopAnimation(entry);
   if (!animated || !entry.animation.start(entry.offsetX, entry.offsetY, x, y)) {
@@ -474,14 +447,21 @@ void Win32ScrollViewManager::scrollTowards(Entry &entry, double x, double y, boo
   // Sixteen milliseconds: this host's choreographer runs on a timer of the same
   // period, and matching it keeps a scroll and an animation stepping together
   // rather than beating against each other.
-  entry.animationTimer = SetTimer(nullptr, 0, 16, onAnimationTimer);
+  //
+  // The callback carries the tag rather than being looked up from a timer id,
+  // which is what a TIMERPROC forced and what the map here used to be for.
+  const facebook::react::Tag tag = entry.tag;
+  entry.animationTimer = scheduleUiTimer(16, true, [this, tag] {
+    advanceAnimation(tag, static_cast<double>(GetTickCount64()) / 1000.0);
+  });
   if (entry.animationTimer == 0) {
+    // No loop to animate on -- the unit tests, which install none. Land on the
+    // target rather than sit half-way to it forever.
     entry.animation.stop();
     applyOffset(entry, x, y, true);
     return;
   }
   entry.animationLastMillis = 0;
-  animations()[entry.animationTimer] = {this, entry.tag};
 }
 
 bool Win32ScrollViewManager::settleOnSnapPoint(Entry &entry, double velocityY) {
@@ -500,8 +480,9 @@ bool Win32ScrollViewManager::settleOnSnapPoint(Entry &entry, double velocityY) {
 void Win32ScrollViewManager::stopAnimation(Entry &entry) {
   entry.animation.stop();
   if (entry.animationTimer != 0) {
-    KillTimer(nullptr, entry.animationTimer);
-    animations().erase(entry.animationTimer);
+    // Called from inside the animation's own callback when the scroll
+    // finishes, which `cancelUiTimer` is written to accept.
+    cancelUiTimer(entry.animationTimer);
     entry.animationTimer = 0;
   }
 }

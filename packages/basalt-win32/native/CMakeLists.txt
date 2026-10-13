@@ -270,6 +270,16 @@ if(TARGET basalt_core)
     # ...and of core/PlatformServices.h, which is also where postToUiThread
     # lives -- the marshalling the mounting manager depends on.
     win32/PlatformServicesWin32.cpp
+    # Waiting, over that same marshalling rather than over SetTimer. The
+    # header says why there is a second way to wait on a platform that has
+    # one: WM_TIMER ranks below WM_PAINT and so does not arrive in an app that
+    # paints continuously.
+    win32/Win32UiTimer.cpp
+    # The message loop, which is this host furniture rather than the mounting
+    # manager's -- and is here rather than beside main_win32.cpp so the suite
+    # can link it. What it has to get right is subtle enough to be worth a
+    # test; see win32/Win32RunLoopObserver.h.
+    win32/Win32RunLoopObserver.cpp
     # The window's title bar: DWM's colours and dark mode, and the caption the
     # host draws when an app hides the system's. And BasaltWindow, the module
     # JavaScript reaches it through.
@@ -338,9 +348,6 @@ if(TARGET basalt_core)
   # -------------------------------------------------------------------------
   add_executable(basalt_win32
     win32/main_win32.cpp
-    # The event beat. Not an observer on Windows: there is no "about to wait"
-    # hook, so the message loop itself is here. See the header.
-    win32/Win32RunLoopObserver.cpp
     win32/Win32AnimationChoreographer.cpp)
   target_compile_options(basalt_win32 PRIVATE ${BASALT_WIN32_WARNINGS})
   target_link_libraries(basalt_win32 PRIVATE basalt_win32_mounting)
@@ -409,6 +416,11 @@ if(TARGET basalt_core)
     # innermost-first routing and the commands.
     tests/test_win32_focus.cpp
     tests/test_win32_scrollview.cpp
+    # Waiting, and the one condition that made the platform's own way of
+    # waiting stop working. See win32/Win32UiTimer.h.
+    tests/test_win32_ui_timer.cpp
+    # The message loop, and the bound on its drain.
+    tests/test_win32_run_loop.cpp
     # <TextInput>. The only tests here that make a window, because a text
     # field's peer is one -- see the file.
     tests/test_win32_textinput.cpp

@@ -78,6 +78,7 @@
 #include "TextSelection.h"
 #include "Win32TouchDispatcher.h"
 #include "Win32UiThread.h"
+#include "Win32UiTimer.h"
 #include "DragAndDrop.h"
 #include "Win32DropTarget.h"
 #include "Win32TitleBar.h"
@@ -169,16 +170,6 @@ constexpr int kInitialHeight = 700;
 // script talking to nativeFabricUIManager directly rather than a React app.
 // See e2e/demo.js. Only used when no module name is given.
 constexpr const char *kRenderFunctionName = "basaltRender";
-
-constexpr UINT_PTR kSecondTreeTimer = 100;
-
-// BASALT_QUIT_AFTER_MS's timer. A constant rather than the literal 101 it used
-// to be written as at its one call site: the spinner timer below was given 101
-// too, and `SetTimer` with an id that is already in use *replaces* the timer
-// rather than failing. An app with an <ActivityIndicator> in it therefore
-// silently cancelled its own shutdown, and the only symptom was a host that
-// never exited.
-constexpr UINT_PTR kQuitAfterTimer = 101;
 
 // One window, and the surface in it.
 //
@@ -401,12 +392,16 @@ void requestRepaint() {
 // Win32AnimationChoreographer.h gives about its own timer: a timer that runs
 // whether or not anything is animating wakes the process sixty times a second
 // forever, which matters more on a laptop than the frame interval does.
-constexpr UINT_PTR kAnimationTimer = 102;
+//
+// Not `SetTimer`, and this is the timer that proves why: the one thing it
+// exists to do is repaint, and a `WM_TIMER` is the message Windows withholds
+// while there is painting to do. A spinner that stops the moment the window
+// gets busy is the exact failure. See win32/Win32UiTimer.h.
+basalt::UiTimerId gAnimationTimer = 0;
 
-// BASALT_TEST_QUIT_FILE's poll. Repeating, unlike kQuitAfterTimer's one shot:
-// it looks for the file until it finds it. See core/TestQuitFile.h.
-constexpr UINT_PTR kQuitFileTimer = 103;
-bool gAnimationTimerRunning = false;
+// Defined below, and named here because the timer that calls it is started
+// above it.
+void tickAnimations(HWND hwnd);
 // When the last tick ran, so a frame delay is measured rather than assumed.
 // A GIF's delays are in hundredths of a second and the timer is 16ms, so
 // counting ticks would quantise every delay to a multiple of the tick and a
@@ -421,15 +416,16 @@ void updateAnimationTimer() {
       gHost.main().root->hasAnimatedImage() ||
       (gHost.logBoxRoot != nullptr &&
        (gHost.logBoxRoot->hasAnimatingSpinner() || gHost.logBoxRoot->hasAnimatedImage()));
-  if (wanted == gAnimationTimerRunning) {
+  if (wanted == (gAnimationTimer != 0)) {
     return;
   }
-  gAnimationTimerRunning = wanted;
   if (wanted) {
     gLastAnimationTick = std::chrono::steady_clock::now();
-    SetTimer(gHost.main().window, kAnimationTimer, 16, nullptr);
+    HWND window = gHost.main().window;
+    gAnimationTimer = basalt::scheduleUiTimer(16, true, [window] { tickAnimations(window); });
   } else {
-    KillTimer(gHost.main().window, kAnimationTimer);
+    basalt::cancelUiTimer(gAnimationTimer);
+    gAnimationTimer = 0;
   }
 }
 
@@ -922,25 +918,18 @@ struct ScriptedInput {
 // Fired from timers keyed by index, so the vector has to outlive the loop.
 std::vector<ScriptedInput> gScriptedInput;
 
-constexpr UINT_PTR kScriptedInputTimerBase = 200;
-
-// Every timer id this host uses is distinct.
+// There is no table of timer ids here any more, and that is the point.
 //
-// `SetTimer` with an id that is already in use replaces the timer rather than
-// failing, so a collision is silent and its symptom is whatever the timer it
-// replaced was for. That happened: the spinner's repaint timer was given the
-// same id as BASALT_QUIT_AFTER_MS's, and an app with an <ActivityIndicator> in
-// it cancelled its own shutdown and hung. A static_assert cannot check the
-// scripted range against the rest, so the base is held above everything else.
-static_assert(kSecondTreeTimer != kQuitAfterTimer && kSecondTreeTimer != kAnimationTimer &&
-                  kSecondTreeTimer != kQuitFileTimer && kQuitAfterTimer != kAnimationTimer &&
-                  kQuitAfterTimer != kQuitFileTimer && kAnimationTimer != kQuitFileTimer,
-              "two timers share an id, and SetTimer would silently replace one with the other");
-static_assert(kScriptedInputTimerBase > kSecondTreeTimer &&
-                  kScriptedInputTimerBase > kQuitAfterTimer &&
-                  kScriptedInputTimerBase > kAnimationTimer &&
-                  kScriptedInputTimerBase > kQuitFileTimer,
-              "the scripted-input ids count up from the base and must start above the rest");
+// Every one of this host's waits used to be a `SetTimer` id written by hand,
+// and `SetTimer` with an id already in use *replaces* the timer rather than
+// failing -- so a collision was silent and showed up as whatever the replaced
+// timer had been for. It happened: the spinner's repaint timer was given the
+// same id as BASALT_QUIT_AFTER_MS's, and an app with an <ActivityIndicator>
+// in it cancelled its own shutdown and hung. Two static_asserts guarded
+// against the next one.
+//
+// win32/Win32UiTimer.h hands out its own ids from a counter, so there is
+// nothing left to collide and nothing left to assert about.
 
 // The numbers in "10,20,30" -- however many there are, which is what lets one
 // parser read both a tap's pair and a drag's four.
@@ -962,9 +951,10 @@ std::vector<double> parseNumbers(const std::string &spec) {
   return numbers;
 }
 
-void CALLBACK fireScriptedInput(HWND hwnd, UINT, UINT_PTR id, DWORD) {
-  KillTimer(hwnd, id);
-  const size_t index = static_cast<size_t>(id - kScriptedInputTimerBase);
+// One scheduled action, on the UI thread. An index and a window rather than a
+// TIMERPROC's four arguments: the timer behind this carries a closure, so
+// there is nothing to recover from an id.
+void fireScriptedInput(HWND hwnd, size_t index) {
   if (index >= gScriptedInput.size()) {
     return;
   }
@@ -1183,10 +1173,13 @@ void CALLBACK fireScriptedInput(HWND hwnd, UINT, UINT_PTR id, DWORD) {
 // the last one, so a drag can be scheduled behind the taps.
 UINT scheduleScriptedInput(const ScriptedInput &action, UINT delayMs) {
   gScriptedInput.push_back(action);
-  SetTimer(gHost.main().window,
-           kScriptedInputTimerBase + gScriptedInput.size() - 1,
-           delayMs,
-           fireScriptedInput);
+  const size_t index = gScriptedInput.size() - 1;
+  HWND window = gHost.main().window;
+  // Not `SetTimer`: scripted input exists to drive a *running* app, and the
+  // apps worth driving are the ones that paint -- which is exactly when a
+  // WM_TIMER never arrives. Every instrument in this file was silently
+  // inoperative on an app with a `<Canvas>`. See win32/Win32UiTimer.h.
+  basalt::scheduleUiTimer(delayMs, false, [window, index] { fireScriptedInput(window, index); });
   return delayMs + 1000;
 }
 
@@ -1828,17 +1821,9 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
       }
       return 0;
 
-    case WM_TIMER:
-      if (wparam == kAnimationTimer) {
-        tickAnimations(hwnd);
-        return 0;
-      }
-      if (wparam == kSecondTreeTimer) {
-        KillTimer(hwnd, kSecondTreeTimer);
-        std::fprintf(stderr, "--- committing tree 2 from JS ---\n");
-        callRenderFunction(2);
-      }
-      return 0;
+    // No WM_TIMER case. Nothing this host schedules arrives that way any
+    // more -- see win32/Win32UiTimer.h for why it could not be relied on --
+    // and swallowing the message would hide a timer somebody else set.
 
     case WM_PAINT: {
       PAINTSTRUCT paint{};
@@ -2553,7 +2538,10 @@ int main(int argc, char **argv) {
   if (gHost.moduleName.empty()) {
     std::fprintf(stderr, "--- committing tree 1 from JS ---\n");
     callRenderFunction(1);
-    SetTimer(gHost.main().window, kSecondTreeTimer, 2000, nullptr);
+    basalt::scheduleUiTimer(2000, false, [] {
+      std::fprintf(stderr, "--- committing tree 2 from JS ---\n");
+      callRenderFunction(2);
+    });
   }
 
   UINT scriptedDelayMs = 1500;
@@ -2667,21 +2655,20 @@ int main(int argc, char **argv) {
   // clicking anything. The same escape hatch both other hosts have.
   if (const char *quitAfter = std::getenv("BASALT_QUIT_AFTER_MS")) {
     const UINT delay = static_cast<UINT>(std::strtoul(quitAfter, nullptr, 10));
-    SetTimer(
-        gHost.main().window, kQuitAfterTimer, delay, [](HWND hwnd, UINT, UINT_PTR id, DWORD) {
-          KillTimer(hwnd, id);
-          // The same line the other two hosts log, so a person reading three
-          // transcripts side by side sees the same shutdown in each. This
-          // host was silent about it, which is how a scenario came to assert
-          // on a string only two of them print.
-          std::fprintf(stderr, "BASALT_QUIT_AFTER_MS elapsed; quitting\n");
-          // What WM_CLOSE does, without going through WM_CLOSE. This is the
-          // harness ending the run, not a person closing a window, and an app
-          // that intercepts its own close would otherwise refuse it -- a test
-          // that asks "does refusing work" by never exiting.
-          captureBeforeTeardown();
-          DestroyWindow(hwnd);
-        });
+    HWND window = gHost.main().window;
+    basalt::scheduleUiTimer(delay, false, [window] {
+      // The same line the other two hosts log, so a person reading three
+      // transcripts side by side sees the same shutdown in each. This
+      // host was silent about it, which is how a scenario came to assert
+      // on a string only two of them print.
+      std::fprintf(stderr, "BASALT_QUIT_AFTER_MS elapsed; quitting\n");
+      // What WM_CLOSE does, without going through WM_CLOSE. This is the
+      // harness ending the run, not a person closing a window, and an app
+      // that intercepts its own close would otherwise refuse it -- a test
+      // that asks "does refusing work" by never exiting.
+      captureBeforeTeardown();
+      DestroyWindow(window);
+    });
   }
 
   // BASALT_TEST_QUIT_FILE: the same shutdown, at a moment the harness picks
@@ -2695,26 +2682,25 @@ int main(int argc, char **argv) {
   //
   // Two instruments, one timer, because they want the same thing at different
   // moments: the quit file is the harness deciding, BASALT_QUIT_WHEN_SETTLED is
-  // the app noticing it has nothing left to do. One timer is also one id, and
-  // SetTimer replaces silently on a collision. See core/TestSettle.h.
+  // the app noticing it has nothing left to do. See core/TestSettle.h.
   if (basalt::testQuitFilePath().has_value() || basalt::quitWhenSettledMs().has_value()) {
-    SetTimer(gHost.main().window,
-             kQuitFileTimer,
-             basalt::kTestQuitFilePollMs,
-             [](HWND hwnd, UINT, UINT_PTR id, DWORD) {
-               const char *why = nullptr;
-               if (basalt::testQuitFileAppeared()) {
-                 why = basalt::kTestQuitFileMessage;
-               } else if (basalt::hasSettled()) {
-                 why = basalt::kQuitWhenSettledMessage;
-               } else {
-                 return;
-               }
-               KillTimer(hwnd, id);
-               std::fprintf(stderr, "%s\n", why);
-               captureBeforeTeardown();
-               DestroyWindow(hwnd);
-             });
+    HWND window = gHost.main().window;
+    static basalt::UiTimerId poll = 0;
+    poll = basalt::scheduleUiTimer(basalt::kTestQuitFilePollMs, true, [window] {
+      const char *why = nullptr;
+      if (basalt::testQuitFileAppeared()) {
+        why = basalt::kTestQuitFileMessage;
+      } else if (basalt::hasSettled()) {
+        why = basalt::kQuitWhenSettledMessage;
+      } else {
+        return;
+      }
+      basalt::cancelUiTimer(poll);
+      poll = 0;
+      std::fprintf(stderr, "%s\n", why);
+      captureBeforeTeardown();
+      DestroyWindow(window);
+    });
   }
 
   // Not a plain GetMessage loop: the event beat has to be induced each time the

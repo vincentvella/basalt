@@ -12,8 +12,8 @@
 // own thread, because DwmFlush blocks, and a blocked UI thread is worse than a
 // slightly wrong frame interval.
 //
-// So this is a multimedia timer at sixty hertz, and it is worth being clear
-// that this is a placeholder rather than a design. `docs/BACKLOG.md` already
+// So this is a timer at sixty hertz, and it is worth being clear that this is
+// a placeholder rather than a design. `docs/BACKLOG.md` already
 // records that worklets and Reanimated run on a sixteen-millisecond timer on
 // *both* other desktops for a related reason -- each platform's display link
 // belongs to React Native's own choreographer and pauses when React Native has
@@ -52,10 +52,13 @@ class Win32AnimationChoreographer final : public facebook::react::AnimationChore
 
  private:
   std::atomic<bool> running_{false};
-  // A UINT_PTR from SetTimer, held as an integer so this header needs no
-  // windows.h -- which would otherwise reach every translation unit that
-  // constructs a host.
-  std::uintptr_t timer_{0};
+  // A `basalt::UiTimerId` rather than a `SetTimer` handle, and not for
+  // tidiness: WM_TIMER ranks below WM_PAINT, so on this timer an app that
+  // repaints continuously -- anything with a `<Canvas>` -- stopped getting
+  // animation frames at all. See win32/Win32UiTimer.h. Held as a plain
+  // integer so this header needs no windows.h, which would otherwise reach
+  // every translation unit that constructs a host.
+  std::uint64_t timer_{0};
 };
 
 } // namespace basalt

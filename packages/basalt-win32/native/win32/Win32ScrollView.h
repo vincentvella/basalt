@@ -153,11 +153,13 @@ class Win32ScrollViewManager {
 
     // An animated `scrollTo`. Windows models no fling -- a wheel supplies no
     // velocity -- but an animated scroll is given its target, so the argument
-    // that rules out momentum does not rule this out. Driven by a thread timer,
-    // which needs no window: the scroll manager has a tag, not an HWND.
+    // that rules out momentum does not rule this out. Driven by a
+    // win32/Win32UiTimer.h timer rather than by `SetTimer`, for the reason
+    // that header gives: a WM_TIMER at sixty hertz stops arriving in an app
+    // that repaints continuously, which is to say mid-scroll.
     ScrollSnapConfig snap;
     ScrollAnimation animation;
-    UINT_PTR animationTimer{0};
+    std::uint64_t animationTimer{0};
     unsigned long long animationLastMillis{0};
 
     std::shared_ptr<const facebook::react::ScrollViewShadowNode::ConcreteState> state;
@@ -236,9 +238,6 @@ class Win32ScrollViewManager {
   void stopAnimation(Entry &entry);
   void advanceAnimation(facebook::react::Tag tag, double seconds);
 
-  // The timer procedure cannot carry a pointer, so it looks the animation up by
-  // timer id. Static because `SetTimer` calls a plain function.
-  static void CALLBACK onAnimationTimer(HWND hwnd, UINT message, UINT_PTR id, DWORD now);
   void emitScrollEvent(Entry &entry, const char *which);
   void writeStateOffset(const Entry &entry);
 

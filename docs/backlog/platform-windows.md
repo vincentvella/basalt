@@ -27,6 +27,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 20. ~~`fontVariant` and a fragment's `opacity` are not read~~
 21. ~~`writingDirection` is not read~~, and `start` and `end` are relative here
 22. ~~An animated GIF is painted as a still~~
+23. ~~Every timer in the host stops in an app that paints continuously~~
+24. ~~Input intermittently does nothing in an app that paints continuously~~
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -850,3 +852,44 @@ and none of it is a missing half.
   animation's place, a file that does not loop stopping on its last frame, a
   still PNG that is not an animation, and the loader handing back the same
   frames twice. The end-to-end scenario runs on all three hosts now.
+
+- ~~**Every timer in the host stops in an app that paints continuously.**~~ And
+  ~~**input intermittently does nothing in the same app.**~~ One cause, found
+  by running kino -- a video editor whose preview is a Skia `<Canvas>` -- on
+  this host for the first time. Both are the same mistake about how a Win32
+  message queue behaves when it is busy, and neither shows up in anything this
+  repository runs: every app in `e2e/` paints when something changes, and this
+  only bites an app that paints all the time.
+
+  **`WM_TIMER` is not a message that gets delivered.** It is synthesised by
+  `GetMessage` and `PeekMessage`, and only when the queue holds nothing else --
+  below posted messages, below input, and below `WM_PAINT`. Measured on kino
+  while *idle*: 120 `WM_PAINT` and 250 marshalled work items a second, against
+  six `WM_TIMER` in twenty-five seconds. A 250ms poll fired four times and then
+  never again; a one-shot never fired at all. Everything this host scheduled
+  went through `SetTimer`: `BASALT_QUIT_AFTER_MS`, `BASALT_TEST_QUIT_FILE`,
+  `BASALT_QUIT_WHEN_SETTLED`, every scripted-input instrument, the spinner and
+  animated-GIF tick, `Win32ScrollView`'s animated scroll, and
+  `Win32AnimationChoreographer` -- which is to say every `requestAnimationFrame`
+  and every `Animated` on this platform. So: `win32/Win32UiTimer.h`, which waits
+  on a thread-pool timer and delivers through `postToUiThread`, a posted message
+  that outranks both paint and timer. The per-timer id tables and the two
+  static_asserts guarding them are gone with it; ids come from a counter now,
+  so there is nothing left to collide.
+
+  **The event beat had the same shape.** `runMessageLoopWithBeat` drained the
+  queue, beat, and blocked -- "having drained whatever else was pending", which
+  is what `Activity::BeforeWaiting` means and what React Native's event queue is
+  flushed by. On a queue that never empties the drain never finishes and the
+  beat never runs, so a touch was hit-tested, matched to an emitter, enqueued,
+  and then sat there. What that looked like from outside is the worst kind of
+  bug: a button that usually works. One scripted tap in three did nothing, and a
+  real click -- which lands later in a run and under more load -- did nothing far
+  more often. Clicking anything in kino's editor was a coin flip. The drain is
+  bounded now: the beat also happens every 8ms, half a frame, so an event
+  reaches JavaScript inside the frame it belongs to.
+
+  Four tests for the timer and two for the loop, and the ones worth having are
+  the two that reproduce the condition rather than the mechanism: a queue fed a
+  message that reposts itself, a timer that arrives through it, and -- in the
+  same test, so the premise cannot rot -- a `SetTimer` beside it that does not.
