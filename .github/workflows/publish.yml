@@ -272,53 +272,64 @@ jobs:
             # `latest` is the tag that matters: it is what a plain
             # `npm install basalt-core` resolves to.
             npm publish "$1" --access public --tag latest
-            # And then ask the registry, with patience, because a publish is
-            # not visible the moment it returns.
-            #
-            # Measured on 2026-10-12, because it looked like a failed release
-            # and was not: the step printed `+ basalt-core@0.2.0` at 03:53 and
-            # `npm view basalt-core versions` answered `['0.0.0-rc5',
-            # '0.1.0']` at 03:56. The version's own registry timestamp is
-            # 03:57:13. So it took about four minutes to appear, it varied
-            # per package -- three of eight were visible immediately -- and a
-            # check without a wait would have failed a release that worked.
-            #
-            # What the wait is for is the case that does not resolve: a
-            # trusted publisher granted only `npm stage publish` stages the
-            # tarball, prints the same `+ name@version` and exits 0, and
-            # nothing ever appears. basalt-win32 carries a `0.0.0-stage`
-            # version from one. The probe above cannot tell the two apart
-            # either -- it reports 201 whatever the credential may do -- so
-            # this is the only place the difference shows.
-            #
-            # `--prefer-online`, because npm's cache will otherwise answer
-            # with what it knew before the publish.
-            # Five minutes per package, not ten. The release waits for this
-            # whole job, so a budget that can only be spent serially is a
-            # budget the waiter has to cover eight times over; four minutes is
-            # the longest propagation measured and this leaves room above it.
-            local landed=""
-            for _ in $(seq 1 20); do
-              landed=$(npm view "$name@$version" version --prefer-online 2>/dev/null || true)
-              [ "$landed" = "$version" ] && break
-              sleep 15
-            done
-            if [ "$landed" != "$version" ]; then
-              echo "!! $name@$version did not appear on the registry within five minutes"
-              echo "   npm said it published. A wait this long is not propagation, and a"
-              echo "   staged publish looks exactly like this: check Allowed actions on"
-              echo "   the package's trusted publisher, which needs npm publish and not"
-              echo "   only npm stage publish."
-              return 1
-            fi
-            echo "== $name@$version is on the registry"
+            # Recorded for the pass below rather than waited on here. A
+            # publish is not visible the moment it returns, and waiting for
+            # each one in turn makes the job's length the *sum* of eight
+            # propagations instead of the longest of them.
+            published="$published $name@$version"
           }
+          published=""
           core=$(ls ./tarballs/basalt-core-[0-9]*.tgz)
           publish "$core"
           for tarball in ./tarballs/*.tgz; do
             [ "$tarball" = "$core" ] && continue
             publish "$tarball"
           done
+
+          # Now ask the registry about all of them, against one deadline.
+          #
+          # `npm publish` exiting 0 is not a published package, and the case
+          # worth catching is the one that never resolves: a trusted publisher
+          # granted only `npm stage publish` stages the tarball, prints the
+          # same `+ name@version` and exits 0, and nothing ever appears.
+          # basalt-win32 carries a `0.0.0-stage` version from one. The probe
+          # above cannot tell that apart from slowness either -- it reports 201
+          # whatever the credential may do -- so this is the only place the
+          # difference shows.
+          #
+          # Fifteen minutes for the whole set, not five each. Propagation was
+          # measured at about four minutes for basalt-core on 2026-10-12 and at
+          # more than five for basalt-gtk on 2026-10-13, where a five-minute
+          # per-package budget failed a release that had published correctly --
+          # the package was on the registry a minute after the job gave up.
+          # Because this waits on all of them at once, the job is as long as
+          # the slowest package rather than the sum, which is also what keeps
+          # it inside release.yml's own wait.
+          #
+          # `--prefer-online`, because npm's cache will otherwise answer with
+          # what it knew before the publish.
+          deadline=$(( $(date +%s) + 900 ))
+          pending="$published"
+          while [ -n "${pending// /}" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+            still=""
+            for spec in $pending; do
+              if [ "$(npm view "$spec" version --prefer-online 2>/dev/null)" = "${spec##*@}" ]; then
+                echo "== $spec is on the registry"
+              else
+                still="$still $spec"
+              fi
+            done
+            pending="$still"
+            [ -n "${pending// /}" ] && sleep 15
+          done
+          if [ -n "${pending// /}" ]; then
+            echo "!! these did not appear on the registry within fifteen minutes:$pending"
+            echo "   npm said it published each of them. A wait this long is not"
+            echo "   propagation, and a staged publish looks exactly like this: check"
+            echo "   Allowed actions on the trusted publisher, which needs npm publish"
+            echo "   and not only npm stage publish."
+            exit 1
+          fi
 
       # No step to move `latest` afterwards. There was one, and it could
       # never have worked: npm refuses dist-tag changes made with an OIDC
