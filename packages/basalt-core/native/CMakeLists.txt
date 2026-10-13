@@ -103,6 +103,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_share.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_action_sheet.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_accessibility_role.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_alignment.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_selection.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sourcecode.cpp

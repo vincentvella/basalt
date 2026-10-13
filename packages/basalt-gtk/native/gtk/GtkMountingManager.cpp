@@ -1,3 +1,4 @@
+#include "AccessibilityRole.h"
 #include "GtkMountingManager.h"
 
 #ifdef BASALT_HAS_SKIA
@@ -329,7 +330,7 @@ RnView *GtkMountingManager::createView(const ShadowView &shadowView) {
   std::string roleName;
   if (const auto accessibility =
           std::dynamic_pointer_cast<const facebook::react::AccessibilityProps>(shadowView.props)) {
-    roleName = accessibility->accessibilityRole;
+    roleName = basalt::accessibilityRoleName(*accessibility);
   }
   if (roleName.empty() && shadowView.componentName != nullptr) {
     const std::string_view name(shadowView.componentName);

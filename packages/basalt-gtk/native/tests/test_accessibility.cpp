@@ -123,6 +123,41 @@ TEST(accessibility_role_maps_to_a_gtk_role) {
   manager.destroySurfaceRoot(kSurfaceId);
 }
 
+// `role` is the one reactnative.dev's accessibility page tells an app to write
+// now, and until 2026-10-13 no host read it: ReactCommon parses it into its own
+// enum beside `accessibilityRole` and decides nothing between them, so
+// `role="button"` reached every desktop as a generic view. core's
+// AccessibilityRole.h is that decision.
+TEST(the_aria_role_reaches_the_accessible) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *button = mountOne(manager, makeAccessibleView(20, [](ViewProps &props) {
+                              props.role = facebook::react::Role::Button;
+                            }));
+  EXPECT_EQ(static_cast<int>(gtk_accessible_get_accessible_role(GTK_ACCESSIBLE(button))),
+            static_cast<int>(GTK_ACCESSIBLE_ROLE_BUTTON));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
+// Both set, which is unusual and has an answer: React Native's own
+// `deriveAccessibilityTraits(role, accessibilityRole, ...)` takes `role`
+// first, so a view that sets the modern one gets the modern one.
+TEST(the_aria_role_wins_over_the_older_one) {
+  basalt::GtkMountingManager manager;
+  manager.createSurfaceRoot(kSurfaceId);
+
+  RnView *view = mountOne(manager, makeAccessibleView(21, [](ViewProps &props) {
+                            props.accessibilityRole = "image";
+                            props.role = facebook::react::Role::Checkbox;
+                          }));
+  EXPECT_EQ(static_cast<int>(gtk_accessible_get_accessible_role(GTK_ACCESSIBLE(view))),
+            static_cast<int>(GTK_ACCESSIBLE_ROLE_CHECKBOX));
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
 TEST(unknown_accessibility_role_falls_back_to_generic) {
   basalt::GtkMountingManager manager;
   manager.createSurfaceRoot(kSurfaceId);

@@ -1,3 +1,4 @@
+#include "AccessibilityRole.h"
 #include "Win32MountingManager.h"
 
 #include "BackgroundLayers.h"
@@ -1044,8 +1045,9 @@ win32::RnAccessibleFlag toFlag(bool value) {
 std::string effectiveRole(const ShadowView &shadowView) {
   if (const auto props =
           std::dynamic_pointer_cast<const facebook::react::AccessibilityProps>(shadowView.props)) {
-    if (!props->accessibilityRole.empty()) {
-      return props->accessibilityRole;
+    const std::string asked = basalt::accessibilityRoleName(*props);
+    if (!asked.empty()) {
+      return asked;
     }
   }
   if (shadowView.componentName != nullptr) {

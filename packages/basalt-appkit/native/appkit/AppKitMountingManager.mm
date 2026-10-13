@@ -5,6 +5,7 @@
 // CIFilter, which is the only way to tint an NSProgressIndicator.
 #import <CoreImage/CoreImage.h>
 
+#include "AccessibilityRole.h"
 #include "ComponentRegistry.h"
 #include "BackgroundLayers.h"
 #include "TextShadows.h"
@@ -1331,8 +1332,9 @@ RnAppKitAccessibleFlag toFlag(bool value) {
 std::string effectiveRole(const ShadowView &shadowView) {
   if (const auto props =
           std::dynamic_pointer_cast<const facebook::react::AccessibilityProps>(shadowView.props)) {
-    if (!props->accessibilityRole.empty()) {
-      return props->accessibilityRole;
+    const std::string asked = basalt::accessibilityRoleName(*props);
+    if (!asked.empty()) {
+      return asked;
     }
   }
   if (shadowView.componentName != nullptr) {

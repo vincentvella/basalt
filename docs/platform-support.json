@@ -499,7 +499,10 @@
     "AccessibilityProps.accessibilityRole": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "yes"
+      "windows": "yes",
+      "reads": [
+        "accessibilityRoleName"
+      ]
     },
     "AccessibilityProps.accessibilityHint": {
       "linux": "yes",
@@ -590,10 +593,12 @@
       "windows": "yes"
     },
     "AccessibilityProps.role": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "accessibilityRoleName"
+      ]
     },
     "AccessibilityProps.testId": {
       "linux": "partial",
@@ -741,7 +746,9 @@
       "macos": "yes",
       "windows": "partial",
       "why": "win-trim-end",
-      "reads": ["lineBreakMode"]
+      "reads": [
+        "lineBreakMode"
+      ]
     },
     "TextAttributes.textDecorationColor": {
       "linux": "yes",
@@ -803,7 +810,10 @@
       "linux": "yes",
       "macos": "yes",
       "windows": "yes",
-      "reads": ["layoutDirection", "paragraphDirections"]
+      "reads": [
+        "layoutDirection",
+        "paragraphDirections"
+      ]
     },
     "TextAttributes.accessibilityRole": {
       "linux": "no",
@@ -2046,7 +2056,10 @@
       "linux": "yes",
       "macos": "yes",
       "windows": "yes",
-      "reads": ["indicatorStyle", "scrollIndicatorColourFor"]
+      "reads": [
+        "indicatorStyle",
+        "scrollIndicatorColourFor"
+      ]
     }
   },
   "areas": [
