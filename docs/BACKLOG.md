@@ -39,7 +39,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 
 | Area | Open | What is left there |
 | --- | --- | --- |
-| [Windows, the platform](backlog/platform-windows.md) | 6 | A peer since phase 47, and as of 2026-10-10 it draws every style prop the other two do, positions an inline <View> like them, answers the same accessibility relations and takes the same TextInput props. What is left is the build's own chores, two structural limits of a child-window text field, and the text scale, which is declined in DECISIONS.md. |
+| [Windows, the platform](backlog/platform-windows.md) | 6 | A peer since phase 47, and as of 2026-10-10 it draws every style prop the other two do, positions an inline <View> like them, answers the same accessibility relations and takes the same TextInput props. What is left is the build's own chores, what a child-window text field still cannot do -- be seen by the snapshot, or be transformed -- and the text scale, which is declined in DECISIONS.md. |
 | [macOS](backlog/platform-macos.md) | 1 | A screen reader nobody has run, and the `dropShadow` difference that stays recorded. |
 | [Host wiring](backlog/host-wiring.md) | 7 | Dev support, error reporting, the offline `__DEV__` bundle. |
 | [Compatibility](backlog/compatibility.md) | 7 | Which React Native versions work, and which cannot. |

@@ -160,6 +160,13 @@ class RnWin32View {
   // as transparent black: a view with no background does not paint at all.
   void setBackgroundColor(float red, float green, float blue, float alpha, bool hasColor);
   bool hasBackgroundColor() const { return hasBackgroundColor_; }
+  // The four components, in the order they were set. Only meaningful when
+  // `hasBackgroundColor()`; a view without one has never written them.
+  //
+  // Read by Win32PeerClip, which has to know whether a view painted over a
+  // `<TextInput>` covers it, and that is the alpha. Painting itself does not
+  // need the accessor -- it is a member and reads the array directly.
+  const float *backgroundColor() const { return backgroundColor_; }
 
   void setOpacity(float opacity);
   float opacity() const { return opacity_; }

@@ -169,7 +169,12 @@ add_library(basalt_win32_view STATIC
   # Where a hidden title bar's pieces are -- the caption buttons and the drag
   # regions. Pure geometry over the view tree, so it is tested here with no
   # window and no React Native.
-  win32/Win32TitleBarLayout.cpp)
+  win32/Win32TitleBarLayout.cpp
+  # Which pixels of a child-window peer are still the peer's: a <TextInput>'s
+  # EDIT clipped to its scrolled ancestors and cut away where the tree paints
+  # over it. Geometry over the view tree for the same reason, and tested the
+  # same way.
+  win32/Win32PeerClip.cpp)
 target_compile_options(basalt_win32_view PRIVATE ${BASALT_WIN32_WARNINGS})
 target_include_directories(basalt_win32_view PUBLIC win32)
 # The header-only part of core, and only that: FocusRing.h, Backface.h,
@@ -217,7 +222,10 @@ set(BASALT_WIN32_TEST_SOURCES
   # compares; this is where the platform half is checked.
   tests/test_win32_accessibility.cpp
   # A hidden title bar's geometry: the caption buttons and the drag regions.
-  tests/test_win32_titlebar.cpp)
+  tests/test_win32_titlebar.cpp
+  # A child-window peer's visible region: clipping and occlusion, which no
+  # other host needs because no other host has a widget it cannot order.
+  tests/test_win32_peer_clip.cpp)
 
 # ---------------------------------------------------------------------------
 # basalt_win32_mounting — the Windows half of the Fabric mounting manager.

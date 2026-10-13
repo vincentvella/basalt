@@ -7,7 +7,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
 3. `BASALT_SNAPSHOT` cannot see a `<TextInput>` on Windows
-4. A `<TextInput>` on Windows is always on top of everything
+4. ~~A `<TextInput>` on Windows is always on top of everything~~, and what is
+   left of it is entry 25
 5. The Windows choreographer is a 16ms timer
 6. ~~`scripts/integration_test.py` skips Fast Refresh on Windows~~; what is
    left of it is an open entry in testing.md
@@ -29,6 +30,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 22. ~~An animated GIF is painted as a still~~
 23. ~~Every timer in the host stops in an app that paints continuously~~
 24. ~~Input intermittently does nothing in an app that paints continuously~~
+25. A transformed `<TextInput>` on Windows is not transformed
 
 Since phase 47 Windows is a peer rather than a port in progress. It mounts every
 component the other two desktops do: `<View>`, `<Text>`, `<Image>`,
@@ -160,11 +162,48 @@ and none of it is a missing half.
   can assert on pixels cannot assert on the one component whose appearance is
   hardest to get right. `PrintWindow` on the live window is the answer and
   nothing in the repository does it yet.
-- **A `<TextInput>` on Windows is always on top of everything.** Its peer is a
-  child window, so a later sibling cannot cover it and it does not clip to a
-  scrolled ancestor; it is hidden when it leaves the ancestor's box instead,
-  which looks right until something is half-scrolled. A transform on the view
-  does not reach it either: a window cannot be rotated.
+- ~~**A `<TextInput>` on Windows is always on top of everything.**~~ It was: the
+  peer is a child window, so USER32 drew it after the parent's whole client area
+  and the React tree had no say in the order. A field in a `<ScrollView>` was
+  hidden only once it had left the list *entirely*, so a half-scrolled one went
+  on being drawn over the list's neighbour, and a field could not be covered at
+  all -- kino opens its project picker and its hotkey sheet over panes that have
+  fields in them, and the fields floated over the modal at full brightness,
+  still editable, still holding the keyboard so that Escape did not close the
+  sheet.
+
+  Windows has somewhere to put the missing fact, which is `SetWindowRgn`: a
+  window with a region is displayed only inside it and clicks outside it fall
+  through to the parent. So the job was to work the region out from the view
+  tree, and that is `win32/Win32PeerClip.h` -- the peer's box narrowed to every
+  clipping ancestor, less every box the tree paints after it. Pure geometry over
+  `RnWin32View`, so it is tested against a tree with no window, no control and
+  no React Native, the same split `Win32TitleBarLayout` made; `syncBounds` turns
+  the rectangles into the region, skips the call when the shape has not changed
+  (it redraws the control, and this runs on every wheel notch), and hides a
+  field that is wholly behind something -- moving the focus back to the host
+  window, so the modal gets its keys.
+
+  Clipping is exact. Occlusion cannot be: the right answer for a field under
+  kino's `#000000A0` scrim is to be *dimmed*, and a child window cannot be
+  dimmed by paint -- the two are composited by USER32, in that order, with no
+  blend to take part in. So anything painted over it that is not fully
+  transparent takes it out, which is deliberately more eager than "opaque". An
+  undimmed field over a modal is the bug people report; a field that goes quiet
+  under a scrim reads as part of the modal. A view with no background at all --
+  every layout wrapper in a real tree -- counts for nothing, which is why the
+  rule is silent in one.
+
+  Drawing the field ourselves and keeping the control only while it has focus
+  would be the complete answer, and would carry the snapshot entry above with
+  it. It is not this: the first click would have to both focus a control that
+  did not exist when the mouse went down and put the caret where the click was.
+- **A transformed `<TextInput>` on Windows is not transformed.** A window cannot
+  be rotated, so the peer sits where the untransformed field would, and the
+  region machinery above leaves a transformed *occluder* alone for the same
+  reason -- its box is not a rectangle in these coordinates and a region is
+  rectangles, so nothing is cut away rather than the wrong thing being cut away.
+  What is left of entry 4, and the part of it with no cheap fix.
 - **The Windows choreographer is a 16ms timer**, not a display link. Doing it
   properly means `DwmGetCompositionTimingInfo` and `DwmFlush` on a thread of its
   own, because `DwmFlush` blocks and a blocked UI thread is worse than a

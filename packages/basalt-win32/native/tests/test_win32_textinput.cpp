@@ -33,6 +33,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -326,6 +328,34 @@ RECT rectOf(HWND control) {
   return rect;
 }
 
+// The window region installed on a control, as the box around it, in the
+// control's own coordinates. Absent when the control has no region at all,
+// which is what a whole unobstructed field gets.
+//
+// An empty box -- `0,0 0,0` -- is a region with nothing in it, which is a
+// field that is entirely behind something.
+std::optional<RECT> regionBoxOf(HWND control) {
+  HRGN region = CreateRectRgn(0, 0, 0, 0);
+  const int kind = GetWindowRgn(control, region);
+  std::optional<RECT> box;
+  // GDI's `ERROR` is zero, and the name is not reachable here: this build
+  // defines GLOG_NO_ABBREVIATED_SEVERITIES, which is what keeps glog from
+  // fighting wingdi.h over it, and wingdi.h's own definition loses to it.
+  if (kind != 0) {
+    RECT rect{0, 0, 0, 0};
+    GetRgnBox(region, &rect);
+    box = rect;
+  }
+  DeleteObject(region);
+  return box;
+}
+
+std::string describeRect(const RECT &rect) {
+  std::ostringstream out;
+  out << rect.left << "," << rect.top << " " << rect.right << "," << rect.bottom;
+  return out.str();
+}
+
 } // namespace
 
 // A mounted field gets a real control, and the host's window is its parent.
@@ -572,6 +602,84 @@ TEST(win32_a_peer_scrolled_out_of_view_is_hidden) {
   manager->viewForTag(10)->setScrollOffset(0, 0);
   manager->syncTextInputBounds(root);
   EXPECT_EQ(static_cast<long>(rectOf(control).left), 0L);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// Half out of its list is half drawn, which hiding it entirely was never the
+// same as. A window region is what says so to USER32; see Win32PeerClip.h.
+//
+// The field is multiline so that the control fills its box exactly -- a
+// single-line peer is a strip the height of one line, centred, and these
+// numbers would then be the font's.
+TEST(win32_a_peer_half_out_of_its_list_is_clipped_to_it) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeView(10, 0, 0, 400, 100));
+  manager->viewForTag(10)->setClipsChildren(true);
+  mount(*manager, 10, makeField(11, 0, 60, 200, 80, {.multiline = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(11));
+  EXPECT_EQ(describeRect(rectOf(control)), std::string("0,60 200,140"));
+  // The list ends at y=100, so the bottom 40 of the field is not the field's.
+  const auto clipped = regionBoxOf(control);
+  EXPECT(clipped.has_value());
+  EXPECT_EQ(describeRect(clipped.value_or(RECT{})), std::string("0,0 200,40"));
+
+  // Scrolled until it is wholly inside, the region goes away rather than
+  // becoming the whole control: SetWindowRgn redraws, and a field in a list
+  // being scrolled would otherwise be told to on every notch.
+  manager->viewForTag(10)->setScrollOffset(0, 60);
+  manager->syncTextInputBounds(root);
+  EXPECT(!regionBoxOf(control).has_value());
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// A field cannot be covered by anything the tree paints after it, because the
+// peer is a child window and USER32 draws those last. Open a modal over a pane
+// with a field in it and the field floats on top of the modal, still editable.
+// Taking the modal's box out of the region is what stops that.
+TEST(win32_a_peer_under_something_painted_later_is_cut_away) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  // The backdrop is mounted first and the field second, and both go in at
+  // index 0 -- so the children end up [field, backdrop] and the backdrop is
+  // painted after, which is where an overlay sits in a React tree.
+  mount(*manager, kSurfaceId, makeView(10, 0, 0, 800, 600));
+  mount(*manager, kSurfaceId, makeField(11, 0, 0, 200, 80, {.multiline = true}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(11));
+  // A layout wrapper with no background of its own covers nothing, which is
+  // most of a real tree and the reason this rule is quiet in one.
+  EXPECT(!regionBoxOf(control).has_value());
+
+  // kino's modal scrim: #000000A0 over the whole window. Translucent counts --
+  // a child window cannot be dimmed by paint, so the choice is between showing
+  // it undimmed and hiding it, and hiding it is the better wrong answer.
+  manager->viewForTag(10)->setBackgroundColor(0.0f, 0.0f, 0.0f, 0.63f, true);
+  manager->syncTextInputBounds(root);
+  // Wholly behind it is hidden rather than given a region with nothing in it:
+  // the two look the same and only one of them stops Windows thinking there is
+  // a window there.
+  EXPECT(!IsWindowVisible(control));
+  EXPECT(!regionBoxOf(control).has_value());
+
+  // Half over it leaves the other half.
+  manager->viewForTag(10)->setFrame(0, 40, 800, 600);
+  manager->syncTextInputBounds(root);
+  const auto half = regionBoxOf(control);
+  EXPECT(half.has_value());
+  EXPECT_EQ(describeRect(half.value_or(RECT{})), std::string("0,0 200,40"));
+
+  // And once the modal closes the region goes with it.
+  manager->viewForTag(10)->setBackgroundColor(0.0f, 0.0f, 0.0f, 0.0f, false);
+  manager->syncTextInputBounds(root);
+  EXPECT(!regionBoxOf(control).has_value());
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

@@ -2,6 +2,7 @@
 
 #include "DirectWriteLayout.h"
 #include "TextChecking.h"
+#include "Win32PeerClip.h"
 #include "Win32InputScopes.h"
 #include "Win32Strings.h"
 
@@ -64,61 +65,37 @@ COLORREF toColorRef(const float components[4]) {
   return RGB(channel(components[0]), channel(components[1]), channel(components[2]));
 }
 
-// A view's rectangle in the surface root's coordinates, and whether any of it is
-// still visible.
+// Where a peer is placed and what of it is still the peer's: see
+// win32/Win32PeerClip.h, which is the whole of the geometry. It lives there
+// rather than here so that it can be tested against a view tree with no window
+// and no React Native, the same split Win32TitleBarLayout made.
 //
 // Translation only: an EDIT is a window and a window cannot be rotated, so a
 // transformed field's peer sits where the untransformed one would. That is a
 // real difference from the painted view behind it, and there is no cheap fix --
 // see the header.
-//
-// Visibility is the other half. A child window is not clipped by anything in
-// the React tree, so a field scrolled out of its list would otherwise go on
-// being drawn over the list's neighbours. Any clipping ancestor that the
-// rectangle has left entirely hides it.
-bool peerRect(RnWin32View *view, RnWin32View *root, RECT &out) {
-  if (view == nullptr || root == nullptr) {
+
+RECT intersectRects(const RECT &a, const RECT &b) {
+  return RECT{std::max(a.left, b.left),
+              std::max(a.top, b.top),
+              std::min(a.right, b.right),
+              std::min(a.bottom, b.bottom)};
+}
+
+RECT offsetBy(const RECT &rect, LONG dx, LONG dy) {
+  return RECT{rect.left + dx, rect.top + dy, rect.right + dx, rect.bottom + dy};
+}
+
+bool sameShape(const std::vector<RECT> &a, const std::vector<RECT> &b) {
+  if (a.size() != b.size()) {
     return false;
   }
-
-  double x = 0.0;
-  double y = 0.0;
-  const double width = view->frame().width;
-  const double height = view->frame().height;
-
-  for (RnWin32View *current = view; current != nullptr; current = current->parent()) {
-    if (current->hidden()) {
+  for (size_t i = 0; i < a.size(); i++) {
+    if (a[i].left != b[i].left || a[i].top != b[i].top || a[i].right != b[i].right ||
+        a[i].bottom != b[i].bottom) {
       return false;
-    }
-    if (current == root) {
-      break;
-    }
-    x += current->frame().x;
-    y += current->frame().y;
-
-    RnWin32View *parent = current->parent();
-    if (parent == nullptr) {
-      // Detached: between a Remove and its Delete, or never inserted. Not on
-      // screen either way.
-      return false;
-    }
-    x -= parent->scrollX();
-    y -= parent->scrollY();
-
-    if (parent->clipsChildren()) {
-      // In the parent's own coordinates the box is 0..width, 0..height, and
-      // (x, y) is where this view now sits relative to it.
-      if (x + width <= 0 || y + height <= 0 || x >= parent->frame().width ||
-          y >= parent->frame().height) {
-        return false;
-      }
     }
   }
-
-  out.left = static_cast<LONG>(std::lround(x));
-  out.top = static_cast<LONG>(std::lround(y));
-  out.right = out.left + static_cast<LONG>(std::lround(width));
-  out.bottom = out.top + static_cast<LONG>(std::lround(height));
   return true;
 }
 
@@ -596,6 +573,9 @@ void Win32TextInputManager::destroyPeer(Entry &entry) {
     DestroyWindow(entry.control);
     entry.control = nullptr;
   }
+  // The window took the region with it, and a rebuilt peer -- which is what a
+  // field switching to multiline gets -- starts without one.
+  entry.regionShape.clear();
   if (entry.font != nullptr) {
     DeleteObject(entry.font);
     entry.font = nullptr;
@@ -630,11 +610,12 @@ void Win32TextInputManager::syncBounds(RnWin32View *root) {
     if (entry.control == nullptr) {
       continue;
     }
-    RECT rect{};
-    if (!peerRect(entry.view, root, rect)) {
+    const win32::PeerClip placement = win32::peerClip(entry.view, root);
+    if (!placement.visible) {
       ShowWindow(entry.control, SW_HIDE);
       continue;
     }
+    RECT rect = placement.bounds;
 
     // Inside the content insets, so that `paddingHorizontal` on a field means
     // what it means on a <View>. GTK allocates its GtkText inside the same
@@ -673,6 +654,74 @@ void Win32TextInputManager::syncBounds(RnWin32View *root) {
       continue;
     }
 
+    // What of the control is still the control's, in its own coordinates: the
+    // part of it inside every clipping ancestor, less everything painted over
+    // it. See Win32PeerClip.h -- this is the half that turns those rectangles
+    // into the one thing USER32 understands, which is a window region.
+    //
+    // The first piece is what is left of the control, and each one after it is
+    // taken out.
+    std::vector<RECT> shape;
+    const RECT visible = offsetBy(intersectRects(placement.clip, rect), -rect.left, -rect.top);
+    if (visible.right > visible.left && visible.bottom > visible.top) {
+      shape.push_back(visible);
+      for (const RECT &occluder : placement.occluders) {
+        const RECT over = offsetBy(intersectRects(occluder, rect), -rect.left, -rect.top);
+        if (over.right > over.left && over.bottom > over.top) {
+          shape.push_back(over);
+        }
+      }
+    }
+
+    // Whole and unobstructed is the common case and gets no region at all:
+    // `SetWindowRgn` redraws the control, and this runs after every wheel
+    // notch, so a field in a list being scrolled would otherwise be told to
+    // redraw sixty times a second for a shape that has not changed.
+    HRGN region = nullptr;
+    const bool whole = shape.size() == 1 && shape[0].left == 0 && shape[0].top == 0 &&
+        shape[0].right == rect.right - rect.left && shape[0].bottom == rect.bottom - rect.top;
+    if (whole) {
+      shape.clear();
+    } else if (!shape.empty()) {
+      // The system owns the region once it is handed over, so the pieces taken
+      // out of it are deleted here and the result is not.
+      region = CreateRectRgn(shape[0].left, shape[0].top, shape[0].right, shape[0].bottom);
+      for (size_t i = 1; i < shape.size(); i++) {
+        HRGN piece = CreateRectRgn(shape[i].left, shape[i].top, shape[i].right, shape[i].bottom);
+        CombineRgn(region, region, piece, RGN_DIFF);
+        DeleteObject(piece);
+      }
+      RECT box{};
+      if (GetRgnBox(region, &box) == NULLREGION) {
+        // The pieces swallowed it: the field is wholly behind something rather
+        // than partly, which is what a modal over a pane looks like.
+        DeleteObject(region);
+        region = nullptr;
+        shape.clear();
+        ShowWindow(entry.control, SW_HIDE);
+        entry.regionShape.clear();
+        SetWindowRgn(entry.control, nullptr, FALSE);
+        // And it does not keep the keyboard. A field left focused behind a
+        // modal swallows every key the modal wanted, Escape included, so the
+        // sheet that covered it cannot be closed -- the same bug as the field
+        // being visible over the modal, one layer further in. The question does
+        // not arise on the other two desktops: a field there is a widget, and a
+        // widget that is not drawn is not in the focus chain.
+        if (GetFocus() == entry.control) {
+          moveFocusToHost();
+        }
+        continue;
+      }
+    } else {
+      // Out of sight behind a clipping ancestor, which `placement.visible`
+      // catches when it is complete and this catches when the control's own
+      // strip is what fell outside.
+      ShowWindow(entry.control, SW_HIDE);
+      entry.regionShape.clear();
+      SetWindowRgn(entry.control, nullptr, FALSE);
+      continue;
+    }
+
     SetWindowPos(entry.control,
                  nullptr,
                  rect.left,
@@ -680,6 +729,17 @@ void Win32TextInputManager::syncBounds(RnWin32View *root) {
                  rect.right - rect.left,
                  rect.bottom - rect.top,
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+    if (sameShape(shape, entry.regionShape)) {
+      if (region != nullptr) {
+        DeleteObject(region);
+      }
+      continue;
+    }
+    entry.regionShape = shape;
+    // A null region removes the one the control had, which is what a field
+    // that has come back into the clear needs.
+    SetWindowRgn(entry.control, region, TRUE);
   }
 }
 

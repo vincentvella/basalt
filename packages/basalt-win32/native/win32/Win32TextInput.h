@@ -29,11 +29,13 @@
 //     mutation arrives at all. `syncBounds` is that, and the host calls it after
 //     every transaction and every wheel.
 //
-//   - **It is always on top.** Child windows paint above whatever Direct2D drew,
-//     in an order the React tree has no say in. A field cannot be covered by a
-//     later sibling, and it does not clip to a scrolled ancestor -- it is hidden
-//     when it leaves the ancestor's box instead, which is close enough to look
-//     right and is not the same thing.
+//   - **It would be on top of everything.** Child windows paint above whatever
+//     Direct2D drew, in an order the React tree has no say in, so a field
+//     neither clips to a scrolled ancestor nor can be covered by a later
+//     sibling. `SetWindowRgn` is where the missing order goes, and working the
+//     region out from the tree is `Win32PeerClip.h`; `syncBounds` installs it.
+//     What is still not possible is a transform, because a window cannot be
+//     rotated -- see docs/backlog/platform-windows.md.
 //
 //   - **Its events arrive at the parent.** EN_CHANGE, EN_SETFOCUS and
 //     EN_KILLFOCUS are WM_COMMAND notifications to the host window, and the
@@ -110,9 +112,11 @@ class Win32TextInputManager {
                        const std::string &name,
                        const folly::dynamic &args);
 
-  // Moves every peer to where its view now is, in client coordinates, and hides
-  // the ones that have gone out of sight. Called after each transaction and
-  // each scroll: a child window does not follow a view that has no widget.
+  // Moves every peer to where its view now is, in client coordinates, clips it
+  // to what the tree leaves of it, and hides the ones that have gone out of
+  // sight or behind something. Called after each transaction and each scroll:
+  // a child window does not follow a view that has no widget, and the region
+  // it is clipped to changes with every one of them. See Win32PeerClip.h.
   void syncBounds(win32::RnWin32View *root);
 
   // WM_COMMAND from the host: EN_CHANGE, EN_SETFOCUS, EN_KILLFOCUS. True when
@@ -272,6 +276,17 @@ class Win32TextInputManager {
     // a family substitution changes it, and this is what the control's height
     // is set to so that the text sits in the middle of the field.
     LONG lineHeight{0};
+
+    // The window region last installed, as the rectangles it was built from in
+    // the control's own coordinates: the visible box first, then each piece
+    // taken out of it. Empty means no region, which is a whole unobstructed
+    // field -- the common case, and the one worth not touching.
+    //
+    // Held because `SetWindowRgn` redraws the control, and `syncBounds` runs
+    // after every transaction and every wheel notch: a field in a list being
+    // scrolled would be told to redraw on every one of them for a region that
+    // has not changed. See `syncBounds` and Win32PeerClip.h.
+    std::vector<RECT> regionShape;
 
     // The input scope last installed for `keyboardType`, and whether one has
     // been. `SetInputScope` replaces the window's whole scope list, so it is
