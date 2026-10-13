@@ -63,10 +63,24 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   the suspect list "GTK 4.14's GL renderer, or llvmpipe under it" rather than
   "unexplained", which is progress of a kind.
 
+  **A third time, on 2026-10-13**, and the same test again:
+  `gtk_paint_a_background_can_repeat_in_one_axis_only` on the Linux shard at
+  commit 5f34afe, whose change was a Skia canvas registration on Windows and
+  AppKit and could not reach a GTK paint. `GskGLRenderer` and the `libEGL
+  warning: DRI3 error` again. A re-run was green, every job.
+
+  So the renderer and the fallback are the same in all three occurrences, and
+  the test is the same in the last two -- the first was the blend-mode
+  assertion above. This is also the second time it has failed on a commit that
+  cannot reach the code under it: c7cf907 was a release rehearsal, and 5f34afe
+  changed a Skia canvas registration on Windows and AppKit.
+
   What would settle it is a container: Ubuntu 24.04, GTK 4.14, the suite run
   twice -- once with `GSK_RENDERER=cairo` and once without -- against both of
   these tests. Until somebody does that, a re-run is the workaround and this
-  paragraph is the record that it has now been needed twice.
+  paragraph is the record that it has now been needed three times. The next
+  occurrence should pin the renderer for these two tests rather than add a
+  fourth paragraph: three is enough of a pattern to act on.
 
 - **GTK's clipboard paste does not complete under the display CI runs on, and
   the host hung instead. The hangs are explained and fixed; the paste is not.**

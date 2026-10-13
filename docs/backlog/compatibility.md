@@ -284,10 +284,13 @@ Found by bundling and running a real application.
     question here is this platform's alone -- a presented CAMetalLayer -- and
     not something the shared half is missing.
 
-    **basalt-skia ships.** It is `0.2.1` and no longer `private: true`, so an
-    app can install it. kino's `skia-v3` branch pins `basalt-*@0.2.1`, which
-    is older than the canvas: it was linked at the checkout to run on Windows,
-    and a published `0.2.2` is what makes that a plain `bun install`.
+    **basalt-skia ships.** It is no longer `private: true`, so an app can
+    install it. `0.2.1` was older than the canvas, so kino's `skia-v3` branch
+    pinned it and was then linked at the checkout by hand -- six NTFS
+    junctions -- to run on Windows at all. `0.2.2` is the release that
+    carries the canvas, the frame scheduler, the Windows timers and event
+    beat, and the text field's clipping, which is what makes that pin a plain
+    `bun install` again.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
   it is the one host whose binaries anyone publishes --

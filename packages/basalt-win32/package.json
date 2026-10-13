@@ -1,6 +1,6 @@
 {
   "name": "basalt-win32",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The Windows view layer for basalt-core: a Win32 and Direct2D view layer, a Fabric mounting manager, and a host. Everything behind them is in basalt-core.",
   "license": "MIT",
   "repository": {
@@ -22,6 +22,6 @@
     "react-native": "*"
   },
   "dependencies": {
-    "basalt-core": "0.2.1"
+    "basalt-core": "0.2.2"
   }
 }
