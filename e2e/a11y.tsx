@@ -153,6 +153,21 @@ function App() {
         {status}
       </Text>
 
+      {/*
+        A role on a nested <Text>, which is the only way one reaches a
+        *fragment* rather than a view: React Native puts a <Text>'s own
+        accessibilityRole on the paragraph's view props as well, and an inner
+        <Text> has no view of its own -- it is a run of this paragraph's
+        attributed string, carrying its own TextAttributes.
+
+        One run, so every fragment agrees and the paragraph is that role. A
+        paragraph with a role on only part of its text needs an accessible
+        child per run, which no host here has; see backlog/text.md.
+      */}
+      <Text style={styles.note}>
+        <Text accessibilityRole="header">A nested heading</Text>
+      </Text>
+
       <Text style={styles.note}>A plain View is scenery and stays out of the tree.</Text>
     </View>
   );

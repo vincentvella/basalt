@@ -73,10 +73,6 @@
       "text": "ReactCommon consumes it, and a scenario proves it here",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
     },
-    "text-ignored": {
-      "text": "per-fragment, so it needs sub-element accessibility: a <Text role> on the paragraph itself is read, and nothing exposes the runs inside one",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
-    },
     "text-shadow-one": {
       "text": "one shadow per paragraph, not per fragment",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
@@ -248,6 +244,10 @@
     "ti-drop": {
       "text": "the field becomes a drop target that refuses what it did not name, and the payload arrives as this platform\u2019s own drop event rather than being inserted for it",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "text-fragment-role": {
+      "text": "a paragraph every run of which asks for the same role is that role; a role on part of the text needs an accessible child per run, which is a component and not a prop",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     }
   },
   "statuses": {
@@ -850,16 +850,22 @@
       ]
     },
     "TextAttributes.accessibilityRole": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "partial",
+      "why": "text-fragment-role",
+      "reads": [
+        "fragmentRoleName"
+      ]
     },
     "TextAttributes.role": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "text-ignored"
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "partial",
+      "why": "text-fragment-role",
+      "reads": [
+        "fragmentRoleName"
+      ]
     },
     "TextAttributes.textEffects": {
       "linux": "ignored",

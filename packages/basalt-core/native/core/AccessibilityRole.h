@@ -34,6 +34,7 @@
 
 #pragma once
 
+#include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/components/view/AccessibilityProps.h>
 #include <react/renderer/components/view/accessibilityPropsConversions.h>
 
@@ -52,6 +53,64 @@ inline std::string accessibilityRoleName(const facebook::react::AccessibilityPro
     return facebook::react::toString(props.role);
   }
   return props.accessibilityRole;
+}
+
+// --- A paragraph's fragments ------------------------------------------------
+//
+// The same two props again, one layer down: `TextAttributes` carries a `role`
+// and an `accessibilityRole` per *fragment*, because a `<Text>` inside a
+// `<Text>` is a run of the same paragraph rather than a view of its own. Three
+// hosts read neither.
+//
+// Honouring them properly needs sub-element accessibility -- an accessible
+// child per run, with a frame -- which is what iOS does:
+// `RCTParagraphComponentAccessibilityProvider` builds a `UIAccessibilityElement`
+// for each, positioned from the layout manager. That is a component rather than
+// a prop, and only one of these three hosts could have it.
+//
+// What is answerable now is the case where no sub-elements are needed: a
+// paragraph every fragment of which asks for the same role *is* that role, and
+// the view already has somewhere to put it. `<Text><Text role="header">Hi
+// </Text></Text>` is the shape that reaches here, a nested Text being the only
+// way a role arrives on a fragment and not on the paragraph.
+//
+// ## Why every fragment and not the first
+//
+// Because the alternative is wrong out loud. `core/TextShadows.h` lets the
+// first fragment that asks decide the paragraph's shadow, which is fine for a
+// shadow: the worst case is the wrong blur. A role is announced. "Hello
+// <Text role="link">here</Text>" has two fragments and one of them is a link,
+// and a paragraph announced wholly as a link because its last word is one
+// would be worse than one announced as text -- the same rule each host's role
+// table already follows in refusing to guess.
+//
+// So a fragment with no role vetoes too. Two fragments, one a header and one
+// plain, is a paragraph that needs sub-elements and gets nothing here.
+inline std::string fragmentRoleName(const facebook::react::AttributedString &text) {
+  const auto &fragments = text.getFragments();
+  if (fragments.empty()) {
+    return {};
+  }
+  std::string agreed;
+  for (size_t i = 0; i < fragments.size(); i++) {
+    const auto &attributes = fragments[i].textAttributes;
+    // `role` first, which is React Native's own order; see above.
+    std::string name;
+    if (attributes.role.has_value()) {
+      name = facebook::react::toString(*attributes.role);
+    } else if (attributes.accessibilityRole.has_value()) {
+      name = facebook::react::toString(*attributes.accessibilityRole);
+    }
+    if (name.empty()) {
+      return {};
+    }
+    if (i == 0) {
+      agreed = name;
+    } else if (name != agreed) {
+      return {};
+    }
+  }
+  return agreed;
 }
 
 } // namespace basalt

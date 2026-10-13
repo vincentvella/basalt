@@ -4689,6 +4689,72 @@ def test_test_id(bundle: Path) -> None:
         )
 
 
+def test_nested_text_role(bundle: Path) -> None:
+    """A role on a nested `<Text>`, which lands on a fragment and not a view.
+
+    `TextAttributes` carries `role` and `accessibilityRole` per fragment,
+    because a `<Text>` inside a `<Text>` is a run of the same paragraph rather
+    than a view of its own. All three hosts read neither until 2026-10-13, so
+    `<Text><Text accessibilityRole="header">` reached every desktop as plain
+    text.
+
+    Honouring it in general needs an accessible child per run, positioned from
+    the layout -- which is what iOS does, in a whole
+    `RCTParagraphComponentAccessibilityProvider`. What is answerable without
+    one is the case where every fragment agrees: that paragraph *is* that role,
+    and its view already has somewhere to put it. core/AccessibilityRole.h
+    decides it for all three hosts, and this is the proof that the decision
+    arrives.
+
+    Here rather than in a host suite because nothing in any host suite can
+    build a `ParagraphState` -- a paragraph's text is committed as state by
+    `ParagraphShadowNode`, and the hand-built shadow views those suites use have
+    none. This runs a real React tree, which is the only place the fragments
+    exist.
+    """
+    app = bundle_app(bundle.parent, "a11y")
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "3000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_SECONDARY_TAP", "BASALT_TEST_TYPE",
+                 "BASALT_TEST_HOVER", "BASALT_TEST_FOCUS", "BASALT_TEST_SCROLL",
+                 "BASALT_TEST_MENU", "BASALT_TEST_CLOSE_WINDOW"):
+        env.pop(name, None)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env["BASALT_DUMP_TREE"] = str(dump)
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltA11y"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        if not dump.exists():
+            raise Failure("host wrote no widget tree")
+        tree = dump.read_text(encoding="utf-8")
+
+    heading = [line for line in tree.splitlines() if "role=header" in line]
+    if len(heading) != 1:
+        raise Failure(
+            f"{len(heading)} views report the header role; e2e/a11y.tsx nests one "
+            f"<Text> that asks for it.\n{tree}"
+        )
+    # On the paragraph, which is the view the run belongs to. A host that put it
+    # somewhere else would satisfy the count above and announce the wrong thing.
+    if 'text="A nested heading"' not in heading[0]:
+        raise Failure(
+            f"the header role landed on a view that is not the nested text.\n{heading[0]}"
+        )
+    # And the paragraph beside it, whose text asks for nothing, is still text:
+    # a role read off one paragraph's fragments must not reach another.
+    plain = [line for line in tree.splitlines() if "A plain View is scenery" in line]
+    if not plain or "role=text" not in plain[0]:
+        raise Failure(
+            f"a paragraph whose text asks for no role is not reported as text.\n{tree}"
+        )
+
+
 def test_modal_view(bundle: Path) -> None:
     """`accessibilityViewIsModal` reaches the view, and the platform's flag.
 
@@ -8632,6 +8698,7 @@ SCENARIOS = [
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("a testID reaches the view and the platform", test_test_id),
+    ("a role on a nested <Text> reaches the paragraph", test_nested_text_role),
     ("accessibilityViewIsModal reaches the view", test_modal_view),
     ("experimental_accessibilityOrder resolves to views", test_accessibility_order),
     ("accessibilityLiveRegion announces a change", test_accessibility_live_region),

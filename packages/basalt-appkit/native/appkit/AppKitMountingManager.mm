@@ -1389,6 +1389,19 @@ std::string effectiveRole(const ShadowView &shadowView) {
       return asked;
     }
   }
+  // Then the paragraph's own fragments, which is where a nested <Text>'s role
+  // lands: `TextAttributes` carries one per run, and a paragraph every fragment
+  // of which agrees *is* that role. Before the inference below, so a paragraph
+  // whose runs all say "header" is a header rather than generic text. See
+  // core/AccessibilityRole.h for why agreement and not the first one.
+  if (const auto state =
+          std::dynamic_pointer_cast<const facebook::react::ConcreteState<facebook::react::ParagraphState>>(
+              shadowView.state)) {
+    const std::string fragments = basalt::fragmentRoleName(state->getData().attributedString);
+    if (!fragments.empty()) {
+      return fragments;
+    }
+  }
   if (shadowView.componentName != nullptr) {
     const std::string_view name(shadowView.componentName);
     if (name == "Paragraph") {

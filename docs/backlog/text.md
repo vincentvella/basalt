@@ -177,9 +177,49 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 - Ignored, and now counted: walking `TextAttributes` field by field on
   2026-10-09 -- which is what `scripts/scrape_props.py` does for the support page
   -- the fields no host reads are `fontVariationSettings` and the
-  `accessibilityRole` and `role` that ride along on a fragment. Beside those,
-  `textBreakStrategy` and hyphenation are `ParagraphAttributes` and equally
-  ignored.
+  ~~`accessibilityRole`~~ and ~~`role`~~ that ride along on a fragment. Beside
+  those, `textBreakStrategy` and hyphenation are `ParagraphAttributes` and
+  equally ignored.
+
+  **The fragment roles are `partial` on all three as of 2026-10-13**, and the
+  split is the interesting part. A role arrives on a fragment rather than on a
+  view only through a nested `<Text>`: React Native puts a `<Text>`'s own
+  `accessibilityRole` on the paragraph's view props as well, and an inner
+  `<Text>` has no view -- it is a run of the paragraph's attributed string,
+  carrying its own `TextAttributes`.
+
+  Honouring that in general needs an accessible child per run, positioned from
+  the layout. That is what iOS does, in a whole
+  `RCTParagraphComponentAccessibilityProvider` building a
+  `UIAccessibilityElement` per run, and it is a component rather than a prop --
+  on AppKit it would be `accessibilityChildren` of `NSAccessibilityElement`s
+  with frames this project can already compute, because the range-to-rect
+  queries the selection and the text interface use are the same ones. GTK has
+  nowhere to put them: its 4.22 accessibility headers are accessible,
+  hypertext, range and text, and hypertext is links. UIA would want children
+  with control types under a text provider, where `RnWin32Accessible` is a
+  property provider with no children at all.
+
+  What is answerable without any of that is the case needing no children: a
+  paragraph every fragment of which asks for the same role *is* that role, and
+  the view already has somewhere to put it. `core/AccessibilityRole.h` decides
+  it beside the view-level question, so the `role`-beats-`accessibilityRole`
+  order is written once.
+
+  **Agreement, and not the first fragment**, which is the one judgement here.
+  `core/TextShadows.h` lets the first fragment that asks decide the paragraph's
+  shadow and that is fine for a shadow -- the worst case is the wrong blur. A
+  role is announced out loud, and "Hello `<Text role="link">`here`</Text>`" is
+  two fragments of which one is a link: a paragraph announced wholly as a link
+  because its last word is one is worse than one announced as text. So a
+  fragment with no role vetoes too.
+
+  Proven by `scripts/integration_test.py`'s nested-role scenario rather than by
+  a host test, and that is not laziness: nothing in any host suite can build a
+  `ParagraphState`, a paragraph's text being committed as state by
+  `ParagraphShadowNode` and the hand-built shadow views those suites use having
+  none. The scenario runs a real React tree, which is the only place the
+  fragments exist. The rule itself has unit tests.
 
   **`lineBreakMode` came off that list on 2026-10-11, and `layoutDirection` on
   the same day** -- the second with the alignment entry above. The first was

@@ -334,6 +334,23 @@ RnView *GtkMountingManager::createView(const ShadowView &shadowView) {
           std::dynamic_pointer_cast<const facebook::react::AccessibilityProps>(shadowView.props)) {
     roleName = basalt::accessibilityRoleName(*accessibility);
   }
+  // Then the paragraph's own fragments, which is where a nested <Text>'s role
+  // lands: `TextAttributes` carries one per run, and a paragraph every fragment
+  // of which agrees *is* that role. See core/AccessibilityRole.h for why
+  // agreement and not the first one.
+  //
+  // At creation, with everything else here, because GTK makes the role
+  // construct-only -- so a paragraph whose text arrives in a later commit than
+  // its view keeps the role it was built with, and the role *description* is
+  // updated instead. That is the same limit docs/DECISIONS.md records for the
+  // prop, reached by the same route.
+  if (roleName.empty()) {
+    if (const auto state =
+            std::dynamic_pointer_cast<const facebook::react::ConcreteState<facebook::react::ParagraphState>>(
+                shadowView.state)) {
+      roleName = basalt::fragmentRoleName(state->getData().attributedString);
+    }
+  }
   if (roleName.empty() && shadowView.componentName != nullptr) {
     const std::string_view name(shadowView.componentName);
     if (name == "Paragraph") {

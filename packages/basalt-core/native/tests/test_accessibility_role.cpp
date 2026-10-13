@@ -14,6 +14,7 @@
 
 #include "AccessibilityRole.h"
 
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -50,4 +51,80 @@ TEST(accessibility_role_is_empty_when_a_view_asks_for_neither) {
   // and that inference belongs with the host that makes it, not here.
   AccessibilityProps props;
   EXPECT(basalt::accessibilityRoleName(props).empty());
+}
+
+// --- A paragraph's fragments ------------------------------------------------
+//
+// `TextAttributes` carries the same two props per run, because a <Text> inside
+// a <Text> is a run rather than a view. A paragraph every fragment of which
+// agrees is that role; anything mixed needs an accessible child per run, which
+// is a component and not a prop. See the header.
+
+namespace {
+
+facebook::react::AttributedString::Fragment fragmentWith(const char *text,
+                                                         std::optional<Role> role,
+                                                         std::optional<facebook::react::AccessibilityRole> older) {
+  facebook::react::TextAttributes attributes;
+  attributes.role = role;
+  attributes.accessibilityRole = older;
+
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+  return fragment;
+}
+
+facebook::react::AttributedString stringOf(
+    std::initializer_list<facebook::react::AttributedString::Fragment> fragments) {
+  facebook::react::AttributedString string;
+  for (auto fragment : fragments) {
+    string.appendFragment(std::move(fragment));
+  }
+  return string;
+}
+
+} // namespace
+
+TEST(fragment_role_takes_the_role_one_run_asks_for) {
+  // The shape that reaches here: <Text><Text role="header">Hi</Text></Text>,
+  // a nested Text being the only way a role lands on a fragment and not on the
+  // paragraph.
+  EXPECT_EQ(basalt::fragmentRoleName(stringOf({fragmentWith("Hi", Role::Heading, {})})),
+            std::string("heading"));
+}
+
+TEST(fragment_role_prefers_the_aria_spelling_here_too) {
+  EXPECT_EQ(basalt::fragmentRoleName(
+                stringOf({fragmentWith("Hi", Role::Heading, facebook::react::AccessibilityRole::Link)})),
+            std::string("heading"));
+  // And falls back to the older prop, which is the rule one layer up.
+  EXPECT_EQ(basalt::fragmentRoleName(
+                stringOf({fragmentWith("Hi", {}, facebook::react::AccessibilityRole::Link)})),
+            std::string("link"));
+}
+
+TEST(fragment_role_needs_every_run_to_agree) {
+  EXPECT_EQ(basalt::fragmentRoleName(stringOf({fragmentWith("Hi ", Role::Heading, {}),
+                                               fragmentWith("there", Role::Heading, {})})),
+            std::string("heading"));
+  // Two roles is a paragraph that needs sub-elements, and gets nothing here.
+  EXPECT_EQ(basalt::fragmentRoleName(stringOf({fragmentWith("Hi ", Role::Heading, {}),
+                                               fragmentWith("there", Role::Link, {})})),
+            std::string(""));
+}
+
+// A run with no role vetoes, and this is the case that matters: "Hello
+// <Text role="link">here</Text>" is two fragments, and a paragraph announced
+// wholly as a link because its last word is one is worse than one announced as
+// text.
+TEST(fragment_role_is_refused_when_one_run_asks_for_nothing) {
+  EXPECT_EQ(basalt::fragmentRoleName(stringOf({fragmentWith("Hello ", {}, {}),
+                                               fragmentWith("here", Role::Link, {})})),
+            std::string(""));
+  EXPECT_EQ(basalt::fragmentRoleName(stringOf({fragmentWith("Hi", {}, {})})), std::string(""));
+}
+
+TEST(fragment_role_of_no_text_is_nothing) {
+  EXPECT_EQ(basalt::fragmentRoleName(facebook::react::AttributedString{}), std::string(""));
 }
