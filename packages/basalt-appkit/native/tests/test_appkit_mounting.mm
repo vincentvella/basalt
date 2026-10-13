@@ -12,10 +12,13 @@
 #import "AppKitMountingManager.h"
 #import "RnAppKitView.h"
 
+#include <react/renderer/components/image/ImageProps.h>
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/graphics/Color.h>
 
+#include <functional>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using facebook::react::ColorComponents;
@@ -786,5 +789,102 @@ TEST(appkit_a_gif_that_does_not_loop_plays_once) {
     // stays.
     EXPECT_NEAR([view rnAdvanceImageAnimationBy:60], 0.0, 0.01);
     EXPECT_EQ((int)view.rnImageFrameIndex, 1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// `<Image defaultSource>`, through the mounting manager.
+//
+// The rule is core/ImagePlaceholder.h's and React Native's: draw the
+// placeholder until the source lands, and keep it if the source fails. The
+// GTK suite asserts it against pixels; this asserts the wiring, which is the
+// half that was missing -- `applyImage` never read the prop, so no amount of
+// correct drawing would have shown one.
+//
+// `texture=WxH` in the dump is the evidence: a one-pixel placeholder that
+// reached the view reports `texture=1x1`, and a view with nothing on it has no
+// texture line at all.
+// ---------------------------------------------------------------------------
+namespace {
+
+// One opaque red pixel. Generated rather than copied, for the reason the GTK
+// suite's copy records: the first string tried there was RGBA with an alpha of
+// 127 and failed an opacity assertion while drawing correctly.
+const char *const kRedPngBase64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+std::string redPngUri() {
+  return std::string("data:image/png;base64,") + kRedPngBase64;
+}
+
+ShadowView makeImageView(Tag tag, const std::function<void(facebook::react::ImageProps &)> &configure) {
+  auto props = std::make_shared<facebook::react::ImageProps>();
+  configure(*props);
+
+  LayoutMetrics metrics;
+  metrics.frame = {.origin = {.x = 0, .y = 0}, .size = {.width = 20, .height = 20}};
+
+  ShadowView view;
+  view.componentName = "Image";
+  view.surfaceId = kSurfaceId;
+  view.tag = tag;
+  view.props = props;
+  view.layoutMetrics = metrics;
+  return view;
+}
+
+// The loader answers on the run loop, so nothing is on the view until it spins.
+void pumpRunLoop() {
+  for (int i = 0; i < 400; i++) {
+    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                             beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.002]];
+  }
+}
+
+} // namespace
+
+TEST(appkit_image_draws_its_default_source_when_the_source_fails) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+
+    const ShadowView image = makeImageView(70, [](facebook::react::ImageProps &props) {
+      props.defaultSource.uri = redPngUri();
+      facebook::react::ImageSource source{};
+      source.uri = "file:///no/such/image/at/all.png";
+      props.sources = {source};
+    });
+    ShadowViewMutationList mutations;
+    mutations.push_back(ShadowViewMutation::CreateMutation(image));
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, image, 0));
+    apply(manager, std::move(mutations));
+    pumpRunLoop();
+
+    // The placeholder arrived and the failing source did not take it away.
+    EXPECT([[root describeTree] containsString:@"texture=1x1"]);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(appkit_image_with_no_default_source_shows_nothing_when_its_source_fails) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+
+    const ShadowView image = makeImageView(71, [](facebook::react::ImageProps &props) {
+      facebook::react::ImageSource source{};
+      source.uri = "file:///nothing/here/either.png";
+      props.sources = {source};
+    });
+    ShadowViewMutationList mutations;
+    mutations.push_back(ShadowViewMutation::CreateMutation(image));
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, image, 0));
+    apply(manager, std::move(mutations));
+    pumpRunLoop();
+
+    EXPECT(![[root describeTree] containsString:@"texture="]);
+
+    manager.destroySurfaceRoot(kSurfaceId);
   }
 }

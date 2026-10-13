@@ -49,9 +49,9 @@ under the row that implements them.
 
 | Host | Toolkit | Written itself | All 280 rows |
 | --- | --- | --- | --- |
-| Linux | GTK4 | 122 of 142, 86% | <span className="support-bar"><span className="support-yes" style={{width: '43.57%'}} title="122 done" /><span className="support-partial" style={{width: '2.50%'}} title="7 partly done" /><span className="support-no" style={{width: '4.64%'}} title="13 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
-| macOS | AppKit | 123 of 142, 87% | <span className="support-bar"><span className="support-yes" style={{width: '43.93%'}} title="123 done" /><span className="support-partial" style={{width: '2.14%'}} title="6 partly done" /><span className="support-no" style={{width: '4.64%'}} title="13 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
-| Windows | Win32 | 119 of 141, 84% | <span className="support-bar"><span className="support-yes" style={{width: '42.50%'}} title="119 done" /><span className="support-partial" style={{width: '3.21%'}} title="9 partly done" /><span className="support-no" style={{width: '4.64%'}} title="13 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.22%'}} title="65 deliberately not done" /></span> |
+| Linux | GTK4 | 124 of 142, 87% | <span className="support-bar"><span className="support-yes" style={{width: '44.29%'}} title="124 done" /><span className="support-partial" style={{width: '2.50%'}} title="7 partly done" /><span className="support-no" style={{width: '3.93%'}} title="11 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.85%'}} title="64 deliberately not done" /></span> |
+| macOS | AppKit | 125 of 142, 88% | <span className="support-bar"><span className="support-yes" style={{width: '44.64%'}} title="125 done" /><span className="support-partial" style={{width: '2.14%'}} title="6 partly done" /><span className="support-no" style={{width: '3.93%'}} title="11 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
+| Windows | Win32 | 121 of 141, 86% | <span className="support-bar"><span className="support-yes" style={{width: '43.21%'}} title="121 done" /><span className="support-partial" style={{width: '3.21%'}} title="9 partly done" /><span className="support-no" style={{width: '3.93%'}} title="11 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.22%'}} title="65 deliberately not done" /></span> |
 
 **Written itself** is out of the rows that host writes: what it has written,
 what it has half written, and what is still missing. The hatched part of the
@@ -59,9 +59,9 @@ bar is the rest, and it is nobody's work left.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| <span className="support-chip support-yes" /> ✅ done | 122 | 123 | 119 |
+| <span className="support-chip support-yes" /> ✅ done | 124 | 125 | 121 |
 | <span className="support-chip support-partial" /> ◐ partly done | 7 | 6 | 9 |
-| <span className="support-chip support-no" /> ✖ not yet | 13 | 13 | 13 |
+| <span className="support-chip support-no" /> ✖ not yet | 11 | 11 | 11 |
 | <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
 | <span className="support-chip support-ignored" /> – deliberately not done | 64 | 64 | 65 |
 
@@ -261,8 +261,8 @@ Written on the element itself, as `<View onLayout={...} />`.
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `source` <sub>`sources`</sub> | ✅ | ✅ | ✅ |  |
-| `defaultSource` | ✖ | ✖ | ✖ | [React Native drops both between Android's JavaScript and iOS's view config, before any host sees them](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
-| `loadingIndicatorSource` | ✖ | ✖ | ✖ | [React Native drops both between Android's JavaScript and iOS's view config, before any host sees them](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
+| `defaultSource` | ✅ | ✅ | ✅ |  |
+| `loadingIndicatorSource` | ✅ | ✅ | ✅ |  |
 | `blurRadius` | ✅ | ✅ | ✅ |  |
 | `capInsets` | – | – | – | [iOS's resizable slicing, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |
 | `internal_analyticTag` | – | – | – | [Meta's own analytics tag, which nothing outside their infrastructure reads](https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md) |

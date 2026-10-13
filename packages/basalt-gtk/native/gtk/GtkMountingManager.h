@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace basalt {
 
@@ -161,6 +162,16 @@ class GtkMountingManager final : public facebook::react::IMountingManager,
   // The source each <Image> is currently showing, so that a mutation which
   // changed only layout does not restart the load.
   std::unordered_map<facebook::react::Tag, std::string> imageUris_;
+  // `defaultSource` per view, and which views have their real image. Together
+  // they are the placeholder rule: draw it until the source lands, and keep it
+  // if the source fails. See core/ImagePlaceholder.h.
+  void applyImageTexture(RnView *view,
+                         facebook::react::Tag tag,
+                         GdkTexture *texture,
+                         RnImageFit fit);
+
+  std::unordered_map<facebook::react::Tag, std::string> imagePlaceholders_;
+  std::unordered_set<facebook::react::Tag> imageLoaded_;
 
   // Which view each `nativeID` names, and which views are waiting to be labelled
   // by one. Shared with the AppKit host; see core/LabelRegistry.h for why the

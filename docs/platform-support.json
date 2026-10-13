@@ -149,10 +149,6 @@
       "text": "iOS's resizable slicing, with no desktop equivalent",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
     },
-    "image-placeholder": {
-      "text": "React Native drops both between Android's JavaScript and iOS's view config, before any host sees them",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
-    },
     "image-events": {
       "text": "every host emits load events unconditionally, as iOS does",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/image.md"
@@ -1414,16 +1410,20 @@
       ]
     },
     "ImageProps.defaultSource": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "image-placeholder"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "imagePlaceholderUri"
+      ]
     },
     "ImageProps.loadingIndicatorSource": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "image-placeholder"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "imagePlaceholderUri"
+      ]
     },
     "ImageProps.resizeMode": {
       "linux": "yes",

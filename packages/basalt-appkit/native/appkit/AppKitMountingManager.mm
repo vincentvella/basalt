@@ -6,6 +6,7 @@
 #import <CoreImage/CoreImage.h>
 
 #include "AccessibilityRole.h"
+#include "ImagePlaceholder.h"
 #include "ComponentRegistry.h"
 #include "BackgroundLayers.h"
 #include "TextShadows.h"
@@ -398,6 +399,8 @@ void AppKitMountingManager::forgetTag(Tag tag) {
   scrollViews_.remove(tag);
   textInputs_.remove(tag);
   imageUris_.erase(tag);
+  imagePlaceholders_.erase(tag);
+  imageLoaded_.erase(tag);
   switchValues_.erase(tag);
 #if defined(BASALT_HAS_SKIA) || BASALT_HAS_SKIA_GRAPHITE
   // Unregisters the canvas and takes its layer off the view. This is the one
@@ -457,6 +460,24 @@ RnAppKitImageFit toImageFit(ImageResizeMode mode) {
 // React Native's cxx ImageManager is a stub that never produces an
 // ImageResponse, so nothing arrives through ImageState. The URI is read off the
 // props and loaded here instead, which is also how Android does it.
+// A loaded image, or the placeholder left where it is. The GTK manager has the
+// same function for the same reason; see core/ImagePlaceholder.h.
+void AppKitMountingManager::applyImageTexture(RnAppKitView *view,
+                                              Tag tag,
+                                              CGImageRef image,
+                                              RnAppKitImageFit fit) {
+  if (image != nullptr) {
+    imageLoaded_.insert(tag);
+    [view setRnImage:image fit:fit];
+    return;
+  }
+  const auto standing = imagePlaceholders_.find(tag);
+  if (standing != imagePlaceholders_.end() && !standing->second.empty()) {
+    return;
+  }
+  [view setRnImage:nullptr fit:fit];
+}
+
 void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &shadowView) {
   if (shadowView.componentName == nullptr) {
     return;
@@ -482,6 +503,9 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
   // knows its own props type, and both props are applied together after them.
   // expo-image has no blur prop, so that branch leaves this at zero.
   CGFloat blurRadius = 0;
+  // `defaultSource`, drawn until the source lands and kept if it never does.
+  // See core/ImagePlaceholder.h; expo-image has its own and leaves this empty.
+  std::string placeholder;
 
   if (isExpoImage) {
     const auto props = std::dynamic_pointer_cast<const facebook::react::ExpoImageProps>(shadowView.props);
@@ -508,6 +532,7 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
       tint = *props->tintColor;
     }
     blurRadius = (CGFloat)props->blurRadius;
+    placeholder = basalt::imagePlaceholderUri(*props);
   }
 
   const std::string uri = source.uri;
@@ -537,7 +562,11 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
     if (!uri.empty()) {
       imageLoader_->load(uri, [this, tag, fit, uri](CGImageRef image, const std::string &) {
         if (RnAppKitView *target = viewForTag(tag); target != nil) {
-          [target setRnImage:image fit:fit];
+          // Through the same rule as the first load. This path runs on every
+          // later mutation, so setting the image unconditionally here is what
+          // wipes a placeholder a frame after it appears: the source is still
+          // failing, so the answer is still null.
+          applyImageTexture(target, tag, image, fit);
           applyImageAnimation(imageLoader_.get(), target, uri);
         }
       });
@@ -546,6 +575,26 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
   }
 
   imageUris_[tag] = uri;
+  imagePlaceholders_[tag] = placeholder;
+  imageLoaded_.erase(tag);
+
+  // The placeholder first, so something is on screen while the source is in
+  // flight. A bundled asset answers from the loader's cache on this thread.
+  if (!placeholder.empty() && uri != placeholder) {
+    imageLoader_->load(
+        placeholder, [this, tag, fit, placeholder](CGImageRef image, const std::string &) {
+          if (image == nullptr || imageLoaded_.count(tag) != 0) {
+            return;
+          }
+          const auto still = imagePlaceholders_.find(tag);
+          if (still == imagePlaceholders_.end() || still->second != placeholder) {
+            return;
+          }
+          if (RnAppKitView *target = viewForTag(tag); target != nil) {
+            [target setRnImage:image fit:fit];
+          }
+        });
+  }
 
   if (uri.empty()) {
     [view setRnImage:nullptr fit:fit];
@@ -604,7 +653,7 @@ void AppKitMountingManager::applyImage(RnAppKitView *view, const ShadowView &sha
     // The view may have been deleted while the image was in flight, which is
     // why this looks the tag up again rather than capturing the view.
     if (RnAppKitView *target = viewForTag(tag); target != nil) {
-      [target setRnImage:image fit:fit];
+      applyImageTexture(target, tag, image, fit);
       applyImageAnimation(imageLoader_.get(), target, source.uri);
     }
 

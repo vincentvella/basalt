@@ -2,14 +2,14 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (4):**
+**Open (3):**
 
 1. overlayColor, fadeDuration and progressiveRenderingEnabled are ignored; blurRadius is done
 2. Assets are never fetched over the network, so a dev server's assets do not wor
 3. Nothing caches a downloaded asset, which is right for a local file and will no
 4. ~~onProgress and onPartialLoad are never emitted~~ onProgress is done; onPartialLoad is recorded
 5. ~~`ImageProps` and `<Image>`'s own style names have no rows on the support page~~
-6. `defaultSource` and `loadingIndicatorSource` draw no placeholder
+6. ~~`defaultSource` and `loadingIndicatorSource` draw no placeholder~~
 
 - ~~Nothing evicts the texture cache.~~ Done on all three, in
   `core/ImageCache.h`. Each host kept decoded images in an `unordered_map`
@@ -293,9 +293,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Then the hand-written section can go, and the page's claim can stop having an
   exception in it.
 
-- **`defaultSource` and `loadingIndicatorSource` draw no placeholder**, and
-  neither can reach a host at all. An `<Image>` whose source is still loading
-  draws its background and nothing else.
+- ~~**`defaultSource` and `loadingIndicatorSource` draw no placeholder**, and
+  neither can reach a host at all.~~ Done on all three, 2026-10-13. Everything
+  below is how it was traced and stays because the trace is the interesting
+  part; what changed is the conclusion at the end.
 
   Traced on 2026-10-10, and the answer is the shape of this platform rather than
   a missing implementation: **the JavaScript comes from Android and the view
@@ -337,20 +338,47 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   has arrived. iOS keeps the default source visible when a load *fails*, which
   is the behaviour to copy.
 
-  Not done, and the reason is the cost of the fork rather than the work after
-  it: `ImageViewNativeComponent.js` is two hundred lines with two branches and a
-  comment about `src` and `source` both being sent, and every line of it would
-  then be this project's to track. `BaseViewConfig.js` was worth that for three
-  pointer props that broke right-clicking; a placeholder image is a smaller
-  prize. Worth doing the day a second prop in that file is needed, which would
-  halve the cost and is likely: `capInsets`, `resizeMethod` and
-  `progressiveRenderingEnabled` are all in the same two branches.
+  **The fork was the wrong price.** This entry declined the work on the cost of
+  copying two hundred lines, and that cost was imaginary: the module exports
+  `__INTERNAL_VIEW_CONFIG`, and `NativeComponentRegistry.get` is handed a
+  *thunk* that is not called until the component is first rendered. So the
+  override is nineteen lines that require upstream's module through this
+  package's own prefix, set two keys on the config it exports, and re-export
+  it. Everything else stays React Native's, including the branch that chooses
+  the config. `src/overrides/ImageViewNativeComponent.ts`.
+
+  Worth remembering the next time a prop in that file is wanted --
+  `capInsets`, `resizeMethod` and `progressiveRenderingEnabled` are in the same
+  two branches, and each is now two lines rather than a fork. And worth
+  remembering as a mistake: an estimate that stops at "fork the file" never
+  asks whether the file exports the thing that needs changing.
 
   There is no app-side workaround, which is worth saying because the shape
   invites one: passing `defaultSource={{uri}}` as an object does not help, since
   Android's JavaScript takes `.uri` off it before the view config sees it.
 
-  The work is small and the decision is not. `defaultSource` is an image to
+  **What it does now**, which is React Native's rule from
+  `RCTImageComponentView` and is in core/ImagePlaceholder.h's comment: the
+  placeholder is drawn as soon as the loader answers for it, the real image
+  replaces it, and a real image that *fails* leaves the placeholder up rather
+  than clearing the view. Each host keeps the uri and whether the real image
+  landed, and both of its load callbacks go through one function -- which
+  matters, because the second one is the re-request every later mutation makes
+  and setting the texture unconditionally there wiped the placeholder a frame
+  after it appeared. That is what the GTK pixel tests caught.
+
+  Which of the two props wins is core's, because an app sets one or the other
+  and nothing below the props layer should have an opinion: `defaultSource`
+  first, since Android's JavaScript refuses both at once and that is the one
+  React Native documents everywhere.
+
+  Tested on two hosts and written blind on the third. GTK asserts pixels
+  through a real mounting transaction -- red while loading, red after the
+  failure, and a control with no placeholder that stays empty -- and AppKit
+  asserts `texture=1x1` in the tree dump, which is the wiring rather than the
+  drawing. Windows is the same edit, compiled by CI and unverified at runtime.
+
+  The work was small and the decision was not. `defaultSource` is an image to
   draw until the real one arrives, which means the loader has to answer twice
   for one view: once with the placeholder, synchronously if it is a bundled
   asset, and again when the fetch lands. Each host's `applyImage` already has

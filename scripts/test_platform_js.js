@@ -11,6 +11,7 @@
 
 const assert = require('node:assert');
 const path = require('node:path');
+const fs = require('node:fs');
 const {test} = require('node:test');
 
 // The built output, not the source: this is TypeScript now, and `main` points
@@ -351,6 +352,71 @@ test('an upstream specifier is never answered with the override of it', () => {
   const upstream = resolveRequest(
     context, 'basalt-core/upstream/Libraries/Components/View/View', 'macos');
   assert.equal(upstream.filePath, viewPath, "an upstream import should get React Native's");
+});
+
+// `<Image defaultSource>`, which reached no host because the two halves of
+// React Native's <Image> disagree and a desktop takes one of each: Android's
+// JavaScript sends a uri string, and the iOS view config runs it through
+// `resolveAssetSource`, which answers null for a string. The override declares
+// both placeholder props without a processor.
+test('the image view config declares the placeholder props', () => {
+  const overridePath = path.join(
+    __dirname,
+    '..',
+    'packages/basalt-core/dist/src/overrides/ImageViewNativeComponent.js',
+  );
+
+  // A stand-in for React Native's module, shaped the way the real one is: the
+  // config is exported and the component is registered with a thunk over it,
+  // which is what makes adjusting it in place enough.
+  const upstreamPath = require.resolve(overridePath)
+    .replace(/[^/]+$/, 'upstream-image-stub.js');
+  const config = {
+    uiViewClassName: 'RCTImageView',
+    validAttributes: {
+      // What the iOS branch declares, including the processor that is the bug.
+      defaultSource: {process: (value) => (typeof value === 'string' ? null : value)},
+      source: true,
+    },
+  };
+  fs.writeFileSync(
+    upstreamPath,
+    `module.exports = {__INTERNAL_VIEW_CONFIG: ${JSON.stringify(config).replace(
+      '"process":null', '"process":null')}, default: 'component'};\n`,
+  );
+
+  // The override requires its upstream through the package prefix, which only
+  // Metro resolves, so the module is injected into the require cache under the
+  // specifier the override asks for.
+  const Module = require('node:module');
+  const specifier = 'basalt-core/upstream/Libraries/Image/ImageViewNativeComponent';
+  const original = Module._resolveFilename;
+  Module._resolveFilename = function (request, ...rest) {
+    if (request === specifier) {
+      return upstreamPath;
+    }
+    return original.call(this, request, ...rest);
+  };
+  try {
+    delete require.cache[require.resolve(overridePath)];
+    delete require.cache[upstreamPath];
+    const patched = require(overridePath);
+    const attributes = patched.__INTERNAL_VIEW_CONFIG.validAttributes;
+    // `true`, not a processor: the string Android's JavaScript sends is what
+    // ReactCommon parses into an ImageSource, and the iOS processor answered
+    // null for exactly that.
+    assert.equal(attributes.defaultSource, true, 'defaultSource should be declared plainly');
+    assert.equal(
+      attributes.loadingIndicatorSrc,
+      true,
+      'loadingIndicatorSrc should be declared, which the iOS branch never does',
+    );
+    // And everything else upstream declared is still there.
+    assert.equal(attributes.source, true, 'the override should not replace the config');
+  } finally {
+    Module._resolveFilename = original;
+    fs.rmSync(upstreamPath, {force: true});
+  }
 });
 
 // `decelerationRate`, whose two documented spellings React Native resolves

@@ -1,4 +1,5 @@
 #include "AccessibilityRole.h"
+#include "ImagePlaceholder.h"
 #include "GtkMountingManager.h"
 
 #ifdef BASALT_HAS_SKIA
@@ -400,6 +401,8 @@ void GtkMountingManager::forgetTag(Tag tag) {
   // screen reader read a view that is no longer on screen.
   labels_.forget(tag);
   imageUris_.erase(tag);
+  imagePlaceholders_.erase(tag);
+  imageLoaded_.erase(tag);
   scrollViews_.remove(tag);
   textInputs_.remove(tag);
   switchValues_.erase(tag);
@@ -495,6 +498,32 @@ RnImageFit toImageFit(ImageResizeMode mode) {
 // React Native's cxx ImageManager is a stub that never produces an
 // ImageResponse, so nothing arrives through ImageState. The URI is read off the
 // props and loaded here instead, which is also how Android does it.
+// A loaded texture, or the placeholder left where it is.
+//
+// `RCTImageComponentView` keeps `defaultSource` on screen when a load fails,
+// and that is the better answer: a broken remote image shows what the app
+// chose to show instead of an empty box. Every host here used to clear the
+// view to nothing.
+//
+// One function because there are two callbacks -- the first load and the
+// re-request every later mutation makes -- and the second one is what wiped
+// the placeholder a frame after it appeared.
+void GtkMountingManager::applyImageTexture(RnView *view,
+                                           facebook::react::Tag tag,
+                                           GdkTexture *texture,
+                                           RnImageFit fit) {
+  if (texture != nullptr) {
+    imageLoaded_.insert(tag);
+    rn_view_set_texture(view, texture, fit);
+    return;
+  }
+  const auto standing = imagePlaceholders_.find(tag);
+  if (standing != imagePlaceholders_.end() && !standing->second.empty()) {
+    return;
+  }
+  rn_view_set_texture(view, nullptr, fit);
+}
+
 void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) {
   if (shadowView.componentName == nullptr) {
     return;
@@ -519,6 +548,10 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
   // branches that each know their own props type, and applied together below.
   // expo-image has no blur prop, so that branch leaves this at zero.
   float blurRadius = 0.0F;
+  // `defaultSource`, drawn until the source lands and kept if it never does.
+  // expo-image has its own placeholder prop and does not use this one, so the
+  // expo branch leaves it empty.
+  std::string placeholder;
 
   if (isExpoImage) {
     const auto props = std::dynamic_pointer_cast<const facebook::react::ExpoImageProps>(shadowView.props);
@@ -545,6 +578,7 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
     if (!props->sources.empty()) {
       source = props->sources.front();
     }
+    placeholder = basalt::imagePlaceholderUri(*props);
   }
 
   // Applied before the load rather than in its callback: the tint is a prop and
@@ -592,7 +626,12 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
       imageLoader_->load(
           uri, [this, tag, fit, uri, applyAnimation](GdkTexture *texture, const std::string &) {
             if (RnView *target = viewForTag(tag); target != nullptr) {
-              rn_view_set_texture(target, texture, fit);
+              // Through the same rule as the first load, not past it. This
+              // path runs on every later mutation -- a layout, any prop -- and
+              // setting the texture unconditionally here is what wiped the
+              // placeholder a frame after it appeared: the source is still
+              // failing, so the answer is still null.
+              applyImageTexture(target, tag, texture, fit);
               applyAnimation(target, uri);
             }
           });
@@ -601,6 +640,35 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
   }
 
   imageUris_[tag] = uri;
+  imagePlaceholders_[tag] = placeholder;
+  imageLoaded_.erase(tag);
+
+  // The placeholder first, so something is on screen while the source is in
+  // flight. A bundled asset answers from the loader's cache on this thread, so
+  // in the common case this is the same frame.
+  //
+  // Guarded on the main image not having arrived: both loads are asynchronous
+  // and a slow placeholder must not paint over the image it was standing in
+  // for. `imageUris_` is the main one's record, and a texture already set is
+  // the thing worth keeping.
+  if (!placeholder.empty() && uri != placeholder) {
+    imageLoader_->load(
+        placeholder, [this, tag, fit, placeholder](GdkTexture *texture, const std::string &) {
+          if (texture == nullptr) {
+            return;
+          }
+          RnView *target = viewForTag(tag);
+          const auto still = imagePlaceholders_.find(tag);
+          if (target == nullptr || still == imagePlaceholders_.end() ||
+              still->second != placeholder) {
+            return;
+          }
+          if (imageLoaded_.count(tag) != 0) {
+            return;
+          }
+          rn_view_set_texture(target, texture, fit);
+        });
+  }
 
   if (uri.empty()) {
     rn_view_set_texture(view, nullptr, fit);
@@ -659,7 +727,11 @@ void GtkMountingManager::applyImage(RnView *view, const ShadowView &shadowView) 
     // why this looks the tag up again rather than capturing the widget.
     RnView *target = viewForTag(tag);
     if (target != nullptr) {
-      rn_view_set_texture(target, texture, fit);
+      // A failed load leaves the placeholder where it is rather than clearing
+      // to nothing, which is `RCTImageComponentView`'s behaviour and the more
+      // useful one: a broken remote image shows what the app chose to show
+      // instead of an empty box.
+      applyImageTexture(target, tag, texture, fit);
       applyAnimation(target, source.uri);
     }
 

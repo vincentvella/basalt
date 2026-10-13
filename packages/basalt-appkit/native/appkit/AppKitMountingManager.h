@@ -149,7 +149,16 @@ class AppKitMountingManager final : public facebook::react::IMountingManager,
 
   // The source each <Image> is currently showing, so that a mutation which
   // changed only layout does not restart the load.
+  void applyImageTexture(RnAppKitView *view,
+                         facebook::react::Tag tag,
+                         CGImageRef image,
+                         RnAppKitImageFit fit);
+
   std::unordered_map<facebook::react::Tag, std::string> imageUris_;
+  // `defaultSource` per view, and which views have their real image. See
+  // core/ImagePlaceholder.h.
+  std::unordered_map<facebook::react::Tag, std::string> imagePlaceholders_;
+  std::unordered_set<facebook::react::Tag> imageLoaded_;
 
   // Which view each `nativeID` names, and which views are waiting to be labelled
   // by one. Shared with the GTK host; see core/LabelRegistry.h for why the

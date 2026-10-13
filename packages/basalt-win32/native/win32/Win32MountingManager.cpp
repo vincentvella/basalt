@@ -1,4 +1,5 @@
 #include "AccessibilityRole.h"
+#include "ImagePlaceholder.h"
 #include "Win32MountingManager.h"
 
 #include "BackgroundLayers.h"
@@ -343,6 +344,8 @@ void Win32MountingManager::forgetTag(Tag tag) {
   scrollViews_.remove(tag);
   textInputs_.remove(tag);
   imageUris_.erase(tag);
+  imagePlaceholders_.erase(tag);
+  imageLoaded_.erase(tag);
   switchValues_.erase(tag);
   labels_.forget(tag);
   liveRegions_.forget(tag);
@@ -873,6 +876,9 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   const facebook::react::ImageSource source =
       props->sources.empty() ? facebook::react::ImageSource{} : props->sources.front();
   const std::string uri = source.uri;
+  // `defaultSource`, drawn until the source lands and kept if it never does.
+  // See core/ImagePlaceholder.h for which of the two props this is.
+  const std::string placeholder = basalt::imagePlaceholderUri(*props);
 
   // `tintColor`, applied before the load rather than in its callback: the tint
   // is a prop and the image is a loader's answer, and either can arrive first.
@@ -915,6 +921,8 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
     return;
   }
   imageUris_[shadowView.tag] = uri;
+  imagePlaceholders_[shadowView.tag] = placeholder;
+  imageLoaded_.erase(shadowView.tag);
 
   if (uri.empty()) {
     view->setImage(nullptr, fit);
@@ -926,6 +934,38 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
   // up while the new one loads is worse than a blank box, because it looks like
   // the change did not take.
   view->setImage(nullptr, fit);
+
+  // Then the placeholder, if the app named one, so the blank box above is as
+  // short as the loader is slow. A bundled asset answers from the cache on
+  // this thread, which makes it the same frame.
+  //
+  // Guarded on the real image not having arrived: both loads are asynchronous
+  // and a slow placeholder must not paint over the image it stood in for.
+  if (!placeholder.empty() && uri != placeholder) {
+    const Tag placeholderTag = shadowView.tag;
+    imageLoader_->load(
+        placeholder,
+        [this, placeholderTag, fit, placeholder](std::shared_ptr<win32::RnWin32Image> image,
+                                                 const std::string &) {
+          if (image == nullptr || imageLoaded_.count(placeholderTag) != 0) {
+            return;
+          }
+          const auto still = imagePlaceholders_.find(placeholderTag);
+          if (still == imagePlaceholders_.end() || still->second != placeholder) {
+            return;
+          }
+          RnWin32View *target = viewForTag(placeholderTag);
+          if (target == nullptr) {
+            return;
+          }
+          target->setImage(image, fit);
+          // The same reason the load callback below calls it: the bytes
+          // arrived on their own clock and only the host has the HWND.
+          if (onDidMount_) {
+            onDidMount_();
+          }
+        });
+  }
 
   // `<Image>`'s load events, which this host emitted none of until 2026-10-10:
   // `onLoadStart`, `onProgress`, `onLoad`, `onError` and `onLoadEnd` all
@@ -988,7 +1028,20 @@ void Win32MountingManager::applyImage(RnWin32View *view, const ShadowView &shado
         const bool stillWanted =
             target != nullptr && current != imageUris_.end() && current->second == uri;
         if (stillWanted) {
-          target->setImage(image, fit);
+          // A failed load leaves the placeholder where it is rather than
+          // clearing to nothing, which is `RCTImageComponentView`'s behaviour:
+          // a broken remote image shows what the app chose to show instead of
+          // an empty box.
+          const auto standing = imagePlaceholders_.find(tag);
+          const bool keepPlaceholder = image == nullptr &&
+                                       standing != imagePlaceholders_.end() &&
+                                       !standing->second.empty();
+          if (image != nullptr) {
+            imageLoaded_.insert(tag);
+          }
+          if (!keepPlaceholder) {
+            target->setImage(image, fit);
+          }
           applyAnimation(target, uri);
           // The screen is stale and no transaction is coming: the bytes arrived
           // on their own clock, after the mount that asked for them. On GTK and

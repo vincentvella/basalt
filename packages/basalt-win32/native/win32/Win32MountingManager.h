@@ -34,6 +34,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace basalt {
 
@@ -190,6 +191,10 @@ class Win32MountingManager final : public facebook::react::IMountingManager,
   // changed only layout does not restart the load and make the image flicker
   // whenever its parent resizes. Both other platforms keep the same map.
   std::unordered_map<facebook::react::Tag, std::string> imageUris_;
+  // `defaultSource` per view, and which views have their real image. See
+  // core/ImagePlaceholder.h.
+  std::unordered_map<facebook::react::Tag, std::string> imagePlaceholders_;
+  std::unordered_set<facebook::react::Tag> imageLoaded_;
 
   // Scroll offsets, the unthrottled state write-back, the wheel and the
   // commands. Constructed with a lookup into this object's own emitter registry

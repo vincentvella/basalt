@@ -216,6 +216,13 @@ export const PLATFORM_OVERRIDES: ReadonlyArray<OverrideEntry> = [
     path.join(OVERRIDE_DIR, 'BaseViewConfig.js'),
   ],
   [
+    // React Native's own file with two placeholder props declared. A
+    // nineteen-line wrapper rather than a fork, because the module exports its
+    // view config and the registry reads it through a thunk; see the header.
+    path.join('Libraries', 'Image', 'ImageViewNativeComponent.js'),
+    path.join(OVERRIDE_DIR, 'ImageViewNativeComponent.js'),
+  ],
+  [
     path.join('Libraries', 'Utilities', 'Platform.js'),
     (platform: string) => path.join(OVERRIDE_DIR, `Platform.${platform}.js`),
   ],
