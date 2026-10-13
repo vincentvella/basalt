@@ -69,6 +69,43 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   AppKit and could not reach a GTK paint. `GskGLRenderer` and the `libEGL
   warning: DRI3 error` again. A re-run was green, every job.
 
+  **A fourth, hours later, and it cost the v0.2.2 release.** Same test, same
+  renderer, 785 of 786, on the Linux shard of the release gauntlet at commit
+  0e92b8c. The gauntlet stopped there, so the publish job never ran: the tag
+  exists and the packages do not. A flake that can only be re-run is one
+  thing; a flake that eats a release is another, which is what moved this from
+  observed to acted on.
+
+  **CI runs the cairo renderer now**, through `BASALT_GTK_RENDERER=cairo`,
+  which `tests/GtkPixels.h` reads. Not GTK's own `GSK_RENDERER`, which does
+  nothing here and is the first thing anybody will try: that steers
+  `gsk_renderer_new_for_surface`, and the harness builds a renderer directly
+  because it has no surface to give it. Measured.
+
+  What the container finally answered, on 2026-10-13, in the aarch64 Ubuntu
+  24.04 VM with GTK 4.14.5 -- the version CI has, which is what the entry has
+  wanted since the first occurrence:
+
+  | renderer | runs | wrong answers |
+  | --- | --- | --- |
+  | GskGLRenderer | 200 | 0 |
+  | GskCairoRenderer | 200 | 0 |
+
+  So cairo on 4.14 is correct, which is what the change rests on. But GL on
+  4.14 is *also* correct there, which means the version alone is not the
+  trigger and the suspect list narrows again: **that VM is aarch64 and the
+  runner is x86_64**, and llvmpipe is not the same rasteriser on the two. The
+  test was lifted out of the suite to measure this -- it needs only
+  `libbasalt_gtk_view.a` and `GtkPixels.h`, so a view-only build runs it
+  without React Native, which is the cheap way to repeat this on any machine.
+
+  What is given up is GL coverage in CI that was software-rasterised anyway
+  and never matched what a user runs; a developer still gets the GL path on
+  every local run. What is *not* given up is the chance of finding this: the
+  two renderers disagreeing on x86_64 llvmpipe is still a real bug in
+  something, and the way to catch it is an x86_64 container, which nobody has
+  tried.
+
   So the renderer and the fallback are the same in all three occurrences, and
   the test is the same in the last two -- the first was the blend-mode
   assertion above. This is also the second time it has failed on a commit that

@@ -19,6 +19,9 @@
 // widget subtree unrotated, which is recorded in backlog/upstream.md, so a test
 // about transforms has to know which one it is looking at. Colours, clips,
 // borders and opacity are the same in both.
+//
+// `BASALT_GTK_RENDERER=cairo` overrides that choice, and CI sets it. Not
+// GTK's `GSK_RENDERER`, which this ignores -- see below.
 
 #pragma once
 
@@ -132,8 +135,25 @@ inline RnPixels renderView(RnView *view, int width, int height) {
     return RnPixels(width, height, std::vector<guchar>(count, 0), "none");
   }
 
-  GskRenderer *renderer = gsk_gl_renderer_new();
-  std::string name = "GskGLRenderer";
+  // `BASALT_GTK_RENDERER=cairo` asks for the other one.
+  //
+  // GTK's own `GSK_RENDERER` does nothing here, which is worth saying because
+  // it is the first thing anybody tries: that variable steers
+  // `gsk_renderer_new_for_surface`, and this builds a renderer directly
+  // because it has no surface to hand it. Measured in a GTK 4.14 container on
+  // 2026-10-13, where `GSK_RENDERER=cairo` still answered GskGLRenderer.
+  //
+  // It exists for CI. `gtk_paint_a_background_can_repeat_in_one_axis_only` and
+  // `gtk_paint_a_blend_sees_the_siblings_beneath_it` have each failed there
+  // with a pixel-exact wrong answer, four times between them, always on
+  // GskGLRenderer over llvmpipe -- see backlog/testing.md. Nothing in these
+  // suites asks a question the two renderers answer differently, so CI takes
+  // the deterministic one and a developer keeps the one a real application
+  // uses.
+  const char *wanted = g_getenv("BASALT_GTK_RENDERER");
+  const bool wantsCairo = wanted != nullptr && g_strcmp0(wanted, "cairo") == 0;
+  GskRenderer *renderer = wantsCairo ? gsk_cairo_renderer_new() : gsk_gl_renderer_new();
+  std::string name = wantsCairo ? "GskCairoRenderer" : "GskGLRenderer";
   static bool announced = false;
   if (!gsk_renderer_realize(renderer, nullptr, nullptr)) {
     g_object_unref(renderer);

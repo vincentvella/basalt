@@ -393,6 +393,32 @@ jobs:
           xdpyinfo -display :99 | grep -m1 dimensions
 
       - name: Unit tests
+        # The cairo renderer, which is this job's and not a developer's.
+        #
+        # Two pixel tests have failed here and nowhere else --
+        # `gtk_paint_a_blend_sees_the_siblings_beneath_it` and
+        # `gtk_paint_a_background_can_repeat_in_one_axis_only`, four times
+        # between them, the last one taking out the v0.2.2 release. Every
+        # occurrence was GskGLRenderer with `libEGL warning: DRI3 error`
+        # above it, which is this runner's GL falling through to llvmpipe, and
+        # every one was a pixel-exact wrong answer rather than noise.
+        #
+        # Measured in a GTK 4.14 container on 2026-10-13, which is this
+        # runner's version: the repeat paint is correct 200 times out of 200
+        # on the cairo renderer, and also 200 out of 200 on the GL one there,
+        # so the trigger is not the version alone -- that container is aarch64
+        # and this runner is x86_64, and llvmpipe is not the same rasteriser
+        # on the two.
+        #
+        # Nothing in this suite asks a question the two renderers answer
+        # differently: the one test that reads `rendererName` only checks it
+        # is not empty, and nothing here asserts a transformed subtree, which
+        # is the one thing backlog/upstream.md records them disagreeing about.
+        # So CI takes the deterministic renderer and a developer keeps the one
+        # a real application uses. What is given up is GL coverage that was
+        # software-rasterised anyway, and never matched what a user runs.
+        env:
+          BASALT_GTK_RENDERER: cairo
         run: ./build/basalt_gtk_tests
 
       - name: Build the JavaScript packages
@@ -1208,6 +1234,7 @@ jobs:
           Xvfb :99 -screen 0 1400x1000x24 -noreset > /tmp/xvfb.log 2>&1 &
           disown
           for _ in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.5; done
-          ./build/basalt_gtk_tests
+          # The cairo renderer, for the reason the sharded job above gives.
+          BASALT_GTK_RENDERER=cairo ./build/basalt_gtk_tests
           scripts/bundle.sh react-native-src --prod
           RN_DIR=react-native-src scripts/integration_test.py
