@@ -621,7 +621,7 @@ export function optionalNativeModules(
  *
  * **The compiler.** React Native's C++ is built -Wall -Werror -Wpedantic and is
  * warning-clean only under clang, which is why bootstrap's own configure line,
- * CI and the README all name it. Left alone, CMake picks the system default --
+ * CI and CONTRIBUTING.md all name it. Left alone, CMake picks the system default --
  * g++ on Ubuntu, cl on Windows -- and `--build` left it alone: a fresh Expo
  * app's first build on Ubuntu 24.04 compiled Hermes (bootstrap names clang)
  * and then stopped in ReactCommon on GCC's class-memaccess and pedantic

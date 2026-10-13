@@ -220,7 +220,7 @@ jobs:
         working-directory: app
         run: npm install ../tarballs/*.tgz
 
-      - name: Configure it, the way the README says to
+      - name: Configure it, the way the docs say to
         # `init` rather than a heredoc of the same three lines. Writing the
         # config here meant the job proved the platform worked and never that
         # the command did -- and the command was broken in two ways that only

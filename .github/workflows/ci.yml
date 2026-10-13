@@ -965,7 +965,7 @@ jobs:
       - name: Install what Linux gets from apt
         id: vcpkg
         # The list bootstrap.sh prints when they are missing, which is also the
-        # list in the README. boost-thread is not on React Native's own list and
+        # list in CONTRIBUTING.md. boost-thread is not on React Native's own list and
         # is needed anyway: folly's Windows PThread.cpp shim is written over it.
         shell: pwsh
         env:

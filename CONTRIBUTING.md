@@ -1,0 +1,561 @@
+# Contributing to Basalt
+
+How to build and work on this repository. If you only want to *use* Basalt in
+an app, you do not need any of this: [basaltjs.dev/docs/getting-started](https://basaltjs.dev/docs/getting-started)
+is four commands and does not involve cloning anything.
+
+Two other documents carry what this one does not. `docs/ARCHITECTURE.md` is how
+the thing is built and why, including the seam in React Native's C++ that the
+whole project hangs off. `docs/TESTING.md` is what is tested, what is not, and
+how to run each layer. `docs/BACKLOG.md` is what is open, one file per area.
+
+## Layout
+
+Eight npm packages, and the split is the architecture rather than tidiness.
+Four of them are the platform itself:
+
+    packages/basalt-core          the shared half
+    packages/basalt-gtk      Linux, over GTK4
+    packages/basalt-appkit   macOS, over AppKit
+    packages/basalt-win32    Windows, over Win32 and Direct2D
+
+The rest are capability packages, which an app installs only if it wants them.
+Each contributes its sources to the host's CMake build through the same global
+properties a platform package uses, so none of them is special:
+
+    packages/basalt-navigation     react-navigation's native half
+    packages/basalt-notifications  desktop notifications
+    packages/basalt-skia           <Canvas>, over react-native-skia
+    packages/basalt-subprocess     running a child process
+
+`basalt-core` is everything that is not about a toolkit: the JavaScript
+platform layer, the bundler, React Native's C++ core and Hermes, the Expo
+runtime, the core TurboModules, and Fabric's mutation walk. It builds and
+*links* with no toolkit at all, which is how that claim is kept honest rather
+than aspirational; `basalt_core_probe` is a program that links it and nothing
+else, built on every build.
+
+A platform package is a view layer, a mounting manager and a host, and nothing
+more. Each adds the shared one to its CMake build and skips itself where it
+cannot compile, so a Mac with no GTK builds the AppKit half alone, a Linux box
+never asks for an Objective-C++ compiler, and a Windows box with neither builds
+the Win32 half.
+
+Every host produces a byte-identical view tree from the same script;
+`scripts/compare_hosts.sh` is what says so, for whichever of them are built.
+
+Inside the shared package, under `native/`:
+
+    core/MountingWalk.h         Fabric's mutation semantics, once. Every platform
+                                supplies seven operations; the Create/Insert/
+                                Remove/Update/Delete rules are here and shared.
+    core/ComponentRegistry.h    Documents which components a platform claims --
+                                a seam, defined per platform.
+    core/ExpoRuntime.*          globalThis.expo, and the modules on it.
+    core/PlatformConstantsModule.*  Platform.OS and friends.
+    core/SourceCodeModule.*     Where the bundle came from. Assets need it.
+    core/StatusBarModule.*      StatusBar, reporting a height of zero.
+    core/HttpClient.cpp         The IHttpClient seam, backed by libcurl.
+    core/FontRegistry.h         One of the three seams a new desktop must fill.
+    core/ImageBytes.*           The bytes behind an <Image>: file, data, http.
+                                Shared, because a URI means the same everywhere.
+    core/portability_probe.cpp  Links core alone, so the claim is a build failure
+                                rather than a paragraph.
+    tests/TestHarness.*         The test runner. No toolkit; each platform
+                                package brings its own `main`.
+    bootstrap.sh                Vendors folly, Hermes and RN's codegen output.
+    cmake/                      React Native's C++ core, third party, Expo.
+    src/overrides/              The JavaScript React Native cannot supply for a
+                                platform it has never heard of.
+    metro-config.js             withDesktopPlatforms: linux, macos, windows.
+    cli/                        The bundler, Metro, and the desktop run command
+                                the three platform packages name.
+
+`basalt-gtk`, under `native/`:
+
+    gtk/RnView.h/.cpp           GTK4 widget layer. No RN dependency.
+    gtk/GtkMountingManager.*    The GTK half of IMountingManager: making a widget,
+                                parenting it, turning a ShadowView into widget
+                                state. The walk is in the shared half.
+    gtk/ComponentRegistryGtk.cpp  What GTK claims: View, Paragraph, Text, RawText,
+                                Image, ScrollView, TextInput, and the controls
+                                -- ActivityIndicatorView, Switch, ModalHostView,
+                                PullToRefreshView.
+    gtk/GtkAnimationChoreographer.*  AnimationChoreographer on GTK's frame clock.
+    gtk/GtkTouchDispatcher.*    GTK input -> RN touch events. Hit test included.
+    gtk/GtkImageLoader.*        <Image> pixels. RN's cxx platform provides none.
+    gtk/GtkScrollView.*         <ScrollView>: offset, clipping, onScroll, state.
+    gtk/GtkTextInput.*          <TextInput>, over a real GtkText.
+    gtk/GtkRunLoopObserver.*    Drives the event beat. Without it, no event an
+                                emitter produces ever reaches JavaScript.
+    gtk/PangoTextLayout.*       AttributedString -> PangoLayout. Shared by both
+                                measurement and painting, so they agree.
+    gtk/PangoTextLayoutManager.cpp  Replaces RN's stub TextLayoutManager.
+    gtk/FontRegistryFontconfig.cpp  The font seam, on fontconfig.
+    gtk/main_gtk.cpp            The host: ReactHost, Hermes, one live surface.
+    gtk/demo_layout_gtk.cpp     Hand-written frames; no RN needed.
+    gtk/mount_harness_gtk.cpp   Hand-built mutations; no JS runtime.
+    cli/                        run-linux. Four strings; the command itself is
+                                basalt-core/cli/desktop.js.
+
+`basalt-appkit`, under `native/`:
+
+    appkit/RnAppKitView.h/.mm   AppKit view layer. Flipped, layer-backed.
+    appkit/AppKitMountingManager.*  The AppKit half of IMountingManager: making a
+                                view, parenting it, turning a ShadowView into
+                                view state. The walk is in the shared half.
+    appkit/ComponentRegistryAppKit.mm  What macOS claims: View, Paragraph, Text,
+                                RawText, ScrollView, Image, TextInput. See
+                                core/ComponentRegistry.h.
+    appkit/AppKitTouchDispatcher.*  Mouse -> RN touch events. Hit testing is in
+                                the view layer, so it tests without RN.
+    appkit/AppKitScrollView.*   <ScrollView>: offset, clipping, onScroll, state
+                                and commands. bounds.origin, not NSScrollView.
+    appkit/AppKitImageLoader.*  <Image> pixels, decoded off the main thread.
+    appkit/AppKitTextInput.*    <TextInput>, over a real NSTextField.
+    appkit/AppKitRunLoopObserver.*  The event beat, on a CFRunLoopObserver.
+    appkit/AppKitAnimationChoreographer.*  Animation frames, on a CADisplayLink.
+    appkit/FontRegistryCoreText.mm  macOS's half of the font seam.
+    appkit/RnTextLayout.*       A laid-out paragraph. Core Text only, no RN.
+    appkit/CoreTextLayout.*     AttributedString -> Core Text. Shared by
+                                measurement and painting, so they agree.
+    appkit/CoreTextLayoutManager.mm  Replaces RN's stub TextLayoutManager.
+    appkit/AppKitSnapshot.*     Renders a view tree to a PNG with no window.
+    appkit/main_appkit.mm       The host: ReactHost, Hermes, one surface in an
+                                NSWindow.
+    appkit/demo_layout_appkit.mm    The same boxes as GTK's, on AppKit.
+    appkit/mount_harness_appkit.mm  The same two transactions as GTK's.
+    cli/                        run-macos, the same four strings.
+
+`basalt-win32`, under `native/`:
+
+    win32/RnWin32View.h/.cpp    Win32 view layer, painted with Direct2D. Not one
+                                HWND per view; see docs/DECISIONS.md.
+    win32/Win32Snapshot.*       One offscreen render, two exits: a PNG, and the
+                                pixels tests/test_win32_paint.cpp asserts on.
+                                No window, no device, no display.
+    win32/RnWin32TextLayout.*   A laid-out paragraph, over DirectWrite. No RN.
+    win32/RnWin32Image.*        <Image> pixels, over WIC. Device-independent.
+    win32/RnWin32Accessible.*   UI Automation. A provider answers questions,
+                                where GTK and AppKit take properties.
+    win32/Win32MountingManager.*  The Windows half of IMountingManager. The walk
+                                is in the shared half.
+    win32/ComponentRegistryWin32.cpp  What Windows claims: View, Paragraph,
+                                Image. See core/ComponentRegistry.h.
+    win32/DirectWriteLayout.*   AttributedString -> RnWin32TextLayout. Shared by
+                                measurement and painting, so they agree.
+    win32/DirectWriteLayoutManager.cpp  Replaces RN's stub TextLayoutManager.
+    win32/FontRegistryDirectWrite.cpp   The font seam.
+    win32/ColorSchemeWin32.cpp  Light or dark, from the registry.
+    win32/PlatformServicesWin32.cpp  Clipboard, URLs, alerts -- and
+                                postToUiThread, on a message-only window.
+    win32/demo_layout_win32.cpp The same six boxes as GTK's and AppKit's.
+    win32/mount_harness_win32.cpp  The same two transactions as GTK's.
+    win32/Win32ImageLoader.*    Fetch and decode off the UI thread.
+    win32/Win32TouchDispatcher.*  Mouse messages -> React Native touches, and
+                                the hit chain RNGH is offered. Capture is the
+                                host's, in main_win32.cpp.
+    win32/Win32ScrollView.*     <ScrollView>: the offset, the state write-back,
+                                the commands, and the wheel's routing -- which
+                                is a parent walk here, since there is no
+                                responder chain to hand it to.
+    win32/Win32TextInput.*      <TextInput>, over a real EDIT control. The only
+                                peer on this platform that is a *window*, so it
+                                is also the only one the host has to place,
+                                forward messages to and colour.
+    win32/Win32RunLoopObserver.*  The event beat. On Windows the message loop
+                                itself, because there is no hook to install.
+    win32/Win32AnimationChoreographer.*  Animation frames, on a timer.
+    win32/main_win32.cpp        The host: ReactHost, Hermes, one surface in an
+                                HWND.
+    cli/                        run-windows, the same four strings.
+
+And at the repository root:
+
+    CMakeLists.txt              The development build: adds all three packages.
+    e2e/index.tsx               The demo app. Ordinary React Native.
+    e2e/views.tsx               A React app made only of <View>. What
+                                compare_hosts.sh runs by default.
+    e2e/text.tsx                A React app that is mostly <Text>.
+    e2e/press.tsx               A <Pressable> that counts presses as boxes.
+    e2e/scroll.tsx              A <ScrollView> that scrolls itself by command.
+    e2e/image.tsx               Four resize modes, a data: URI, a broken source.
+    e2e/a11y.tsx                Roles, labels, hints, states and hiding.
+    e2e/input.tsx               A controlled field that upper-cases what it is
+                                given, which is how the loop is checked.
+    e2e/demo.ts                 Drives Fabric's JSI binding by hand. No React.
+    e2e/metro.config.js         Resolves react/react-native out of the checkout.
+    examples/demo/              A small app that consumes it like a stranger.
+    Makefile                    Every one of these with its arguments filled
+                                in. `make help` lists them.
+    scripts/bundle.sh           Builds a bundle. scripts/metro.js serves one.
+    scripts/compare_hosts.sh    Runs one app through every host that is built
+                                and diffs the trees. Needs two toolkits on one
+                                machine, so not CI.
+    scripts/compare_all.sh      Every app in e2e/, through all of them. The
+                                summary.
+    scripts/integration_test.py End to end, against whichever host is built.
+    scripts/test_cli.js         run-linux, run-macos and run-windows, which are
+                                one function with three names.
+
+`RnView` is a `GtkWidget` subclass paired with `RnLayout`, a `GtkLayoutManager`
+that performs no layout: Yoga has already resolved absolute frames by the time
+a mutation arrives, so `RnLayout::allocate` places each child at the rect the
+shadow tree assigned it, and `measure` reports zero so GTK never second-guesses
+Yoga.
+
+## Build
+
+From inside this repo. The `../` puts React Native alongside it, which is where
+`bootstrap.sh` looks by default, or pass the path to a checkout you already
+have, absolute or relative:
+
+    git clone --depth 1 https://github.com/react/react-native ../react-native
+    make bootstrap
+    make build
+
+`make help` lists the rest. Every target is a script or a cmake line with its
+arguments filled in, so `make -n build` shows what it would run, and anything
+here can still be run on its own. Another checkout or another tree:
+`make build RN_DIR=../rn-0.87 BUILD=build-087`.
+
+`scripts/bootstrap.sh` fetches the vendored third-party sources, builds Hermes,
+and runs React Native's codegen. It is idempotent, and `--force` redoes it.
+
+What it produces is deliberately not in the repository: `third_party/` (folly,
+fast_float, nlohmann_json, hermes, hermes-build, codegen) and the build tree.
+Two bits of machine state do not travel either, and bootstrap handles both:
+React Native's `node_modules`, whose `yarn install` also rewrites `yarn.lock` in
+that checkout, and a Node satisfying React Native's `engines`.
+
+The manual equivalents of each bootstrap step are documented below.
+
+Produces `librn_view.a`, `librn_mounting.a` and the `demo_layout_gtk` executable.
+Omit `-DRN_DIR` to build only the widget layer and the demo.
+
+### On Windows
+
+Two builds, and the smaller one is worth knowing about because it needs almost
+nothing.
+
+**The view layer alone** needs no React Native, no bootstrap and no third-party
+anything: Direct2D, DirectWrite, WIC and UI Automation all ship with the
+operating system. Visual Studio Build Tools with the C++ workload, CMake and
+Ninja, from a shell that has run `vcvars64.bat`:
+
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+      -DCMAKE_CXX_COMPILER=clang-cl
+    cmake --build build
+    build\basalt_win32_tests.exe
+
+`clang-cl` because `docs/DECISIONS.md` prefers clang where there is a choice; it
+is a component of the same Build Tools install, and dropping the flag builds
+that half with `cl` instead.
+
+**The whole thing** additionally needs what Linux gets from apt, which on
+Windows means vcpkg, and Node 24, React Native 0.87 refuses anything below
+`^22.13`. Run `scripts/bootstrap.sh` from Git Bash; it fetches folly and Hermes,
+patches Hermes, builds it, runs codegen, and prints the configure line. It
+refuses early and says what to install if vcpkg is missing its packages.
+
+    git clone https://github.com/microsoft/vcpkg ~/Tools/vcpkg
+    ~/Tools/vcpkg/bootstrap-vcpkg.bat
+    vcpkg install --triplet x64-windows glog fmt double-conversion \
+        boost-regex boost-beast boost-asio boost-thread openssl curl
+
+    make bootstrap
+
+Unlike the view layer, the core build **requires** clang-cl rather than `cl`:
+React Native's own CMake sets clang-style flags that `cl` does not understand,
+and Static Hermes uses `__builtin_expect`, which it does not have. See
+`docs/PORTING.md`, which also records the three fixes Hermes needs on
+Windows and why the prebuilt Hermes react-native-windows uses cannot be
+substituted.
+
+To run an app that uses Expo modules, Reanimated or worklets, point the build at
+that app's copies of them. Each is optional and each is compiled from the app's
+own `node_modules`, so the versions can never drift from the JavaScript:
+
+    -DBASALT_EXPO_MODULES_CORE=<app>/node_modules/expo-modules-core
+    -DBASALT_WORKLETS=<app>/node_modules/react-native-worklets
+    -DBASALT_REANIMATED=<app>/node_modules/react-native-reanimated
+
+`-DBASALT_REANIMATED` needs `-DBASALT_WORKLETS`, because Reanimated 4 is built
+on worklets. Without them a plain React Native app is unaffected and an app that
+imports one fails at that import, which is what it did before.
+
+`react-native run-linux --build` (and `run-macos` and `run-windows`) passes
+whichever of the three the app has installed, and builds against the app's
+installed `react-native` rather than asking for a checkout, so these flags are
+only for building the host by hand.
+
+### Dependencies
+
+System packages.
+
+    Arch    gtk4 pango google-glog boost gflags fmt double-conversion
+            openssl curl cmake ninja clang
+    Debian  libgtk-4-dev libpango1.0-dev libglib2.0-dev libgoogle-glog-dev
+    Ubuntu  libboost-dev libboost-regex-dev libfmt-dev libgflags-dev
+            libdouble-conversion-dev libssl-dev libcurl4-openssl-dev
+            build-essential clang cmake ninja-build pkg-config
+
+Ubuntu 24.04 ships Node 18, which React Native rejects; install 24 from
+NodeSource. See `docs/TESTING.md` for the whole recipe, including running the
+suites on Linux.
+
+`boost` is mostly headers, but `boost_regex` is linked: folly's URI parser needs
+it, and React Native's websocket client needs folly's URI parser.
+
+Vendored, pinned to the versions RN builds against
+(`packages/react-native/gradle/libs.versions.toml`):
+
+    mkdir -p third_party && cd third_party
+    curl -L https://github.com/facebook/folly/archive/v2024.11.18.00.tar.gz | tar xz
+    mv folly-2024.11.18.00 folly
+    curl -L https://github.com/fastfloat/fast_float/archive/v8.0.0.tar.gz | tar xz
+    mv fast_float-8.0.0 fast_float
+    mkdir -p nlohmann_json/include/nlohmann && curl -L -o nlohmann_json/include/nlohmann/json.hpp \
+      https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
+
+Only headers are used from these, so none needs building.
+
+### Hermes
+
+Pinned by `ReactAndroid/hermes-engine/build.gradle.kts` (currently
+`250829098.0.0-stable`). Built with RN's own host flags:
+
+    curl -L https://github.com/facebook/hermes/tarball/250829098.0.0-stable | tar xz
+    # -> third_party/hermes
+
+    cmake -G Ninja -S third_party/hermes -B third_party/hermes-build \
+      -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+      -DJSI_DIR=$RN_DIR/ReactCommon/jsi -DCMAKE_BUILD_TYPE=Release \
+      -DHERMES_ENABLE_DEBUGGER=True -DHERMESVM_HEAP_HV_MODE=HEAP_HV_PREFER32
+    cmake --build third_party/hermes-build --target hermesvm
+
+Hermes' public headers must be on the *global* include path: RN's own
+`hermes/executor` and `hermes/inspector-modern` targets include
+`<hermes/hermes.h>` without declaring a dependency that carries it. Fantom does
+the same with a global `include_directories()`.
+
+### Codegen
+
+24 targets need `react_codegen_rncore`; including ReactCxxPlatform's
+`react/runtime`, where `ReactHost` lives, so codegen is mandatory for any host
+that runs JS. It is a Node tool, and RN's monorepo must be installed first.
+
+**Node version matters.** RN requires `^22.13.0 || ^24.3.0 || >= 26.0.0`.
+Node 25.x is explicitly excluded and `yarn install` fails on an engine check in
+a preinstall hook. Use e.g. `mise exec node@24 -- yarn install`.
+
+    # in the React Native checkout
+    mise exec node@24 -- yarn install
+    mise exec node@24 -- node packages/react-native/scripts/generate-codegen-artifacts.js \
+      -p packages/react-native -t android -o /tmp/rncodegen -s library -f
+
+Copy `/tmp/rncodegen/android/app/build/generated/source/codegen/jni/react` to
+`third_party/codegen/react`. The generator also emits a CMakeLists that links
+Android-only targets (`fbjni`, `turbomodulejsijni`); `third_party/codegen/
+CMakeLists.txt` in this repo replaces it, exactly as Fantom's
+`tester/codegen/CMakeLists.txt` does. Like Fantom, it compiles only the Fabric
+component specs: the top-level `FBReactNativeSpec-generated.cpp` is the JNI
+TurboModule binding and does not build off Android.
+
+### Version drift
+
+RN pins glog `0.3.5`, boost `1_83_0`, fmt `12.1.0`. Arch ships glog `0.7.1`,
+boost `1.92.0`. One real incompatibility surfaced: glog >= 0.6 added a guard
+requiring `GLOG_USE_GLOG_EXPORT` to be defined when the header is not consumed
+through its CMake target, which RN's pinned 0.3.5 predates. Without it every
+glog header fails with *"was not included correctly"*. The define is set in
+`CMakeLists.txt`. Boost 1.92 caused no problems.
+
+RN headers also carry Xcode's `#pragma mark`, so GCC needs
+`-Wno-unknown-pragmas`.
+
+## Bundling
+
+    basalt-bundle --bundle-output build/main.jsbundle.js
+
+One bundle, its assets beside it, which is where React Native looks for them.
+`react-native run-linux --mode release` calls the same code. An Expo app needs
+this command, because `expo` does not know this platform and Metro's own `build`
+emits no assets.
+
+## Testing
+
+    make ts                             # the type check, which CI gates on
+    make test                           # everything this machine can run
+    make test-quick                     # unit suites only
+    make test-list                      # what the steps are called
+
+One suite at a time, which is what most changes want:
+
+    ./build/basalt_gtk_tests            # unit, Linux
+    ./build/basalt_appkit_tests         # unit, on a Mac
+    ./build/basalt_win32_tests.exe      # unit, on Windows
+    scripts/integration_test.py         # end to end; --platform picks the host,
+                                        # and the default is first-found
+    node --test scripts/test_cli.js     # the three run commands
+
+The GTK ones need a display; on a headless machine prefix with `xvfb-run -a`.
+CI runs them on Linux, where the end-to-end suite drives the app with real
+pointer events rather than injected ones. The other two suites need neither a
+display nor a window, and each is built only where its toolkit exists. The
+end-to-end suite runs against whichever host is built, which on Windows is four
+of its five scenarios. See `docs/TESTING.md`.
+
+## Running it
+
+From an app, once a host binary exists:
+
+    react-native run-linux
+    react-native run-macos
+    react-native run-windows
+
+One command with three names: everything a desktop run does is the same, so it
+is written once in `basalt-core/cli/desktop.js` and each platform
+package passes in four strings. It starts a packager if one is not running,
+launches the app, and stays attached. `--build` builds the host first, and
+without it the command says how to build one when it cannot find one.
+
+`examples/demo` is a small app that exercises exactly this, and
+`examples/demo/setup.sh` links it against a React Native checkout. It links all
+three platform packages even on a machine that can only run one of them, so
+`npm run windows` on a Mac reports what it looked for rather than not existing.
+
+Directly, without the CLI. Build a bundle once, then run:
+
+    make bundle                            # production; see below
+    ./build/basalt_gtk
+
+Or against Metro, which is how to develop, and the only way to get Fast Refresh:
+
+    make metro                           # one terminal
+    BASALT_DEV=1 ./build/basalt_gtk      # another
+
+`scripts/bundle.sh` writes a production bundle. A `--dev` one loads and runs
+too, which it did not before phase 32: it pulls in LogBox, which reads the
+`DevSettings` TurboModule at import time, and `ReactCxxTurboModuleProvider`
+serves that module only when a dev server exists. This project now supplies one
+outside dev mode, so that import no longer takes the app down. What a `--dev`
+bundle still is not is a development *mode*: nothing reloads it, nothing
+refreshes it, and LogBox's own images are not among the assets copied next to
+it. Use Metro for that.
+
+If Metro cannot build, the host says so and exits rather than starting: the
+error you see is Metro's own, code frame and all.
+
+Arguments are `basalt_gtk [bundle] [moduleName]`, defaulting to
+`build/main.jsbundle.js` and `BasaltDemo`. An **empty** module name starts a
+surface without calling `AppRegistry`, which is the raw-Fabric mode `e2e/demo.ts`
+uses:
+
+    ./build/basalt_gtk e2e/demo.ts ""
+
+Environment:
+
+    BASALT_DEV=1            load from Metro; enables Fast Refresh and DevSettings
+    BASALT_DEV_HOST/_PORT   where Metro is (default localhost:8081)
+    BASALT_DEV_ENTRY        Metro entry name without extension (default "index")
+    BASALT_QUIT_AFTER_MS    quit on a timer, for automation that knows in
+                              advance how long it needs. SIGINT and SIGTERM
+                              also shut down cleanly, so Ctrl-C and `kill` run
+                              GApplication::shutdown -- stopAllSurfaces, the
+                              teardown ordering, and the tree dump -- rather
+                              than dropping the process where it stands.
+    BASALT_TEST_TAP         "x,y;x,y" -- synthesise taps a second apart, in
+                              surface-root coordinates. Enters where GTK's
+                              gesture callback would, so it exercises hit
+                              testing and event delivery but not GDK itself.
+    BASALT_TEST_TYPE        text to insert into whatever field has focus,
+                              after the taps above. Enters through GtkEditable,
+                              so it skips the key controller and the input
+                              method and exercises everything above them.
+    BASALT_DUMP_TREE        write the widget tree to a file on the way out.
+                              Useful on its own for seeing what React actually
+                              produced, and what the end-to-end tests assert on.
+
+### On a Mac
+
+`build/basalt_appkit` is the same host over AppKit, and takes the same arguments.
+It mounts `<View>` and nothing else so far, and it defaults to an **empty**
+module name rather than `BasaltDemo`, because a React app with any text in it
+would render blank rectangles:
+
+    ./build/basalt_appkit e2e/demo.ts
+
+Its environment variables are `BASALT_*` in place of `BASALT_*`:
+`BASALT_DEV`, `BASALT_DEV_HOST`, `BASALT_DEV_PORT`, `BASALT_DEV_ENTRY`,
+`BASALT_QUIT_AFTER_MS`, `BASALT_DUMP_TREE`, plus `BASALT_SNAPSHOT`, which writes
+a PNG of what is actually on screen. Two prefixes for the same knobs is an
+inconsistency that should become one; it has
+not yet.
+
+To check the two agree, `make compare-hosts` runs a script through both and
+diffs the tree each produced.
+
+## Building React Native's core
+
+The closure of `react_renderer_mounting` is 29 RN targets, computed from RN's
+own `target_link_libraries`. `native/cmake/ReactNativeCore.cmake` adds them;
+`cmake/ThirdParty.cmake` supplies the third-party target *names* RN links
+against, since a host build has no gradle step to download them.
+
+Six things a host has to get right, none of them documented:
+
+1. **Use clang, not GCC.** RN builds with `-Wall -Werror -Wpedantic` and is a
+   clang codebase. Under GCC it fails on `#pragma mark` (Xcode-ism), on folly's
+   `__int128` under `-Wpedantic`, and on `-Wsubobject-linkage` in
+   `NetworkIOAgent`. Under clang all of it compiles.
+2. **`-latomic`.** `std::atomic<std::optional<double>>` in
+   `ReactNativeFeatureFlagsAccessor` is 16 bytes wide; those are out-of-line
+   calls. Fantom's `CMakeLists.txt` carries the same `if(UNIX AND NOT APPLE)`
+   branch.
+3. **Platform-variant include dirs must be global.** Each seam with a
+   `platform/{android,ios,cxx}` split needs its variant on the include path
+   before any RN target is added, or targets like `componentregistry` cannot
+   find `HostPlatformViewProps.h`.
+4. **OBJECT libraries do not propagate objects through an INTERFACE target.**
+   `target_link_libraries` carries usage requirements only; the objects need
+   `$<TARGET_OBJECTS:...>` naming explicitly, or the link comes up short on
+   every symbol they define.
+5. **`getDefaultComponentRegistryFactory()` is not implemented anywhere in
+   ReactCommon.** It is declared, and no `.cpp` in the tree defines it: each
+   host writes its own, and in doing so declares which components its platform
+   supports. See `native/src/LinuxComponentRegistry.h`. Fantom has its own version.
+6. **`JSIDynamic.cpp` is compiled by no CMakeLists in the tree**, yet
+   `RawProps` references `jsi::dynamicFromValue`. Hosts must build it.
+7. **`getHttpClientFactory()` is declared but defined nowhere**; a host must
+   implement `IHttpClient` (one method). And `getWebSocketClientFactory()` *is*
+   defined, in `react/http/platform/cxx/WebSocketClient.cpp`, which the
+   `react_cxx_platform_react_http` target does not glob. Hosts compile it.
+8. **Order matters in CMake variable assembly.** `set(RN_CORE_OBJECT_TARGETS
+   ...)` after a `list(APPEND ...)` silently discards the appended entries, and
+   the failure surfaces much later as missing objects at link time.
+
+### Upstream bug found
+
+`ReactCommon/jsinspector-modern/network/HttpUtils.h` uses `uint16_t` without
+including `<cstdint>`. It builds on Meta's toolchains only via transitive
+includes. Worked around with a force-include rather than patching the checkout.
+
+### Version drift
+
+RN pins glog `0.3.5`, boost `1_83_0`; Arch ships glog `0.7.1`, boost `1.92.0`.
+glog >= 0.6 added a guard requiring `GLOG_USE_GLOG_EXPORT` when its headers are
+not consumed through its own CMake target, which RN's pin predates, without
+it every glog header hard-errors. Boost 1.92 caused no problems.
+
+### Note on rendering
+
+Under Hyprland with Omarchy's window rules the window is composited
+translucently, so screenshots show the wallpaper through the views. That is a
+compositor opacity rule, not the renderer.
+
+## Caveat
+
+`ReactCxxPlatform` carries no public API stability guarantee, Fantom builds it
+with `RN_BUILDING` to reach private includes. It will churn. The mitigation is
+that Meta keeps it working for their own CI.

@@ -282,7 +282,7 @@ project supplies them:
   pinned to the versions in RN's `libs.versions.toml`).
 
 The six non-obvious requirements, and the upstream bug found while building,
-are documented in the project README.
+are documented in `CONTRIBUTING.md`.
 
 ### The JavaScript is built too
 
@@ -319,7 +319,8 @@ Three consequences are worth knowing before they are discovered:
 Not a table here. What the platform is required to do is `openspec/specs/`,
 which is validated rather than remembered; what is being worked on is
 `openspec/changes/`; what is missing is `docs/BACKLOG.md`, one file per area;
-and the order it is likely to happen in is the README's "Next".
+and what is open is `docs/BACKLOG.md`, which is also the nearest thing to an
+order.
 
 A roadmap table lived here for a long time and was wrong about four of its own
 rows by the end, it still listed "port one third-party native module" as
