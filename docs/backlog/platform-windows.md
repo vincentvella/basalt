@@ -6,7 +6,7 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 1. The Hermes patch is applied by hand and nothing reapplies it
 2. React Native's own warnings are not enforced on Windows
-3. `BASALT_SNAPSHOT` cannot see a `<TextInput>` on Windows
+3. `BASALT_SNAPSHOT` cannot see a `<TextInput>` or a `<Canvas>` on Windows
 4. ~~A `<TextInput>` on Windows is always on top of everything~~, and what is
    left of it is entry 25
 5. The Windows choreographer is a 16ms timer
@@ -155,13 +155,27 @@ and none of it is a missing half.
   notification for the caret moving, `EN_SELCHANGE` belonging to RichEdit, so
   the selection is read after anything that could have moved it and compared
   with what was last reported. See `reportSelectionIfChanged`.
-- **`BASALT_SNAPSHOT` cannot see a `<TextInput>` on Windows.** It renders the
-  `RnWin32View` tree offscreen and a text field's peer is a child window, not a
-  view, so a field comes out as its background with no text, no placeholder
-  and no caret. Not a bug in the snapshot, but it does mean the one host that
-  can assert on pixels cannot assert on the one component whose appearance is
-  hardest to get right. `PrintWindow` on the live window is the answer and
-  nothing in the repository does it yet.
+- **`BASALT_SNAPSHOT` cannot see a `<TextInput>` or a `<Canvas>` on Windows.**
+  It renders the `RnWin32View` tree offscreen, and two components are not in
+  that tree in the way it needs.
+
+  A text field's peer is a child window rather than a view, so a field comes
+  out as its background with no text, no placeholder and no caret. A canvas
+  misses for a different reason: the painter draws the last frame delivered to
+  the live window, and an offscreen pass has none, so the pane comes out
+  empty. Confirmed on 2026-10-13 by snapshotting kino at frame 0 and at frame
+  149 -- a composition that visibly differs -- and getting the same pixels in
+  the preview rectangle both times, from a build with the canvas working.
+
+  Neither is a bug in the snapshot, and together they mean the one host that
+  can assert on pixels cannot assert on the component whose appearance is
+  hardest to get right, nor on the one whose whole job is pixels.
+  `PrintWindow` on the live window is the answer to both and nothing in the
+  repository does it yet. Until then: a field is checked through
+  `GetWindowRgn` on its peer, and a canvas by counting delivered frames in
+  the host -- which is how the frame-scheduler loop in
+  backlog/compatibility.md entry 8 was found and confirmed, since no picture
+  of the app would have shown it.
 - ~~**A `<TextInput>` on Windows is always on top of everything.**~~ It was: the
   peer is a child window, so USER32 drew it after the parent's whole client area
   and the React tree had no say in the order. A field in a `<ScrollView>` was
