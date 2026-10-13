@@ -225,8 +225,8 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `dynamicTypeRamp` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✅ | ✅ | ◐ | [DirectWrite trims the end of a line and nowhere else, so head and middle cut the end](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `accessibilityRole` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `role` | ✖ | ✖ | ✖ | [a TextAttributes field no host reads yet, counted rather than guessed](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `accessibilityRole` | ✖ | ✖ | ✖ | [per-fragment, so it needs sub-element accessibility: a <Text role> on the paragraph itself is read, and nothing exposes the runs inside one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `role` | ✖ | ✖ | ✖ | [per-fragment, so it needs sub-element accessibility: a <Text role> on the paragraph itself is read, and nothing exposes the runs inside one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ### Neither
 

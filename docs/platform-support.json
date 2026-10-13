@@ -74,7 +74,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md"
     },
     "text-ignored": {
-      "text": "a TextAttributes field no host reads yet, counted rather than guessed",
+      "text": "per-fragment, so it needs sub-element accessibility: a <Text role> on the paragraph itself is read, and nothing exposes the runs inside one",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     },
     "text-shadow-one": {
