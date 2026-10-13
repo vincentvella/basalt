@@ -168,10 +168,26 @@ bool applySkiaCanvas(RnAppKitView *view, const facebook::react::ShadowView &shad
     // Under the view's own layer, and below nothing: a canvas has no React
     // children to sit above, and the package adds it the same way.
     [view.layer addSublayer:canvas.layer];
-    // No frame scheduler, which is upstream's macOS answer too: iOS arms a
-    // CADisplayLink and macOS presents as soon as the main thread gets to it.
-    // RNSkView::scheduleFrame falls through to redraw() without one, and the
-    // redraw already arrives on the main thread through the platform context.
+    // Present what is queued, as soon as the main thread gets to it. This is
+    // upstream's macOS answer and not a paraphrase of it: SkiaView.mm's
+    // `scheduleFrame` is `_view->presentFrame()` under `#else`, where iOS arms
+    // a CADisplayLink instead.
+    //
+    // Installing none is a different thing, and the comment here used to say
+    // otherwise. `scheduleFrame` is called when a recording is queued, and
+    // without a scheduler it falls through to `redraw()` -- which calls
+    // `_producer->requestFrame()`, marks the content dirty and records the
+    // scene *again*. That recording queues, which schedules a frame, which
+    // redraws. A `<Canvas>` with nothing happening in it re-recorded and
+    // re-presented forever. Measured on the Windows host, which had the same
+    // line copied from here: 128 frames a second and 35% of a core with the
+    // editor untouched, React committing nothing and the JS thread at 0.3%.
+    std::weak_ptr<RNSkia::RNSkView> weakView = canvas.view;
+    canvas.view->setFrameScheduler([weakView] {
+      if (auto view = weakView.lock()) {
+        view->presentFrame();
+      }
+    });
     manager->registerSkiaView(nativeId, canvas.view);
     LOG(INFO) << "SkiaView tag " << tag << " registered as Skia view " << nativeId;
   } else if (canvas.nativeId != nativeId) {

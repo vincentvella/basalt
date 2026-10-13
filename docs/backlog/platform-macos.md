@@ -6,7 +6,7 @@ Six of this file's entries were struck on 2026-09-18 after being checked
 against the code rather than remembered. Five of them had been done for days.
 If an entry here is about to be picked up, run the thing it describes first.
 
-**Open (1):**
+**Open (2):**
 
 1. ~~Justified text~~, which worked all along
 2. ~~Fonts loaded at runtime are untested~~
@@ -20,6 +20,7 @@ If an entry here is about to be picked up, run the thing it describes first.
    was already handled
 9. ~~Only the first `dropShadow()` in a filter list is drawn~~, though a
    later one is cast from the box rather than the alpha
+10. The AppKit canvas's frame scheduler has not been run on a Mac
 
 - ~~**Hit testing ignores `transform`.**~~ Fixed, the way Windows already did
   it: `RnAppKitView` gains `rnLocalToParent`, the frame's translation with the
@@ -391,3 +392,20 @@ If an entry here is about to be picked up, run the thing it describes first.
   deployment target is older than that.
 
   backlog/correctness.md has the rest of the function.
+
+- **The AppKit canvas's frame scheduler has not been run on a Mac.** The
+  `<Canvas>` here registered its `RNSkView` with no frame scheduler, under a
+  comment saying that falling through to `redraw()` was upstream's own macOS
+  answer. It is not: SkiaView.mm installs `presentFrame` under `#else`, and
+  without one every presented frame records the scene again and schedules
+  another, so a canvas with nothing happening in it renders forever. The
+  Windows host had the line copied from here and measured it -- 128 frames a
+  second and 35% of a core on an untouched editor, 0.5% after -- which is
+  where this was found. See backlog/compatibility.md entry 8.
+
+  The fix is upstream's three lines and it is in, and no Mac has run it: this
+  was found, reasoned and verified entirely on Windows. What wants checking is
+  the thing Windows cannot check, which is a CAMetalLayer rather than a
+  readback -- that a canvas still animates, and that `setCanPresent`'s
+  "cannot present yet" path still recovers, now that a failed present no
+  longer has a redraw loop behind it to try again.

@@ -367,11 +367,32 @@ bool applySkiaCanvas(win32::RnWin32View *view,
     entry.nativeId = nativeId;
     // The view draws it; this file only keeps it alive and in step.
     view->setPainter(entry.canvas);
-    // No frame scheduler, which is upstream's macOS answer too: there is no
-    // display link here, and RNSkView::scheduleFrame falls through to redraw()
-    // without one. The redraw already arrives on the main thread through the
-    // platform context, and the present after it is a submit rather than a
-    // blocking wait on a swapchain.
+    // Present what is queued, which is upstream's macOS answer -- SkiaView.mm
+    // installs exactly this under `#else`, because a CAMetalLayer on a desktop
+    // needs no display link to show a frame and neither does a Direct2D
+    // bitmap.
+    //
+    // Leaving it out is not the same thing, and the difference is a core.
+    // `scheduleFrame` is called when a recording is queued, and without a
+    // scheduler it falls through to `redraw()` -- which calls
+    // `_producer->requestFrame()`, marks the content dirty and records the
+    // scene *again*. That recording queues, which schedules a frame, which
+    // redraws. A `<Canvas>` with nothing happening in it therefore re-recorded
+    // and re-rendered as fast as the readback allowed, forever: kino sat at
+    // 128 frames and 35% of a core while its editor was untouched, with React
+    // committing nothing and the JS thread at 0.3%. `presentFrame` presents
+    // the queue and asks for nothing, so the loop ends where it should.
+    //
+    // A new frame still arrives the ways it always did: JavaScript pushing a
+    // picture or a recorder, a Reanimated value through `applyUpdates`, and
+    // `RNSkWindowSurface::requestRedraw` on a resize -- none of which goes
+    // through here.
+    std::weak_ptr<RNSkia::RNSkView> weakView = entry.view;
+    entry.view->setFrameScheduler([weakView] {
+      if (auto view = weakView.lock()) {
+        view->presentFrame();
+      }
+    });
     manager->registerSkiaView(nativeId, entry.view);
     LOG(INFO) << "SkiaView tag " << tag << " registered as Skia view "
               << nativeId;

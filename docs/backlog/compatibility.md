@@ -348,13 +348,40 @@ Found by bundling and running a real application.
       told the reader to downgrade Skia and warned that the host would have no
       RNSkiaModule -- with basalt-skia installed and about to provide one.
 
-    Rendering was not the end of it. An app that paints its preview sixty
-    times a second is the first app this host has run that keeps its message
-    queue full, and two things in basalt-win32 were quietly written for a
-    queue that empties: every timer, and the event beat. kino's editor drew
-    correctly and could not be *used* -- clicking a button worked perhaps once
-    in three -- until both were fixed. `docs/backlog/platform-windows.md`
-    entries 23 and 24 have the measurements.
+    Rendering was not the end of it. kino's editor was the first app on this
+    host to keep its message queue full, and two things in basalt-win32 were
+    quietly written for a queue that empties: every timer, and the event beat.
+    The editor drew correctly and could not be *used* -- clicking a button
+    worked perhaps once in three -- until both were fixed.
+    `docs/backlog/platform-windows.md` entries 23 and 24 have the
+    measurements. They are the right fixes whatever fills the queue, and an
+    editor playing its composition fills it.
+
+    **And it should not have been full while nothing was happening.** It was,
+    and the cause was one line not written here: no frame scheduler on the
+    `RNSkView`. `RNSkView::scheduleFrame` is called when a recording is
+    queued, and with no scheduler it falls through to `redraw()` -- which
+    calls `_producer->requestFrame()`, marks the content dirty and records
+    the scene again. That recording queues, which schedules a frame, which
+    redraws. A `<Canvas>` with nothing happening in it therefore re-recorded
+    and re-rendered as fast as the readback allowed, for as long as it was
+    mounted.
+
+    Measured on kino's editor, untouched, with React committing nothing and
+    the JavaScript thread at 0.3%: 128 canvas frames a second, 120 window
+    repaints a second, and 35% of a core. With `presentFrame` installed as
+    the scheduler -- which presents the queue and asks for nothing, and is
+    what upstream's own SkiaView.mm does under `#else` -- the same editor
+    sits at 0.5% and delivers no frames at all, and playing the composition
+    delivers about 120 a second. Nothing about how a frame reaches the screen
+    changed; what changed is that the canvas stops when the picture does.
+
+    The comment that stood in place of the scheduler claimed falling through
+    to `redraw()` *was* upstream's macOS answer. It is not, and the same
+    wrong line was in the AppKit host, where it was written first and copied
+    from. Both are fixed. The AppKit half is reasoned from upstream's code and
+    the Windows measurements rather than measured -- nobody has run it on a
+    Mac since.
 
     One thing a canvas on this host still does not answer is
     `RNSkPlatformContext::takeScreenshotFromViewTag`. It takes a React tag and
