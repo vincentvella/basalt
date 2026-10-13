@@ -510,6 +510,12 @@ static void RnAppKitClipToHalfPlane(CGContextRef context,
 @end
 
 @implementation RnAppKitView {
+  // `onAccessibilityTap`'s handler, or nil when the app attached none.
+  void (^_rnAccessibleTap)(void);
+  // `accessibilityLanguage`, the BCP-47 tag, or nil. Answered as `AXLanguage`
+  // below rather than stored on a property, because AppKit has no property for
+  // it before macOS 26 and none this host can name at all; see the header.
+  NSString *_rnAccessibleLanguage;
   // React DevTools' overlay rectangles: eight floats each, plus a fill flag.
   // See setRnHighlights:filled:count:.
   std::vector<float> _highlights;
@@ -932,7 +938,31 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   }
   // The real attributed string, so the font and colour of each run reach
   // VoiceOver rather than a plain copy of the characters.
-  return [_textLayout.attributedString attributedSubstringFromRange:wanted];
+  NSAttributedString *text = [_textLayout.attributedString attributedSubstringFromRange:wanted];
+  if (_rnAccessibleLanguage == nil) {
+    return text;
+  }
+  // `accessibilityLanguage`, as a text attribute over the whole run.
+  //
+  // This is the route rather than an element attribute, and the difference is
+  // the whole reason this prop took measuring. macOS 26 added
+  // `NSAccessibilityLanguageAttribute` -- "BCP-47 language code for the whole
+  // object" -- and nothing before it has an element-level language at all. The
+  // deprecated attribute API is not a way round that: measured on macOS 26, a
+  // modern NSView's `accessibilityAttributeNames` does not list
+  // `AXDescription` even for a view whose `accessibilityLabel` is set, so
+  // AppKit is not routing a client's attribute requests through those methods
+  // and an override of them publishes nothing.
+  //
+  // `NSAccessibilityLanguageTextAttribute` has been the per-run answer since
+  // 10.13 and needs no version check, and a run is where pronunciation is
+  // decided anyway. What it does not cover is a view with no text; that limit
+  // is recorded against the prop in docs/platform-support.json.
+  NSMutableAttributedString *tagged = [text mutableCopy];
+  [tagged addAttribute:NSAccessibilityLanguageTextAttribute
+                 value:_rnAccessibleLanguage
+                 range:NSMakeRange(0, tagged.length)];
+  return tagged;
 }
 
 - (NSString *)accessibilitySelectedText {
@@ -1128,6 +1158,64 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
   // Not `else { YES }`: whether an unhidden view is an element is decided by
   // its role and label above, and overriding that here would put every plain
   // <View> back into the tree.
+}
+
+// `accessibilityActions`, as NSAccessibilityCustomAction.
+//
+// VoiceOver offers these in its actions menu (VO-Command-Space) and calls the
+// handler when one is chosen. The name React Native gave the action goes back
+// to JavaScript; the label is what is read out, and falls back to the name
+// because React Native's `label` is optional and an action with no label
+// would otherwise be announced as nothing at all.
+//
+// Rebuilt rather than diffed on every props update: the list is a handful of
+// strings, and the handler captures a tag whose emitter may have changed.
+- (void)setRnAccessibleActions:(NSArray<NSString *> *)names
+                        labels:(NSArray<NSString *> *)labels
+                       perform:(nullable void (^)(NSString *name))perform {
+  if (names.count == 0 || perform == nil) {
+    self.accessibilityCustomActions = @[];
+    return;
+  }
+  NSMutableArray<NSAccessibilityCustomAction *> *actions =
+      [NSMutableArray arrayWithCapacity:names.count];
+  [names enumerateObjectsUsingBlock:^(NSString *name, NSUInteger index, BOOL *) {
+    NSString *label = index < labels.count ? labels[index] : name;
+    if (label.length == 0) {
+      label = name;
+    }
+    NSAccessibilityCustomAction *action =
+        [[NSAccessibilityCustomAction alloc] initWithName:label
+                                                  handler:^BOOL {
+                                                    perform(name);
+                                                    return YES;
+                                                  }];
+    [actions addObject:action];
+  }];
+  self.accessibilityCustomActions = actions;
+}
+
+- (void)setRnAccessibleLanguage:(nullable NSString *)language {
+  _rnAccessibleLanguage = language.length == 0 ? nil : [language copy];
+}
+
+- (void)setRnAccessibleTapHandler:(nullable void (^)(void))perform {
+  _rnAccessibleTap = [perform copy];
+}
+
+// VoiceOver's activation, which React Native calls `onAccessibilityTap`.
+//
+// `accessibilityPerformPress` is what AppKit sends when a user activates an
+// element from the rotor or with VO-Space, and it is the nearest thing macOS
+// has to the double tap the prop is named after. Answering NO when no handler
+// is attached leaves AppKit to its default, which is what a view that never
+// asked for the prop should get.
+- (BOOL)accessibilityPerformPress {
+  if (_rnAccessibleTap != nil) {
+    _rnAccessibleTap();
+    return YES;
+  }
+  return [super accessibilityPerformPress];
 }
 
 - (void)setRnScrollOffsetX:(CGFloat)x y:(CGFloat)y {

@@ -6,6 +6,9 @@
 #import <CoreImage/CoreImage.h>
 
 #include "AccessibilityRole.h"
+#include "KeyboardFocusable.h"
+
+#include <react/renderer/components/view/BaseViewEventEmitter.h>
 #include "ImagePlaceholder.h"
 #include "ComponentRegistry.h"
 #include "BackgroundLayers.h"
@@ -1411,6 +1414,48 @@ void AppKitMountingManager::applyAccessibility(RnAppKitView *view, const ShadowV
   const std::string role = effectiveRole(shadowView);
   [view setRnAccessibleRole:role.empty() ? nil : [NSString stringWithUTF8String:role.c_str()]];
 
+  // `accessibilityActions`, which VoiceOver offers in its actions menu, and
+  // `onAccessibilityTap`, which is its activation.
+  //
+  // The tag is captured rather than the emitter: a props update replaces the
+  // emitter, and a handler holding the old one would dispatch into a view that
+  // has moved on. `eventEmitterForTag` is main-thread only and both blocks run
+  // on the main thread, which is where AppKit calls accessibility.
+  const facebook::react::Tag tag = shadowView.tag;
+  NSMutableArray<NSString *> *actionNames =
+      [NSMutableArray arrayWithCapacity:props->accessibilityActions.size()];
+  NSMutableArray<NSString *> *actionLabels =
+      [NSMutableArray arrayWithCapacity:props->accessibilityActions.size()];
+  for (const auto &action : props->accessibilityActions) {
+    [actionNames addObject:[NSString stringWithUTF8String:action.name.c_str()]];
+    [actionLabels addObject:[NSString stringWithUTF8String:action.label.value_or(action.name).c_str()]];
+  }
+  [view setRnAccessibleActions:actionNames
+                        labels:actionLabels
+                       perform:^(NSString *name) {
+                         if (auto emitter = std::dynamic_pointer_cast<const facebook::react::BaseViewEventEmitter>(
+                                 this->eventEmitterForTag(tag))) {
+                           emitter->onAccessibilityAction(name.UTF8String);
+                         }
+                       }];
+  void (^tapHandler)(void) = nil;
+  if (props->onAccessibilityTap) {
+    tapHandler = ^{
+      if (auto emitter = std::dynamic_pointer_cast<const facebook::react::BaseViewEventEmitter>(
+              this->eventEmitterForTag(tag))) {
+        emitter->onAccessibilityTap();
+      }
+    };
+  }
+  [view setRnAccessibleTapHandler:tapHandler];
+
+  // `accessibilityLanguage`: the BCP-47 tag to pronounce this view's text in.
+  // Published as `AXLanguage`, which is what macOS 26 reads it from; see
+  // `setRnAccessibleLanguage:`. Windows takes the same tag as an LCID.
+  [view setRnAccessibleLanguage:props->accessibilityLanguage.empty()
+                                    ? nil
+                                    : @(props->accessibilityLanguage.c_str())];
+
   // `accessibilityLiveRegion`: a status message to read out when it changes.
   // Recorded here and acted on after the transaction, the text being whatever the
   // region says once every mutation in the batch has landed.
@@ -1536,8 +1581,7 @@ void AppKitMountingManager::applyAccessibility(RnAppKitView *view, const ShadowV
   // that cannot be operated rather than stopping on one that does nothing.
   const basalt::ControlState control = basalt::controlStateOf(shadowView);
   const bool isControl = control.kind == basalt::ControlKind::Switch && !control.disabled;
-  view.rnFocusable =
-      (props->accessible || isControl) && !props->accessibilityElementsHidden ? YES : NO;
+  view.rnFocusable = basalt::keyboardFocusable(*props, isControl) ? YES : NO;
 
   // accessibilityElementsHidden hides the subtree; importantForAccessibility
   // NoHideDescendants is Android's spelling of the same idea.

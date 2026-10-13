@@ -89,10 +89,6 @@
       "text": "the cxx TextLayoutManager has no measureLines",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/upstream.md"
     },
-    "a11y-ignored": {
-      "text": "the accessible action family, unimplemented rather than declined",
-      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
-    },
     "a11y-ios": {
       "text": "iOS's own, with no desktop equivalent",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
@@ -114,7 +110,7 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     },
     "a11y-language": {
-      "text": "GTK has no accessible language property; macOS 26 for a view-wide one, UIA wants an LCID",
+      "text": "macOS carries it on a run of text, which covers a <Text> and not a view with no text; Windows takes the tag as an LCID; GTK 4 has no accessible language property at all",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     },
     "win-reading-direction": {
@@ -236,6 +232,10 @@
     "text-selection": {
       "text": "the paragraph is selected and copied; an inline view inside one is not",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "a11y-actions": {
+      "text": "macOS has NSAccessibilityCustomAction and the other two have nothing to map it onto: GTK 4 ships no accessible-action interface, and UIA has no custom-action pattern",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
     }
   },
   "statuses": {
@@ -454,7 +454,11 @@
     "AccessibilityProps.accessible": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "yes"
+      "windows": "yes",
+      "reads": [
+        "keyboardFocusable",
+        "accessible"
+      ]
     },
     "AccessibilityProps.accessibilityState": {
       "linux": "yes",
@@ -506,10 +510,14 @@
       "windows": "yes"
     },
     "AccessibilityProps.accessibilityLanguage": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-language"
+      "linux": "ignored",
+      "macos": "partial",
+      "windows": "yes",
+      "why": "a11y-language",
+      "reads": [
+        "setRnAccessibleLanguage",
+        "accessibilityLanguage"
+      ]
     },
     "AccessibilityProps.accessibilityLargeContentTitle": {
       "linux": "ignored",
@@ -523,10 +531,14 @@
       "windows": "yes"
     },
     "AccessibilityProps.accessibilityActions": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "ignored",
+      "macos": "yes",
+      "windows": "ignored",
+      "why": "a11y-actions",
+      "reads": [
+        "setRnAccessibleActions",
+        "accessibilityActions"
+      ]
     },
     "AccessibilityProps.accessibilityShowsLargeContentViewer": {
       "linux": "ignored",
@@ -545,7 +557,11 @@
     "AccessibilityProps.accessibilityElementsHidden": {
       "linux": "yes",
       "macos": "yes",
-      "windows": "yes"
+      "windows": "yes",
+      "reads": [
+        "keyboardFocusable",
+        "accessibilityElementsHidden"
+      ]
     },
     "AccessibilityProps.accessibilityIgnoresInvertColors": {
       "linux": "ignored",
@@ -554,16 +570,22 @@
       "why": "a11y-ios"
     },
     "AccessibilityProps.accessibilityRespondsToUserInteraction": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "yes",
+      "macos": "yes",
+      "windows": "yes",
+      "reads": [
+        "keyboardFocusable"
+      ]
     },
     "AccessibilityProps.onAccessibilityTap": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "ignored",
+      "macos": "yes",
+      "windows": "ignored",
+      "why": "a11y-actions",
+      "reads": [
+        "setRnAccessibleTapHandler",
+        "onAccessibilityTap"
+      ]
     },
     "AccessibilityProps.onAccessibilityMagicTap": {
       "linux": "ignored",
@@ -578,10 +600,14 @@
       "why": "a11y-ios"
     },
     "AccessibilityProps.onAccessibilityAction": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "a11y-ignored"
+      "linux": "ignored",
+      "macos": "yes",
+      "windows": "ignored",
+      "why": "a11y-actions",
+      "reads": [
+        "setRnAccessibleActions",
+        "accessibilityActions"
+      ]
     },
     "AccessibilityProps.importantForAccessibility": {
       "linux": "yes",

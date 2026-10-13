@@ -165,6 +165,25 @@ TEST(focus_accessible_views_are_the_ones_tab_stops_on) {
   EXPECT(dump.find("focusable") != std::string::npos);
 }
 
+// `accessibilityRespondsToUserInteraction`, which React Native documents as
+// blocking the keyboard while leaving the view accessible. On a desktop that
+// is the Tab order; core/KeyboardFocusable.h decides it for all three hosts
+// and this is the wiring.
+TEST(focus_a_view_that_refuses_interaction_is_not_a_tab_stop) {
+  Scene scene;
+  ShadowView quiet = makeView(10, 0, true);
+  auto props = std::make_shared<ViewProps>(*std::static_pointer_cast<const ViewProps>(quiet.props));
+  props->accessibilityRespondsToUserInteraction = false;
+  quiet.props = props;
+
+  scene.mount({quiet, makeView(11, 50, true)});
+
+  EXPECT(!rn_view_get_focusable(scene.manager.viewForTag(10)));
+  // The view beside it said nothing, and the prop defaults to true: one view
+  // refusing the keyboard must not take its neighbours with it.
+  EXPECT(rn_view_get_focusable(scene.manager.viewForTag(11)));
+}
+
 TEST(focus_tab_visits_focusable_views_in_tree_order) {
   Scene scene;
   scene.mount({makeView(10, 0, true), makeView(11, 50, false), makeView(12, 100, true)});

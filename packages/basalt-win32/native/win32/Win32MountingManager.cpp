@@ -1,4 +1,5 @@
 #include "AccessibilityRole.h"
+#include "KeyboardFocusable.h"
 #include "ImagePlaceholder.h"
 #include "Win32MountingManager.h"
 
@@ -1140,6 +1141,9 @@ void Win32MountingManager::applyAccessibility(RnWin32View *view, const ShadowVie
   info.testId = props->testId;
   // `accessibilityViewIsModal`, which UIA calls a dialog.
   info.modal = props->accessibilityViewIsModal;
+  // `accessibilityLanguage`, as the BCP-47 tag the app wrote. The conversion
+  // to the LCID UIA wants happens where the culture property is answered.
+  info.language = props->accessibilityLanguage;
 
   const auto &state = props->accessibilityState;
   if (state.has_value()) {
@@ -1195,7 +1199,7 @@ void Win32MountingManager::applyAccessibility(RnWin32View *view, const ShadowVie
   // that cannot be operated rather than stopping on one that does nothing.
   const basalt::ControlState control = basalt::controlStateOf(shadowView);
   const bool isControl = control.kind == basalt::ControlKind::Switch && !control.disabled;
-  view->setFocusable((props->accessible || isControl) && !props->accessibilityElementsHidden);
+  view->setFocusable(basalt::keyboardFocusable(*props, isControl));
 }
 
 void Win32MountingManager::applyLayoutMetrics(RnWin32View *view, const ShadowView &shadowView) {

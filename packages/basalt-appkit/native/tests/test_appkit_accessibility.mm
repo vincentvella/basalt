@@ -14,6 +14,14 @@
 
 #import "RnAppKitView.h"
 
+// For the paragraph the language tests read: a tag on a view with no text has
+// nowhere to go, so those build a real layout.
+#include "CoreTextLayout.h"
+#include "RnTextLayout.h"
+
+#include <react/renderer/attributedstring/AttributedString.h>
+#include <react/renderer/attributedstring/ParagraphAttributes.h>
+
 #include <sstream>
 
 namespace {
@@ -455,5 +463,178 @@ TEST(a_role_change_replaces_the_subrole) {
 
     [view setRnAccessibleRole:@"button"];
     EXPECT(view.accessibilitySubrole == nil);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// `accessibilityActions` and `onAccessibilityTap`.
+//
+// macOS is the only one of the three hosts that can have these:
+// `NSAccessibilityCustomAction` is exactly the feature React Native's prop
+// describes, GTK 4 ships no accessible-action interface at all -- its
+// accessibility headers are accessible, hypertext, range and text -- and UIA
+// has no custom-action pattern. backlog/accessibility.md has the measurement.
+//
+// Against the view rather than through a mounting transaction, the same
+// division the role tests above make: what the manager reads off the props is
+// its business, and whether VoiceOver is offered an action is this view's.
+// ---------------------------------------------------------------------------
+
+TEST(accessibility_actions_become_custom_actions) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    __block NSString *performed = nil;
+
+    [view setRnAccessibleActions:@[@"activate", @"longpress"]
+                          labels:@[@"Play", @""]
+                         perform:^(NSString *name) {
+                           performed = name;
+                         }];
+
+    EXPECT_EQ((int)view.accessibilityCustomActions.count, 2);
+    if (view.accessibilityCustomActions.count != 2) {
+      // EXPECT does not stop the test, and the assertions below index the
+      // array: a host that published none would crash here rather than fail.
+      return;
+    }
+    // The label is what VoiceOver reads, and an action whose label React
+    // Native left out falls back to its name rather than being announced as
+    // nothing.
+    EXPECT([view.accessibilityCustomActions[0].name isEqualToString:@"Play"]);
+    EXPECT([view.accessibilityCustomActions[1].name isEqualToString:@"longpress"]);
+
+    // And choosing one reports the *name*, which is what JavaScript matches
+    // on -- not the label, which is prose for a listener.
+    EXPECT(view.accessibilityCustomActions[0].handler());
+    EXPECT(performed != nil && [performed isEqualToString:@"activate"]);
+  }
+}
+
+TEST(accessibility_actions_are_cleared_when_a_view_stops_offering_them) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnAccessibleActions:@[@"activate"] labels:@[@"Play"] perform:^(NSString *) {
+    }];
+    EXPECT_EQ((int)view.accessibilityCustomActions.count, 1);
+
+    [view setRnAccessibleActions:@[] labels:@[] perform:nil];
+    EXPECT_EQ((int)view.accessibilityCustomActions.count, 0);
+  }
+}
+
+TEST(accessibility_tap_is_reported_only_when_a_handler_is_attached) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+
+    // Without one, AppKit keeps its own behaviour: a view that never asked for
+    // the prop must not start swallowing activations.
+    EXPECT(![view accessibilityPerformPress]);
+
+    __block int taps = 0;
+    [view setRnAccessibleTapHandler:^{
+      taps++;
+    }];
+    EXPECT([view accessibilityPerformPress]);
+    EXPECT_EQ(taps, 1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// `accessibilityLanguage`, as the language of the text a screen reader reads.
+//
+// Published as `NSAccessibilityLanguageTextAttribute` on the attributed string
+// the view answers for a range, which is macOS's per-run language and has been
+// since 10.13. Not as an element attribute: macOS has none before 26, and the
+// deprecated attribute API is not a way round it -- measured on macOS 26, a
+// modern NSView does not list `AXDescription` among its legacy attribute names
+// even with `accessibilityLabel` set, so AppKit answers a client through the
+// modern protocol and an override of the old methods publishes nothing. That
+// was the first implementation here and it is why these tests read the string.
+//
+// What they cannot pin is VoiceOver changing voice, which needs a person
+// listening; see backlog/accessibility.md.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A view with a paragraph in it, which is what carries text to read. The
+// fragment is built the way test_appkit_selection.mm builds one.
+RnAppKitView *rnParagraphView(const char *text) {
+  facebook::react::TextAttributes attributes;
+  attributes.fontSize = 24.0F;
+  facebook::react::AttributedString::Fragment fragment;
+  fragment.string = text;
+  fragment.textAttributes = attributes;
+  facebook::react::AttributedString string;
+  string.appendFragment(std::move(fragment));
+
+  RnAppKitView *view = [RnAppKitView viewWithTag:11];
+  view.frame = NSMakeRect(0, 0, 400, 60);
+  [view setRnTextLayout:basalt::buildTextLayout(string, facebook::react::ParagraphAttributes{})];
+  return view;
+}
+
+// The language over the whole of what the view answered, or nil.
+//
+// The effective range is checked rather than just index 0, and that is not
+// belt and braces: `accessibilityAttributedStringForRange:` is handed a range
+// and answers a *substring*, so index 0 is the start of whatever was asked for
+// and an attribute on the first character alone looks identical there. A
+// sabotage that narrowed the tag to one character passed against a version of
+// this helper that read index 0, which is how the check got here.
+NSString *languageOf(RnAppKitView *view, NSRange range) {
+  NSAttributedString *text = [view accessibilityAttributedStringForRange:range];
+  if (text.length == 0) {
+    return nil;
+  }
+  NSRange effective = NSMakeRange(0, 0);
+  NSString *language = [text attribute:NSAccessibilityLanguageTextAttribute
+                               atIndex:0
+                        effectiveRange:&effective];
+  if (language == nil || !NSEqualRanges(effective, NSMakeRange(0, text.length))) {
+    return nil;
+  }
+  return language;
+}
+
+} // namespace
+
+TEST(accessibility_a_language_reaches_the_text_a_screen_reader_reads) {
+  @autoreleasepool {
+    RnAppKitView *view = rnParagraphView("Bonjour le monde");
+    [view setRnAccessibleLanguage:@"fr-CA"];
+
+    NSString *language = languageOf(view, NSMakeRange(0, 7));
+    EXPECT(language != nil && [language isEqualToString:@"fr-CA"]);
+    // Over the whole run and not just its start, because VoiceOver asks for
+    // the range it is about to read and that is rarely the first word.
+    NSString *later = languageOf(view, NSMakeRange(8, 8));
+    EXPECT(later != nil && [later isEqualToString:@"fr-CA"]);
+  }
+}
+
+TEST(accessibility_no_language_leaves_the_text_unattributed) {
+  @autoreleasepool {
+    RnAppKitView *view = rnParagraphView("Bonjour le monde");
+    EXPECT(languageOf(view, NSMakeRange(0, 7)) == nil);
+
+    // An empty tag is nothing rather than an empty language: React Native's
+    // prop defaults to "" and every paragraph would otherwise claim one.
+    [view setRnAccessibleLanguage:@""];
+    EXPECT(languageOf(view, NSMakeRange(0, 7)) == nil);
+  }
+}
+
+// The run's own attributes have to survive. Replacing the attributed string
+// instead of copying it would take the font with it, and a screen reader that
+// cannot see the font cannot report the text's size or style.
+TEST(accessibility_a_language_keeps_the_rest_of_the_run) {
+  @autoreleasepool {
+    RnAppKitView *view = rnParagraphView("Bonjour le monde");
+    [view setRnAccessibleLanguage:@"fr-CA"];
+
+    NSAttributedString *text = [view accessibilityAttributedStringForRange:NSMakeRange(0, 7)];
+    EXPECT_EQ((int)text.length, 7);
+    EXPECT([text attribute:NSFontAttributeName atIndex:0 effectiveRange:nullptr] != nil);
   }
 }

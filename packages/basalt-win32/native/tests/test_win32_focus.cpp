@@ -90,6 +90,32 @@ TEST(win32_focus_accessible_views_are_the_ones_tab_stops_on) {
   manager.destroySurfaceRoot(kSurfaceId);
 }
 
+// `accessibilityRespondsToUserInteraction`, which React Native documents as
+// blocking the keyboard while leaving the view accessible. On a desktop that
+// is the Tab order; core/KeyboardFocusable.h decides it for all three hosts
+// and this is the wiring.
+TEST(win32_focus_a_view_that_refuses_interaction_is_not_a_tab_stop) {
+  Win32MountingManager manager;
+  RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 400, 400);
+
+  ShadowView quiet = makeAccessibleView(10, 0, true);
+  auto props = std::make_shared<ViewProps>(*std::static_pointer_cast<const ViewProps>(quiet.props));
+  props->accessibilityRespondsToUserInteraction = false;
+  quiet.props = props;
+
+  mountAll(manager, {quiet, makeAccessibleView(11, 50, true)});
+
+  EXPECT(!manager.viewForTag(10)->focusable());
+  // The view beside it said nothing, and the prop defaults to true: one view
+  // refusing the keyboard must not take its neighbours with it.
+  EXPECT(manager.viewForTag(11)->focusable());
+  // And the dump says so, which is what the cross-host comparison reads.
+  EXPECT(root->describeTree().find("focusable") != std::string::npos);
+
+  manager.destroySurfaceRoot(kSurfaceId);
+}
+
 TEST(win32_focus_tab_visits_focusable_views_in_tree_order_and_wraps) {
   Win32MountingManager manager;
   RnWin32View *root = manager.createSurfaceRoot(kSurfaceId);

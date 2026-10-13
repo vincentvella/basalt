@@ -165,6 +165,33 @@ class AccessibleProvider final : public IRawElementProviderSimple {
         }
         return S_OK;
 
+      case UIA_CulturePropertyId: {
+        // React Native's `accessibilityLanguage`, which UIA takes as an LCID
+        // and not as the BCP-47 tag every other platform speaks: 1036 where
+        // the app wrote "fr-FR". `LocaleNameToLCID` is the documented
+        // conversion and the reason this property can be answered at all.
+        //
+        // `LOCALE_ALLOW_NEUTRAL_NAMES` so a tag with no region -- "fr", which
+        // is what an app writes when it means the language and not a country
+        // -- converts rather than failing. Without it the function rejects
+        // every neutral name, which is a large share of what apps write.
+        //
+        // Left unset when the tag does not convert, which is the honest answer
+        // for a locale this Windows does not know: zero is a valid LCID
+        // meaning the system default, so returning the failure would claim the
+        // app asked for the system language when it asked for something else.
+        if (info_.language.empty()) {
+          return S_OK;
+        }
+        const LCID lcid =
+            LocaleNameToLCID(widen(info_.language).c_str(), LOCALE_ALLOW_NEUTRAL_NAMES);
+        if (lcid != 0) {
+          value->vt = VT_I4;
+          value->lVal = static_cast<long>(lcid);
+        }
+        return S_OK;
+      }
+
       case UIA_HelpTextPropertyId:
         // React Native's `accessibilityHint` is "what happens if you do this",
         // which is what UIA calls help text. AppKit puts it in the

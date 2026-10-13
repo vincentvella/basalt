@@ -690,6 +690,43 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // accessibilityElementsHidden.
 - (void)setRnAccessibleHidden:(BOOL)hidden;
 
+// `accessibilityActions`, as the actions a screen reader can offer.
+//
+// `names` are React Native's action names and `labels` what VoiceOver reads
+// for each; `perform` is called with the name when one is chosen. macOS has
+// `NSAccessibilityCustomAction` for exactly this, which is why this host has
+// the prop and the other two do not -- GTK 4 ships no accessible-action
+// interface at all and UIA has no custom-action pattern. See
+// backlog/accessibility.md.
+//
+// An empty `names` clears them, which matters because a view that stops
+// offering an action must stop offering it.
+- (void)setRnAccessibleActions:(NSArray<NSString *> *)names
+                        labels:(NSArray<NSString *> *)labels
+                       perform:(nullable void (^)(NSString *name))perform;
+
+// `accessibilityLanguage`: the BCP-47 tag a screen reader should pronounce
+// this view's text in, or nil for whatever the system is set to.
+//
+// Published as `NSAccessibilityLanguageTextAttribute` over the attributed
+// string `accessibilityAttributedStringForRange:` answers, which is the
+// per-run language macOS has had since 10.13, so it needs no version check.
+//
+// Not as an element attribute, and that is a measured limit rather than a
+// choice: macOS has no element-level language before 26, which named
+// `NSAccessibilityLanguageAttribute` for it, and the deprecated attribute API
+// is not a way round that -- measured on macOS 26, a modern NSView does not
+// list `AXDescription` among its legacy attribute names even when
+// `accessibilityLabel` is set, so AppKit is not answering a client through
+// those methods at all. The consequence is that a view with no text carries
+// the tag and publishes nothing, which is recorded against the prop.
+- (void)setRnAccessibleLanguage:(nullable NSString *)language;
+
+// Whether a VoiceOver activation -- the double tap -- should be reported to
+// the app as `onAccessibilityTap`. React Native's own prop of that name is a
+// handler, and this is whether one is attached.
+- (void)setRnAccessibleTapHandler:(nullable void (^)(void))perform;
+
 // The app's `nativeID`, which this platform uses to mark a view for a native
 // behaviour it has no React Native prop for -- today, a drop target. See
 // core/DragAndDrop.h, and core/TitleBarRegions.h for the older use of the

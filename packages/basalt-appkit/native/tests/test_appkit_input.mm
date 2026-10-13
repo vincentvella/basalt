@@ -787,6 +787,42 @@ TEST(focus_accessible_views_are_the_ones_tab_stops_on) {
   }
 }
 
+// `accessibilityRespondsToUserInteraction`, which React Native documents as
+// blocking the keyboard while leaving the view accessible. The whole prop is
+// the Tab order here; core/KeyboardFocusable.h decides it for all three hosts
+// and this is the wiring.
+TEST(focus_a_view_that_refuses_interaction_is_not_a_tab_stop) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:400];
+
+    ShadowView quiet = makeAccessibleView(10, 0, true);
+    auto props = std::make_shared<facebook::react::ViewProps>(
+        *std::static_pointer_cast<const facebook::react::ViewProps>(quiet.props));
+    props->accessibilityRespondsToUserInteraction = false;
+    // A label as well, because that is what makes a plain view an
+    // accessibility element here -- a tree of untyped groups is worse for a
+    // screen reader than a tree without them, so `accessible` alone does not
+    // publish one. Without it the assertion below would pass for the wrong
+    // reason, which is how this line got here.
+    props->accessibilityLabel = "Read only";
+    quiet.props = props;
+
+    mountAll(manager, {quiet, makeAccessibleView(11, 50, true)});
+
+    EXPECT(!manager.viewForTag(10).rnFocusable);
+    // The view beside it, which said nothing, is unaffected: the prop defaults
+    // to true and must not take its neighbours with it.
+    EXPECT(manager.viewForTag(11).rnFocusable);
+    // And it is still accessible, which is the other half of the prop: a
+    // screen reader keeps the view, the keyboard loses it.
+    EXPECT(manager.viewForTag(10).isAccessibilityElement);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
 TEST(focus_tab_visits_focusable_views_in_tree_order_and_wraps) {
   @autoreleasepool {
     basalt::AppKitMountingManager manager;

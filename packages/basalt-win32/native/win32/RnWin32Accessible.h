@@ -80,6 +80,11 @@ struct RnAccessibleInfo {
   // calls an automation id. Not a label -- nothing reads it aloud -- and not
   // `nativeID`, which is how an app names a view to itself.
   std::string testId;
+  // `accessibilityLanguage`, as React Native gave it: a BCP-47 tag such as
+  // "fr-CA". UIA wants a culture *identifier* rather than a tag, so the
+  // conversion happens where the property is answered and not here -- the tag
+  // is what the app wrote and what the other hosts publish verbatim.
+  std::string language;
   // `accessibilityViewIsModal`. UIA calls this a dialog: a client that honours
   // `IsDialog` stops offering what is behind the element, which is the same
   // behaviour ARIA's `aria-modal` and AppKit's `accessibilityModal` ask for.

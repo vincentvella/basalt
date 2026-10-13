@@ -331,6 +331,83 @@ TEST(accessibility_a_plain_view_claims_no_dialog) {
 }
 
 // ---------------------------------------------------------------------------
+// `accessibilityLanguage`, which is the one accessibility prop where this
+// platform does not take the value the app wrote.
+//
+// Every other host publishes the BCP-47 tag verbatim -- AppKit as the
+// `AXLanguage` attribute, and GTK not at all, having no accessible language
+// property. UIA's culture property is an LCID, a number, so the tag has to be
+// converted; `LocaleNameToLCID` is the conversion and these pin that the
+// provider does it rather than answering with the string or with zero.
+//
+// The expected numbers are Windows' own and not invented here: 1036 is fr-FR
+// and 12 is the neutral French. Asserted as `LocaleNameToLCID` reports them,
+// because a hard-coded constant that disagreed with the running system would
+// be testing the wrong thing.
+
+TEST(accessibility_a_language_becomes_a_culture_id) {
+  RnAccessibleInfo info = withRole("text");
+  info.label = "Bonjour";
+  info.language = "fr-FR";
+
+  auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_CulturePropertyId), VT_I4);
+  EXPECT_EQ(longProperty(provider, UIA_CulturePropertyId),
+            static_cast<long>(LocaleNameToLCID(L"fr-FR", LOCALE_ALLOW_NEUTRAL_NAMES)));
+  // Not the system's, which is what a provider that ignored the prop and
+  // answered zero would be claiming.
+  EXPECT(longProperty(provider, UIA_CulturePropertyId) != 0);
+}
+
+// A tag with no region is what an app writes when it means the language rather
+// than a country, and it is the case `LOCALE_ALLOW_NEUTRAL_NAMES` exists for:
+// without the flag this answers nothing for a large share of what apps write.
+TEST(accessibility_a_language_without_a_region_still_converts) {
+  RnAccessibleInfo info = withRole("text");
+  info.language = "fr";
+
+  auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_CulturePropertyId), VT_I4);
+  EXPECT_EQ(longProperty(provider, UIA_CulturePropertyId),
+            static_cast<long>(LocaleNameToLCID(L"fr", LOCALE_ALLOW_NEUTRAL_NAMES)));
+}
+
+// Unset rather than zero, for the reason the dialog property is unset rather
+// than false: zero is a valid LCID meaning the system default, so answering it
+// would say the app asked for the system language when it asked for nothing.
+TEST(accessibility_no_language_leaves_the_culture_unset) {
+  auto provider = providerFor(withRole("text"));
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_CulturePropertyId), VT_EMPTY);
+}
+
+// And the same for a tag this Windows cannot resolve, which is the branch that
+// would otherwise publish zero and call it the app's choice.
+//
+// Over-long rather than merely wrong, and that is deliberate: Windows accepts
+// far more than the tags it has data for -- a well-formed name it does not
+// know can come back as `LOCALE_CUSTOM_UNSPECIFIED` rather than as a failure,
+// and which names those are differs by Windows version. A name longer than
+// `LOCALE_NAME_MAX_LENGTH` is the one input documented to fail everywhere, so
+// it is what pins the branch without the assertion depending on the runner's
+// locale data.
+TEST(accessibility_an_unresolvable_language_leaves_the_culture_unset) {
+  RnAccessibleInfo info = withRole("text");
+  info.language = std::string(LOCALE_NAME_MAX_LENGTH + 10, 'x');
+  // The premise, asserted rather than assumed: if some future Windows resolved
+  // this, the test below would be checking nothing.
+  EXPECT_EQ(LocaleNameToLCID(basalt::win32::widen(info.language).c_str(),
+                             LOCALE_ALLOW_NEUTRAL_NAMES),
+            static_cast<LCID>(0));
+
+  auto provider = providerFor(info);
+  EXPECT(provider != nullptr);
+  EXPECT_EQ(propertyType(provider, UIA_CulturePropertyId), VT_EMPTY);
+}
+
+// ---------------------------------------------------------------------------
 // `accessibilityLabelledBy`, which is the one accessibility prop that is a
 // relation between two views rather than a value on one.
 //

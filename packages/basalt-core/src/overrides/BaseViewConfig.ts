@@ -23,10 +23,10 @@
  * ReactCommon parses it for every platform and only the *iOS* view config
  * declares it, so on a config built from Android's it never arrives. One line
  * fixes that, and it is the line that lets a <Modal> tell a screen reader to
- * stay inside it.
+ * stay inside it. `accessibilityLanguage` is the same gap again.
  *
- * Reported rather than forked: the whole file is React Native's, this adds six
- * keys, and each goes away when upstream adds it. See docs/BACKLOG.md.
+ * Reported rather than forked: the whole file is React Native's, this adds
+ * nine keys, and each goes away when upstream adds it. See docs/BACKLOG.md.
  *
  * @format
  */
@@ -87,5 +87,19 @@ export default {
     // `aria-modal`, AppKit as `accessibilityModal` and Win32 as UIA's
     // `IsDialog`.
     accessibilityViewIsModal: true,
+    // `accessibilityLanguage`, the third of the same kind:
+    // `AccessibilityProps.cpp` reads the raw prop with no condition on the
+    // platform, and only `BaseViewConfig.ios.js` declares it. Two of the three
+    // hosts have somewhere to put it -- AppKit's `AXLanguage` attribute and
+    // UIA's culture property, which wants the tag as an LCID -- and neither
+    // could see the prop before this line, because React never sent it.
+    accessibilityLanguage: true,
+    // `accessibilityRespondsToUserInteraction`, which React Native documents
+    // as blocking keyboard interaction while leaving the view accessible --
+    // and marks `@platform ios`, where Full Keyboard Access is the thing it
+    // blocks. On a desktop the keyboard is the primary input, so it is the
+    // Tab order, and core/KeyboardFocusable.h is where all three hosts read
+    // it. Also iOS-only in the view config, which is why no host could.
+    accessibilityRespondsToUserInteraction: true,
   },
 };
