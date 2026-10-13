@@ -50,16 +50,32 @@ foreach(root
     ${CMAKE_CURRENT_LIST_DIR}/../../..
     ${CMAKE_CURRENT_LIST_DIR}/../../../node_modules
     ${CMAKE_CURRENT_LIST_DIR}/../../node_modules)
+  # Both can be installed at once, which is not a contradiction: a package
+  # manager removes what it put there and leaves what it did not, so an app
+  # that migrated from one name to the other still has the old directory. So
+  # the order below is a *preference* and the first found wins -- without
+  # that the last iteration won, and an app that had moved to 3.x compiled
+  # against the 2.x it thought it had left behind. Which is what kino's first
+  # Windows build did.
   foreach(package react-native-skia @shopify/react-native-skia)
-    if(EXISTS ${root}/${package}/cpp/skia/include/core/SkSurface.h)
+    if(BASALT_SKIA_DIR_DEFAULT STREQUAL "" AND
+       EXISTS ${root}/${package}/cpp/skia/include/core/SkSurface.h)
       get_filename_component(BASALT_SKIA_DIR_DEFAULT ${root}/${package} ABSOLUTE)
     endif()
   endforeach()
-  foreach(binaries react-native-skia-graphite-apple-macos react-native-skia-apple-macos)
-    if(EXISTS ${root}/${binaries}/libs/libskia.xcframework)
-      get_filename_component(BASALT_SKIA_LIBS_DEFAULT ${root}/${binaries} ABSOLUTE)
-    endif()
-  endforeach()
+  # Apple's binaries, on Apple. An xcframework is not a thing another platform
+  # can link, and finding one here is worse than finding nothing: the Windows
+  # fallback below is gated on this being empty, so a leftover macOS package
+  # in an app's node_modules sent a Windows build looking for skottie.lib
+  # inside it. First-found again, and for the same reason.
+  if(APPLE)
+    foreach(binaries react-native-skia-graphite-apple-macos react-native-skia-apple-macos)
+      if(BASALT_SKIA_LIBS_DEFAULT STREQUAL "" AND
+         EXISTS ${root}/${binaries}/libs/libskia.xcframework)
+        get_filename_component(BASALT_SKIA_LIBS_DEFAULT ${root}/${binaries} ABSOLUTE)
+      endif()
+    endforeach()
+  endif()
   # Windows, where there is no package to find because nobody publishes one.
   # The name a published one would have is tried anyway, so that the day it
   # exists this stops being special; what exists today is whatever

@@ -55,6 +55,14 @@
 #ifdef BASALT_HAS_SKIA
 #include "Win32SkiaModule.h"
 #endif
+#if BASALT_HAS_SKIA_GRAPHITE
+// The 3.x module, from basalt-skia. Registered here rather than through
+// BASALT_PACKAGE_TURBO_MODULES because that property has core generate the
+// call, and core is shared with hosts that cannot link this Skia -- see that
+// package's CMakeLists. The same arrangement the 2.x module above has, and
+// the same one main_appkit.mm makes.
+#include "BasaltSkiaModule.h"
+#endif
 #include "Win32Packaging.h"
 #include "PointerButtons.h"
 #include "WindowControl.h"
@@ -565,6 +573,22 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
         // it; see win32/Win32SkiaModule.h.
         if (name == basalt::Win32SkiaModule::kModuleName) {
           return std::make_shared<basalt::Win32SkiaModule>(jsInvoker);
+        }
+#endif
+#if BASALT_HAS_SKIA_GRAPHITE
+        // And 3.x, which is Graphite over Dawn and a different module under
+        // the same name. Never both: cmake/Skia.cmake refuses a 3.x install by
+        // version, so BASALT_HAS_SKIA is defined in exactly the builds this is
+        // not.
+        //
+        // Without this the canvas is built, linked and unreachable: the view
+        // mounts, basalt-skia's C++ is all in the binary, and the app still
+        // ends at getEnforcing('RNSkiaModule') on its first Skia import --
+        // which is where kino's first Windows run stopped.
+        if (name == basalt::BasaltSkiaModule::kModuleName) {
+          if (auto module = basalt::makeSkiaTurboModule(name, jsInvoker)) {
+            return module;
+          }
         }
 #endif
         if (name == basalt::DesktopBlobModule::kModuleName) {

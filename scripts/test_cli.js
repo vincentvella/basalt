@@ -508,6 +508,25 @@ test('the native halves an app has installed are the ones built', () => {
     'the note does not say what to install instead',
   );
 
+  // The same 3.x install, with basalt-skia beside it: still declined here,
+  // and now that is the right answer rather than a shortfall. The note has to
+  // say so, because the old one told a reader who had installed exactly the
+  // right thing to go and downgrade Skia.
+  const graphitePackage = install(project, 'basalt-skia', '0.2.1');
+  found = desktop.optionalNativeModules(project, 'macos');
+  assert.ok(
+    !found.args.some(arg => arg.startsWith('-DBASALT_SKIA')),
+    'a 3.x install was handed to the Ganesh half with basalt-skia installed',
+  );
+  const handed = found.notes.find(note => note.includes('react-native-skia'));
+  assert.ok(handed, '3.x with basalt-skia was passed over without saying so');
+  assert.ok(handed.includes('basalt-skia'), 'the note does not say what builds it');
+  assert.ok(
+    !handed.includes('release-2.x'),
+    'the note still asks for a downgrade with basalt-skia installed',
+  );
+  fs.rmSync(graphitePackage, {recursive: true, force: true});
+
   // A package that declares no version is not a 3.x package. The archive is
   // still there, so the only thing that could have changed the answer is the
   // version having gone missing, and an unreadable version must not read as a

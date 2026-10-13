@@ -276,11 +276,18 @@ Found by bundling and running a real application.
     through an offscreen surface, so what these tests have never watched is a
     frame reaching the CAMetalLayer and the compositor. There is nothing to
     read back off a swapchain texture that has been presented, so that one is
-    `e2e/skia.tsx` against a real app, and it is the last thing between this
-    and kino.
+    `e2e/skia.tsx` against a real app.
+
+    Which Windows has now done and this host has not, so the two have swapped
+    places: kino runs on Win32 and paints its composition (below), while on
+    macOS nobody has yet watched a 3.x frame reach the screen. The remaining
+    question here is this platform's alone -- a presented CAMetalLayer -- and
+    not something the shared half is missing.
 
     **basalt-skia ships.** It is `0.2.1` and no longer `private: true`, so an
-    app can install it. kino's `skia-v3` branch pins `basalt-*@0.2.1`.
+    app can install it. kino's `skia-v3` branch pins `basalt-*@0.2.1`, which
+    is older than the canvas: it was linked at the checkout to run on Windows,
+    and a published `0.2.2` is what makes that a plain `bun install`.
 
   Which stages, and the order is forced rather than chosen: macOS first, because
   it is the one host whose binaries anyone publishes --
@@ -311,6 +318,43 @@ Found by bundling and running a real application.
     over the left half and red over the right. There is nothing to read back
     off a presented swapchain texture, so the AppKit suite stops at
     `makeImageSnapshot`; this host presents into a bitmap, so there is.
+
+    And an application runs on it. kino -- a video editor, two `<Canvas>`
+    call sites, Skia 3.x -- builds and runs on Windows against this, prints
+    `RNSkiaModule: Skia installed, over Graphite`, registers its canvas
+    (`SkiaView tag 198 registered as Skia view 1000`) and paints its
+    composition: the pixel at the middle of the preview pane is `11,11,15`,
+    which is the `<Fill color="#0B0B0F">` that composition draws at frame 0
+    and nothing else in this host's palette. Three things stood between the
+    canvas passing its own test and that, and none of them was the canvas:
+
+    - **The host never offered the module.** `main_win32.cpp` had the 2.x
+      `Win32SkiaModule` and no `BASALT_HAS_SKIA_GRAPHITE` branch, so
+      basalt-skia compiled, linked, and was unreachable -- the app ended at
+      `getEnforcing('RNSkiaModule')` on its first Skia import. main_appkit.mm
+      had had the branch since the module landed; this was the half nobody
+      wrote.
+    - **Package discovery preferred what the app had left behind.** An app
+      that migrated from `@shopify/react-native-skia` to `react-native-skia`
+      still has the old directory, because a package manager removes only what
+      it put there; basalt-skia's scan took the *last* match rather than the
+      first and compiled 3.x's C++ against 2.x. Worse on this platform: the
+      same loop took `react-native-skia-apple-macos`'s xcframework on a
+      Windows build and, because the `%USERPROFILE%/skia-windows-graphite`
+      fallback is gated on finding nothing, sent the configure looking for
+      `skottie.lib` inside a macOS package.
+    - **The CLI's note said the opposite of the truth.** Declining to build
+      core's Ganesh half against a 3.x install is correct, and the note still
+      told the reader to downgrade Skia and warned that the host would have no
+      RNSkiaModule -- with basalt-skia installed and about to provide one.
+
+    Rendering was not the end of it. An app that paints its preview sixty
+    times a second is the first app this host has run that keeps its message
+    queue full, and two things in basalt-win32 were quietly written for a
+    queue that empties: every timer, and the event beat. kino's editor drew
+    correctly and could not be *used* -- clicking a button worked perhaps once
+    in three -- until both were fixed. `docs/backlog/platform-windows.md`
+    entries 23 and 24 have the measurements.
 
     One thing a canvas on this host still does not answer is
     `RNSkPlatformContext::takeScreenshotFromViewTag`. It takes a React tag and

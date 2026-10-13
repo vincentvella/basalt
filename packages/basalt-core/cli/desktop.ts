@@ -530,17 +530,30 @@ export function optionalNativeModules(
     ),
   };
   const archive = skia != null ? path.join(skia, skiaArchive[platform] ?? '') : null;
-  if (skia != null && skiaMajor != null && skiaMajor >= 3) {
+  // basalt-skia is the Graphite half this note used to say did not exist.
+  // With it installed, declining here is the correct outcome rather than a
+  // loss -- exactly one Skia is ever compiled into the host, and on a 3.x
+  // install it is that package's -- and the old wording sent a reader who had
+  // done everything right to downgrade. An app running kino's first Windows
+  // build read it and believed it.
+  const graphite = findPackage('basalt-skia', projectRoot);
+  if (skia != null && skiaMajor != null && skiaMajor >= 3 && graphite != null) {
+    notes.push(
+      `Skia ${skiaMajor}.x (${skia}), through basalt-skia rather than this half: ` +
+        '3.x is Graphite over Dawn and this one is Ganesh. Nothing is missing -- ' +
+        'two of them would be two RNSkiaModules.',
+    );
+  } else if (skia != null && skiaMajor != null && skiaMajor >= 3) {
     notes.push(
       `not building Skia (${skia}, ${skiaMajor}.x): this platform's half is ` +
         'Ganesh, and 3.x is Graphite over Dawn -- MetalContext, MetalWindowContext, ' +
         'RNSkMetalCanvasProvider, RNSkAppleView, RNSkAppleVideo and ' +
         'SkiaCVPixelBufferUtils are all deleted in it, and RNSkWindowSurface ' +
-        'replaces them over a CAMetalLayer. Install the 2.x line ' +
-        '(`react-native-skia@release-2.x`, or `@shopify/react-native-skia`) until ' +
-        "basalt-skia carries the Graphite half. This host will have no " +
-        "RNSkiaModule, and importing the package at all -- not rendering with it, " +
-        "importing it -- ends the app at getEnforcing('RNSkiaModule').",
+        'replaces them over a CAMetalLayer. Install basalt-skia, which carries ' +
+        'the Graphite half, or the 2.x line (`react-native-skia@release-2.x`, or ' +
+        '`@shopify/react-native-skia`) for this one. As it stands this host will ' +
+        'have no RNSkiaModule, and importing the package at all -- not rendering ' +
+        "with it, importing it -- ends the app at getEnforcing('RNSkiaModule').",
     );
   } else if (skia != null && archive != null && fs.existsSync(archive)) {
     define('BASALT_SKIA', skia);
