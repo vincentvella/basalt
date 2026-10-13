@@ -320,9 +320,82 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
   The support page added a row per trait on 2026-10-09, which is how the rest of
   this list stopped being a sentence: ~~`contextMenuHidden`~~, ~~`caretHidden`~~,
-  `scrollEnabled`, ~~`submitBehavior`~~, `onKeyPressSync`, `onChangeSync` and
-  `acceptDragAndDropTypes` are the ones that read "not yet" there rather than
-  "deliberately not", and each was a desktop question nobody had answered.
+  ~~`scrollEnabled`~~, ~~`submitBehavior`~~, ~~`onKeyPressSync`~~,
+  ~~`onChangeSync`~~ and ~~`acceptDragAndDropTypes`~~ are the ones that read
+  "not yet" there rather than "deliberately not", and each was a desktop
+  question nobody had answered. **All of them are answered as of 2026-10-13**,
+  and three of the four answers are below.
+
+  **`onChangeSync` and `onKeyPressSync` are deliberately not, and the
+  measurement is the whole of the reason.** React Native parses both into iOS's
+  `TextInputProps` and registers `topChangeSync` and `topKeyPressSync` in
+  `RCTTextInputViewConfig.js`, and that is all it does with them: searched the
+  whole checkout, and the only other mentions are the two `validAttributes`
+  entries beside the registrations. `TextInputEventEmitter` has no method for
+  either, no native code on any platform reads the props, and neither is a
+  public prop -- `TextInput.flow.js` does not declare them, where it does
+  declare `scrollEnabled` two hundred lines away. So there is no contract to
+  implement against: a host dispatching them would be inventing what the
+  "sync" in the name promises, and the thing an app would then depend on is
+  this project's guess rather than React Native's behaviour.
+
+  **`scrollEnabled` is done on Windows and is a missing feature on the other
+  two, rather than a missing prop.** A multiline field there is an `EDIT` with
+  `ES_MULTILINE | ES_AUTOVSCROLL`, and the prop is that second style bit
+  withheld -- a creation-time decision, like `multiline` itself, so a field
+  that changes it has its peer rebuilt. The control still *accepts* text it
+  will not scroll to show, which is what makes this a display decision and not
+  a limit.
+
+  GTK and AppKit cannot honour the prop because neither scrolls to begin with:
+  the multiline peer is a bare `GtkTextView` and a bare `NSTextView`, in no
+  scroller at all, so text past the bottom of the box is clipped and the prop's
+  `false` is already what happens. Its default, `true`, is the half that is
+  missing, and the user-visible shape of that is a field whose caret can leave
+  the box.
+
+  Two routes, written down because the obvious one is the expensive one. The
+  obvious one is a scroller around the peer -- `NSScrollView` with the text
+  view as its `documentView`, a `GtkScrolledWindow` around the `RnTextView` --
+  and it is expensive because "the peer *is* the editor" is an invariant
+  threaded through both hosts: `AppKitTextPeer.mm` alone casts the peer to
+  `NSTextView` two dozen times, and focus, the delegate wiring and the
+  placeholder drawing all assume it. The cheaper route, unverified and worth
+  measuring first: on AppKit, scroll by hand with `setBoundsOrigin:` against
+  the caret rect the layout manager gives, which needs no scroll view and so
+  no change to the invariant; on GTK, hand the `GtkTextView` a `GtkAdjustment`
+  through `gtk_scrollable_set_vadjustment` without a scrolled window, which is
+  the object `gtk_text_view_scroll_to_mark` moves and may be all it needs.
+
+  **`acceptDragAndDropTypes` is done on all three, 2026-10-13, and it reused
+  everything.** Android's implementation is the thing to copy and it is a
+  *filter*: `ReactEditText.onDragEvent` refuses a drag whose `clipDescription`
+  matches none of the listed types and otherwise hands it to the platform. This
+  platform already had the other side of that -- `core/DragAndDrop.h`'s
+  `DropAccepts` mask and the per-host walk that finds the deepest accepting
+  view under the pointer -- so the prop became one core function mapping the
+  list onto the mask and one line per host.
+
+  Both vocabularies are read, because React Native documents Android MIME
+  types and iOS uniform type identifiers and an app written for both sends
+  both: `text/plain` and `public.utf8-plain-text` are text, `image/*` and
+  `public.image` are a file, `*/*` is the one wildcard meaning both. A type
+  this desktop cannot deliver is ignored rather than refusing the rest, which
+  is the rule an unknown marker kind already followed.
+
+  What the field does *not* do is insert the payload for the app. The drop
+  arrives as this platform's own drop event, carrying the field's tag, which is
+  where every other drop here arrives -- and a controlled `<TextInput>` sets
+  its text from JavaScript anyway. Recorded as `partial` for that reason
+  rather than claimed as done.
+
+  **The walk had no test on any host**, which is what adding the prop turned
+  up: sabotaging it so that no `nativeID` marker was read at all left the
+  entire AppKit suite green. Both halves now have tests on GTK and AppKit --
+  `tests/test_droptarget.cpp` and `tests/test_appkit_droptarget.mm` -- and
+  adding the second of those turned `test_settle.cpp` red from across the
+  suite, a test whose premise was that nothing had mounted in the process yet.
+  It resets the state it reads now rather than assuming it is first.
 
   **The first two are answered, 2026-10-10**, and they went in by three
   different routes each, which is the useful part.

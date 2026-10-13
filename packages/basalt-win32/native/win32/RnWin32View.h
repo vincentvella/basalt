@@ -431,6 +431,16 @@ class RnWin32View {
   void setNativeId(std::string nativeId) { nativeId_ = std::move(nativeId); }
   const std::string &nativeId() const { return nativeId_; }
 
+  // What this view will take on a drop, over and above what its `nativeID`
+  // says: a `DropAccepts` mask from core/DragAndDrop.h.
+  //
+  // A second source because a `<TextInput>` declares it with a real prop,
+  // `acceptDragAndDropTypes`, where a plain `<View>` has only the `nativeID`
+  // marker this platform invented. The drop walk reads both, so a field can
+  // accept a drop without being given a magic id.
+  void setDropAccepts(std::uint16_t accepts) { dropAccepts_ = accepts; }
+  std::uint16_t dropAccepts() const { return dropAccepts_; }
+
   // --- Content ---------------------------------------------------------------
 
   // The paragraph this view draws, or null for a view that draws none.
@@ -805,6 +815,7 @@ class RnWin32View {
   bool hasBorders_ = false;
   HWND editablePeer_ = nullptr;
   std::string nativeId_;
+  std::uint16_t dropAccepts_{0};
   int zIndex_ = 0;
   PointerEvents pointerEvents_ = PointerEvents::Auto;
   float hitSlop_[4] = {0.0f, 0.0f, 0.0f, 0.0f};

@@ -104,6 +104,53 @@ inline std::uint16_t dropAcceptsFrom(const std::string &nativeId) {
   return accepts;
 }
 
+// What a `<TextInput acceptDragAndDropTypes={[...]}>` will take.
+//
+// React Native's prop is a list of types in two vocabularies -- it documents
+// Android MIME types and iOS uniform type identifiers, and an app written for
+// both sends both -- so both are read here. Mapped onto the two kinds this
+// platform's drop targets speak rather than carried through, because a host
+// here asks "files or text?" and nothing below this answers in MIME.
+//
+// Android's implementation is the reason this is a filter and not a
+// registration: `ReactEditText.onDragEvent` refuses a drag whose
+// `clipDescription` matches none of the list and otherwise hands it to the
+// platform. A field with no list is unchanged, which is why the absent case
+// answers DropAcceptsNone and the caller falls back to the view's own marker.
+//
+// A type nobody here recognises is ignored rather than refused, for the reason
+// `dropAcceptsFrom` ignores an unknown kind: a list written for a phone should
+// degrade to what this desktop knows.
+inline std::uint16_t dropAcceptsFromTypes(const std::vector<std::string> &types) {
+  std::uint16_t accepts = DropAcceptsNone;
+  for (const std::string &type : types) {
+    // Text, in both vocabularies: Android's "text/plain" and the wildcard
+    // "text/*", and Apple's "public.plain-text", "public.utf8-plain-text" and
+    // the "public.text" they conform to.
+    if (type == "text/plain" || type == "text/*" || type == "public.text" ||
+        type == "public.plain-text" || type == "public.utf8-plain-text") {
+      accepts |= DropAcceptsText;
+      continue;
+    }
+    // A file. Anything that is not text arrives here as a path: an image, a
+    // PDF, a sound. "public.file-url" is how a Mac names the drop itself, and
+    // "image/*" and "public.image" are what an app asking for an image writes.
+    if (type == "public.file-url" || type == "public.item" || type == "public.data" ||
+        type == "public.content" || type == "public.image" || type == "public.movie" ||
+        type == "public.audio" || type == "application/octet-stream" ||
+        type.rfind("image/", 0) == 0 || type.rfind("video/", 0) == 0 ||
+        type.rfind("audio/", 0) == 0 || type.rfind("application/", 0) == 0) {
+      accepts |= DropAcceptsFiles;
+      continue;
+    }
+    // "*/*" is Android's "anything", and the only wildcard that means both.
+    if (type == "*/*") {
+      accepts |= static_cast<std::uint16_t>(DropAcceptsFiles | DropAcceptsText);
+    }
+  }
+  return accepts;
+}
+
 // Whether a view accepting `accepts` would take this payload.
 //
 // The question the desktop asks before the drop, which is why it is answered

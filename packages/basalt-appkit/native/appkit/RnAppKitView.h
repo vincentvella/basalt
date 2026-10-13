@@ -31,6 +31,9 @@
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
 
+// For the uint16_t a drop-accepts mask is.
+#include <cstdint>
+
 NS_ASSUME_NONNULL_BEGIN
 
 @class RnAppKitView;
@@ -739,6 +742,15 @@ typedef NS_ENUM(NSInteger, RnAppKitBorderStyle) {
 // the Accessibility Inspector all look for, and it is printed in the tree dump
 // the way React Native spelled it.
 @property(nonatomic, copy, nullable) NSString *rnTestId;
+
+// What this view will take on a drop, over and above what its `nativeID`
+// says: a `DropAccepts` mask from core/DragAndDrop.h.
+//
+// A second source because a `<TextInput>` declares it with a real prop,
+// `acceptDragAndDropTypes`, where a plain `<View>` has only the `nativeID`
+// marker this platform invented. The drop walk reads both, so a field can
+// accept a drop without being given a magic id.
+@property(nonatomic) uint16_t rnDropAccepts;
 
 // `accessibilityViewIsModal`: a screen reader should stay inside this view
 // rather than reading what is behind it. Sets AppKit's `accessibilityModal`,

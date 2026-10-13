@@ -269,6 +269,9 @@ struct _RnView {
   // The app's `nativeID`. Read only by the hidden title bar's drag-region hit
   // test; see RnView.h and core/TitleBarRegions.h.
   char *native_id;
+  // `DropAccepts` from a prop rather than from the nativeID above: today
+  // `<TextInput acceptDragAndDropTypes>`. See RnView.h.
+  guint16 drop_accepts;
 
   gboolean clips_children;
   double scroll_x;
@@ -2620,6 +2623,16 @@ void rn_view_set_native_id(RnView *self, const char *native_id) {
   // a view with no nativeID at all, and storing that would make every
   // unmarked view compare equal to an empty marker rather than to nothing.
   self->native_id = native_id != nullptr && *native_id != '\0' ? g_strdup(native_id) : nullptr;
+}
+
+void rn_view_set_drop_accepts(RnView *self, guint16 accepts) {
+  g_return_if_fail(RN_IS_VIEW(self));
+  self->drop_accepts = accepts;
+}
+
+guint16 rn_view_get_drop_accepts(RnView *self) {
+  g_return_val_if_fail(RN_IS_VIEW(self), 0);
+  return self->drop_accepts;
 }
 
 const char *rn_view_get_native_id(RnView *self) {

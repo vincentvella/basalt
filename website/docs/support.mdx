@@ -49,9 +49,9 @@ under the row that implements them.
 
 | Host | Toolkit | Written itself | All 280 rows |
 | --- | --- | --- | --- |
-| Linux | GTK4 | 125 of 138, 91% | <span className="support-bar"><span className="support-yes" style={{width: '44.64%'}} title="125 done" /><span className="support-partial" style={{width: '2.50%'}} title="7 partly done" /><span className="support-no" style={{width: '2.14%'}} title="6 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '24.29%'}} title="68 deliberately not done" /></span> |
-| macOS | AppKit | 129 of 142, 91% | <span className="support-bar"><span className="support-yes" style={{width: '46.07%'}} title="129 done" /><span className="support-partial" style={{width: '2.50%'}} title="7 partly done" /><span className="support-no" style={{width: '2.14%'}} title="6 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '22.86%'}} title="64 deliberately not done" /></span> |
-| Windows | Win32 | 123 of 138, 89% | <span className="support-bar"><span className="support-yes" style={{width: '43.93%'}} title="123 done" /><span className="support-partial" style={{width: '3.21%'}} title="9 partly done" /><span className="support-no" style={{width: '2.14%'}} title="6 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '24.29%'}} title="68 deliberately not done" /></span> |
+| Linux | GTK4 | 125 of 136, 92% | <span className="support-bar"><span className="support-yes" style={{width: '44.64%'}} title="125 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '1.07%'}} title="3 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '25.00%'}} title="70 deliberately not done" /></span> |
+| macOS | AppKit | 129 of 140, 92% | <span className="support-bar"><span className="support-yes" style={{width: '46.07%'}} title="129 done" /><span className="support-partial" style={{width: '2.86%'}} title="8 partly done" /><span className="support-no" style={{width: '1.07%'}} title="3 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.57%'}} title="66 deliberately not done" /></span> |
+| Windows | Win32 | 124 of 136, 91% | <span className="support-bar"><span className="support-yes" style={{width: '44.29%'}} title="124 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-no" style={{width: '0.71%'}} title="2 not yet" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '25.00%'}} title="70 deliberately not done" /></span> |
 
 **Written itself** is out of the rows that host writes: what it has written,
 what it has half written, and what is still missing. The hatched part of the
@@ -59,11 +59,11 @@ bar is the rest, and it is nobody's work left.
 
 | | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| <span className="support-chip support-yes" /> ✅ done | 125 | 129 | 123 |
-| <span className="support-chip support-partial" /> ◐ partly done | 7 | 7 | 9 |
-| <span className="support-chip support-no" /> ✖ not yet | 6 | 6 | 6 |
+| <span className="support-chip support-yes" /> ✅ done | 125 | 129 | 124 |
+| <span className="support-chip support-partial" /> ◐ partly done | 8 | 8 | 10 |
+| <span className="support-chip support-no" /> ✖ not yet | 3 | 3 | 2 |
 | <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
-| <span className="support-chip support-ignored" /> – deliberately not done | 68 | 64 | 68 |
+| <span className="support-chip support-ignored" /> – deliberately not done | 70 | 66 | 70 |
 
 - **ReactCommon's or Yoga's** is a prop that never reaches one of
   these toolkits. Yoga lays out `flex` and `padding` off the shadow tree before
@@ -159,7 +159,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `accessibilityLiveRegion` | ✅ | ✅ | ✅ |  |
 | `accessibilityRole` | ✅ | ✅ | ✅ |  |
 | `accessibilityHint` | ✅ | ✅ | ✅ |  |
-| `accessibilityLanguage` | – | ◐ | ✅ | [macOS carries it on a run of text, which covers a <Text> and not a view with no text; Windows takes the tag as an LCID; GTK 4 has no accessible language property at all](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
+| `accessibilityLanguage` | – | ◐ | ✅ | [macOS carries it on a run of text, which covers a `<Text>` and not a view with no text; Windows takes the tag as an LCID; GTK 4 has no accessible language property at all](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityLargeContentTitle` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
 | `accessibilityValue` | ✅ | ✅ | ✅ |  |
 | `accessibilityActions` | – | ✅ | – | [macOS has NSAccessibilityCustomAction and the other two have nothing to map it onto: GTK 4 ships no accessible-action interface, and UIA has no custom-action pattern](https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md) |
@@ -225,8 +225,8 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `dynamicTypeRamp` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakStrategyIOS` <sub>`lineBreakStrategy`</sub> | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `lineBreakModeIOS` <sub>`lineBreakMode`</sub> | ✅ | ✅ | ◐ | [DirectWrite trims the end of a line and nowhere else, so head and middle cut the end](https://github.com/vincentvella/basalt/blob/main/docs/backlog/platform-windows.md) |
-| `accessibilityRole` | ✖ | ✖ | ✖ | [per-fragment, so it needs sub-element accessibility: a <Text role> on the paragraph itself is read, and nothing exposes the runs inside one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
-| `role` | ✖ | ✖ | ✖ | [per-fragment, so it needs sub-element accessibility: a <Text role> on the paragraph itself is read, and nothing exposes the runs inside one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `accessibilityRole` | ✖ | ✖ | ✖ | [per-fragment, so it needs sub-element accessibility: a `<Text role>` on the paragraph itself is read, and nothing exposes the runs inside one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
+| `role` | ✖ | ✖ | ✖ | [per-fragment, so it needs sub-element accessibility: a `<Text role>` on the paragraph itself is read, and nothing exposes the runs inside one](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 
 ### Neither
 
@@ -371,7 +371,7 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | --- | --- | --- | --- | --- |
 | `paragraphAttributes` | △ | △ | △ | [ReactCommon consumes it, and a scenario proves it here](https://github.com/vincentvella/basalt/blob/main/docs/backlog/correctness.md) |
 | `mostRecentEventCount` | ✅ | ✅ | ✅ |  |
-| `acceptDragAndDropTypes` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `acceptDragAndDropTypes` | ◐ | ◐ | ◐ | [the field becomes a drop target that refuses what it did not name, and the payload arrives as this platform’s own drop event rather than being inserted for it](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 
 ## TextInputProps
 
@@ -394,8 +394,8 @@ Declared in ReactCommon and in no public prop type, so nothing an app writes rea
 | | Linux | macOS | Windows | Why |
 | --- | --- | --- | --- | --- |
 | `traits` | ✅ | ✅ | ✅ |  |
-| `onKeyPressSync` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `onChangeSync` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `onKeyPressSync` | – | – | – | [React Native parses and registers both and nothing anywhere dispatches them: TextInputEventEmitter has no method for either, and neither is a public TextInput prop](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `onChangeSync` | – | – | – | [React Native parses and registers both and nothing anywhere dispatches them: TextInputEventEmitter has no method for either, and neither is a public TextInput prop](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 
 ## TextInputTraits
 
@@ -416,7 +416,7 @@ Written on the element itself, as `<View onLayout={...} />`.
 | `spellCheck` | ✅ | ✅ | ◐ | [carried and reported; a Win32 EDIT has no spell checker and ISpellChecker draws nothing](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `caretHidden` | ✅ | ✅ | ✅ |  |
 | `clearButtonMode` | – | – | – | [iOS's own, with no desktop equivalent](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
-| `scrollEnabled` | ✖ | ✖ | ✖ | [a desktop question nobody has answered yet, with what it would take](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
+| `scrollEnabled` | ✖ | ✖ | ✅ | [Windows withholds ES_AUTOVSCROLL; GTK and AppKit put a multiline field in no scroller, so neither scrolls to begin with](https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md) |
 | `secureTextEntry` | ✅ | ✅ | ✅ |  |
 | `clearTextOnFocus` | ✅ | ✅ | ✅ |  |
 | `keyboardType` | ✅ | ✅ | ✅ |  |

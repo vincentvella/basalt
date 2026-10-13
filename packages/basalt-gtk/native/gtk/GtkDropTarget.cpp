@@ -102,11 +102,14 @@ facebook::react::Tag dropTargetAt(RnView *root, double x, double y, std::uint16_
     // as GtkTitleBarLayout.cpp.
     if (RN_IS_VIEW(widget)) {
       const char *id = rn_view_get_native_id(RN_VIEW(widget));
+      // The `nativeID` marker and the view's own declared kinds, which is how
+      // a <TextInput acceptDragAndDropTypes> joins this walk without an id.
+      std::uint16_t wanted = rn_view_get_drop_accepts(RN_VIEW(widget));
       if (id != nullptr) {
-        const std::uint16_t wanted = dropAcceptsFrom(id);
-        if (wanted != DropAcceptsNone && (wanted & accepts) != 0) {
-          return rn_view_get_tag(RN_VIEW(widget));
-        }
+        wanted |= dropAcceptsFrom(id);
+      }
+      if (wanted != DropAcceptsNone && (wanted & accepts) != 0) {
+        return rn_view_get_tag(RN_VIEW(widget));
       }
     }
     if (widget == rootWidget) {

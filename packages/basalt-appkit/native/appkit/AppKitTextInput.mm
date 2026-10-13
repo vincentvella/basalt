@@ -8,6 +8,8 @@
 
 #import "CoreTextLayout.h"
 
+#include "DragAndDrop.h"
+
 #include <react/renderer/components/iostextinput/TextInputProps.h>
 
 #include <glog/logging.h>
@@ -232,6 +234,18 @@ void AppKitTextInputManager::update(RnAppKitView *view, const ShadowView &shadow
 
   const auto props = std::dynamic_pointer_cast<const TextInputProps>(shadowView.props);
   const bool secure = props != nullptr && props->traits.secureTextEntry;
+
+  // `acceptDragAndDropTypes`: the kinds this field will take on a drop, which
+  // makes it a drop target in the sense core/DragAndDrop.h means. Android
+  // implements the prop as a filter over the platform's own drop handling and
+  // this is that filter: a list naming only text refuses a dragged file, so
+  // the cursor says no before the drop rather than the app rejecting it after.
+  //
+  // Cleared when the prop goes away, which is the case a field that stops
+  // accepting must not keep accepting.
+  view.rnDropAccepts = props != nullptr && props->acceptDragAndDropTypes.has_value()
+      ? basalt::dropAcceptsFromTypes(*props->acceptDragAndDropTypes)
+      : basalt::DropAcceptsNone;
 
   const bool multiline = props != nullptr && props->multiline;
   if (inserted || entry.field == nil || entry.secure != secure || entry.multiline != multiline) {

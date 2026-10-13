@@ -17,7 +17,10 @@
 #include "TestHarness.h"
 #include "EventRecorder.h"
 
+#import "AppKitDropTarget.h"
 #import "AppKitMountingManager.h"
+
+#include "DragAndDrop.h"
 #import "AppKitTextPeer.h"
 #import "RnAppKitView.h"
 
@@ -1561,6 +1564,78 @@ TEST(textinput_submit_behavior_blur_and_submit_gives_up_focus) {
     // which is the price of needing a window to ask about focus at all.
     const auto seen = recorder.seen();
     EXPECT(std::find(seen.begin(), seen.end(), std::string{"topSubmitEditing"}) != seen.end());
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// --- `acceptDragAndDropTypes` ------------------------------------------------
+//
+// The prop makes the field a drop target in the sense core/DragAndDrop.h means:
+// the host's walk finds it under the pointer and refuses a kind it did not
+// name, which is what makes the cursor say no before the drop. Android
+// implements the prop as exactly that filter over the platform's own drop
+// handling; see backlog/textinput.md.
+//
+// Asserted through `dropTargetAt`, which is the function every drag callback on
+// this host asks, rather than by dragging something -- a real drag needs a
+// window, a pasteboard and a session AppKit will not start without one.
+
+TEST(textinput_accepting_text_makes_the_field_a_drop_target) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(
+        manager, 10, folly::dynamic::object("acceptDragAndDropTypes",
+                                            folly::dynamic::array("text/plain")));
+    EXPECT(view != nil);
+
+    RnAppKitView *root = manager.viewForTag(kSurfaceId);
+    // Inside the field, which is 200x40 at the root's origin.
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsText), 10);
+    // And a dragged file is refused, the field having named only text. A target
+    // that said yes here is the cursor lying.
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsFiles), 0);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+TEST(textinput_without_the_prop_is_not_a_drop_target) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *view = mountField(manager, 10, folly::dynamic::object("text", "hello"));
+    EXPECT(view != nil);
+
+    RnAppKitView *root = manager.viewForTag(kSurfaceId);
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsText), 0);
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsFiles), 0);
+
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
+
+// A field that stops accepting stops being a target. The prop is re-read on
+// every update, and a mask left behind would be a field that kept accepting
+// after the app withdrew the offer.
+TEST(textinput_dropping_the_prop_stops_accepting) {
+  @autoreleasepool {
+    basalt::AppKitMountingManager manager;
+    mountField(manager, 10,
+               folly::dynamic::object("acceptDragAndDropTypes",
+                                      folly::dynamic::array("text/plain", "image/*")));
+    RnAppKitView *root = manager.viewForTag(kSurfaceId);
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsFiles), 10);
+
+    ShadowViewMutationList mutations;
+    mutations.push_back(ShadowViewMutation::UpdateMutation(
+        makeTextInput(10, folly::dynamic::object("acceptDragAndDropTypes",
+                                                 folly::dynamic::array("text/plain", "image/*"))),
+        makeTextInput(10, folly::dynamic::object("text", "hello")),
+        kSurfaceId));
+    apply(manager, std::move(mutations));
+
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsFiles), 0);
+    EXPECT_EQ((int)basalt::dropTargetAt(root, 20, 20, basalt::DropAcceptsText), 0);
 
     manager.destroySurfaceRoot(kSurfaceId);
   }

@@ -43,8 +43,16 @@ TEST(settle_reads_the_variable) {
 }
 
 TEST(settle_waits_for_the_first_mount) {
-  // Nothing has mounted yet in this process -- no host here -- so however long
-  // has passed, there is nothing to have settled.
+  // Reset rather than assumed, because the premise is about the whole process
+  // and this is one test in a suite. It used to read "nothing has mounted yet
+  // in this process -- no host here", which was true until a test file that
+  // applies a mounting transaction linked ahead of this one: adding
+  // test_appkit_droptarget.mm turned this red, from across the suite, for a
+  // reason nothing in the failure pointed at.
+  basalt::firstMountAtMsRef().store(0);
+
+  // With no first mount, however long has passed, there is nothing to have
+  // settled.
   EXPECT(!basalt::hasSettled());
 
   basalt::noteMountApplied();

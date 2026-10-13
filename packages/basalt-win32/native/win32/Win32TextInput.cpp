@@ -1,6 +1,7 @@
 #include "Win32TextInput.h"
 
 #include "DirectWriteLayout.h"
+#include "DragAndDrop.h"
 #include "TextChecking.h"
 #include "Win32PeerClip.h"
 #include "Win32InputScopes.h"
@@ -134,8 +135,29 @@ void Win32TextInputManager::update(RnWin32View *view, const ShadowView &shadowVi
   // that still behaves as one line. So a field that changes the prop has its
   // peer rebuilt, which is rare enough to be worth the simplicity: React Native
   // apps choose multiline per field rather than toggling it.
+  // `acceptDragAndDropTypes`: the kinds this field will take on a drop, which
+  // makes it a drop target in the sense core/DragAndDrop.h means. Android
+  // implements the prop as a filter over the platform's own drop handling and
+  // this is that filter: a list naming only text refuses a dragged file, so
+  // the cursor says no before the drop rather than the app rejecting it after.
+  //
+  // Cleared when the prop goes away, which is the case a field that stops
+  // accepting must not keep accepting.
+  if (view != nullptr) {
+    view->setDropAccepts(props != nullptr && props->acceptDragAndDropTypes.has_value()
+                             ? dropAcceptsFromTypes(*props->acceptDragAndDropTypes)
+                             : DropAcceptsNone);
+  }
+
   const bool multiline = props != nullptr && props->multiline;
-  if (entry.control != nullptr && multiline != entry.multiline) {
+  // `scrollEnabled`, the other creation-time style bit. React Native documents
+  // it as multiline-only -- a single line scrolls sideways through
+  // `ES_AUTOHSCROLL` and the prop says nothing about that -- so it is only
+  // compared for a multiline field, and a single-line one that sets it does
+  // not get its peer rebuilt for nothing.
+  const bool scrollEnabled = props == nullptr || props->traits.scrollEnabled;
+  const bool scrollChanged = multiline && scrollEnabled != entry.scrollEnabled;
+  if (entry.control != nullptr && (multiline != entry.multiline || scrollChanged)) {
     const bool hadFocus = GetFocus() == entry.control;
     destroyPeer(entry);
     entry.view = view;
@@ -161,9 +183,18 @@ void Win32TextInputManager::update(RnWin32View *view, const ShadowView &shadowVi
     // scroll is what lets the caret leave the bottom of the box. No `WS_VSCROLL`
     // on purpose -- a scrollbar inside a styled field is a Win32 scrollbar
     // drawn over a React Native background, and neither other host shows one.
+    //
+    // `scrollEnabled: false` is that vertical scroll withheld, which is what
+    // the prop asks for: the field stops following the caret past the bottom
+    // of the box and the text below is simply not shown. An EDIT without
+    // `ES_AUTOVSCROLL` still accepts the text -- it is a display decision and
+    // not a limit, which is the same distinction `maxLength` is on the other
+    // side of.
     entry.multiline = multiline;
+    entry.scrollEnabled = scrollEnabled;
     const DWORD style = WS_CHILD | WS_CLIPSIBLINGS | ES_LEFT
-        | (multiline ? (ES_MULTILINE | ES_AUTOVSCROLL) : ES_AUTOHSCROLL);
+        | (multiline ? (ES_MULTILINE | (scrollEnabled ? ES_AUTOVSCROLL : 0u))
+                     : ES_AUTOHSCROLL);
     entry.control = CreateWindowEx(0,
                                    L"EDIT",
                                    L"",

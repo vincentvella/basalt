@@ -490,7 +490,10 @@ facebook::react::Tag dropTargetAt(win32::RnWin32View *root,
   }
   // Deepest first, which is the rule: a drop target inside another wins.
   for (auto it = path.rbegin(); it != path.rend(); ++it) {
-    const std::uint16_t wanted = dropAcceptsFrom((*it)->nativeId());
+    // The `nativeID` marker and the view's own declared kinds, which is how a
+    // <TextInput acceptDragAndDropTypes> joins this walk without an id.
+    const std::uint16_t wanted =
+        static_cast<std::uint16_t>(dropAcceptsFrom((*it)->nativeId()) | (*it)->dropAccepts());
     if (wanted != DropAcceptsNone && (wanted & accepts) != 0) {
       return static_cast<facebook::react::Tag>((*it)->tag());
     }

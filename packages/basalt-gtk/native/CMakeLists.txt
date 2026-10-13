@@ -348,6 +348,7 @@ if(TARGET basalt_core)
     # The drag regions, asking what tests/test_win32_titlebar.cpp asks of
     # Windows. Needs a shown window: it walks up from gtk_widget_pick.
     tests/test_titlebar_drag.cpp
+    tests/test_droptarget.cpp
     tests/test_version.cpp
     # The clipboard seam and which thread it runs on, asking what
     # tests/test_win32_clipboard.cpp asks of Windows. Uses the real clipboard and

@@ -179,6 +179,9 @@ struct FieldOptions {
   unsigned int placeholderTextColor{0};
   unsigned int selectionColor{0};
   unsigned int cursorColor{0};
+  // `scrollEnabled`, which defaults to true the way the trait does. Sent only
+  // when false so the other tests' raw props stay as they were.
+  bool scrollEnabled{true};
 };
 
 ShadowView makeField(Tag tag,
@@ -196,6 +199,9 @@ ShadowView makeField(Tag tag,
       "clearTextOnFocus", options.clearTextOnFocus)(
       "selectTextOnFocus", options.selectTextOnFocus)("caretHidden", options.caretHidden)(
       "contextMenuHidden", options.contextMenuHidden);
+  if (!options.scrollEnabled) {
+    raw["scrollEnabled"] = false;
+  }
   if (!options.submitBehavior.empty()) {
     raw["submitBehavior"] = options.submitBehavior;
   }
@@ -885,6 +891,91 @@ TEST(win32_a_multiline_field_is_a_multiline_control) {
   // Native's `submitBehavior: 'newline'` -- the default for a multiline field.
   type(control, L"a\rb");
   EXPECT_EQ(textOf(control), std::string("a\r\nb"));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// `scrollEnabled: false`, which is that vertical scroll withheld. A
+// creation-time style bit like `ES_MULTILINE` beside it, so the assertions are
+// the same shape.
+TEST(win32_a_field_that_disables_scrolling_has_no_vertical_scroll) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager,
+        kSurfaceId,
+        makeField(10, 20, 30, 200, 120,
+                  {.text = "", .multiline = true, .scrollEnabled = false}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  const LONG_PTR style = GetWindowLongPtr(control, GWL_STYLE);
+  // Still a multiline control: the prop is about scrolling and nothing else.
+  EXPECT((style & ES_MULTILINE) != 0);
+  EXPECT((style & ES_AUTOVSCROLL) == 0);
+  // And it still takes the text, which is the half that makes this a display
+  // decision rather than a limit.
+  type(control, L"a\rb");
+  EXPECT_EQ(textOf(control), std::string("a\r\nb"));
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// Only for a multiline field. A single line scrolls sideways through
+// `ES_AUTOHSCROLL`, which React Native's prop says nothing about, so a field
+// that sets it there is unchanged -- and in particular does not lose the
+// horizontal scroll that lets the caret leave the right-hand edge.
+TEST(win32_a_single_line_field_ignores_the_scroll_prop) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  mount(*manager, kSurfaceId, makeField(10, 20, 30, 200, 44, {.scrollEnabled = false}));
+  manager->syncTextInputBounds(root);
+
+  HWND control = peerOf(manager->viewForTag(10));
+  EXPECT(control != nullptr);
+  if (control == nullptr) {
+    return;
+  }
+  EXPECT((GetWindowLongPtr(control, GWL_STYLE) & ES_AUTOHSCROLL) != 0);
+
+  manager->destroySurfaceRoot(kSurfaceId);
+}
+
+// The style cannot be added to a live control, so a field that changes the prop
+// has its peer rebuilt -- the same rule `multiline` follows, and the text comes
+// across for the same reason.
+TEST(win32_changing_scroll_enabled_rebuilds_the_peer) {
+  auto manager = makeManager();
+  RnWin32View *root = manager->createSurfaceRoot(kSurfaceId);
+  root->setFrame(0, 0, 800, 600);
+  const ShadowView scrolling =
+      makeField(10, 20, 30, 200, 120, {.text = "wrapped", .multiline = true});
+  mount(*manager, kSurfaceId, scrolling);
+  manager->syncTextInputBounds(root);
+
+  HWND before = peerOf(manager->viewForTag(10));
+  EXPECT(before != nullptr);
+  EXPECT(before != nullptr && (GetWindowLongPtr(before, GWL_STYLE) & ES_AUTOVSCROLL) != 0);
+
+  update(*manager,
+         scrolling,
+         makeField(10, 20, 30, 200, 120,
+                   {.text = "wrapped", .multiline = true, .scrollEnabled = false}));
+  manager->syncTextInputBounds(root);
+
+  HWND after = peerOf(manager->viewForTag(10));
+  EXPECT(after != nullptr);
+  if (after == nullptr) {
+    return;
+  }
+  EXPECT(after != before);
+  EXPECT((GetWindowLongPtr(after, GWL_STYLE) & ES_AUTOVSCROLL) == 0);
+  EXPECT_EQ(textOf(after), std::string("wrapped"));
 
   manager->destroySurfaceRoot(kSurfaceId);
 }

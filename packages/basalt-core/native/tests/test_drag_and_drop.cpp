@@ -35,6 +35,57 @@ TEST(drop_a_marker_says_what_it_takes) {
             (int)(DropAcceptsFiles | DropAcceptsText));
 }
 
+// --- `acceptDragAndDropTypes` ----------------------------------------------
+//
+// The one place a drop target is declared by a real React Native prop rather
+// than by this platform's `nativeID` marker. Two vocabularies, because React
+// Native documents Android MIME types and iOS uniform type identifiers and an
+// app written for both sends both.
+
+TEST(drop_types_read_both_vocabularies) {
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"text/plain"}), (int)DropAcceptsText);
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"public.plain-text"}), (int)DropAcceptsText);
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"public.utf8-plain-text"}), (int)DropAcceptsText);
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"image/png"}), (int)DropAcceptsFiles);
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"public.image"}), (int)DropAcceptsFiles);
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"public.file-url"}), (int)DropAcceptsFiles);
+}
+
+TEST(drop_types_combine_and_a_wildcard_means_both) {
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"text/plain", "image/*"}),
+            (int)(DropAcceptsText | DropAcceptsFiles));
+  // Android's "anything", which is the only wildcard that means both kinds.
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"*/*"}),
+            (int)(DropAcceptsText | DropAcceptsFiles));
+  // "text/*" is text and not both, which is the distinction a field accepting
+  // only text depends on.
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"text/*"}), (int)DropAcceptsText);
+}
+
+TEST(drop_types_with_nothing_recognised_accept_nothing) {
+  // Empty is a field that named no types, and the caller reads that as "fall
+  // back to whatever the view's own nativeID says".
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({}), (int)DropAcceptsNone);
+  // A type this desktop cannot deliver degrades rather than refusing the rest,
+  // the same rule an unknown marker kind follows.
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"chemical/x-pdb"}), (int)DropAcceptsNone);
+  EXPECT_EQ((int)basalt::dropAcceptsFromTypes({"chemical/x-pdb", "text/plain"}),
+            (int)DropAcceptsText);
+}
+
+// The point of the whole thing: a field that named only text refuses a dragged
+// file, which is what makes the cursor say no before the drop.
+TEST(drop_types_refuse_what_was_not_named) {
+  const std::uint16_t textOnly = basalt::dropAcceptsFromTypes({"text/plain"});
+  basalt::DragPayload file;
+  file.files.push_back("/tmp/one.png");
+  basalt::DragPayload text;
+  text.text = "hello";
+
+  EXPECT(!basalt::wouldAccept(textOnly, file));
+  EXPECT(basalt::wouldAccept(textOnly, text));
+}
+
 TEST(drop_an_unknown_kind_degrades_rather_than_refuses) {
   // A marker from a newer JavaScript than this host. Taking the kinds it
   // knows is the difference between a view that accepts files and one that

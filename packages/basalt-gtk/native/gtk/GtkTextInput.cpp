@@ -1,5 +1,6 @@
 #include "GtkTextInput.h"
 
+#include "DragAndDrop.h"
 #include "FontScaling.h"
 #include "TextChecking.h"
 
@@ -118,6 +119,19 @@ void GtkTextInputManager::update(RnView *view, const ShadowView &shadowView) {
 
   const auto props = std::dynamic_pointer_cast<const TextInputProps>(shadowView.props);
   const bool multiline = props != nullptr && props->multiline;
+
+  // `acceptDragAndDropTypes`: the kinds this field will take on a drop, which
+  // makes it a drop target in the sense core/DragAndDrop.h means. Android
+  // implements the prop as a filter over the platform's own drop handling and
+  // this is that filter: a list naming only text refuses a dragged file, so
+  // the cursor says no before the drop rather than the app rejecting it after.
+  //
+  // Cleared when the prop goes away, which is the case a field that stops
+  // accepting must not keep accepting.
+  rn_view_set_drop_accepts(view,
+                           props != nullptr && props->acceptDragAndDropTypes.has_value()
+                               ? basalt::dropAcceptsFromTypes(*props->acceptDragAndDropTypes)
+                               : basalt::DropAcceptsNone);
 
   // Before the signals, because a field that switches between single and
   // multiline is a different widget and the old one's handlers go with it.

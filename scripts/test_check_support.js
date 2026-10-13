@@ -220,6 +220,30 @@ test('the page carries one row per attribute, a mark per status and a bar per pl
   assert.ok(page.includes('a/header.h'));
 });
 
+// A reason naming a component would otherwise be JSX in the MDX this writes,
+// and a component the site does not have fails the build -- twice, on two
+// different rows, each time a commit after the one that wrote the reason.
+test('a reason that names a component does not become JSX', () => {
+  const page = render(
+    inventoryOf(['cursor', 'opacity']),
+    dataOf(
+      {
+        'BaseViewProps.cursor': {linux: 'no', macos: 'no', why: 'bare'},
+        'BaseViewProps.opacity': {linux: 'no', macos: 'no', why: 'withProp'},
+      },
+      {
+        bare: {text: 'a <Text> has none', link: 'https://example.com/'},
+        // With an attribute, which the first version of the escape let through.
+        withProp: {text: 'a <Text role> is read', link: 'https://example.com/'},
+      },
+    ),
+  );
+  assert.ok(page.includes('a `<Text>` has none'));
+  assert.ok(page.includes('a `<Text role>` is read'));
+  // And nothing is left for MDX to read as a tag.
+  assert.ok(!/[^`]<[A-Za-z][A-Za-z0-9]*[ >]/.test(page.replace(/<span className[^>]*>/g, '')));
+});
+
 test('the segments of a bar add up to the whole bar', () => {
   // Three rows into five segments is 33.33 each, and three of those is 99.99.
   // The last segment takes the remainder for exactly this reason: a bar that

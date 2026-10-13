@@ -236,6 +236,18 @@
     "a11y-actions": {
       "text": "macOS has NSAccessibilityCustomAction and the other two have nothing to map it onto: GTK 4 ships no accessible-action interface, and UIA has no custom-action pattern",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/accessibility.md"
+    },
+    "ti-scroll": {
+      "text": "Windows withholds ES_AUTOVSCROLL; GTK and AppKit put a multiline field in no scroller, so neither scrolls to begin with",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-sync": {
+      "text": "React Native parses and registers both and nothing anywhere dispatches them: TextInputEventEmitter has no method for either, and neither is a public TextInput prop",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
+    },
+    "ti-drop": {
+      "text": "the field becomes a drop target that refuses what it did not name, and the payload arrives as this platform\u2019s own drop event rather than being inserted for it",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     }
   },
   "statuses": {
@@ -1644,10 +1656,14 @@
       "why": "ti-ios"
     },
     "BaseTextInputProps.acceptDragAndDropTypes": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "partial",
+      "macos": "partial",
+      "windows": "partial",
+      "why": "ti-drop",
+      "reads": [
+        "dropAcceptsFromTypes",
+        "acceptDragAndDropTypes"
+      ]
     },
     "TextInputProps.traits": {
       "linux": "yes",
@@ -1676,16 +1692,16 @@
       "why": "ti-ios"
     },
     "TextInputProps.onKeyPressSync": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-sync"
     },
     "TextInputProps.onChangeSync": {
-      "linux": "no",
-      "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored"
+      "linux": "ignored",
+      "macos": "ignored",
+      "windows": "ignored",
+      "why": "ti-sync"
     },
     "TextInputTraits.autocapitalizationType": {
       "linux": "yes",
@@ -1760,8 +1776,8 @@
     "TextInputTraits.scrollEnabled": {
       "linux": "no",
       "macos": "no",
-      "windows": "no",
-      "why": "ti-ignored",
+      "windows": "yes",
+      "why": "ti-scroll",
       "reads": [
         "traits.scrollEnabled"
       ]

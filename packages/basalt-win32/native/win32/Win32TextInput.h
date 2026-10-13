@@ -264,6 +264,11 @@ class Win32TextInputManager {
     // created and cannot be added afterwards, so this is what a change in the
     // prop is compared against: a field that switches has its peer rebuilt.
     bool multiline{false};
+    // `scrollEnabled`, which is part of the same creation-time decision as
+    // `multiline`: it is the `ES_AUTOVSCROLL` style bit, read when the window
+    // is made. Remembered so a change rebuilds the peer the way a change of
+    // `multiline` does.
+    bool scrollEnabled{true};
 
     // Yoga resolves border and padding into contentInsets, so the same twelve
     // points mean the same thing in a field as in a <View>. Applied by placing

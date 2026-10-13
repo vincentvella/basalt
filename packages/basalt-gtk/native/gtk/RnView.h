@@ -697,6 +697,16 @@ void rn_view_set_native_id(RnView *self, const char *native_id);
 // NULL when unset, never the empty string.
 const char *rn_view_get_native_id(RnView *self);
 
+// What this view will take on a drop, over and above what its `nativeID` says:
+// a `DropAccepts` mask from core/DragAndDrop.h.
+//
+// A second source because a `<TextInput>` declares it with a real prop,
+// `acceptDragAndDropTypes`, where a plain `<View>` has only the `nativeID`
+// marker this platform invented. The drop walk reads both, so a field can
+// accept a drop without being given a magic id.
+void rn_view_set_drop_accepts(RnView *self, guint16 accepts);
+guint16 rn_view_get_drop_accepts(RnView *self);
+
 // The `cursor` style property, as the CSS keyword React Native and GDK both use:
 // "pointer", "text", "grab", "ns-resize" and the rest. NULL or "" leaves the
 // cursor to whatever encloses this view, which is what `cursor: 'auto'` means.

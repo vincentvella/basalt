@@ -170,7 +170,8 @@ set(BASALT_APPKIT_TEST_SOURCES
   # macOS's half of the platform-services seam. The alert is the reason: a
   # sheet is its own window and never appears in a snapshot.
   tests/test_appkit_services.mm
-  tests/test_appkit_titlebar.mm)
+  tests/test_appkit_titlebar.mm
+  tests/test_appkit_droptarget.mm)
 
 # ---------------------------------------------------------------------------
 # basalt_appkit_mounting — the AppKit half of the Fabric mounting manager.

@@ -26,11 +26,14 @@ facebook::react::Tag dropTargetAt(RnAppKitView *root, double x, double y, std::u
     if ([view isKindOfClass:[RnAppKitView class]]) {
       auto *candidate = (RnAppKitView *)view;
       NSString *identifier = candidate.rnNativeId;
+      // The `nativeID` marker and the view's own declared kinds, which is how
+      // a <TextInput acceptDragAndDropTypes> joins this walk without an id.
+      std::uint16_t wanted = candidate.rnDropAccepts;
       if (identifier != nil) {
-        const std::uint16_t wanted = dropAcceptsFrom(identifier.UTF8String);
-        if (wanted != DropAcceptsNone && (wanted & accepts) != 0) {
-          return (facebook::react::Tag)candidate.rnTag;
-        }
+        wanted |= dropAcceptsFrom(identifier.UTF8String);
+      }
+      if (wanted != DropAcceptsNone && (wanted & accepts) != 0) {
+        return (facebook::react::Tag)candidate.rnTag;
       }
     }
     if (view == root) {

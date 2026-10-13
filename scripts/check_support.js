@@ -128,7 +128,15 @@ function hostSources(dirs) {
 // another file and the next note to mention a component should not break the
 // build.
 function mdxSafe(text) {
-  return text.replace(/`?<([A-Za-z][A-Za-z0-9]*)>`?/g, '`<$1>`');
+  // Attributes included, which the first version of this left out: it matched
+  // `<Text>` and not `<Text role>`, so a reason naming a component *and a prop
+  // on it* still broke the build. Both spellings are what these notes
+  // naturally write.
+  //
+  // Already-backticked input is matched with its backticks and put back with
+  // one pair, so running this over text that was written carefully does not
+  // double them.
+  return text.replace(/`?<([A-Za-z][A-Za-z0-9]*(?:[^>`\n]*)?)>`?/g, '`<$1>`');
 }
 
 function platformKeys(data) {
@@ -461,8 +469,13 @@ function render(inventory, data) {
       const cells = keys.map((key) =>
         STATUSES[row[key]] !== undefined ? STATUSES[row[key]].mark : '?',
       );
+      // Through mdxSafe, like the inventory's prose above it. A why is written
+      // in docs/platform-support.json and lands in an MDX table, so a reason
+      // that mentions `<Text>` is a component the site does not have: it broke
+      // the Docs build twice, on two different rows, each time a commit after
+      // the one that wrote the reason.
       const why = row.why !== undefined && data.whys[row.why] !== undefined
-        ? `[${data.whys[row.why].text}](${data.whys[row.why].link})`
+        ? `[${mdxSafe(data.whys[row.why].text)}](${data.whys[row.why].link})`
         : '';
       lines.push(`| ${feature} | ${cells.join(' | ')} | ${why} |`);
     }
