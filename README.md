@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/static/img/logo-inverse.svg">
+  <img src="website/static/img/logo.svg" alt="" width="104" align="right">
+</picture>
+
 # Basalt
 
 **React Native on the desktop: Linux, macOS and Windows, on React Native's own

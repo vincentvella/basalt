@@ -31,10 +31,10 @@ function HomepageHeader() {
           </Link>
         </div>
         {/* Said on the front page rather than discovered after an install.
-            Every version so far is an 0.0.0 prerelease. */}
+            Below 1.0, so the API can change in any release. */}
         <p className={styles.heroStatus}>
-          Early. Published as <code>0.0.0-rc</code> prereleases, and the
-          user-facing documentation is still being written.
+          Early. Published on npm at <code>0.2.x</code>, which under semver
+          promises nothing about stability and is meant literally.
         </p>
       </div>
     </header>
