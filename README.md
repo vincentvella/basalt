@@ -62,13 +62,20 @@ What is behind those numbers:
 - `Alert`, `Share`, `Linking`, `Clipboard`, `Appearance`, `Animated` with the
   native driver, `require()`d assets, LogBox and the developer menu work
   everywhere.
-- Reanimated, gesture-handler and expo-image run. So does your own C++, without
+- Reanimated, gesture-handler, React Native Skia and expo-image run, and
+  react-navigation gets native screens: [what works with
+  what](https://basaltjs.dev/docs/libraries). Your own C++ runs too, without
   publishing a package.
 - Accessibility reaches each platform's own layer: AT-SPI, NSAccessibility and
   UI Automation.
-- `useDialog()`, `useWindow()`, `<Menu>` and `<Window>` cover the file dialogs,
-  window geometry, menus and second windows that React Native has no API for,
-  because a phone has none of them.
+- The desktop's own things, which React Native has no API for because a phone
+  has none of them: [windows and second
+  windows](https://basaltjs.dev/docs/reference/windows), [menus and context
+  menus](https://basaltjs.dev/docs/reference/menus), [file
+  dialogs](https://basaltjs.dev/docs/reference/dialogs), [drag and
+  drop](https://basaltjs.dev/docs/reference/drag-and-drop), [keyboard
+  shortcuts](https://basaltjs.dev/docs/reference/keyboard) and [the title
+  bar](https://basaltjs.dev/docs/reference/title-bar).
 - The three hosts agree on the view tree for every app in `e2e/`, which
   `scripts/compare_all.sh` checks on every CI run. Text geometry is the
   exception it allows: three text engines over three fonts do not put a
@@ -102,7 +109,8 @@ about the limits is more useful than a maturity label.
 | [Getting started](https://basaltjs.dev/docs/getting-started) | prerequisites, one command, and what it changes |
 | [Platform support](https://basaltjs.dev/docs/support) | what works on which desktop, prop by prop |
 | [CLI reference](https://basaltjs.dev/docs/reference/cli) | every command, option and default |
-| [APIs](https://basaltjs.dev/docs/reference/api) | the few things Basalt adds that React Native has no equivalent for |
+| [APIs](https://basaltjs.dev/docs/reference/api) | the things Basalt adds that React Native has no equivalent for, a page per area |
+| [Libraries](https://basaltjs.dev/docs/libraries) | react-navigation, Skia, Reanimated, gesture-handler, and where Expo stands |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | how it is built, and the seam in React Native's C++ it hangs off |
 | [`docs/BACKLOG.md`](docs/BACKLOG.md) | what is open, one file per area |
 

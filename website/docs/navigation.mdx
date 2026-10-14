@@ -132,10 +132,11 @@ header instead of a broken one.
 
 ## What does not, yet
 
-- **A covered screen stays mounted on macOS and Linux.** Pushing a second
-  screen leaves the first in the view tree at full size, underneath. It looks
-  right, because the top screen covers it, but both are measured and both reach
-  accessibility. Windows does not have this, for the reason above.
+- **A covered screen stays mounted on macOS and Linux without
+  `basalt-navigation`.** Pushing a second screen leaves the first in the view
+  tree at full size, underneath. It looks right, because the top screen covers
+  it, but both are measured and both reach accessibility. The wrapper above
+  fixes it, and Windows never had it, for the reason above.
 - **Tabs are untested.** `TabsHost` and `TabsScreen` ship no desktop file, so
   the bundler falls back to their Android implementations and says so as it
   builds.

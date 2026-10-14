@@ -34,7 +34,8 @@ resolves here without knowing Basalt exists.
 
 **Expo** is not an alternative; it is the common case. A stock Expo app runs,
 and `basalt init` writes the Metro config on `expo/metro-config` when it finds
-one.
+one. Expo's own native modules are a different question, and
+[Libraries](/docs/libraries#expo) is which of them exist here.
 
 ## What works today
 
@@ -55,9 +56,11 @@ Accessibility reaches the platform's accessible layer: `accessibilityRole`,
 `accessibilityLabel`, `accessibilityHint` and `accessibilityState` are mapped,
 and a `<Text>` calls itself a label without the app saying so.
 
-Third-party native modules work; `react-native-gesture-handler` and
-Reanimated both run, and an app can contribute its own C++ without publishing
-a package. See [Native modules](/contributing/PORTING).
+Third-party native modules work. `react-native-gesture-handler`, Reanimated and
+React Native Skia all run, react-navigation gets native screens, and an app can
+contribute its own C++ without publishing a package. See
+[Libraries](/docs/libraries) for the list and
+[Native modules](/contributing/PORTING) for writing one.
 
 ## What to expect
 
@@ -90,8 +93,15 @@ the limits is more useful than a maturity label:
 - **[CLI reference](/docs/reference/cli)**: every command, option and default.
 - **[app.json](/docs/reference/app-json)**, which desktops to build, the
   bundle identifier, URL schemes.
-- **[APIs](/docs/reference/api)**, the few things Basalt adds that React
-  Native has no equivalent for, because a phone has no such thing.
+- **[Libraries](/docs/libraries)**: react-navigation, Skia, Reanimated,
+  gesture-handler, and where Expo stands.
+- **[APIs](/docs/reference/api)**, the things Basalt adds that React Native has
+  no equivalent for, because a phone has no such thing:
+  [windows](/docs/reference/windows), the
+  [title bar](/docs/reference/title-bar), [menus](/docs/reference/menus),
+  [file dialogs](/docs/reference/dialogs),
+  [drag and drop](/docs/reference/drag-and-drop) and
+  [keyboard shortcuts](/docs/reference/keyboard).
 
 The repository's own documentation, under **Contributing**, is written for
 people working on Basalt rather than with it, but it is the most detailed

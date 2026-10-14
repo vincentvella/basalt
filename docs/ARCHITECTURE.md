@@ -333,9 +333,9 @@ in a fourth place is a schedule nobody updates.
 nowhere in it: each host supplies its own and, in doing so, declares what its
 platform can put on screen. It is defined once per host, in
 `ComponentRegistryGtk.cpp`, `ComponentRegistryAppKit.mm` and
-`ComponentRegistryWin32.cpp`: fourteen descriptors on Linux and macOS, and
-thirteen on Windows, which does not register `ExpoImage` because nothing there
-mounts one yet. That is not tidiness. `ParagraphComponentDescriptor` constructs a
+`ComponentRegistryWin32.cpp`: twenty-four descriptors on Linux and macOS, and
+twenty-three on Windows, which does not register `ExpoImage` because nothing
+there mounts one yet. That is not tidiness. `ParagraphComponentDescriptor` constructs a
 `TextLayoutManager`, whose stub this build drops so the platform's own can be the
 only definition, so a shared registry means a platform with no text engine fails
 to link rather than failing to render text.

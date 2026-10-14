@@ -1,0 +1,44 @@
+---
+sidebar_position: 10
+title: Subprocesses
+---
+
+# Subprocesses
+
+```bash
+npm install basalt-subprocess
+```
+
+A desktop front end for something else, a video editor driving `ffmpeg` or an
+editor running a language server, needs this, and React Native has no API for
+it.
+
+```js
+import {spawn, kill, addOutputListener, addExitListener} from 'basalt-subprocess';
+
+const pid = await spawn({
+  command: '"node" "server.js" --port 4790',
+  cwd: projectRoot,
+  env: {FFMPEG: ffmpegPath},
+});
+
+const output = addOutputListener(e => console.log(e.pid, e.stream, e.data));
+const exit = addExitListener(e => console.log(e.pid, 'exited', e.code));
+```
+
+| | |
+| --- | --- |
+| `spawn(options)` | starts the command, resolves to a pid |
+| `kill(pid)` | `boolean` |
+| `isRunning(pid)` | `boolean` |
+| `isSupported()` | whether the native half is present |
+| `addOutputListener(fn)` | `{pid, stream, data}` |
+| `addExitListener(fn)` | `{pid, code}` |
+
+The command is handed to the platform's own shell, which is what gets a packaged
+application the `PATH` a person's login shell sets up: `node`, `ffmpeg`, and
+anything installed by asdf, nvm or Homebrew. Quote your arguments, as above.
+
+`spawn` rejects only when the process could not be started at all. A command
+that starts and then fails is not a rejection: it reports through the exit
+listener, which is where an exit code belongs.

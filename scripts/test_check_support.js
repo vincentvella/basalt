@@ -19,7 +19,7 @@
 const assert = require('node:assert');
 const {test} = require('node:test');
 
-const {validate, render, counts, STATUSES} = require('./check_support.js');
+const {validate, render, summary, counts, STATUSES} = require('./check_support.js');
 
 const PLATFORMS = [
   {key: 'linux', label: 'Linux', toolkit: 'GTK4'},
@@ -361,4 +361,42 @@ test('a struct with no style types of its own gets no read-from line', () => {
     'BaseViewProps.userSelect': {linux: 'no', macos: 'no', why: 'because'},
   }));
   assert.doesNotMatch(page, /Read from/);
+});
+
+// The landing page quotes these numbers, and a number on a hand-written page is
+// a number that goes stale. So the page reads the JSON this writes, and what
+// this asserts is that the JSON says the same thing the table does -- the one
+// way the two outputs can disagree.
+test('the summary the landing page reads says what the table says', () => {
+  // Four rows, two of them nobody's work here, so that the host's own total and
+  // the page's total are different numbers. With `ours` equal to `total` a
+  // percentage of the wrong denominator would read the same and prove nothing.
+  const inventory = inventoryOf(['opacity', 'cursor', 'flex', 'needsOffscreenAlphaCompositing']);
+  const data = dataOf({
+    'BaseViewProps.opacity': {linux: 'yes', macos: 'yes'},
+    'BaseViewProps.cursor': {linux: 'no', macos: 'no', why: 'because'},
+    'BaseViewProps.flex': {linux: 'upstream', macos: 'upstream', why: 'because'},
+    'BaseViewProps.needsOffscreenAlphaCompositing': {
+      linux: 'ignored',
+      macos: 'ignored',
+      why: 'because',
+    },
+  });
+  const sum = summary(inventory, data);
+  const page = render(inventory, data);
+
+  assert.equal(sum.reactNative, inventory.reactNative);
+  assert.deepEqual(
+    sum.hosts.map((host) => host.key),
+    ['linux', 'macos'],
+  );
+  for (const host of sum.hosts) {
+    assert.ok(
+      page.includes(`| ${host.label} | ${host.toolkit} | ${host.yes} of ${host.ours}, ${host.percent}% |`),
+      `${host.key} reads ${host.yes} of ${host.ours} in the summary and something else in the table`,
+    );
+    const tally = counts(inventory, data, host.key);
+    assert.equal(host.ours, tally.ours);
+    assert.equal(host.total, tally.total);
+  }
 });

@@ -178,8 +178,13 @@ every version problem here comes from.
 | `basalt-appkit` | the macOS host, and `run-macos` |
 | `basalt-win32` | the Windows host, and `run-windows` |
 | `basalt-navigation` | native screens for react-navigation; see [Navigation](/docs/navigation) |
+| `basalt-skia` | react-native-skia's module, platform context and `<Canvas>` |
 | `basalt-subprocess` | running a command and watching its output |
 | `basalt-notifications` | desktop notifications |
+
+`basalt-core` and one host package is the minimum. The other four are optional
+and each one is a dependency an app adds when it wants that thing; see
+[Libraries](/docs/libraries) for what works with what.
 
 Each host package carries its own run command, because React Native's CLI reads
 a `react-native.config.js` out of every dependency. An app with only

@@ -6,7 +6,10 @@
   "compilerOptions": {
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
-    "strict": true
+    "strict": true,
+    // The landing page reads src/data/support.json, which
+    // scripts/check_support.js writes rather than anyone typing its numbers.
+    "resolveJsonModule": true
   },
   "exclude": [".docusaurus", "build"]
 }

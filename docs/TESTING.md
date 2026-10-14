@@ -271,7 +271,29 @@ Hermes: mutations are hand-built, the way `mount_harness_gtk` builds them.
 
 ## `build/basalt_appkit_tests`: the macOS suite
 
-Two files, sixteen tests, no window and no toolkit initialisation.
+Seventeen files, no window and no toolkit initialisation. The binary prints its
+own total, which was 824 on 2026-10-14; the lead here said "two files, sixteen
+tests" for a long time after it was neither, which is what a count kept by hand
+in prose does.
+
+Four of them carry an argument about *how* they test, and those are described
+after this table. These are the rest:
+
+| File | What it pins down |
+|---|---|
+| `native/tests/test_appkit_text.mm` | The Core Text layer, against `RnTextLayout` directly: whether a paragraph measures and truncates the way React Native means it to. |
+| `native/tests/test_appkit_textinput.mm` | The controlled-value loop, the same questions `test_textinput.cpp` asks of GTK. |
+| `native/tests/test_appkit_borders.mm` | What a border is *drawn* as, against a real bitmap: four filled edges or one dashed stroke. A view that remembered `dashed` and painted solid would pass any test that asked it what it holds. |
+| `native/tests/test_appkit_image.mm` | How an `<Image>` fills its frame. The four resize modes are what two platforms are most likely to disagree about while both looking plausible. |
+| `native/tests/test_appkit_scrollview.mm` | What a scroll view does that needs no display: props arriving as mutations, and the offset that results. |
+| `native/tests/test_appkit_scrollbar.mm` | The overlay scrollbar, which on this host has to be drawn over a content view that covers it. |
+| `native/tests/test_appkit_selection.mm` | Selecting a paragraph with a pointer: the same three questions the GTK suite asks, so that the two hosts agree. |
+| `native/tests/test_appkit_key_events.mm` | An `NSEvent` as a key combination, which is the half of key handling that is this host's alone and where the silent failures live. |
+| `native/tests/test_appkit_droptarget.mm` | Which view a drag is offered to. Added because a change that stopped reading the `nativeID` marker altogether left the whole suite green. |
+| `native/tests/test_appkit_titlebar.mm` | The title bar's metrics, which are the whole contract `src/TitleBar.tsx` has with the host. |
+| `native/tests/test_appkit_fonts.mm` | A font loaded while the app is running, which is the seam `expo-font` arrives through, and whether the name the app chose keeps working. |
+| `native/tests/test_appkit_services.mm` | The clipboard and URL halves of the platform-services seam. |
+| `native/tests/test_appkit_skia.mm` | That Skia renders rather than merely links; see the Skia section below. |
 
 `native/tests/test_appkit_view.mm` is against `RnAppKitView` alone, with no Fabric and no
 React Native in it. It pins the tag and frame, the child order including

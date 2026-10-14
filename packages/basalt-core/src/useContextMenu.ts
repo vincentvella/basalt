@@ -22,11 +22,18 @@
  * menu bar -- and on Linux it is the *first*, because GNOME has no menu bar and
  * `Menu.isSupported` is false there.
  *
- * ## One level, on purpose
+ * ## What an item can be
  *
- * No submenus and no roles. A popup menu on all three desktops is a list, and
- * the nesting an application menu has is what a menu *bar* is for -- so a
- * `<Menu>` and this are different shapes rather than the same shape twice.
+ * A label and a handler, a separator, a tick or a radio mark, one of the
+ * platform roles, or a submenu. Each field is read into a `MenuEntry` by
+ * `native/core/MenuModule.cpp` and documented on the type below.
+ *
+ * This said "one level, on purpose: no submenus and no roles" for a while,
+ * which was true when it was written and had stopped being true without the
+ * paragraph noticing. The shape it was arguing for was right about the common
+ * case and wrong as a rule: a popup menu is usually a flat list, and an app
+ * that wants Copy to be the platform's Copy, or wants a submenu, is not asking
+ * for a menu bar.
  *
  * ## Where it appears
  *
@@ -67,13 +74,9 @@ import type {TurboModule} from 'react-native';
 import {TurboModuleRegistry} from 'react-native';
 
 /**
- * One item in a context menu: the four fields `entriesFrom` in
+ * One item in a context menu: the fields `entriesFrom` in
  * `native/core/MenuModule.cpp` reads into a `MenuEntry`, plus the handler this
  * file calls.
- *
- * A popup menu is a flat list on all three desktops, so there is no `submenu`
- * and no `role` here -- nesting and the platform roles are what a menu *bar*
- * is for, and `<Menu.Item>` is where they live.
  *
  * `onSelect` is the only field the native side does not see: the promise
  * carries the index back, and this calls the handler before settling it.
