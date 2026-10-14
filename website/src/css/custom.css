@@ -2,33 +2,52 @@
  * Global styles. Infima ships with the classic theme and is what the variables
  * below feed.
  *
- * The palette is a steel blue rather than the template's green: basalt is dark
- * rock, and the site should not look like an unedited Docusaurus scaffold.
- * Both ramps are walked around a base lightness the way Docusaurus's own
- * palette tool does, so Infima's hover and active states stay in proportion.
+ * Obsidian and ember: the rock and the lava it cooled from. The ground is a
+ * warm near-black and a warm off-white rather than pure black and pure white,
+ * and the one accent is the orange of the mascot's bill, so the logo's colour
+ * is a member of the palette rather than a visitor to it.
+ *
+ * The accent is deliberately the only one. It marks a link, a button, the
+ * done segment of a support bar, and nothing else; a second accent would make
+ * both of them decoration.
+ *
+ * Both ramps are walked around a base the way Docusaurus's own palette tool
+ * does, so Infima's hover and active states stay in proportion, and the base
+ * of each is chosen for contrast rather than for looks:
+ *
+ *   light  #b8431e on #f7f6f3  5.0:1
+ *   dark   #f0794a on #16181d  6.6:1
+ *
+ * The ember a logo is drawn in, #e2561f, is 3.8:1 on white and so cannot be a
+ * link colour. It is the lightest step of the light ramp, where it is used for
+ * fills rather than for text.
  */
 :root {
-  --ifm-color-primary: #39699d;
-  --ifm-color-primary-dark: #335f8e;
-  --ifm-color-primary-darker: #315a87;
-  --ifm-color-primary-darkest: #2a4e74;
-  --ifm-color-primary-light: #3e73ac;
-  --ifm-color-primary-lighter: #4178b4;
-  --ifm-color-primary-lightest: #4f85bf;
+  --ifm-color-primary: #b8431e;
+  --ifm-color-primary-dark: #a63c1b;
+  --ifm-color-primary-darker: #9c3919;
+  --ifm-color-primary-darkest: #802f15;
+  --ifm-color-primary-light: #ca4a21;
+  --ifm-color-primary-lighter: #d14e23;
+  --ifm-color-primary-lightest: #e2561f;
+  --ifm-background-color: #f7f6f3;
+  --ifm-background-surface-color: #ffffff;
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
-/* Lifted, not the same blue: the light ramp does not have the contrast to sit
-   on a dark background. */
+/* Lifted, not the same ember: the light ramp has nothing like the contrast to
+   sit on a dark background. */
 [data-theme='dark'] {
-  --ifm-color-primary: #81acda;
-  --ifm-color-primary-dark: #71a2d6;
-  --ifm-color-primary-darker: #699cd3;
-  --ifm-color-primary-darkest: #558fce;
-  --ifm-color-primary-light: #90b6df;
-  --ifm-color-primary-lighter: #98bbe1;
-  --ifm-color-primary-lightest: #acc8e7;
+  --ifm-color-primary: #f0794a;
+  --ifm-color-primary-dark: #ed6330;
+  --ifm-color-primary-darker: #ec5924;
+  --ifm-color-primary-darkest: #c6460f;
+  --ifm-color-primary-light: #f38f66;
+  --ifm-color-primary-lighter: #f49974;
+  --ifm-color-primary-lightest: #f7b69c;
+  --ifm-background-color: #16181d;
+  --ifm-background-surface-color: #1c1f26;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
@@ -85,16 +104,24 @@
   background: #d99521;
 }
 
-/* A muted terracotta rather than a grey: this is the work still to do, and a
-   grey would sit next to two hatched greys that are not this platform's work
-   at all. */
+/* A plum rather than the terracotta it used to be. Terracotta was chosen when
+   the brand was blue and any warm colour was unambiguous; against an ember
+   accent it read as the brand, which is the opposite of what this segment
+   means. Still warm, because the first three segments are this platform's
+   work and the two hatched ones are not, but far enough around the wheel to
+   be told from the accent and from the amber beside it. */
 .support-no {
-  background: #b3503c;
+  background: #8d4a5f;
 }
 
+/* Slate, and no longer the brand colour. It was hatched in the primary blue,
+   which read as "ours" when the segment means the opposite; with an ember
+   brand it would also have been the third warm colour in a five-colour bar,
+   next to the amber and the terracotta. A cool neutral separates it from both
+   the work done and the work left. */
 .support-upstream {
   background: repeating-linear-gradient(
-    135deg, #39699d, #39699d 3px, #5283b4 3px, #5283b4 6px);
+    135deg, #4a5a6b, #4a5a6b 3px, #63748a 3px, #63748a 6px);
 }
 
 .support-ignored {
@@ -112,15 +139,17 @@
 }
 
 [data-theme='dark'] .support-no {
-  background: #d1705c;
+  background: #bd7c90;
 }
 
+/* Lighter than the ignored hatch below as well as bluer: on a dark ground two
+   hatched neutrals of the same lightness are one texture, whatever their hue. */
 [data-theme='dark'] .support-upstream {
   background: repeating-linear-gradient(
-    135deg, #81acda, #81acda 3px, #9cc0e4 3px, #9cc0e4 6px);
+    135deg, #8ea3b8, #8ea3b8 3px, #a8bccf 3px, #a8bccf 6px);
 }
 
 [data-theme='dark'] .support-ignored {
   background: repeating-linear-gradient(
-    135deg, #6f6f6f, #6f6f6f 3px, #8c8c8c 3px, #8c8c8c 6px);
+    135deg, #5c5c5c, #5c5c5c 3px, #767676 3px, #767676 6px);
 }
