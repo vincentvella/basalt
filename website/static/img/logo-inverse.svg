@@ -1,37 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <!--
-  Basalt's mascot: an Atlantic puffin, in profile.
+  logo.svg on a dark ground: the same bird, not its negative.
 
-  The bird rather than the rock. Columnar basalt is the Giant's Causeway and
-  Iceland, and the puffin nests on both, so the mascot is what lives on the
-  thing the project is named after. Rust's crab has less of a claim.
+  This file used to be a straight swap of the two neutrals, which flipped the
+  markings the bird is recognised by: a white back over a black belly, and a
+  white eye lost in a white head. A puffin read as a photographic negative.
 
-  Profile, and that is the whole of why this one works where several earlier
-  attempts did not: a puffin's bill is flattened side to side, so head on it is
-  narrow and the bird reads as a penguin. Drawn from a public-domain USFWS
-  photograph and the 1905 anatomical plate of puffin heads on Wikimedia
-  Commons, which is where the cheek patch, the dark collar and the two-tone
-  bill come from.
+  So only the dark half moves, and it moves up rather than across. The back and
+  the collar go to a slate that separates from #16181D, about 2.9:1, which is
+  plenty for a shape this size, while still reading as the dark half. The
+  belly, the cheek and the bill are untouched, and the eye stays ink, because
+  it is still an eye on a white cheek.
 
-  This is the full drawing. For 32 pixels and below use the simplified one. Light bird, for dark grounds.
-
-  Four files, because the bird is two colours and neither survives on the
-  wrong ground: logo.svg and logo-inverse.svg are the drawing in full, for a
-  README header or anywhere it is shown large; logo-light.svg and
-  logo-dark.svg are simplified for the navbar's 22 pixels, where the toes, the
-  brow and the bill's groove all collapse into mud. favicon.svg is the
-  simplified one again.
+  Everything else about the drawing is logo.svg's; see its header.
 -->
 <defs><clipPath id="k"><path d="M40 9 C33 3 21 5 17 14 C12 24 11 36 14 43 L4 48 L15 51 C20 57 33 59 40 53 C47 47 50 36 49 27 C48 18 44 12 40 9 Z"/></clipPath></defs>
-<path fill="#F7F6F3" d="M40 9 C33 3 21 5 17 14 C12 24 11 36 14 43 L4 48 L15 51 C20 57 33 59 40 53 C47 47 50 36 49 27 C48 18 44 12 40 9 Z"/>
+<path fill="#59606E" d="M40 9 C33 3 21 5 17 14 C12 24 11 36 14 43 L4 48 L15 51 C20 57 33 59 40 53 C47 47 50 36 49 27 C48 18 44 12 40 9 Z"/>
 <g clip-path="url(#k)">
-  <ellipse cx="43" cy="44" rx="17" ry="17" fill="#16181D"/>
-  <path fill="#16181D" d="M45.5 17.5 C45.5 22 41.5 24.8 36.3 24.2 C31 23.6 28 20 28.6 16.3 C29.2 12.2 33.2 8.7 38.2 9 C42.8 9.3 45.5 13 45.5 17.5 Z"/>
-  <path fill="#F7F6F3" d="M14 28 C22 30 28 38 29 48 C28 54 20 56 15 50 Z"/>
+  <ellipse cx="43" cy="44" rx="17" ry="17" fill="#F7F6F3"/>
+  <path fill="#F7F6F3" d="M45.5 17.5 C45.5 22 41.5 24.8 36.3 24.2 C31 23.6 28 20 28.6 16.3 C29.2 12.2 33.2 8.7 38.2 9 C42.8 9.3 45.5 13 45.5 17.5 Z"/>
+  <path fill="#59606E" d="M14 28 C22 30 28 38 29 48 C28 54 20 56 15 50 Z"/>
 </g>
 <path fill="#E2561F" d="M40.2 11.8 C48 12.2 55 16 58 20 C55 24.2 48 27.2 41 27.4 C40.2 23 40 16 40.2 11.8 Z"/>
 <path fill="#F0B429" d="M40.2 11.8 C43.8 12 46.5 13 48.3 14.4 C49.2 17.5 49.2 21.7 48.4 24.9 C46.6 26.4 44 27.3 41 27.4 C40.2 23 40 16 40.2 11.8 Z"/>
-<circle cx="33.5" cy="15" r="2.3" fill="#F7F6F3"/>
-<path fill="#F7F6F3" d="M31.5 13.3 C32.2 11.4 34.9 11.4 35.5 13.3 Z"/>
+<circle cx="33.5" cy="15" r="2.3" fill="#16181D"/>
+<path fill="#16181D" d="M31.5 13.3 C32.2 11.4 34.9 11.4 35.5 13.3 Z"/>
 <path fill="#E2561F" d="M29 53 h4 v3.4 c3 0 5.6 0.8 7.4 2 c0.7 0.5 0.4 1.5 -0.5 1.5 h-5.1 l-0.5 -1.4 l-0.6 1.4 h-4.9 l-0.5 -1.4 l-0.6 1.4 h-2.3 c-0.9 0 -1.2 -1 -0.5 -1.5 c1.3 -0.9 2.6 -1.6 4.1 -2 z"/>
 </svg>
