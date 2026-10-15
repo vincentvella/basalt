@@ -8,39 +8,43 @@ type FeatureItem = {
 };
 
 /**
- * Three claims, each of which is true of Basalt today. The scaffold's cards
- * described Docusaurus; a card that praises the tool the site is built with
- * tells a visitor nothing about the thing the site is about.
+ * Three claims, each of which is true of Basalt today, and each said without
+ * naming a toolkit or a piece of React Native's C++. The page below goes into
+ * how it works; this is the part somebody reads before deciding to care.
+ *
+ * The scaffold's cards described Docusaurus. A card that praises the tool the
+ * site is built with tells a visitor nothing about the thing the site is
+ * about.
  */
 const FeatureList: FeatureItem[] = [
   {
     title: 'Native, not a browser',
     description: (
       <>
-        A <code>&lt;View&gt;</code> is a real widget: GTK4 on Linux, AppKit on
-        macOS, Win32 with Direct2D on Windows. Text is laid out by Pango, Core
-        Text or DirectWrite. The app ships as one binary with no bundled
-        browser engine.
+        Every view is a real control, drawn by the desktop itself, and text is
+        laid out by the system the way every other app on that machine does
+        it. Nothing is a web page in disguise, and there is no browser shipped
+        alongside your app.
       </>
     ),
   },
   {
-    title: "React Native's own core",
+    title: 'The React Native you know',
     description: (
       <>
-        The same C++ that runs on iOS and Android (Fabric, Yoga, the shadow
-        tree) with a host per desktop written against its toolkit. Your
-        components, props and layout behave the way they already do.
+        Not a rewrite that behaves almost the same. The same engine that runs
+        your app on iOS and Android runs it here, so your components, your
+        props and your layout do what they already do.
       </>
     ),
   },
   {
-    title: 'Configured, not wired up',
+    title: 'One command to add',
     description: (
       <>
-        <code>app.json</code> declares which desktops an app targets and each
-        package declares what it needs natively. There is no per-platform
-        project to hand-edit and keep in sync.
+        <code>npx basalt init</code> adds a desktop to the app you already
+        have, and <code>app.json</code> says which ones you want. There is no
+        second project to maintain beside your own.
       </>
     ),
   },

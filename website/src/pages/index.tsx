@@ -74,12 +74,12 @@ const APIS: Api[] = [
   {
     title: 'Windows',
     href: '/docs/reference/windows',
-    body: 'Size, position, full screen, live bounds, a second window, and being asked before one closes.',
+    body: 'Set the size and position, go full screen, open a second window, and get asked before one closes so you can say "are you sure".',
   },
   {
     title: 'Menus',
     href: '/docs/reference/menus',
-    body: 'A declarative menu bar with the platform roles that make Cmd-C work, and a context menu with checkmarks and submenus.',
+    body: 'A menu bar written as components, with the standard items each platform already has, and right-click menus with checkmarks and submenus.',
   },
   {
     title: 'File dialogs',
@@ -89,32 +89,32 @@ const APIS: Api[] = [
   {
     title: 'Drag and drop',
     href: '/docs/reference/drag-and-drop',
-    body: 'Accept a file dropped from the file manager, and drag a row out into another application.',
+    body: 'Take a file dropped on your app from the file manager, and let a row be dragged out of it into something else.',
   },
   {
     title: 'Keyboard shortcuts',
     href: '/docs/reference/keyboard',
-    body: 'A view declares the combinations it handles, so every other key goes on to the menu and the text field.',
+    body: 'Bind shortcuts to anything you draw. The keys you do not take still reach the menu and whatever the person is typing in.',
   },
   {
     title: 'The title bar',
     href: '/docs/reference/title-bar',
-    body: 'Its title and its colours, or no title bar at all and a header the app drew itself.',
+    body: 'Its title and its colours, or no title bar at all and a header you drew yourself.',
   },
   {
     title: 'Displays',
     href: '/docs/reference/windows#usedisplays',
-    body: 'Every screen, its work area and its scale factor, which is the question Dimensions does not answer.',
+    body: 'Every screen the desktop has, how big it is and how sharp, which is what placing a window needs to know.',
   },
   {
     title: 'Notifications',
     href: '/docs/reference/notifications',
-    body: "expo-notifications' own contract, implemented natively on each desktop.",
+    body: 'Real desktop notifications, through the expo-notifications API you already know.',
   },
   {
     title: 'Subprocesses',
     href: '/docs/reference/subprocess',
-    body: 'Run a command, watch its output, hear about its exit: the thing a front end for ffmpeg is made of.',
+    body: 'Run a command, watch its output, hear when it exits. What a front end for something like ffmpeg is made of.',
   },
 ];
 
@@ -136,10 +136,9 @@ function HomepageHeader() {
         </Heading>
         <p className={styles.heroTagline}>{siteConfig.tagline}</p>
         <p className={styles.heroLede}>
-          Your React Native app, built as a native desktop application. A{' '}
-          <code>&lt;View&gt;</code> is a real GTK4, AppKit or Win32 widget, the
-          C++ underneath is React Native's own, and the result is one binary
-          with no browser engine in it.
+          Build desktop apps for Mac, Windows and Linux with React Native. The
+          same components you already write, running as real native windows,
+          menus and controls, with no browser packed inside.
         </p>
         <div className={styles.heroCode}>
           <CodeBlock language="bash">{`npx basalt init\nnpm run macos -- --build`}</CodeBlock>
@@ -157,8 +156,8 @@ function HomepageHeader() {
         {/* Said on the front page rather than discovered after an install.
             Below 1.0, so the API can change in any release. */}
         <p className={styles.heroStatus}>
-          Early. Published on npm at <code>0.2.x</code>, which under semver
-          promises nothing about stability and is meant literally.
+          Early days. On npm at <code>0.2.x</code>, and below 1.0 the API can
+          still change in any release.
         </p>
       </div>
     </header>
@@ -178,17 +177,15 @@ function WhatYouWrite() {
               You write React Native
             </Heading>
             <p className={styles.sectionBody}>
-              Components come from <code>react-native</code>, exactly as they do
-              on iOS and Android. There is no Basalt <code>&lt;View&gt;</code>{' '}
-              to import and no CSS: your components, props and layout behave the
-              way they already do, because what lays them out is the same Yoga
-              and the same shadow tree.
+              Your components come from <code>react-native</code>, exactly as
+              they do on iOS and Android. Nothing to relearn, no HTML and no
+              CSS: what you have already written behaves the way it already
+              does.
             </p>
             <p className={styles.sectionBody}>
-              <code>basalt-core</code> is only the things a phone has no
-              equivalent of. A window has a size you can set and a person can
-              drag. There is a menu bar, and on macOS it is also what makes
-              Cmd-C reach a text field.
+              <code>basalt-core</code> is the rest. A window somebody can move
+              and resize. A menu bar. A file picker. The things a desktop has
+              and a phone does not.
             </p>
             <p className={styles.sectionBody}>
               <Link to="/docs/reference/api">The APIs</Link> are the whole list,
@@ -214,12 +211,13 @@ function Hosts() {
     <section className={`${styles.section} ${styles.sectionTinted}`}>
       <div className="container">
         <Heading as="h2" className={styles.sectionTitle}>
-          Three hosts, one shared core
+          Three desktops, one app
         </Heading>
         <p className={styles.sectionLede}>
-          Each desktop gets a host written against its own toolkit, over the
-          same C++. React Native {support.reactNative} is what these numbers are
-          measured against.
+          Each desktop has its own version of Basalt, built against the toolkit
+          that desktop actually uses, so an app looks and behaves like it
+          belongs there. How far along each one is, measured against React
+          Native {support.reactNative}:
         </p>
         <div className="row">
           {support.hosts.map((host) => (
@@ -230,15 +228,15 @@ function Hosts() {
                 </Heading>
                 <p className={styles.hostToolkit}>{host.toolkit}</p>
                 <dl className={styles.hostFacts}>
-                  <dt>Text</dt>
+                  <dt>Text drawn by</dt>
                   <dd>{TEXT_ENGINES[host.key]}</dd>
-                  <dt>Props written</dt>
+                  <dt>Props supported</dt>
                   <dd>
                     {host.yes} of {host.ours}, {host.percent}%
                   </dd>
-                  <dt>Partly done</dt>
+                  <dt>Partly</dt>
                   <dd>{host.partial}</dd>
-                  <dt>Not done</dt>
+                  <dt>Missing</dt>
                   <dd>{host.no}</dd>
                 </dl>
               </div>
@@ -246,9 +244,9 @@ function Hosts() {
           ))}
         </div>
         <p className={styles.sectionFoot}>
-          Counted by a script rather than claimed: every field React Native's
-          C++ parses has a row, a column per desktop, and a reason wherever a
-          host does not read one.{' '}
+          Counted by a script rather than claimed. Every prop React Native has
+          gets a row, a column per desktop, and a reason wherever one is
+          missing.{' '}
           <Link to="/docs/support">The table is the honest version of this</Link>
           .
         </p>
@@ -264,13 +262,13 @@ function DesktopApis() {
     <section className={styles.section}>
       <div className="container">
         <Heading as="h2" className={styles.sectionTitle}>
-          And the desktop itself
+          And everything a phone never needed
         </Heading>
         <p className={styles.sectionLede}>
-          React Native has no API for any of this, because a phone has no such
-          thing. Each one is guarded, so the same code runs on all three, and
-          where a desktop genuinely cannot do a thing it is answerable at
-          runtime rather than documented and hoped for.
+          React Native has no API for any of this, because a phone has none of
+          it. Each one works on all three desktops, and in the few places where
+          a desktop genuinely cannot do something, your app can ask instead of
+          guessing.
         </p>
         <div className={styles.apiGrid}>
           {APIS.map((api) => (
@@ -284,8 +282,7 @@ function DesktopApis() {
           The libraries you already use come too:{' '}
           <Link to="/docs/libraries">react-navigation, Skia, Reanimated and
           gesture-handler</Link>{' '}
-          all run, and an app can contribute its own C++ without publishing a
-          package.
+          all run, and your app can bring native code of its own.
         </p>
       </div>
     </section>
@@ -305,9 +302,9 @@ function Differs() {
               Electron and Tauri
             </Heading>
             <p className={styles.sectionBody}>
-              A web view: you write web UI and a browser lays it out. Basalt
-              gives you the React Native component model over native widgets.
-              There is no DOM and no CSS.
+              They put a web page in a window: you write web UI and a browser
+              draws it. Basalt gives you React Native components drawn as real
+              native controls, with no HTML and no CSS.
             </p>
           </div>
           <div className="col col--4">
@@ -315,10 +312,10 @@ function Differs() {
               react-native-windows and -macos
             </Heading>
             <p className={styles.sectionBody}>
-              Separate forks with separate cadences. Basalt is one project
-              covering three desktops, and uses their platform names, so a
-              library shipping <code>Button.macos.js</code> resolves here
-              without knowing Basalt exists.
+              Separate projects on separate release schedules, one desktop
+              each. Basalt is one project for all three, and it uses the same
+              platform names, so a library that ships a{' '}
+              <code>Button.macos.js</code> already works here.
             </p>
           </div>
           <div className="col col--4">
@@ -327,8 +324,7 @@ function Differs() {
             </Heading>
             <p className={styles.sectionBody}>
               Not an alternative, the common case. A stock Expo app runs, and{' '}
-              <code>init</code> writes the Metro config on{' '}
-              <code>expo/metro-config</code> when it finds one.
+              <code>basalt init</code> sets up Metro for you when it finds one.
             </p>
           </div>
         </div>
@@ -348,15 +344,15 @@ function Expect() {
         </Heading>
         <ul className={styles.expectList}>
           <li>
-            <strong>React Native 0.86 and 0.87</strong> are supported, and 0.87
-            is what CI pins. On 0.86, which Expo SDK 57 installs, there is no
-            Fast Refresh; that was root-caused and fixed upstream in 0.87.
+            <strong>React Native 0.86 and 0.87</strong> are supported. On
+            0.86, which is what Expo SDK 57 installs, there is no Fast Refresh:
+            a React Native bug that upstream fixed in 0.87.
           </li>
           <li>
-            <strong>The first build compiles Hermes and React Native's C++</strong>{' '}
-            from source and takes tens of minutes. Later builds do not.{' '}
-            <code>npx basalt-core doctor</code> checks your toolchain in seconds
-            before you spend that.
+            <strong>The first build takes tens of minutes</strong>, because it
+            compiles React Native's C++ from source. Every build after that is
+            quick. <code>npx basalt-core doctor</code> checks you have what it
+            needs, in seconds, before you spend that.
           </li>
           <li>
             <strong>The three desktops are not equally finished.</strong> Linux
@@ -365,10 +361,10 @@ function Expect() {
             where.
           </li>
           <li>
-            <strong>No third-party native module has been ported end to end</strong>{' '}
-            through codegen. The seam is proven and the libraries above run, but
-            what porting an arbitrary module costs is still a guess. It is the
-            largest unknown here.
+            <strong>Nobody has yet taken an arbitrary native library and
+            ported it from scratch.</strong> The popular ones above run, but
+            what a new one costs is still unknown, and it is the biggest open
+            question here.
           </li>
         </ul>
         <div className={styles.endButtons}>
