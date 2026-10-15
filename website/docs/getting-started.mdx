@@ -5,6 +5,7 @@ title: Getting started
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import VersionMatrix from '@site/src/components/VersionMatrix';
 
 # Getting started
 
@@ -153,16 +154,21 @@ npm run linux -- --mode release --build
 
 ## Supported React Native versions
 
-| React Native | Status |
-| --- | --- |
-| 0.88 | Not yet. `0.88.0-rc` is what Expo SDK 58 installs, and nothing here has been built against it. |
-| **0.87** | Supported. What CI pins, verified on 0.87.1, and the only version with Fast Refresh. |
-| **0.86** | Supported, verified on 0.86.3, but **no Fast Refresh**: a reload collapses the host, which upstream fixed in 0.87. What Expo SDK 57 installs. |
-| 0.83 – 0.85 | Never built or tested. Nothing suggests they would not work; nothing has checked. |
-| 0.82 and older | Attempted and deliberately stopped. Needs a second host construction path and a websocket client React Native does not ship there. |
+<VersionMatrix />
 
-`doctor` checks the installed version against this list and reports rather than
-refuses.
+This table is `packages/basalt-core/supported-versions.json`, rendered. That
+file is what `bootstrap.sh` reads before it downloads anything and what
+`doctor` checks your app against, so what you are reading cannot drift from
+what the build enforces. A version on it has been built against and had both
+suites run; one that is not on it fails the build with a message naming the
+file, rather than being allowed and failing later somewhere stranger.
+
+The 0.86 limitation is specific: a reload leaves the host without a mounting
+manager and it collapses. That was root-caused here and fixed upstream in 0.87
+by deleting three lines. Everything else on 0.86 works, and you restart the app
+to see a change.
+
+`doctor` checks the installed version and reports rather than refuses.
 
 Hermes is pinned alongside React Native rather than derived from it, because
 Basalt builds it from source: Meta publishes a prebuilt Hermes for Windows,

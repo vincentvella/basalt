@@ -1466,6 +1466,28 @@ test('doctor accepts a React Native that is supported', () => {
   assert.equal(doctorCli.checkReactNative(dir, VERSIONS).state, 'done');
 });
 
+// The website renders its version matrix straight out of this file, so the
+// fields that table reads are part of the file's shape rather than notes
+// somebody left. Without this a field could be dropped and the only symptom
+// would be a blank column on a published page.
+test('the version table carries what the published matrix reads', () => {
+  const table = JSON.parse(fs.readFileSync(VERSIONS, 'utf8'));
+
+  assert.ok(table.supported.length > 0, 'something has to be supported');
+  for (const entry of table.supported) {
+    assert.equal(
+      typeof entry.fastRefresh,
+      'boolean',
+      `${entry.reactNative} does not say whether it has Fast Refresh`,
+    );
+    assert.match(entry.verified ?? '', /^\d+\.\d+\.\d+/, `${entry.reactNative} names no release it was verified on`);
+    assert.ok(entry.notes, `${entry.reactNative} has no note for somebody choosing a version`);
+  }
+  for (const entry of table['known-unsupported']) {
+    assert.ok(entry.why, `${entry.reactNative} does not say why not`);
+  }
+});
+
 test('doctor names a host package that is a dependency but not installed', () => {
   const dir = scratchApp(EXPO_APP);
   const steps = doctorCli.checkHostPackages(dir, ['macos']);

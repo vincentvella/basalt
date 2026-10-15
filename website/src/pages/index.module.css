@@ -199,6 +199,11 @@
   margin-bottom: 0.5rem;
 }
 
+.subTitle {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
 .expectList {
   max-width: 48rem;
   margin-bottom: 2.5rem;

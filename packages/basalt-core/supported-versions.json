@@ -16,6 +16,8 @@
     "difference is where every version problem here comes from.",
     "",
     "To add a version: add an entry, bootstrap against it, and run both suites.",
+    "`fastRefresh` is read by the docs rather than by the build: the website renders the version matrix from this file, so the table people read cannot disagree with the table bootstrap enforces.",
+    "Keep `notes` and `why` short and readable by somebody choosing a version: the website renders them. The long reasoning belongs in `limitations` and `what-it-would-take`, which nothing outside this file reads.",
     "Untested is not supported -- saying so is the point of this file."
   ],
   "supported": [
@@ -24,17 +26,19 @@
       "hermes": "250829098.0.0-stable",
       "hermesTarget": "hermesvm",
       "verified": "0.86.3",
-      "notes": "The React Native a current Expo app installs, which is why it is supported.",
+      "notes": "What a current Expo app installs, which is why it is supported.",
       "limitations": [
         "No Fast Refresh. ReactHost::destroyReactInstance sets reactInstanceData_->mountingManager to null on teardown, so a reload recreates the instance without a mounting manager and the host collapses. Reproduced, root-caused, and fixed upstream in 0.87 by deleting those three lines. Four of five end-to-end scenarios pass; the fifth is this."
-      ]
+      ],
+      "fastRefresh": false
     },
     {
       "reactNative": "0.87",
       "hermes": "250829098.0.0-stable",
       "verified": "0.87.1",
-      "notes": "60/60 unit and 5/5 end-to-end, macOS and CI. What CI pins.",
-      "hermesTarget": "hermesvm"
+      "notes": "What CI builds and tests every change against.",
+      "hermesTarget": "hermesvm",
+      "fastRefresh": true
     }
   ],
   "development": {
@@ -45,12 +49,16 @@
   },
   "known-unsupported": [
     {
+      "reactNative": "0.88",
+      "why": "Never built or tested. 0.88.0-rc is what Expo SDK 58 installs, and nothing here has been pointed at it."
+    },
+    {
       "reactNative": "0.83 - 0.85",
       "why": "Never built or tested. Nothing suggests they would not work; nothing has checked."
     },
     {
       "reactNative": "0.82 and older",
-      "why": "Attempted for 0.81.6 and stopped deliberately. Six differences, of which the last three are structural.",
+      "why": "Tried, and stopped deliberately. It needs a second way of constructing the host and a websocket client React Native does not ship there.",
       "what-it-would-take": [
         "~~RN$TurboInterop set before the bundle evaluates, or no native module resolves at all.~~ Done: core/TurboModuleProxy.h installs globalThis.__turboModuleProxy as an alias for nativeModuleProxy[name], so TurboModuleRegistry's first question succeeds and the gated fallback is never reached. Verified against 0.81's own JavaScript -- kino's unmodified bundle reaches Running \"main\" with no flag prepended.",
         "Its Hermes builds `libhermes` rather than `hermesvm`, and React Native links `hermes-engine::libhermes`. Both handled already.",

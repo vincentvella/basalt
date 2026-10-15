@@ -7,6 +7,7 @@ import Heading from '@theme/Heading';
 import CodeBlock from '@theme/CodeBlock';
 import ThemedImage from '@theme/ThemedImage';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
+import VersionMatrix from '@site/src/components/VersionMatrix';
 import support from '@site/src/data/support.json';
 
 import styles from './index.module.css';
@@ -342,12 +343,16 @@ function Expect() {
         <Heading as="h2" className={styles.sectionTitle}>
           What to expect
         </Heading>
+        <Heading as="h3" className={styles.subTitle}>
+          Which React Native
+        </Heading>
+        <p className={styles.sectionBody}>
+          A version is on this list once it has been built against and both
+          test suites have run. One that has not is refused by the build rather
+          than quietly allowed, so there is no range to guess at.
+        </p>
+        <VersionMatrix />
         <ul className={styles.expectList}>
-          <li>
-            <strong>React Native 0.86 and 0.87</strong> are supported. On
-            0.86, which is what Expo SDK 57 installs, there is no Fast Refresh:
-            a React Native bug that upstream fixed in 0.87.
-          </li>
           <li>
             <strong>The first build takes tens of minutes</strong>, because it
             compiles React Native's C++ from source. Every build after that is
