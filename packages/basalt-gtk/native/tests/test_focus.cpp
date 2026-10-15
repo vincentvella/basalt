@@ -43,9 +43,22 @@ namespace {
 
 constexpr SurfaceId kSurfaceId = 1;
 
-ShadowView makeView(Tag tag, float y, bool accessible) {
+// `also` sets anything beyond `accessible`, while the props are still being
+// built. A test cannot clone them afterwards: React Native 0.86 declares
+// `Props(const Props &) = delete` and 0.87 declares it `= default`, so
+// `make_shared<ViewProps>(*existing)` compiles against the pin and against
+// nothing else. Two tests here did exactly that, and the version check caught
+// it -- see scripts/check_versions.py.
+ShadowView makeView(
+    Tag tag,
+    float y,
+    bool accessible,
+    const std::function<void(ViewProps &)> &also = nullptr) {
   auto props = std::make_shared<ViewProps>();
   props->accessible = accessible;
+  if (also) {
+    also(*props);
+  }
 
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = y}, .size = {.width = 200, .height = 40}};
@@ -171,10 +184,9 @@ TEST(focus_accessible_views_are_the_ones_tab_stops_on) {
 // and this is the wiring.
 TEST(focus_a_view_that_refuses_interaction_is_not_a_tab_stop) {
   Scene scene;
-  ShadowView quiet = makeView(10, 0, true);
-  auto props = std::make_shared<ViewProps>(*std::static_pointer_cast<const ViewProps>(quiet.props));
-  props->accessibilityRespondsToUserInteraction = false;
-  quiet.props = props;
+  ShadowView quiet = makeView(10, 0, true, [](ViewProps &props) {
+    props.accessibilityRespondsToUserInteraction = false;
+  });
 
   scene.mount({quiet, makeView(11, 50, true)});
 

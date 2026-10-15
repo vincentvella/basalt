@@ -735,9 +735,22 @@ TEST(pointer_events_reaches_the_view_from_the_props_and_the_tree_dump) {
 // automated session that has no front.
 namespace {
 
-ShadowView makeAccessibleView(Tag tag, float y, bool accessible) {
+// `also` sets anything beyond `accessible`, while the props are still being
+// built. A test cannot clone them afterwards: React Native 0.86 declares
+// `Props(const Props &) = delete` and 0.87 declares it `= default`, so
+// `make_shared<ViewProps>(*existing)` compiles against the pin and against
+// nothing else. One test here did exactly that, and the version check caught
+// it -- see scripts/check_versions.py.
+ShadowView makeAccessibleView(
+    Tag tag,
+    float y,
+    bool accessible,
+    const std::function<void(facebook::react::ViewProps &)> &also = nullptr) {
   auto props = std::make_shared<facebook::react::ViewProps>();
   props->accessible = accessible;
+  if (also) {
+    also(*props);
+  }
 
   LayoutMetrics metrics;
   metrics.frame = {.origin = {.x = 0, .y = y}, .size = {.width = 200, .height = 40}};
@@ -797,17 +810,16 @@ TEST(focus_a_view_that_refuses_interaction_is_not_a_tab_stop) {
     RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
     [root setRnFrameX:0 y:0 width:400 height:400];
 
-    ShadowView quiet = makeAccessibleView(10, 0, true);
-    auto props = std::make_shared<facebook::react::ViewProps>(
-        *std::static_pointer_cast<const facebook::react::ViewProps>(quiet.props));
-    props->accessibilityRespondsToUserInteraction = false;
-    // A label as well, because that is what makes a plain view an
-    // accessibility element here -- a tree of untyped groups is worse for a
-    // screen reader than a tree without them, so `accessible` alone does not
-    // publish one. Without it the assertion below would pass for the wrong
-    // reason, which is how this line got here.
-    props->accessibilityLabel = "Read only";
-    quiet.props = props;
+    ShadowView quiet =
+        makeAccessibleView(10, 0, true, [](facebook::react::ViewProps &props) {
+          props.accessibilityRespondsToUserInteraction = false;
+          // A label as well, because that is what makes a plain view an
+          // accessibility element here -- a tree of untyped groups is worse
+          // for a screen reader than a tree without them, so `accessible`
+          // alone does not publish one. Without it the assertion below would
+          // pass for the wrong reason, which is how this line got here.
+          props.accessibilityLabel = "Read only";
+        });
 
     mountAll(manager, {quiet, makeAccessibleView(11, 50, true)});
 
