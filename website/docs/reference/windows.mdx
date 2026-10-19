@@ -43,7 +43,7 @@ const {width, height, x, y, fullScreen, maximized} = window.bounds;
 | `minimize()` | |
 | `toggleMaximize()` | |
 | `close()` | asks, so a close handler still gets to refuse |
-| `setMinimumSize(width, height)` | |
+| `setMinimumSize(width, height)` | the app's own window's; see the note below |
 | `setMaximumSize(width, height)` | `0` in either direction clears that limit |
 | `setResizable(on?)` | defaults to `true` |
 | `setAlwaysOnTop(on?)` | defaults to `false` |
@@ -205,9 +205,14 @@ to change, and it closes the window without calling `onClose`, because an app
 that just said yes is not waiting to be told.
 
 :::note
-`useWindow()` inside a second window's tree still reports the **active** window
-rather than the one it is in. That is a real gap, and it is written down in the
-repository's backlog.
+`useWindow()` inside a `<Window>` means **that** window. Its `bounds` are that
+window's, `setSize` resizes it, and it does not re-render when another window
+moves. Outside any `<Window>`, and from `windowControl`, it means the window
+the app started in.
+
+Two calls are still the app's own window's whoever asks: `minimize()` and
+`toggleMaximize()`, and the size limits. `close()` is not: a second window
+closes itself.
 :::
 
 ## `useDisplays()`

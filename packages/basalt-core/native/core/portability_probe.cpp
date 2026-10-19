@@ -122,13 +122,13 @@ void performMenuRole(const std::string &) {}
 // The window seam, stubbed the same way. A real platform answers from a
 // GtkWindow, an NSWindow or an HWND; one that has not yet reports a window of
 // no size, which is what an app reading bounds before there is one sees.
-WindowBounds windowBounds() {
+WindowBounds windowBounds(facebook::react::SurfaceId) {
   return {};
 }
-void setWindowSize(double, double) {}
-void setWindowPosition(double, double) {}
-void centerWindow() {}
-void setWindowFullScreen(bool) {}
+void setWindowSize(facebook::react::SurfaceId, double, double) {}
+void setWindowPosition(facebook::react::SurfaceId, double, double) {}
+void centerWindow(facebook::react::SurfaceId) {}
+void setWindowFullScreen(facebook::react::SurfaceId, bool) {}
 void applyWindowSizeLimits() {}
 void setWindowResizable(bool) {}
 void setWindowAlwaysOnTop(bool) {}

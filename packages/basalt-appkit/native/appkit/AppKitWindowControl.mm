@@ -43,7 +43,12 @@ namespace {
 // toplevel and falls back to the first visible one -- so this is the same rule
 // rather than a new idea. A panel is skipped: LogBox and the dev menu are
 // windows too, and neither is what an app means by "my window".
-NSWindow *window() { return appWindow(); }
+NSWindow *window(facebook::react::SurfaceId id) { return appWindowFor(id); }
+
+AppWindowLookup &lookup() {
+  static AppWindowLookup value;
+  return value;
+}
 
 // The height AppKit measures y from. `NSScreen.screens.firstObject` is the
 // primary display, which is the one AppKit's global coordinates are anchored
@@ -54,6 +59,21 @@ CGFloat primaryHeight() {
 }
 
 } // namespace
+
+void setAppWindowLookup(AppWindowLookup value) { lookup() = std::move(value); }
+
+NSWindow *appWindowFor(facebook::react::SurfaceId id) {
+  if (id != kAppWindow && lookup()) {
+    if (NSWindow *found = lookup()(id)) {
+      return found;
+    }
+    // An id nobody knows falls through to the app's own window rather than
+    // doing nothing. A window that has closed between a render and the call
+    // that followed it is the ordinary way to get here, and silently moving
+    // nothing would be a bug an app cannot see.
+  }
+  return appWindow();
+}
 
 NSWindow *appWindow() {
   if (NSApp.keyWindow != nil) {
@@ -119,10 +139,10 @@ PointerPosition pointerPosition() {
   return where;
 }
 
-WindowBounds windowBounds() {
+WindowBounds windowBounds(facebook::react::SurfaceId id) {
   WindowBounds bounds;
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = window(id);
     if (target == nil) {
       return bounds;
     }
@@ -138,12 +158,12 @@ WindowBounds windowBounds() {
   return bounds;
 }
 
-void setWindowSize(double width, double height) {
+void setWindowSize(facebook::react::SurfaceId id, double width, double height) {
   if (width <= 0.0 || height <= 0.0) {
     return;
   }
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = window(id);
     if (target == nil) {
       return;
     }
@@ -157,9 +177,9 @@ void setWindowSize(double width, double height) {
   }
 }
 
-void setWindowPosition(double x, double y) {
+void setWindowPosition(facebook::react::SurfaceId id, double x, double y) {
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = window(id);
     if (target == nil) {
       return;
     }
@@ -169,18 +189,18 @@ void setWindowPosition(double x, double y) {
   }
 }
 
-void centerWindow() {
+void centerWindow(facebook::react::SurfaceId id) {
   @autoreleasepool {
     // AppKit's own, which puts the window slightly above centre: that is where
     // Apple's guidelines say a window goes, and an app asking to be centred on
     // a Mac is asking for that rather than for arithmetic.
-    [window() center];
+    [window(id) center];
   }
 }
 
-void setWindowFullScreen(bool fullScreen) {
+void setWindowFullScreen(facebook::react::SurfaceId id, bool fullScreen) {
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = window(id);
     if (target == nil) {
       return;
     }
@@ -195,7 +215,7 @@ void setWindowFullScreen(bool fullScreen) {
 
 void applyWindowSizeLimits() {
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = appWindow();
     if (target == nil) {
       return;
     }
@@ -215,7 +235,7 @@ void applyWindowSizeLimits() {
 
 void setWindowResizable(bool resizable) {
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = appWindow();
     if (target == nil) {
       return;
     }
@@ -231,7 +251,7 @@ void setWindowResizable(bool resizable) {
 
 void setWindowAlwaysOnTop(bool alwaysOnTop) {
   @autoreleasepool {
-    NSWindow *target = window();
+    NSWindow *target = appWindow();
     if (target == nil) {
       return;
     }

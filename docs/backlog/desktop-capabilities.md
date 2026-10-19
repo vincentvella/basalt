@@ -7,10 +7,10 @@ An entry here is a gap, not a plan. When one is picked up it becomes a change in
 then on: the entry stays, so the catalogue remains a complete answer to "what
 is missing", and gains a pointer. Three entries have one today.
 
-**Open (32):**
+**Open (31):**
 
 1. A second window's children do not see React context
-2. `useWindow()` inside a second window reports the active window
+2. ~~`useWindow()` inside a second window reports the active window~~, done; what is left is minimising and the size limits
 3. The title bar and the error inspector are the main window's
 4. `<Modal>` is still an in-surface overlay
 5. Packaging is macOS and Linux only, and shallow
@@ -64,12 +64,30 @@ has gone unrecorded until now.
 - **A second window's children do not see React context** from the tree they
   were written in, because they are rendered in a different root. Props, state
   and callbacks cross; a provider does not. `<Window>`'s header says so.
-- **`useWindow()` inside a second window reports the active window**, not the
-  one it is in. A TurboModule has no idea which surface called it, which is the
-  same gap that would have to be closed for per-window menus or title bars. The
-  size limits are the sharpest version: they are one set of numbers for one
-  window, so Windows answers WM_GETMINMAXINFO for the app's own window and no
-  other, to keep the three hosts saying the same thing.
+- ~~**`useWindow()` inside a second window reports the active window**~~, done
+  on 2026-10-19; see `openspec/changes/add-per-window-geometry`. Geometry is
+  addressed by window now: the id is the surface id, it rides as a trailing
+  argument on the call, and each host resolves it against the registry it
+  already kept instead of asking its toolkit which window is active. A call
+  that names no window means the one the app started in, which is what
+  `windowControl` sends from outside any component.
+
+  Two things in that entry are still true and are smaller than it was.
+  **Minimising and maximising** are a per-host call into that host's title bar
+  rather than the shared seam, so both are the app's own window's whoever asks;
+  closing is not, because the windows module has taken an id since it was
+  written and `useWindow().close()` routes there. And the **size limits** are
+  one set of numbers for the application: Windows answers WM_GETMINMAXINFO out
+  of them, which is a message rather than a call and cannot be told which
+  window it is about.
+
+  What the fix turned up is worth keeping. `<Window>` starts its second root
+  with a `basaltWindowId` prop, and that is a JavaScript counter keying the map
+  the root reads its children from, not a window id. The first `<Window>` an
+  app mounts gets 1, the main window's surface id is 1, and a second window
+  therefore read the *main* window's size while looking entirely plausible. The
+  host adds the real id now, under `kWindowSurfaceIdProp`, because the host is
+  the only thing that knows it.
 - **The title bar and the error inspector are the main window's.** Both are
   process-wide seams; making them per-window is its own piece of work.
 - **`<Modal>` is still an in-surface overlay**, though a real window is now

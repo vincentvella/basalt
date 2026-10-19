@@ -16,9 +16,31 @@
 
 #import <AppKit/AppKit.h>
 
+#include <react/renderer/core/ReactPrimitives.h>
+
+#include <functional>
+
 namespace basalt {
 
 // The app's own window, or nil when it has none yet. Main thread only.
 NSWindow *appWindow();
+
+// How to find a window by its surface id.
+//
+// The registry is `main_appkit.mm`'s -- it owns every window it opens -- and
+// this file is compiled into the mounting library, which the host links rather
+// than the other way round. So the host installs the lookup at startup and
+// everything here asks through it.
+//
+// Not installed is the normal case for a test binary and for both mount
+// harnesses: none of them opens a second window, and none should grow a
+// registry to keep compiling. `appWindowFor` falls back to `appWindow()`
+// there, which is what every caller did before windows had ids.
+using AppWindowLookup = std::function<NSWindow *(facebook::react::SurfaceId)>;
+void setAppWindowLookup(AppWindowLookup lookup);
+
+// The window with this surface id, or the app's own for `kAppWindow` and for
+// an id the lookup does not know. Main thread only.
+NSWindow *appWindowFor(facebook::react::SurfaceId window);
 
 } // namespace basalt

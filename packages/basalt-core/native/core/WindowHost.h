@@ -20,6 +20,11 @@
 // layout. It is also why the id a window is identified by *is* its surface id
 // -- there is no second numbering to keep in step.
 //
+// With one exception, which is worth naming because it cost an afternoon:
+// `<Window>` keys the map it passes its children through by a counter of its
+// own, and calls that `basaltWindowId` too. It is not a window id and nothing
+// outside that file should read it as one. See kWindowSurfaceIdProp below.
+//
 // The cost is that a second window is a second React tree: it does not share
 // context, state or a render pass with the first. `<Window>` in JavaScript
 // papers over enough of that to be useful and says where it cannot; see
@@ -37,6 +42,23 @@
 
 namespace basalt {
 
+// The initial prop a window's root is started with that says which window it
+// is in.
+//
+// The app's own props are its business; this is added beside them, by the host,
+// because the host is the only thing that knows the surface id -- it assigns
+// it inside `openHostWindow`, after the caller has already handed over the
+// props.
+//
+// `<Window>` passes a `basaltWindowId` of its own, and that is a different
+// number: a JavaScript counter keying the map the second root reads its
+// children out of. It was briefly used as the window id too, and the symptom
+// was a second window reading the *first* window's size, because the first
+// `<Window>` an app mounts gets the counter value 1 and the main window's
+// surface id is 1. Two numberings, which is the thing the header below says
+// there are none of -- so the id that means a window comes from the host.
+inline constexpr const char *kWindowSurfaceIdProp = "basaltSurfaceId";
+
 struct NewWindowOptions {
   // The component to run, as registered with `AppRegistry.registerComponent`.
   // A window with no component is a window with nothing in it, which is not
@@ -49,6 +71,12 @@ struct NewWindowOptions {
   // is. See src/Window.js.
   folly::dynamic props{folly::dynamic::object()};
 };
+
+// The props a window's root is started with: the app's, plus
+// `kWindowSurfaceIdProp`. Called by each host's `openHostWindow` once it has
+// assigned the id.
+folly::dynamic windowRootProps(const NewWindowOptions &options,
+                               facebook::react::SurfaceId surfaceId);
 
 // Opens a window and starts `component` in it. Returns the new surface id,
 // which is also the window's, or 0 if it could not.

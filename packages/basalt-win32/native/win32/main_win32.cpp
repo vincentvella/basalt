@@ -65,6 +65,7 @@
 #endif
 #include "Win32Packaging.h"
 #include "PointerButtons.h"
+#include "Win32AppWindow.h"
 #include "WindowControl.h"
 #include "SystemLocale.h"
 #include "WindowHost.h"
@@ -1457,7 +1458,12 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
     // it needs its own case: WM_SIZE would never arrive, and `center()` would
     // look like it had done nothing.
     case WM_MOVE:
-      basalt::notifyWindowBoundsChanged();
+      // Which window moved. `self` is null for the messages CreateWindowEx
+      // sends before the window is in the list, and a move among those is not
+      // one an app can see.
+      if (self != nullptr) {
+        basalt::notifyWindowBoundsChanged(self->surfaceId);
+      }
       return 0;
 
     // `AppState`: whether this application is the one in front. Windows sends
@@ -1505,8 +1511,8 @@ LRESULT CALLBACK hostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
         }
         // The window moved or was resized, which `useWindow()` hands an app as live
         // bounds. Here rather than in a watcher of its own: this is already the one
-        // place that learns it.
-        basalt::notifyWindowBoundsChanged();
+        // place that learns it, and it already knows which window it was.
+        basalt::notifyWindowBoundsChanged(self->surfaceId);
         // The inspector covers the main window, so it resizes with it -- and
         // only with it: an error is about the app rather than about a window.
         if (gHost.logBoxRoot != nullptr && self->surfaceId == kSurfaceId) {
@@ -2141,11 +2147,14 @@ facebook::react::SurfaceId openHostWindow(const NewWindowOptions &options) {
 
   gHost.reactHost->startSurface(surfaceId,
                                 options.component,
-                                options.props,
+                                windowRootProps(options, surfaceId),
                                 constraintsFor(width, height),
                                 layoutContextFor(gHost.scaleFactor));
   ShowWindow(made->window, SW_SHOW);
   UpdateWindow(made->window);
+  // Prime this window's bounds the way the main window's are primed at
+  // startup; see the call beside that one.
+  basalt::notifyWindowBoundsChanged(surfaceId);
   std::fprintf(stderr,
                "opened window %d for module %s\n",
                static_cast<int>(surfaceId),
@@ -2369,10 +2378,18 @@ int main(int argc, char **argv) {
   // being visible.
   gHost.mountingManager->setOnDidMount(syncPeersAndRepaint);
 
+  // How the window module finds a window by id, and which one a call that
+  // names none means. See Win32AppWindow.h.
+  basalt::setWin32AppWindowLookup([](facebook::react::SurfaceId surfaceId) -> HWND {
+    HostWindow *found = gHost.windowFor(surfaceId);
+    return found == nullptr ? nullptr : found->window;
+  });
+  basalt::setAppWindowId(kSurfaceId);
+
   // Prime the bounds cache, which `getBounds()` answers from: without this an
   // app's first render sees a window of no size, and only a later resize
   // corrects it. See core/WindowBoundsCache.cpp.
-  basalt::notifyWindowBoundsChanged();
+  basalt::notifyWindowBoundsChanged(kSurfaceId);
 
   // And the display list, for the same reason and off the same seam: an app
   // asking which screens exist before anything has been plugged or unplugged

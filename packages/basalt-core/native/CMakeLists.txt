@@ -91,6 +91,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_visible_position.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_indicator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_snap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_bounds_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_close.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_limits.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_appearance.cpp

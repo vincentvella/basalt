@@ -794,3 +794,34 @@ The arithmetic matters more than the wording, so `scripts/test_check_support.js`
 pins it: a host whose every remaining row is upstream's or deliberately skipped
 reads full, and `counts()` returns the five statuses separately rather than a
 pair that has already made the decision.
+
+## `<Modal>` stays an overlay, and does not become a window (2026-10-19)
+
+`components.md` carried "a second real window is more native on a desktop and
+is still the better answer eventually" for a long time, and it should not have.
+What a real window costs here is specific, and the entry did not say it.
+
+A real window on this platform is a second Fabric surface, which is a second
+React root. The consequence is on the `<Window>` reference page because it
+surprises everybody: **children of a second window do not see React context
+from the tree they were written in.** A `<Modal>` converted to one would lose
+the theme provider, the navigation container and the store that wrap it, and it
+would lose them only on the desktop. That is a behaviour difference from iOS
+and Android in the component most likely to be wrapped in all three, which is
+the one kind of difference this project exists to avoid.
+
+What it would buy does not survive the same look. A window can be moved off its
+parent, resized, and given its own entry in the taskbar, and React Native's
+`<Modal>` has no prop for any of them: no size, no position, nothing that would
+reach those capabilities. The trade is a semantic break in exchange for
+abilities the API cannot express.
+
+`transparent` and a modal's layout are defined against the surface it covers,
+which is what an overlay already is. And an app that genuinely wants a window
+has `<Window>`, which is the desktop-only shape under its own name rather than
+a cross-platform component quietly becoming desktop-only.
+
+So the shadow node stays a root-kind node sized from its state and positioned
+absolutely. What is left in that entry is real and smaller: `animationType` is
+ignored, and so are `presentationStyle` and the iOS orientation props. Those are
+differences an app can see; "it is not a window" is not.

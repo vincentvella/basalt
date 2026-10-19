@@ -28,6 +28,33 @@ if (!require('node:fs').existsSync(built)) {
 }
 const {createTitleBarStack, sameRequest} = require(built);
 
+// The same arrangement, for the rule that decides which window a bounds event
+// is about. Its own module for exactly this reason: the rule lives inside a
+// React effect otherwise, and nothing below the end-to-end suite can get at
+// it. See packages/basalt-core/src/windowEvents.ts.
+const {eventIsForWindow} = require(
+  path.join(__dirname, '..', 'packages/basalt-core/dist/src/windowEvents.js'),
+);
+
+// One device event for the whole process, heard by every `useWindow()` in the
+// app. Before it carried a window, an app in a preview window re-rendered with
+// the main window's numbers whenever somebody dragged the main window.
+test('a bounds event reaches the window it is about and no other', () => {
+  assert.ok(eventIsForWindow(3, 3));
+  assert.ok(!eventIsForWindow(1, 3));
+  assert.ok(!eventIsForWindow(3, 1));
+});
+
+test('an event that names no window is taken as this one', () => {
+  // A host that has not been taught to say which window, which is what every
+  // event was before the field existed. Ignoring these would be a hook that
+  // silently stopped updating -- a window whose size never changes, with no
+  // error anywhere to say why.
+  assert.ok(eventIsForWindow(undefined, 1));
+  assert.ok(eventIsForWindow(null, 7));
+});
+
+
 test('the most recently mounted title bar request wins, key by key', () => {
   const stack = createTitleBarStack();
   stack.push({title: 'App', backgroundColor: '#111111', style: 'hidden'});

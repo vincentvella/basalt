@@ -445,4 +445,11 @@ Value DesktopWindowsModule::getWindows(Runtime &runtime,
   return Value(runtime, result);
 }
 
+folly::dynamic windowRootProps(const NewWindowOptions &options,
+                               facebook::react::SurfaceId surfaceId) {
+  folly::dynamic props = options.props.isObject() ? options.props : folly::dynamic::object();
+  props[kWindowSurfaceIdProp] = static_cast<int>(surfaceId);
+  return props;
+}
+
 } // namespace basalt

@@ -28,6 +28,7 @@
 #include <vector>
 #include "WindowControl.h"
 
+#include "GtkAppWindow.h"
 #include "GtkTitleBar.h"
 
 #include <gtk/gtk.h>
@@ -37,10 +38,18 @@ namespace basalt {
 namespace {
 
 
+// The window a call means, which is the lookup's answer where there is one.
+GtkWindow *window(facebook::react::SurfaceId id) { return gtkAppWindowFor(id); }
+
+GtkAppWindowLookup &lookup() {
+  static GtkAppWindowLookup value;
+  return value;
+}
+
 // The window this process owns. The same question PlatformServicesGtk.cpp asks
 // for a popup's parent, and asked the same way: GTK has a list of toplevels
 // rather than an idea of "the app's window".
-GtkWindow *window() {
+GtkWindow *appWindowByScan() {
   GListModel *toplevels = gtk_window_get_toplevels();
   if (toplevels == nullptr) {
     return nullptr;
@@ -66,6 +75,22 @@ GtkWindow *window() {
 }
 
 } // namespace
+
+GtkWindow *gtkAppWindow() { return appWindowByScan(); }
+
+void setGtkAppWindowLookup(GtkAppWindowLookup value) { lookup() = std::move(value); }
+
+GtkWindow *gtkAppWindowFor(facebook::react::SurfaceId id) {
+  if (id != kAppWindow && lookup()) {
+    if (GtkWindow *found = lookup()(id)) {
+      return found;
+    }
+    // An id nobody knows is the app's own window rather than nothing: a window
+    // that closed between a render and the call after it is the ordinary way
+    // to get here. See AppKitAppWindow.h, which says the same.
+  }
+  return appWindowByScan();
+}
 
 // The displays, and the three things GTK 4 will not say about them.
 //
@@ -129,9 +154,9 @@ PointerPosition pointerPosition() {
   return {};
 }
 
-WindowBounds windowBounds() {
+WindowBounds windowBounds(facebook::react::SurfaceId id) {
   WindowBounds bounds;
-  GtkWindow *target = window();
+  GtkWindow *target = window(id);
   if (target == nullptr) {
     return bounds;
   }
@@ -143,8 +168,8 @@ WindowBounds windowBounds() {
   return bounds;
 }
 
-void setWindowSize(double width, double height) {
-  GtkWindow *target = window();
+void setWindowSize(facebook::react::SurfaceId id, double width, double height) {
+  GtkWindow *target = window(id);
   if (target == nullptr || width <= 0.0 || height <= 0.0) {
     return;
   }
@@ -154,21 +179,21 @@ void setWindowSize(double width, double height) {
   gtk_window_set_default_size(target, static_cast<int>(width), static_cast<int>(height));
 }
 
-void setWindowPosition(double /*x*/, double /*y*/) {
+void setWindowPosition(facebook::react::SurfaceId /*id*/, double /*x*/, double /*y*/) {
   // Deliberately nothing. See the header: GTK4 removed `gtk_window_move` and
   // Wayland has no equivalent, so an app asking for a position is asking for
   // something no Linux desktop will do. Failing silently is the same answer the
   // compositor gives and is better than a warning an app cannot act on.
 }
 
-void centerWindow() {
+void centerWindow(facebook::react::SurfaceId /*id*/) {
   // Also nothing, and for the same reason -- centring is positioning. Both
   // display servers centre an unplaced window by default, so an app that never
   // moves its window already gets what this would have asked for.
 }
 
-void setWindowFullScreen(bool fullScreen) {
-  GtkWindow *target = window();
+void setWindowFullScreen(facebook::react::SurfaceId id, bool fullScreen) {
+  GtkWindow *target = window(id);
   if (target == nullptr) {
     return;
   }
@@ -181,7 +206,7 @@ void setWindowFullScreen(bool fullScreen) {
 
 
 void applyWindowSizeLimits() {
-  GtkWindow *target = window();
+  GtkWindow *target = gtkAppWindow();
   if (target == nullptr) {
     return;
   }
@@ -200,7 +225,7 @@ void applyWindowSizeLimits() {
 }
 
 void setWindowResizable(bool resizable) {
-  GtkWindow *target = window();
+  GtkWindow *target = gtkAppWindow();
   if (target != nullptr) {
     gtk_window_set_resizable(target, resizable ? TRUE : FALSE);
   }

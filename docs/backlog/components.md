@@ -14,13 +14,14 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 `Switch`, `Modal` and `RefreshControl` are done on all three hosts, and touch
 input, `PanResponder` and command routing with them. What is left:
 
-- **`Modal` is an overlay, not a window.** The shadow node is a root-kind node
+- **`Modal` is an overlay, not a window**, and that is settled rather than
+  pending: see DECISIONS.md, 2026-10-19. The shadow node is a root-kind node
   sized from its state and positioned absolutely, so a modal fills the surface
-  it is in, which is what it is on the web, and what needs no multiple-window
-  support. A second real window is more native on a desktop and is still the
-  better answer eventually; it depends on multiple windows, above.
-  `animationType` is ignored, and so are `presentationStyle` and the iOS
-  orientation props.
+  it is in, which is what it is on the web. A real window would be a second
+  React root, and a modal whose children lost the context wrapping them on the
+  desktop and nowhere else is the difference this project exists to avoid.
+  What is left here is `animationType`, which is ignored, and
+  `presentationStyle` and the iOS orientation props, which are too.
 - **A `<Switch>`'s colours are honoured on two hosts of three.** GTK gets them
   through a CSS provider and Windows draws them; `NSSwitch` follows the system
   accent colour and exposes nothing per instance, so `trackColor` and

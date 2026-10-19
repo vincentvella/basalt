@@ -8269,6 +8269,75 @@ def test_right_to_left(bundle: Path) -> str:
             "with the sentence against the far edge")
 
 
+def test_two_windows(bundle: Path) -> None:
+    """Each window reads its own geometry, not the active one's.
+
+    Both trees ask with the same line -- `useWindow().bounds` -- and have to
+    get different answers: the main window is the size the host opened it at,
+    and the second is the 520 by 360 `<Window>` asked for. Before geometry was
+    addressed by window they both reported whichever window the person was
+    looking at, so the numbers agreed and nothing noticed.
+
+    The assertion is the difference rather than two exact sizes: the height a
+    host reports includes its own title bar, which is a different number on
+    each desktop and not what this is about.
+
+    A second window is also the only place the id can be wrong in a way that
+    still looks plausible. The first `<Window>` an app mounts gets the
+    content-map counter 1, and the main window's surface id is 1, so an
+    implementation that confused the two read the main window's size and
+    looked almost right -- which is how it was found.
+
+    What this does *not* prove is each host's lookup from an id to its own
+    window, and the reason is worth recording rather than discovering twice:
+    in an app with one process the window acting is almost always the active
+    one, so a host that ignored the id and asked "which window is active"
+    answers correctly here by accident. The lookup is covered by the unit
+    tests around `resolveWindow`, and by what happens in an app whose other
+    window has focus, which no harness here can arrange.
+    """
+    app = bundle_app(bundle.parent, "windows")
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env = dict(os.environ)
+        env["BASALT_DUMP_TREE"] = str(dump)
+        env["BASALT_QUIT_AFTER_MS"] = "5000"
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                     "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
+            env.pop(name, None)
+
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltWindowsGeometry"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
+
+    main = re.search(r'text="main (\d+)x(\d+)"', tree)
+    second = re.search(r'text="second (\d+)x(\d+)"', tree)
+    if main is None or second is None:
+        raise Failure(f"one of the windows never reported its size:\n{tree[-1500:]}")
+
+    main_size = (int(main.group(1)), int(main.group(2)))
+    second_size = (int(second.group(1)), int(second.group(2)))
+    if 0 in main_size or 0 in second_size:
+        raise Failure(f"a window reported no size: main {main_size}, second {second_size}")
+    if main_size == second_size:
+        raise Failure(
+            f"both windows reported {main_size}, so each is reading whichever "
+            "window is active rather than its own"
+        )
+    # And the second one is the window it asked for rather than merely a
+    # different window: 520 wide is what `<Window width={520}>` requested, and
+    # the width is the one measurement no host's decorations change.
+    if second_size[0] != 520:
+        raise Failure(
+            f"the second window reports {second_size[0]} wide and was opened at 520"
+        )
+
+
 def test_title_bar(bundle: Path) -> None:
     """An app that draws its own title bar, and the arithmetic it lays out
     against.
@@ -8720,6 +8789,8 @@ SCENARIOS = [
     ("Alert.alert shows a dialog and says which button was pressed", test_alert),
     ("an app draws its own title bar and lays out against its metrics",
      test_title_bar),
+    ("two windows each read their own geometry rather than the active one's",
+     test_two_windows),
     ("Share.share reaches the platform and settles both ways", test_share),
     ("expo-notifications imports and answers on every desktop", test_notifications),
     ("react-native-macos's keyboard props work on a plain View", test_macos_key_props),

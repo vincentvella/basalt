@@ -85,8 +85,10 @@ import * as React from 'react';
 import type {TurboModule} from 'react-native';
 import {DeviceEventEmitter, TurboModuleRegistry} from 'react-native';
 
-import {mainWindowId, useCloseRequestFor} from './closeRequest';
-import type {CloseRequestHandler} from './closeRequest';
+import {closeWindowById, mainWindowId, useCloseRequestFor} from './closeRequest';
+import type {CloseRequestHandler, WindowId} from './closeRequest';
+import {APP_WINDOW, useWindowId} from './windowContext';
+import {eventIsForWindow} from './windowEvents';
 
 export type {CloseRequestHandler, WindowId} from './closeRequest';
 
@@ -115,10 +117,14 @@ export type WindowCapabilities = {
 };
 
 type NativeWindowModule = TurboModule & {
-  setSize?(width: number, height: number): void;
-  setPosition?(x: number, y: number): void;
-  center?(): void;
-  setFullScreen?(fullScreen: boolean): void;
+  // The window each of these is about, trailing and optional: zero, or
+  // nothing at all, means the window the app started in. See the change
+  // openspec/changes/add-per-window-geometry for why it rides there rather
+  // than first.
+  setSize?(width: number, height: number, window?: WindowId): void;
+  setPosition?(x: number, y: number, window?: WindowId): void;
+  center?(window?: WindowId): void;
+  setFullScreen?(fullScreen: boolean, window?: WindowId): void;
   minimize?(): void;
   toggleMaximize?(): void;
   close?(): void;
@@ -126,7 +132,7 @@ type NativeWindowModule = TurboModule & {
   setMaximumSize?(width: number, height: number): void;
   setResizable?(resizable: boolean): void;
   setAlwaysOnTop?(alwaysOnTop: boolean): void;
-  getBounds?(): WindowBounds | null;
+  getBounds?(window?: WindowId): WindowBounds | null;
   getCapabilities?(): WindowCapabilities | null;
 };
 
@@ -168,63 +174,100 @@ function readCapabilities(): WindowCapabilities {
 // a JSI call per frame for an answer that cannot change.
 const capabilities = readCapabilities();
 
-function readBounds(): WindowBounds {
+function readBounds(window: WindowId): WindowBounds {
   if (NativeWindow?.getBounds == null) {
     return NO_BOUNDS;
   }
-  const bounds = NativeWindow.getBounds();
+  const bounds = NativeWindow.getBounds(window);
   return bounds != null ? bounds : NO_BOUNDS;
+}
+
+/**
+ * The same calls, bound to one window.
+ *
+ * A factory rather than an id threaded through every call site, because
+ * `useWindow()` returns this object and an app holds onto it: binding the
+ * window once is what keeps `const {setSize} = useWindow()` working, which is
+ * how people write it.
+ *
+ * Every call is a no-op on a host with no window module, so the same code runs
+ * on a platform that has not implemented one.
+ */
+function controlFor(window: WindowId) {
+  return Object.freeze({
+    setSize(width: number, height: number): void {
+      NativeWindow?.setSize?.(width, height, window);
+    },
+    setPosition(x: number, y: number): void {
+      NativeWindow?.setPosition?.(x, y, window);
+    },
+    center(): void {
+      NativeWindow?.center?.(window);
+    },
+    setFullScreen(fullScreen?: boolean): void {
+      NativeWindow?.setFullScreen?.(fullScreen === true, window);
+    },
+    // Minimising and maximising are the app's own window's, whichever window
+    // asks. Both are a per-host call into that host's title bar rather than
+    // the shared geometry seam, and taking a window is what follows this
+    // change; see openspec/changes/add-per-window-geometry/tasks.md.
+    minimize(): void {
+      NativeWindow?.minimize?.();
+    },
+    toggleMaximize(): void {
+      NativeWindow?.toggleMaximize?.();
+    },
+    /**
+     * Closes this window.
+     *
+     * A second window closes through the windows module, which has taken an
+     * id since it was written, rather than through `BasaltWindow.close()`,
+     * which is the app's own window's. Without this split a preview window
+     * calling `close()` on itself closed the window behind it, which is the
+     * worst version of the bug this whole change is about.
+     */
+    close(): void {
+      if (window !== APP_WINDOW) {
+        closeWindowById(window);
+        return;
+      }
+      NativeWindow?.close?.();
+    },
+    // How big it may be is one set of numbers for the application, which is
+    // the restriction core/WindowControl.h records: Windows answers
+    // WM_GETMINMAXINFO out of them, and a message cannot be told which window
+    // it is about.
+    setMinimumSize(width: number, height: number): void {
+      NativeWindow?.setMinimumSize?.(width, height);
+    },
+    setMaximumSize(width: number, height: number): void {
+      NativeWindow?.setMaximumSize?.(width, height);
+    },
+    setResizable(resizable?: boolean): void {
+      NativeWindow?.setResizable?.(resizable !== false);
+    },
+    setAlwaysOnTop(alwaysOnTop?: boolean): void {
+      NativeWindow?.setAlwaysOnTop?.(alwaysOnTop === true);
+    },
+    getBounds(): WindowBounds {
+      return readBounds(window);
+    },
+    getCapabilities(): WindowCapabilities {
+      // The cached answer, so that the imperative half and the hook cannot
+      // disagree about a thing that does not change.
+      return capabilities;
+    },
+  });
 }
 
 /**
  * The imperative half, usable outside a component.
  *
- * Every call is a no-op on a host with no window module, so the same code runs
- * on a platform that has not implemented one.
+ * The app's own window, because code outside a component is inside no window:
+ * there is no React tree to read a context from. An app that wants a second
+ * window's geometry from outside its tree has its id and can say so.
  */
-export const windowControl = Object.freeze({
-  setSize(width: number, height: number): void {
-    NativeWindow?.setSize?.(width, height);
-  },
-  setPosition(x: number, y: number): void {
-    NativeWindow?.setPosition?.(x, y);
-  },
-  center(): void {
-    NativeWindow?.center?.();
-  },
-  setFullScreen(fullScreen?: boolean): void {
-    NativeWindow?.setFullScreen?.(fullScreen === true);
-  },
-  minimize(): void {
-    NativeWindow?.minimize?.();
-  },
-  toggleMaximize(): void {
-    NativeWindow?.toggleMaximize?.();
-  },
-  close(): void {
-    NativeWindow?.close?.();
-  },
-  setMinimumSize(width: number, height: number): void {
-    NativeWindow?.setMinimumSize?.(width, height);
-  },
-  setMaximumSize(width: number, height: number): void {
-    NativeWindow?.setMaximumSize?.(width, height);
-  },
-  setResizable(resizable?: boolean): void {
-    NativeWindow?.setResizable?.(resizable !== false);
-  },
-  setAlwaysOnTop(alwaysOnTop?: boolean): void {
-    NativeWindow?.setAlwaysOnTop?.(alwaysOnTop === true);
-  },
-  getBounds(): WindowBounds {
-    return readBounds();
-  },
-  getCapabilities(): WindowCapabilities {
-    // The cached answer, so that the imperative half and the hook cannot
-    // disagree about a thing that does not change.
-    return capabilities;
-  },
-});
+export const windowControl = controlFor(APP_WINDOW);
 
 /**
  * Be asked before this window closes.
@@ -245,22 +288,45 @@ export type UseWindow = WindowControl & {
 };
 
 export function useWindow(): UseWindow {
-  const [bounds, setBounds] = React.useState(readBounds);
+  // The window this tree is in, which is the window every call below means.
+  // `APP_WINDOW` outside any `<Window>`, which is the app's own.
+  const window = useWindowId();
+  const [bounds, setBounds] = React.useState(() => readBounds(window));
 
   React.useEffect(() => {
     // Read again on mount as well as subscribing. The window may have been
     // resized between the first render and this effect -- which on a host that
     // opens its window and mounts into it is the common case, not the rare one.
-    setBounds(readBounds());
+    setBounds(readBounds(window));
+
+    // Which id the events about this window carry. Asked once per
+    // subscription rather than per event: `mainWindowId()` is a call into the
+    // host, and a resize is a stream.
+    //
+    // The hook holds zero for the app's own window and the host names it by
+    // its real id, so the two have to be brought together somewhere, and this
+    // is the cheapest place.
+    const mine = window === APP_WINDOW ? mainWindowId() : window;
 
     const subscription = DeviceEventEmitter.addListener(
       BOUNDS_EVENT,
-      (next: WindowBounds | null) => {
+      (next: (WindowBounds & {window?: WindowId}) | null) => {
+        // Only this window's. The event is one signal for the process, so an
+        // app in a preview window would otherwise re-render -- with the other
+        // window's numbers -- every time somebody dragged the main one. The
+        // rule, including what an event that names no window means, is
+        // windowEvents.ts, where a test can reach it.
+        if (!eventIsForWindow(next?.window, mine)) {
+          return;
+        }
         setBounds(next ?? NO_BOUNDS);
       },
     );
     return () => subscription.remove();
-  }, []);
+  }, [window]);
 
-  return React.useMemo(() => ({...windowControl, bounds, capabilities}), [bounds]);
+  return React.useMemo(
+    () => ({...controlFor(window), bounds, capabilities}),
+    [bounds, window],
+  );
 }

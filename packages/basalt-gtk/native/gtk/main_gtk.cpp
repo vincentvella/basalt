@@ -70,6 +70,7 @@
 #include "DevBundle.h"
 #include "DragAndDrop.h"
 #include "GtkDropTarget.h"
+#include "GtkAppWindow.h"
 #include "GtkTitleBar.h"
 // Which parts of an app-drawn header drag the window; see the gesture below.
 #include "GtkTitleBarLayout.h"
@@ -753,8 +754,8 @@ void onRootResized(RnView * /*view*/, int width, int height, gpointer data) {
   host->mountingManager->setSurfaceSize(static_cast<float>(width), static_cast<float>(height));
   // The window moved or was resized, which `useWindow()` hands an app as live
   // bounds. Here rather than in a watcher of its own: this is already the one
-  // place that learns it.
-  basalt::notifyWindowBoundsChanged();
+  // place that learns it, and it already knows which window it was.
+  basalt::notifyWindowBoundsChanged(made->surfaceId);
   // And `Dimensions.get('window')`, which is the area React lays out in rather
   // than the window's frame. The main surface only: a second window has a
   // surface of its own and `Dimensions` is singular.
@@ -1214,8 +1215,12 @@ HostWindow *createHostWindow(Host *host,
   // Maximised and full screen, which change the bounds and not the size of the
   // surface -- so the resize callback above never runs for them. GTK has no
   // move notification and no position to report; see GtkWindowControl.cpp.
-  const auto onWindowState = +[](GObject * /*window*/, GParamSpec * /*spec*/, gpointer /*data*/) {
-    basalt::notifyWindowBoundsChanged();
+  const auto onWindowState = +[](GObject * /*window*/, GParamSpec * /*spec*/, gpointer data) {
+    // Which window changed state, so an app in another is not told its own
+    // did. `made` is handed in below rather than looked up from the GObject:
+    // the signal is connected per window and already knows.
+    auto *changed = static_cast<HostWindow *>(data);
+    basalt::notifyWindowBoundsChanged(changed->surfaceId);
   };
   // Somebody is trying to close this window: its own close button, the window
   // manager, or Alt+F4. Every window, including the app's own -- an app that
@@ -1260,8 +1265,8 @@ HostWindow *createHostWindow(Host *host,
                    }),
                    made);
 
-  g_signal_connect(made->window, "notify::maximized", G_CALLBACK(onWindowState), nullptr);
-  g_signal_connect(made->window, "notify::fullscreened", G_CALLBACK(onWindowState), nullptr);
+  g_signal_connect(made->window, "notify::maximized", G_CALLBACK(onWindowState), made);
+  g_signal_connect(made->window, "notify::fullscreened", G_CALLBACK(onWindowState), made);
 
   // `AppState`: whether this application is the one in front, and whether any
   // of it is on screen. The main window's, since React Native's AppState is
@@ -1386,10 +1391,22 @@ void onActivate(GtkApplication *app, gpointer data) {
     g_signal_connect(settings, "notify::gtk-xft-dpi", G_CALLBACK(onTextScaleChanged), nullptr);
   }
 
+  // How the window module finds a window by id, and which one a call that
+  // names none means. See GtkAppWindow.h.
+  basalt::setGtkAppWindowLookup([](facebook::react::SurfaceId surfaceId) -> GtkWindow * {
+    Host *found = gWindowHost;
+    if (found == nullptr) {
+      return nullptr;
+    }
+    HostWindow *window = found->windowFor(surfaceId);
+    return window == nullptr ? nullptr : window->window;
+  });
+  basalt::setAppWindowId(kSurfaceId);
+
   // Prime the bounds cache, which `getBounds()` answers from: without this an
   // app's first render sees a window of no size, and only a later resize
   // corrects it. See core/WindowBoundsCache.cpp.
-  basalt::notifyWindowBoundsChanged();
+  basalt::notifyWindowBoundsChanged(kSurfaceId);
 
   // And the display list, for the same reason and off the same seam: an app
   // asking which screens exist before anything has been plugged or unplugged
@@ -2028,10 +2045,13 @@ facebook::react::SurfaceId openHostWindow(const NewWindowOptions &options) {
 
   host->reactHost->startSurface(surfaceId,
                                 options.component,
-                                options.props,
+                                windowRootProps(options, surfaceId),
                                 constraintsFor(width, height),
                                 layoutContextFor(made->scaleFactor));
   gtk_window_present(made->window);
+  // Prime this window's bounds the way the main window's are primed at
+  // startup; see the call beside that one.
+  basalt::notifyWindowBoundsChanged(surfaceId);
   g_message("opened window %d for module %s",
             static_cast<int>(surfaceId),
             options.component.c_str());

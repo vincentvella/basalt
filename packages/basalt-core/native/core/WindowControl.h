@@ -13,18 +13,51 @@
 // written once, in core/WindowMethods.h, and this is the four lines under it
 // each platform answers.
 //
-// One window, which is the honest limit. Every function here means "the
-// window", because the host makes exactly one; multiple windows are their own
-// piece of work and are in docs/BACKLOG.md. When they arrive these grow a
-// window argument and the module grows a handle, and nothing above changes
-// shape.
+// Every function that is about one window takes the window it means. That used
+// to read "one window, which is the honest limit", and it stopped being true
+// when `<Window>` shipped: an app with two of them was asking about whichever
+// one the person was looking at.
+//
+// A window is named by its surface id, which is the id it already has -- see
+// core/WindowHost.h, where one window, one surface and one React root is
+// argued. There is no second numbering.
 
 #pragma once
+
+#include <react/renderer/core/ReactPrimitives.h>
 
 #include <functional>
 #include <vector>
 
 namespace basalt {
+
+// The window the application started in, which is what a call that names no
+// window means. Not a surface id: the main window's is 1, so zero is free.
+//
+// `windowControl` in JavaScript is callable from outside any component, and so
+// from inside no window; this is what it sends. A host with no window registry
+// -- every test binary and both mount harnesses -- resolves it the way it
+// resolved everything before this existed.
+inline constexpr facebook::react::SurfaceId kAppWindow = 0;
+
+// Which surface id the application's own window has. Called by each host once,
+// where it makes that window.
+//
+// Told rather than asked. `hostWindows()` knows, and core calling it would put
+// a symbol from each host's `main_*` file into the link of everything that
+// uses core -- which is every test binary and both mount harnesses, none of
+// which has a window at all. Found by the link failing on exactly that.
+void setAppWindowId(facebook::react::SurfaceId window);
+
+// `kAppWindow` as the id the host actually uses for it. Anything else is
+// passed through.
+//
+// Resolved here, once, rather than in each host: the hosts speak in real
+// surface ids everywhere else -- closing, intercepting, the tree dump -- and a
+// second convention where zero sometimes means a window would be the kind of
+// quiet mismatch this id was chosen to avoid. Zero before a host has said,
+// which its own "the app's window" fallback then handles.
+facebook::react::SurfaceId resolveWindow(facebook::react::SurfaceId window);
 
 struct WindowBounds {
   // In logical pixels, in the desktop's coordinates -- which is what an app can
@@ -51,24 +84,30 @@ struct WindowBounds {
 // is what marshals, so a platform implementation may assume it is already in
 // the right place. Getting this wrong is quiet rather than loud: the AppKit
 // resize simply did not happen, with no warning anywhere.
-WindowBounds windowBounds();
+WindowBounds windowBounds(facebook::react::SurfaceId window);
 
-void setWindowSize(double width, double height);
-void setWindowPosition(double x, double y);
+void setWindowSize(facebook::react::SurfaceId window, double width, double height);
+void setWindowPosition(facebook::react::SurfaceId window, double x, double y);
 
 // Centred on the display the window is already on, which is not always the
 // primary one.
-void centerWindow();
+void centerWindow(facebook::react::SurfaceId window);
 
-void setWindowFullScreen(bool fullScreen);
+void setWindowFullScreen(facebook::react::SurfaceId window, bool fullScreen);
 
-// Called by the host whenever the window is resized, moved, or changes state.
+// Called by the host whenever a window is resized, moved, or changes state.
 //
 // The module installs one of these and turns it into a device event, so that
 // `useWindow()` can hand an app live bounds rather than a snapshot it has to
 // remember to refresh. Replacing a listener drops the previous one; passing
 // nothing removes it.
-void setWindowBoundsListener(std::function<void(const WindowBounds &)> listener);
+//
+// It carries the window that changed, because an app inside one window must
+// not re-render every time somebody drags another. One listener rather than
+// one per window: the module turns it into a device event either way, and a
+// set of listeners would be a second registry to keep in step with the hosts'.
+void setWindowBoundsListener(
+    std::function<void(facebook::react::SurfaceId, const WindowBounds &)> listener);
 
 // How big the area React lays out in is, which is not the window's frame: a
 // title bar belongs to the window and not to the app.
@@ -94,11 +133,15 @@ void lastKnownSurfaceSize(double *outWidth, double *outHeight);
 // whichever was constructed second silently took the other's events.
 void setDimensionsListener(std::function<void()> listener);
 
-// The host's half of that: called from wherever it already learns the window
-// moved or resized, on the UI thread. Also updates the cache below, so it is
-// worth calling once when the window is first shown even if nothing is
+// The host's half of that: called from wherever it already learns a window
+// moved or resized, on the UI thread. Also updates that window's cache entry,
+// so it is worth calling once when a window is first shown even if nothing is
 // listening yet.
-void notifyWindowBoundsChanged();
+//
+// The host knows which window it was -- every one of these fires from a
+// per-window resize or move handler -- and before this took an argument it
+// threw that away and re-read whichever window was active.
+void notifyWindowBoundsChanged(facebook::react::SurfaceId window);
 
 // How big the window is allowed to be, in logical pixels.
 //
@@ -173,8 +216,10 @@ WindowCapabilities windowCapabilities();
 // no hop, which matters because it is read during render.
 //
 // All zeroes before the host has reported anything, which is what an app
-// reading bounds during its first render sees.
-WindowBounds lastKnownWindowBounds();
+// reading bounds during its first render sees -- and what a window nobody has
+// reported reads, which is the same situation a render ahead of its window is
+// in rather than a different one.
+WindowBounds lastKnownWindowBounds(facebook::react::SurfaceId window);
 
 // --- The displays the desktop has -------------------------------------------
 //

@@ -77,7 +77,10 @@ DeviceMetrics currentDeviceMetrics() {
   double surfaceWidth = 0.0;
   double surfaceHeight = 0.0;
   lastKnownSurfaceSize(&surfaceWidth, &surfaceHeight);
-  return deviceMetricsFrom(lastKnownWindowBounds(),
+  // The app's own window: `Dimensions` is singular and means the window the
+  // app is running in, which is what core/WindowControl.h says of the surface
+  // size beside it.
+  return deviceMetricsFrom(lastKnownWindowBounds(kAppWindow),
                            surfaceWidth,
                            surfaceHeight,
                            lastKnownDisplays(),

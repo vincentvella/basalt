@@ -21,17 +21,40 @@
 // scale factor. GetDpiForWindow would answer for the window's monitor only.
 #include <shellscalingapi.h>
 
+#include "Win32AppWindow.h"
+
 namespace basalt {
 
 namespace {
 
+// The window a call means, which is the lookup's answer where there is one.
+HWND window(facebook::react::SurfaceId id) { return win32AppWindowFor(id); }
 
-HWND window() {
+Win32AppWindowLookup &lookup() {
+  static Win32AppWindowLookup value;
+  return value;
+}
+
+} // namespace
+
+HWND win32AppWindow() {
   HWND active = GetActiveWindow();
   return active != nullptr ? active : GetForegroundWindow();
 }
 
-} // namespace
+void setWin32AppWindowLookup(Win32AppWindowLookup value) { lookup() = std::move(value); }
+
+HWND win32AppWindowFor(facebook::react::SurfaceId id) {
+  if (id != kAppWindow && lookup()) {
+    if (HWND found = lookup()(id)) {
+      return found;
+    }
+    // An id nobody knows is the app's own window rather than nothing: a window
+    // that closed between a render and the call after it is the ordinary way
+    // to get here. See AppKitAppWindow.h, which says the same.
+  }
+  return win32AppWindow();
+}
 
 // Every monitor, through the callback API that is the only way to ask.
 //
@@ -99,9 +122,9 @@ PointerPosition pointerPosition() {
   return where;
 }
 
-WindowBounds windowBounds() {
+WindowBounds windowBounds(facebook::react::SurfaceId id) {
   WindowBounds bounds;
-  HWND target = window();
+  HWND target = window(id);
   if (target == nullptr) {
     return bounds;
   }
@@ -138,8 +161,8 @@ WindowBounds windowBounds() {
   return bounds;
 }
 
-void setWindowSize(double width, double height) {
-  HWND target = window();
+void setWindowSize(facebook::react::SurfaceId id, double width, double height) {
+  HWND target = window(id);
   if (target == nullptr || width <= 0.0 || height <= 0.0) {
     return;
   }
@@ -160,8 +183,8 @@ void setWindowSize(double width, double height) {
                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void setWindowPosition(double x, double y) {
-  HWND target = window();
+void setWindowPosition(facebook::react::SurfaceId id, double x, double y) {
+  HWND target = window(id);
   if (target == nullptr) {
     return;
   }
@@ -174,8 +197,8 @@ void setWindowPosition(double x, double y) {
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void centerWindow() {
-  HWND target = window();
+void centerWindow(facebook::react::SurfaceId id) {
+  HWND target = window(id);
   if (target == nullptr) {
     return;
   }
@@ -200,8 +223,8 @@ void centerWindow() {
   SetWindowPos(target, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void setWindowFullScreen(bool fullScreen) {
-  HWND target = window();
+void setWindowFullScreen(facebook::react::SurfaceId id, bool fullScreen) {
+  HWND target = window(id);
   if (target == nullptr) {
     return;
   }
@@ -252,7 +275,7 @@ void setWindowFullScreen(bool fullScreen) {
 }
 
 void applyWindowSizeLimits() {
-  HWND target = window();
+  HWND target = win32AppWindow();
   if (target == nullptr) {
     return;
   }
@@ -275,7 +298,7 @@ void applyWindowSizeLimits() {
 }
 
 void setWindowResizable(bool resizable) {
-  HWND target = window();
+  HWND target = win32AppWindow();
   if (target == nullptr) {
     return;
   }
@@ -303,7 +326,7 @@ void setWindowResizable(bool resizable) {
 }
 
 void setWindowAlwaysOnTop(bool alwaysOnTop) {
-  HWND target = window();
+  HWND target = win32AppWindow();
   if (target == nullptr) {
     return;
   }

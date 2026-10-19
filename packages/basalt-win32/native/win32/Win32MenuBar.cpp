@@ -342,7 +342,9 @@ bool handleMenuCommand(unsigned int command) {
       PostMessageW(window, WM_CLOSE, 0, 0);
       return true;
     case kRoleBase + 12:
-      setWindowFullScreen(!windowBounds().fullScreen);
+      // The app's own window: a menu role acts on the window the menu bar
+      // belongs to, which is that one. See core/WindowControl.h.
+      setWindowFullScreen(kAppWindow, !windowBounds(kAppWindow).fullScreen);
       return true;
     default:
       return false;

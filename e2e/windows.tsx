@@ -25,7 +25,7 @@
 
 import * as React from 'react';
 import {AppRegistry, Platform, Pressable, StyleSheet, Text, View} from 'react-native';
-import {Window, useCloseRequest} from 'basalt-core';
+import {Window, useCloseRequest, useWindow} from 'basalt-core';
 
 console.log(`Platform.OS is ${Platform.OS}`);
 console.log(`windows supported: ${Window.isSupported}`);
@@ -145,6 +145,50 @@ function Guarded() {
     </View>
   );
 }
+
+/**
+ * Which window a `useWindow()` is in.
+ *
+ * Both trees ask the same question with the same line and must get different
+ * answers: the main window is the size the host opened it at, and the second
+ * is 520 by 360 because that is what `<Window>` asked for. Before geometry
+ * was addressed by window they both reported whichever window was active, so
+ * the two numbers were the same one twice and nothing said so.
+ *
+ * The second window opens on mount rather than on a press, because what this
+ * is about is what the two trees read rather than how they got there.
+ */
+function Geometry() {
+  const main = useWindow();
+  return (
+    <View style={styles.page}>
+      <Text style={styles.label}>Main window</Text>
+      <Text style={styles.count}>
+        {`main ${Math.round(main.bounds.width)}x${Math.round(main.bounds.height)}`}
+      </Text>
+      <Window title="Geometry" width={520} height={360}>
+        <Second />
+      </Window>
+    </View>
+  );
+}
+
+// A component rather than inline, so the hook runs inside the second window's
+// own tree: that is the whole point of the test, and `<Window>`'s children are
+// rendered there rather than where they are written.
+function Second() {
+  const own = useWindow();
+  return (
+    <View style={styles.second}>
+      <Text style={styles.label}>Second window</Text>
+      <Text style={styles.count}>
+        {`second ${Math.round(own.bounds.width)}x${Math.round(own.bounds.height)}`}
+      </Text>
+    </View>
+  );
+}
+
+AppRegistry.registerComponent('BasaltWindowsGeometry', () => Geometry);
 
 AppRegistry.registerComponent('BasaltWindowsGuarded', () => Guarded);
 

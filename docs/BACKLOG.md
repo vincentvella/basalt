@@ -16,7 +16,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 
 | Area | Open | What is left there |
 | --- | --- | --- |
-| [Desktop capabilities](backlog/desktop-capabilities.md) | 32 | Windows, menus, dialogs and dragging are done; the catalogue at the end of that file is the rest of the surface (tray, permissions, power, global shortcuts) checked one at a time against the repository. |
+| [Desktop capabilities](backlog/desktop-capabilities.md) | 31 | Windows, menus, dialogs and dragging are done; the catalogue at the end of that file is the rest of the surface (tray, permissions, power, global shortcuts) checked one at a time against the repository. |
 | [Ecosystem](backlog/ecosystem.md) | 3 | The packages are on npm and nobody has been told. Porting a first third-party native module, and packaging for Arch and Flatpak. |
 | [Core modules](backlog/core-modules.md) | 6 | React Native APIs with no implementation here. |
 | [Expo](backlog/expo.md) | 12 | Beyond the template: more Expo views, Reanimated's untried paths, and the gestures a cursor cannot make. |

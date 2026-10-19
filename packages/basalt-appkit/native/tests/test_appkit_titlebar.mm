@@ -136,7 +136,9 @@ TEST(appkit_window_bounds_do_not_need_the_app_to_be_active) {
     window.releasedWhenClosed = NO;
     [window orderFront:nil];
 
-    const basalt::WindowBounds bounds = basalt::windowBounds();
+    // The app's own window: this test has no registry and no lookup, which is
+    // the situation every test binary is in. See AppKitAppWindow.h.
+    const basalt::WindowBounds bounds = basalt::windowBounds(basalt::kAppWindow);
     // The frame rather than the content rect, which is what `getBounds()`
     // reports and is taller by the title bar.
     EXPECT(bounds.width >= 640.0);

@@ -74,6 +74,7 @@ import {AppRegistry, DeviceEventEmitter, TurboModuleRegistry} from 'react-native
 
 import {useCloseRequestFor} from './closeRequest';
 import type {CloseRequestHandler, WindowId} from './closeRequest';
+import {APP_WINDOW, WindowIdContext} from './windowContext';
 
 /** How a second window opens. Changing these afterwards is `useWindow()`'s job. */
 export type WindowProps = {
@@ -131,7 +132,17 @@ function setContent(id: number, children: React.ReactNode): void {
  * whatever its `<Window>` currently has as children, and subscribes so that a
  * re-render of the first tree reaches the second.
  */
-function WindowContent({basaltWindowId}: {basaltWindowId: number}): React.ReactNode {
+function WindowContent({
+  basaltWindowId,
+  // The surface id, which the *host* adds: see kWindowSurfaceIdProp in
+  // core/WindowHost.h. `basaltWindowId` beside it is this file's own counter
+  // and keys the map below; the two are different numbers and only this one
+  // means a window.
+  basaltSurfaceId,
+}: {
+  basaltWindowId: number;
+  basaltSurfaceId?: WindowId;
+}): React.ReactNode {
   const [children, setChildren] = React.useState<React.ReactNode>(
     () => contents.get(basaltWindowId) ?? null,
   );
@@ -146,7 +157,19 @@ function WindowContent({basaltWindowId}: {basaltWindowId: number}): React.ReactN
     };
   }, [basaltWindowId]);
 
-  return children;
+  // Which window this tree is in, for anything inside it that asks. The id
+  // arrives as an initial prop because the host starts the root with it, and
+  // this is what carries it the rest of the way: `useWindow()` ten components
+  // deep means this window, not whichever one the person is looking at.
+  //
+  // The only context that crosses, and it crosses because it is provided
+  // *here*, inside the second root, rather than in the tree the children were
+  // written in. See the header above for why nothing else does.
+  return (
+    <WindowIdContext.Provider value={basaltSurfaceId ?? APP_WINDOW}>
+      {children}
+    </WindowIdContext.Provider>
+  );
 }
 
 const CONTENT_COMPONENT = 'BasaltWindowContent';

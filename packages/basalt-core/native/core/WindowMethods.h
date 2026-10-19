@@ -15,6 +15,8 @@
 
 #include <ReactCommon/TurboModule.h>
 
+#include "WindowControl.h"
+
 namespace basalt {
 
 // `setSize(width, height)`. Ignores a call with anything but two numbers, which
@@ -80,5 +82,16 @@ facebook::jsi::Value windowGetBounds(facebook::jsi::Runtime &runtime,
 // The device event `useWindow()` listens for. Named here so the two sides
 // cannot drift.
 inline constexpr const char *kWindowBoundsEvent = "basaltWindowBoundsChanged";
+
+// The event's payload: the bounds, and the window they are about.
+//
+// Written once because all three hosts emitted the same six properties from
+// the same lambda, and the window id they now carry as well is exactly the
+// kind of field two of three would eventually be missing. The emitting is
+// still each host's -- `emitDeviceEvent` is a method on its module -- and only
+// the shape of the object is here.
+facebook::jsi::Value windowBoundsPayload(facebook::jsi::Runtime &runtime,
+                                         facebook::react::SurfaceId window,
+                                         const WindowBounds &bounds);
 
 } // namespace basalt

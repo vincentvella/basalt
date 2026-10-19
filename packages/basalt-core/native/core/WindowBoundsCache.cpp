@@ -13,6 +13,8 @@
 #include "WindowControl.h"
 #include "WindowHost.h"
 
+#include <atomic>
+#include <map>
 #include <mutex>
 #include <set>
 #include <utility>
@@ -26,19 +28,44 @@ std::mutex &lock() {
   return value;
 }
 
-WindowBounds &cache() {
-  static WindowBounds bounds;
+// One entry per window, rather than one set of numbers.
+//
+// A map rather than a vector indexed by surface id: ids are handed out by the
+// host and a second window's is not 1, so an index would be a sparse array
+// with a hole at the front. It is read on every `getBounds()`, which is a
+// render, and a map of two or three entries is not what makes that slow.
+std::map<facebook::react::SurfaceId, WindowBounds> &cache() {
+  static std::map<facebook::react::SurfaceId, WindowBounds> bounds;
   return bounds;
 }
 
-std::function<void(const WindowBounds &)> &listener() {
-  static std::function<void(const WindowBounds &)> value;
+std::function<void(facebook::react::SurfaceId, const WindowBounds &)> &listener() {
+  static std::function<void(facebook::react::SurfaceId, const WindowBounds &)> value;
   return value;
 }
 
 } // namespace
 
-void setWindowBoundsListener(std::function<void(const WindowBounds &)> value) {
+namespace {
+
+// Written once at startup and read from both threads, which is what the atomic
+// is for: a plain int would be a data race the moment `getBounds()` ran while
+// the host was still starting.
+std::atomic<facebook::react::SurfaceId> &appWindowId() {
+  static std::atomic<facebook::react::SurfaceId> value{kAppWindow};
+  return value;
+}
+
+} // namespace
+
+void setAppWindowId(facebook::react::SurfaceId window) { appWindowId() = window; }
+
+facebook::react::SurfaceId resolveWindow(facebook::react::SurfaceId window) {
+  return window == kAppWindow ? appWindowId().load() : window;
+}
+
+void setWindowBoundsListener(
+    std::function<void(facebook::react::SurfaceId, const WindowBounds &)> value) {
   const std::lock_guard<std::mutex> guard(lock());
   listener() = std::move(value);
 }
@@ -161,9 +188,15 @@ WindowSizeLimits windowSizeLimits() {
   return limits();
 }
 
-WindowBounds lastKnownWindowBounds() {
+WindowBounds lastKnownWindowBounds(facebook::react::SurfaceId window) {
+  const facebook::react::SurfaceId wanted = resolveWindow(window);
   const std::lock_guard<std::mutex> guard(lock());
-  return cache();
+  const auto found = cache().find(wanted);
+  // Zeroes for a window nobody has reported, which is the same answer a read
+  // before the first window gets and for the same reason: there is nothing to
+  // say yet. An app in a window whose first bounds have not arrived renders
+  // with zeroes once and with the real numbers immediately after.
+  return found == cache().end() ? WindowBounds{} : found->second;
 }
 
 namespace {
@@ -218,23 +251,29 @@ void setDimensionsListener(std::function<void()> listener) {
   dimensionsListener() = std::move(listener);
 }
 
-void notifyWindowBoundsChanged() {
+void notifyWindowBoundsChanged(facebook::react::SurfaceId window) {
   // Asked on the UI thread, which is where this is called from, and stored
   // where the JavaScript thread can read it.
-  const WindowBounds bounds = windowBounds();
+  const WindowBounds bounds = windowBounds(window);
+  // Asked before the lock is taken: it reads the host's window list, and this
+  // file's rule is that nothing is called into while the lock is held.
+  const bool isAppWindow = window == resolveWindow(kAppWindow);
 
-  std::function<void(const WindowBounds &)> toCall;
+  std::function<void(facebook::react::SurfaceId, const WindowBounds &)> toCall;
   std::function<void()> toCallForDimensions;
   {
     const std::lock_guard<std::mutex> guard(lock());
-    cache() = bounds;
+    cache()[window] = bounds;
     toCall = listener();
-    toCallForDimensions = dimensionsListener();
+    // `Dimensions` is singular and means the app's own window, so a second
+    // window moving is not a dimensions change. Without this an app that
+    // resized a preview window would re-lay-out its main one.
+    toCallForDimensions = isAppWindow ? dimensionsListener() : nullptr;
   }
   // Called outside the lock: they emit device events, and holding a lock across
   // a call into the runtime is how a deadlock is built.
   if (toCall) {
-    toCall(bounds);
+    toCall(window, bounds);
   }
   if (toCallForDimensions) {
     toCallForDimensions();

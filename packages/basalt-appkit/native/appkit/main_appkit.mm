@@ -28,6 +28,7 @@
 // other than "linux", which is its own piece of work.
 
 #import "AppKitAnimationChoreographer.h"
+#import "AppKitAppWindow.h"
 #import "AppKitMountingManager.h"
 #import "CoreTextLayout.h"
 
@@ -877,8 +878,14 @@ void shutdown() {
 }
 
 - (void)windowDidMove:(NSNotification *)notification {
-  (void)notification;
-  basalt::notifyWindowBoundsChanged();
+  // Which window moved, for the reason windowDidResize: below gives about
+  // which one resized: an app in one window must not be told another moved.
+  for (const auto &candidate : gHost.windows) {
+    if (candidate->window == notification.object) {
+      basalt::notifyWindowBoundsChanged(candidate->surfaceId);
+      return;
+    }
+  }
 }
 
 - (void)windowDidResize:(NSNotification *)notification {
@@ -923,8 +930,8 @@ void shutdown() {
   }
   // The window moved or was resized, which `useWindow()` hands an app as live
   // bounds. Here rather than in a watcher of its own: this is already the one
-  // place that learns it.
-  basalt::notifyWindowBoundsChanged();
+  // place that learns it, and it already knows which window it was.
+  basalt::notifyWindowBoundsChanged(resized->surfaceId);
 
   // The inspector covers the main window, so it resizes with it -- and only
   // with it: an error is about the app rather than about a window.
@@ -1113,10 +1120,15 @@ facebook::react::SurfaceId openHostWindow(const NewWindowOptions &options) {
 
     gHost.reactHost->startSurface(surfaceId,
                                   options.component,
-                                  options.props,
+                                  windowRootProps(options, surfaceId),
                                   constraintsFor(width, height),
                                   layoutContextFor(made->scaleFactor));
     [made->window makeKeyAndOrderFront:nil];
+    // Prime this window's bounds the way the main window's are primed at
+    // startup. Without it the app inside it renders once against zeroes and is
+    // corrected only when somebody drags it, which for a window that is never
+    // moved is never.
+    basalt::notifyWindowBoundsChanged(surfaceId);
     NSLog(@"opened window %d for module %s", (int)surfaceId, options.component.c_str());
     return surfaceId;
   }
@@ -1246,6 +1258,16 @@ int main(int argc, const char *argv[]) {
 
     // The application's own window, which is windows.front() from here on and
     // is what everything not yet per-window means by "the window".
+    // How the window module finds a window by id. The registry is this file's;
+    // everything that resolves one is in the mounting library. See
+    // AppKitAppWindow.h.
+    basalt::setAppWindowLookup([](facebook::react::SurfaceId surfaceId) -> NSWindow * {
+      HostWindow *found = gHost.windowFor(surfaceId);
+      return found == nullptr ? nil : found->window;
+    });
+    // And which window a call that names none means.
+    basalt::setAppWindowId(kSurfaceId);
+
     createHostWindow(kSurfaceId,
                      @"basalt-core — macOS",
                      kInitialWidth,
@@ -1432,7 +1454,7 @@ int main(int argc, const char *argv[]) {
     // Prime the bounds cache, which `getBounds()` answers from: without this an
     // app's first render sees a window of no size, and only a later resize
     // corrects it. See core/WindowBoundsCache.cpp.
-    basalt::notifyWindowBoundsChanged();
+    basalt::notifyWindowBoundsChanged(kSurfaceId);
 
     // Accepting what the desktop drags onto this window. On the surface root
     // rather than per view: AppKit asks the destination under the pointer,

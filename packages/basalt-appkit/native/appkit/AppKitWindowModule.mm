@@ -85,24 +85,19 @@ AppKitWindowModule::AppKitWindowModule(std::shared_ptr<facebook::react::CallInvo
   // The window's geometry, the same way the title bar's metrics go out: a
   // device event, so `useWindow()` can hand an app live bounds rather than a
   // snapshot it has to remember to refresh.
-  setWindowBoundsListener([this](const WindowBounds &bounds) {
-    emitDeviceEvent(kWindowBoundsEvent, [bounds](Runtime &runtime, std::vector<Value> &args) {
-      Object object(runtime);
-      object.setProperty(runtime, "x", bounds.x);
-      object.setProperty(runtime, "y", bounds.y);
-      object.setProperty(runtime, "width", bounds.width);
-      object.setProperty(runtime, "height", bounds.height);
-      object.setProperty(runtime, "fullScreen", bounds.fullScreen);
-      object.setProperty(runtime, "maximized", bounds.maximized);
-      args.emplace_back(Value(runtime, object));
-    });
-  });
+  setWindowBoundsListener(
+      [this](facebook::react::SurfaceId window, const WindowBounds &bounds) {
+        emitDeviceEvent(kWindowBoundsEvent,
+                        [window, bounds](Runtime &runtime, std::vector<Value> &args) {
+                          args.emplace_back(windowBoundsPayload(runtime, window, bounds));
+                        });
+      });
 
   // And ask for the bounds once, now that something is listening. The host
   // primes the cache when its window appears, but this module is built lazily
   // -- the first time JavaScript asks for it -- so an app that mounts before
   // then would read a window of no size and never be told otherwise.
-  postToUiThread([] { notifyWindowBoundsChanged(); });
+  postToUiThread([] { notifyWindowBoundsChanged(resolveWindow(kAppWindow)); });
 }
 
 AppKitWindowModule::~AppKitWindowModule() {

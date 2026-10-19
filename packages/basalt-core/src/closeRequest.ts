@@ -40,6 +40,7 @@ export type CloseRequestHandler = (close: AllowClose) => void;
 type NativeWindowsModule = TurboModule & {
   interceptClose?(id: WindowId, intercepted: boolean): void;
   getWindows?(): WindowId[] | null;
+  close?(id: WindowId): void;
 };
 
 const NativeWindows = TurboModuleRegistry.get<NativeWindowsModule>('BasaltWindows');
@@ -61,6 +62,18 @@ export const isSupported = NativeWindows?.interceptClose != null;
 export function mainWindowId(): WindowId {
   const open = NativeWindows?.getWindows?.();
   return Array.isArray(open) && open.length > 0 ? open[0] : 1;
+}
+
+/**
+ * Closes one window by id.
+ *
+ * The windows module has taken an id since it was written, because opening a
+ * second window and closing it are the same module's business. `useWindow()`
+ * inside a second window routes here rather than to `BasaltWindow.close()`,
+ * which is the application's own window's.
+ */
+export function closeWindowById(id: WindowId): void {
+  NativeWindows?.close?.(id);
 }
 
 /**
