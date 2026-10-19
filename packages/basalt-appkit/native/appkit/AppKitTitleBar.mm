@@ -77,17 +77,27 @@ void AppKitTitleBar::close() {
 }
 
 void AppKitTitleBar::startDrag() {
-  NSWindow *window = window_;
+  // The event currently being handled, which is the press that started this.
+  // AppKit takes over the drag from there and runs it until the mouse is
+  // released, and it is also what makes a double-click on the caption zoom
+  // the window: both behaviours come from handing it the press rather than
+  // moving the frame by hand.
+  NSEvent *event = NSApp.currentEvent;
+  if (event == nil) {
+    return;
+  }
+  // The window the press landed in, falling back to the one this is attached
+  // to. They are the same window in an app with one, and in an app with a
+  // second window they are not: dragging a header there has to move the
+  // window under the pointer rather than the main one. The style that allowed
+  // the drag is still the main window's, which is the honest limit of this
+  // today -- <TitleBar> is the window's title bar and a second window has no
+  // way to ask for its own yet.
+  NSWindow *window = event.window != nil ? event.window : window_;
   if (window == nil) {
     return;
   }
-  // The event currently being handled, which is the press that started this.
-  // AppKit takes over the drag from there and runs it until the mouse is
-  // released.
-  NSEvent *event = NSApp.currentEvent;
-  if (event != nil) {
-    [window performWindowDragWithEvent:event];
-  }
+  [window performWindowDragWithEvent:event];
 }
 
 TitleBarMetrics AppKitTitleBar::metrics() const {

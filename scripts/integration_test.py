@@ -8269,6 +8269,74 @@ def test_right_to_left(bundle: Path) -> str:
             "with the sentence against the far edge")
 
 
+def test_title_bar(bundle: Path) -> None:
+    """An app that draws its own title bar, and the arithmetic it lays out
+    against.
+
+    `style: 'hidden'` takes the system's title bar away and hands the app the
+    whole window. What the app owes back is a header of its own and room for
+    the caption buttons the system still draws over it, and both come from
+    `useTitleBarMetrics()`: a height and a width, in the surface's units, on
+    all three desktops.
+
+    Those two numbers are the whole contract, and nothing below this exercised
+    them end to end -- the host tests reach the metrics and the JavaScript
+    tests reach the stack, and neither says the numbers arrived in a render.
+    A metric that came back zero would lay the app's header over the caption
+    buttons, which is a bug you can only see.
+
+    What this cannot press is the drag itself: moving a window means a real
+    pointer, and `e2e/titlebar.tsx` is there to be dragged by hand. The rule
+    that decides which points drag is unit-tested per host instead --
+    test_titlebar_drag.cpp, test_win32_titlebar.cpp,
+    test_appkit_titlebar_drag.mm, the same four questions in the same order.
+    """
+    app = bundle_app(bundle.parent, "titlebar")
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env = dict(os.environ)
+        env["BASALT_DUMP_TREE"] = str(dump)
+        env["BASALT_QUIT_AFTER_MS"] = "4000"
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                     "BASALT_TEST_FOCUS", "BASALT_TEST_QUIT"):
+            env.pop(name, None)
+
+        result = run_host_process(
+            [str(HOST), str(app), "BasaltTitleBar"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
+
+    # The style the app asked for is the style the host reports back. A host
+    # that ignored the request would say `native` here and look identical in
+    # every other way.
+    if 'text="style hidden"' not in tree:
+        raise Failure(f"the app did not get the hidden title bar:\n{tree[-1200:]}")
+
+    height = re.search(r'text="height (\d+(?:\.\d+)?)"', tree)
+    buttons = re.search(r'text="buttons (\d+(?:\.\d+)?)"', tree)
+    if height is None or buttons is None:
+        raise Failure(f"the metrics never reached a render:\n{tree[-1200:]}")
+    if float(height.group(1)) <= 0:
+        raise Failure("the title bar reported no height, so an app-drawn header "
+                      "would have nothing to be as tall as")
+    if float(buttons.group(1)) <= 0:
+        raise Failure("the caption buttons reported no width, so an app-drawn "
+                      "header would be laid out underneath them")
+
+    # And the header really is that tall, at the very top of the window: the
+    # app sized it from the metric, so this is the number arriving where it
+    # was needed rather than merely being rendered as text.
+    tall = round(float(height.group(1)))
+    if not re.search(rf'view tag=\d+ frame=\(0,0 \d+x{tall}\)', tree):
+        raise Failure(
+            f"no header {tall} tall at the top of the window:\n{tree[-1200:]}"
+        )
+
+
 def test_displays(bundle: Path) -> None:
     """What screens the desktop has.
 
@@ -8650,6 +8718,8 @@ SCENARIOS = [
     ("Linking.getInitialURL answers with the URL the app was opened with",
      test_initial_url),
     ("Alert.alert shows a dialog and says which button was pressed", test_alert),
+    ("an app draws its own title bar and lays out against its metrics",
+     test_title_bar),
     ("Share.share reaches the platform and settles both ways", test_share),
     ("expo-notifications imports and answers on every desktop", test_notifications),
     ("react-native-macos's keyboard props work on a plain View", test_macos_key_props),

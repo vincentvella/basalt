@@ -17,9 +17,15 @@
 // without being marked, a button inside one stays pressable once it is marked
 // no-drag, and a point under nothing marked is ordinary client area.
 //
-// The hit test itself is per-host -- Win32 walks its own view tree, GTK asks
-// the toolkit with gtk_widget_pick -- because the tree is the toolkit's, not
-// this project's. Only the vocabulary is shared.
+// The hit test itself is per-host -- Win32 and AppKit walk their own view
+// trees, GTK asks the toolkit with gtk_widget_pick -- because the tree is the
+// toolkit's, not this project's. Only the vocabulary is shared.
+//
+// So is what a host does with the answer, and the three differ there in a way
+// worth knowing: Windows answers HTCAPTION and lets the window manager take
+// the press, GTK hands it to the toolkit, and AppKit is given it through
+// `performWindowDragWithEvent:`. All three mean the press never reaches the
+// app, which is what a press on a title bar does everywhere.
 
 #pragma once
 

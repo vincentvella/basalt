@@ -15,6 +15,10 @@
 
 #include "EventRecorder.h"
 
+#import "AppKitTitleBar.h"
+
+#include "TitleBarRegions.h"
+
 #include <algorithm>
 #include <string>
 
@@ -1007,6 +1011,70 @@ bool saw(const basalt::testing::EventRecorder &recorder, const std::string &type
 }
 
 } // namespace
+
+// A press on the app's own title bar moves the window and never reaches the
+// app, which is what the other two hosts already did and this one did not.
+//
+// Here rather than beside the other title bar tests because this is the half
+// that was actually missing. `isTitleBarDragRegionAt` and its four tests say
+// which points drag; nothing says a press on one of them stops, and a rule
+// three hosts share with one of them never asking it is exactly the shape of
+// the bug this fixes. Sabotaging the call in `dispatchTouchStart` has to fail
+// something, and this is it.
+TEST(a_press_on_a_drag_region_moves_the_window_instead_of_pressing) {
+  @autoreleasepool {
+    const basalt::testing::EventRecorder recorder;
+    basalt::AppKitMountingManager manager;
+    RnAppKitView *root = manager.createSurfaceRoot(kSurfaceId);
+    [root setRnFrameX:0 y:0 width:400 height:300];
+
+    // A header the app marked, and an ordinary view below it.
+    ShadowView header = makeView(10, 0, 0, 400, 32);
+    auto headerProps = std::make_shared<ViewProps>();
+    headerProps->nativeId = basalt::kTitleBarDragRegionId;
+    header.props = headerProps;
+    header.eventEmitter = recorder.emitter<facebook::react::TouchEventEmitter>();
+
+    ShadowView body = makeView(11, 0, 32, 400, 268);
+    body.eventEmitter = recorder.emitter<facebook::react::TouchEventEmitter>();
+
+    ShadowViewMutationList mutations;
+    for (const ShadowView &view : {header, body}) {
+      mutations.push_back(ShadowViewMutation::CreateMutation(view));
+    }
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, header, 0));
+    mutations.push_back(ShadowViewMutation::InsertMutation(kSurfaceId, body, 1));
+    apply(manager, std::move(mutations));
+
+    basalt::AppKitTouchDispatcher dispatcher(&manager, root);
+
+    // With the system's title bar there is no app-drawn caption, so a marked
+    // view is an ordinary view and the press lands.
+    basalt::titleBar().setStyle(basalt::TitleBarStyle::Native);
+    EXPECT(!dispatcher.beginWindowDrag(200, 16));
+    dispatcher.synthesiseTap(200, 16);
+    EXPECT(saw(recorder, "topTouchStart"));
+
+    // With the app drawing it, the same press moves the window instead.
+    basalt::titleBar().setStyle(basalt::TitleBarStyle::Hidden);
+    const basalt::testing::EventRecorder second;
+    header.eventEmitter = second.emitter<facebook::react::TouchEventEmitter>();
+    ShadowViewMutationList update;
+    update.push_back(ShadowViewMutation::UpdateMutation(header, header, kSurfaceId));
+    apply(manager, std::move(update));
+
+    EXPECT(dispatcher.beginWindowDrag(200, 16));
+    dispatcher.synthesiseTap(200, 16);
+    EXPECT(!saw(second, "topTouchStart"));
+
+    // And the body below it is still an ordinary view, which is the half that
+    // would be lost by making the whole surface drag.
+    EXPECT(!dispatcher.beginWindowDrag(200, 200));
+
+    basalt::titleBar().setStyle(basalt::TitleBarStyle::Native);
+    manager.destroySurfaceRoot(kSurfaceId);
+  }
+}
 
 // A press the window cannot finish, which is React Native's `touchCancel`.
 //

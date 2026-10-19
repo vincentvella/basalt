@@ -26,10 +26,8 @@
  * on a host without one -- or before it has registered -- every call is
  * ignored and the metrics are all zero, so the same code runs everywhere.
  *
- * `<TitleBar.DragRegion>` is where the three are not yet equal. Windows and
- * GTK read the marks and drag the window from them; macOS does not read them
- * yet, so a header an app drew there shows correctly but does not move the
- * window. See core/TitleBarRegions.h for the marks and the rule.
+ * All three hosts read the marks and drag the window from them. See
+ * core/TitleBarRegions.h for the two names and the rule they share.
  *
  * @format
  */

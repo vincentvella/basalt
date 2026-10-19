@@ -95,6 +95,24 @@ class AppKitTouchDispatcher {
   // end. See core/DragAndDrop.h.
   bool beginDragOut(double x, double y);
 
+  // Starts a window drag if the press landed on a view the app marked as part
+  // of its own title bar. True when it did, and the caller should then let the
+  // press go no further: AppKit runs the drag until the mouse is released, and
+  // on the other two hosts a press on the caption never reaches the app at all
+  // -- Windows answers HTCAPTION and the click becomes non-client.
+  //
+  // Asked on the way down rather than on the first move, which is the opposite
+  // of beginDragOut above. The two differ because the gestures do: a drag out
+  // is a drag and only a drag, so a press that never moves has to stay a
+  // press, while a caption is dragged *and* double-clicked to zoom, and
+  // `performWindowDragWithEvent:` is what implements both. Handing it the
+  // press is what gets the second one.
+  //
+  // Public because the test asks it directly: whether a point drags is the
+  // view tree's answer and `AppKitTitleBarLayout` has it, but whether a press
+  // *became* a drag depends on the style gate as well, and that is here.
+  bool beginWindowDrag(double x, double y);
+
   // The hover half. Separate from dispatchTouchMove because the two answer
   // different questions about the same motion: the touch model asks which view
   // the finger went down on, and hover asks which views the cursor is inside

@@ -1,6 +1,8 @@
 #import "AppKitTouchDispatcher.h"
 
 #import "AppKitDropTarget.h"
+#import "AppKitTitleBar.h"
+#import "AppKitTitleBarLayout.h"
 
 #include "Gestures.h"
 
@@ -210,6 +212,21 @@ bool AppKitTouchDispatcher::beginDragOut(double x, double y) {
   return beginDragIfMarked(surfaceRoot_, x, y);
 }
 
+bool AppKitTouchDispatcher::beginWindowDrag(double x, double y) {
+  // Only while the app is drawing the title bar itself. With the system's one
+  // there is nothing above the content to be a caption, and a view an app
+  // marked for the other style should not quietly start moving the window.
+  // Win32TitleBar::handleNcHitTest gates on the same condition.
+  if (titleBar().metrics().style != TitleBarStyle::Hidden) {
+    return false;
+  }
+  if (!isTitleBarDragRegionAt(surfaceRoot_, x, y)) {
+    return false;
+  }
+  titleBar().startDrag();
+  return true;
+}
+
 Tag hitTestTag(RnAppKitView *root, double x, double y) {
   RnAppKitView *hit = RnAppKitHitTest(root, x, y);
   return hit == nil ? 0 : static_cast<Tag>(hit.rnTag);
@@ -316,6 +333,21 @@ void AppKitTouchDispatcher::drawSelection() {
 }
 
 void AppKitTouchDispatcher::dispatchTouchStart(double x, double y, basalt::PointerButton button) {
+  // A press on the app's own title bar moves the window and reaches the app no
+  // further, which is what the other two hosts do: Windows answers HTCAPTION
+  // and the press becomes non-client, GTK hands it to the toolkit.
+  //
+  // Here rather than in the mouse-down trampoline above, so that a synthesised
+  // press goes through it as well. The decision and the call to it have to be
+  // covered by the same test: the bug this fixes was a rule three hosts share
+  // and one of them never asked.
+  //
+  // Only the primary button: a secondary click on a caption opens a menu on
+  // every desktop rather than moving the window.
+  if (button == basalt::PointerButton::Primary && beginWindowDrag(x, y)) {
+    return;
+  }
+
   NSPoint origin = NSZeroPoint;
   const Tag target = targetUnder(surfaceRoot_, x, y, &origin);
   if (target == 0) {

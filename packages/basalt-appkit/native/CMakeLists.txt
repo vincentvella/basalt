@@ -123,6 +123,11 @@ add_library(basalt_appkit_view STATIC
   # The paragraph object. Core Text only, no React Native, which is what keeps
   # this target buildable on a Mac with nothing else installed.
   appkit/RnTextLayout.mm
+  # Which parts of an app-drawn header drag the window. Here rather than in
+  # the mounting target because it is a question about the view tree and
+  # nothing else, which is what lets it be tested with no React Native --
+  # the same place GtkTitleBarLayout.cpp sits in basalt_gtk_view.
+  appkit/AppKitTitleBarLayout.mm
   appkit/AppKitSnapshot.mm)
 target_compile_options(basalt_appkit_view PRIVATE -Wall -Wextra -fobjc-arc)
 target_include_directories(basalt_appkit_view PUBLIC appkit)
@@ -171,6 +176,9 @@ set(BASALT_APPKIT_TEST_SOURCES
   # sheet is its own window and never appears in a snapshot.
   tests/test_appkit_services.mm
   tests/test_appkit_titlebar.mm
+  # The drag regions of an app-drawn header: the same four questions
+  # test_titlebar_drag.cpp asks of GTK, in the same order.
+  tests/test_appkit_titlebar_drag.mm
   tests/test_appkit_droptarget.mm)
 
 # ---------------------------------------------------------------------------

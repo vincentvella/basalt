@@ -291,6 +291,7 @@ after this table. These are the rest:
 | `native/tests/test_appkit_key_events.mm` | An `NSEvent` as a key combination, which is the half of key handling that is this host's alone and where the silent failures live. |
 | `native/tests/test_appkit_droptarget.mm` | Which view a drag is offered to. Added because a change that stopped reading the `nativeID` marker altogether left the whole suite green. |
 | `native/tests/test_appkit_titlebar.mm` | The title bar's metrics, which are the whole contract `src/TitleBar.tsx` has with the host. |
+| `native/tests/test_appkit_titlebar_drag.mm` | Which parts of an app-drawn header drag the window: the same four questions `test_titlebar_drag.cpp` asks of GTK, in the same order, because the rule in `core/TitleBarRegions.h` is shared and the answers have to match. |
 | `native/tests/test_appkit_fonts.mm` | A font loaded while the app is running, which is the seam `expo-font` arrives through, and whether the name the app chose keeps working. |
 | `native/tests/test_appkit_services.mm` | The clipboard and URL halves of the platform-services seam. |
 | `native/tests/test_appkit_skia.mm` | That Skia renders rather than merely links; see the Skia section below. |
@@ -1397,6 +1398,28 @@ DISPLAY=:99 GDK_BACKEND=x11 GSK_RENDERER=cairo scripts/integration_test.py
 That is a genuine event through the X server and GDK. The wheel path checks out
 too: five `xdotool click 5` notches move the content exactly 265 points, which
 is the 53-point step in `GtkScrollViewManager` times five.
+
+## Dragging a window, which no suite can do
+
+`<TitleBar.DragRegion>` says which parts of an app-drawn header move the
+window, and three things about it are tested in three different places,
+because they fail differently:
+
+- **Which points drag** is a question about the view tree, and each host
+  answers it with its own walk: `test_titlebar_drag.cpp`,
+  `test_win32_titlebar.cpp` and `test_appkit_titlebar_drag.mm` ask the same
+  four questions in the same order, for the reason the paint tests do.
+- **That a press on one is taken** is the half that can be written and never
+  called, which is what macOS did until 2026-10-19: the rule existed in
+  `core/TitleBarRegions.h`, two hosts applied it and the third never asked.
+  `a_press_on_a_drag_region_moves_the_window_instead_of_pressing` in
+  `test_appkit_input.mm` is the test that fails if the call goes away.
+- **That the window actually moves** is nobody's test. It needs a real
+  pointer, and a real pointer on macOS means `CGEvent` and accessibility
+  permission an automated run does not have. `e2e/titlebar.tsx` exists to be
+  dragged by hand, and `scripts/integration_test.py -k "title bar"` runs the
+  same app to check the arithmetic around it: the style the host reports, the
+  metrics reaching a render, and the header being as tall as the metric says.
 
 ## What is still not covered
 

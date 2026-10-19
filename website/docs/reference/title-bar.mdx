@@ -74,11 +74,16 @@ windowControl.toggleMaximize();
 windowControl.close();
 ```
 
-:::caution
-`<TitleBar.DragRegion>` is where the three are not yet equal. Windows and Linux
-read the marks and drag the window from them. macOS does not read them yet, so a
-header an app drew there shows correctly but does not move the window.
-:::
+All three desktops read the marks and move the window from them, and the rule
+they apply is the same one: the deepest view under the pointer, then each of its
+ancestors, and the nearest one marked either way decides. So a label inside a
+drag region drags without being marked, and a button stays a button once it is
+marked no-drag.
+
+A press that starts a window drag does not reach your app, which is what the
+desktop does with a press on its own title bar. On macOS the same press also
+gets the system's double-click-to-zoom, because the host hands it to AppKit
+rather than moving the window itself.
 
 ## On a host that has none
 
