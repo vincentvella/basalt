@@ -18,3 +18,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Vercel. `vercel link` writes both: .vercel holds the project it is linked to
+# and .env* the OIDC token it downloads with it. Added by the CLI itself, and
+# kept, because the first is machine-local and the second is a credential.
+.vercel
+.env*

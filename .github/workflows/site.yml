@@ -1,0 +1,83 @@
+name: Deploy site
+
+# Deploys basaltjs.dev when you start it (Actions → Deploy site → Run workflow,
+# or `gh workflow run site.yml`): never on push. The site is built here and
+# uploaded prebuilt, so Vercel does no building and no Vercel build minutes are
+# spent. The same shape velmux uses.
+#
+# This replaces running `npx vercel --prod` from `website/`, which built on
+# Vercel and could only be done from a machine logged in to it.
+#
+# `website/vercel.json` turns the git integration off on every branch, so a
+# push deploys nothing by itself; docs.yml still *builds* the site on a push
+# that changes something it renders, which is what catches a broken link or an
+# MDX error on the commit that caused it. Deploying is the part that is asked
+# for, and this is the asking.
+#
+# Needs a repository secret VERCEL_TOKEN: a Vercel token scoped to the team
+# below. The two ids are not secret -- they name a project, they do not open
+# it -- so they are here where a reader can see which project this ships.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: team_oA6YWL07AOthV0zIiIufrhSI
+  VERCEL_PROJECT_ID: prj_exdtYFB3K073kJiV2AGq3s2cExhd
+
+jobs:
+  deploy:
+    name: basaltjs.dev
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The whole repository, not just `website`: the site reads `../docs` in
+      # place -- `docusaurus.config.ts` points a second docs plugin at it -- so
+      # a checkout of the site directory alone would build a site missing the
+      # Contributing half.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        working-directory: website
+        run: npm ci
+
+      - name: Vercel CLI
+        run: npm install --global vercel@latest
+
+      # From the repository root rather than `website`, with the ids above:
+      # the project's own Root Directory setting is `website`, and `vercel
+      # build` applies it. Pulling here is what puts `.vercel/` where the build
+      # looks for it.
+      - name: Pull project settings
+        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build
+        run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy (prebuilt)
+        run: vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}" | tee url.txt
+
+      # A deploy that returns a URL and serves a 404 is a deploy that looks
+      # fine from here. These are the pages a visitor lands on, one per docs
+      # instance plus an asset, so a sidebar that names a missing page or a
+      # static file that did not ship fails the run rather than the reader.
+      - name: Check it is up
+        run: |
+          for path in / /docs/getting-started /docs/support /contributing/ARCHITECTURE /img/logo.svg; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://basaltjs.dev$path")
+            echo "$path $code"
+            [ "$code" = 200 ] || exit 1
+          done

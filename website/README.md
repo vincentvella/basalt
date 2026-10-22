@@ -46,16 +46,28 @@ Almost every commit in this repository touches one of those excluded files and
 nothing else the site renders, so auto-deploying on push rebuilt an identical
 site about twenty times a day. The numbers are in `docs/ci-performance.md`.
 
-To ship it, from this directory:
+To ship it:
 
 ```bash
-npx vercel --prod
+gh workflow run site.yml
 ```
+
+or Actions → **Deploy site** → Run workflow. It builds the site on the runner
+and hands Vercel the finished thing with `vercel deploy --prebuilt`, so Vercel
+builds nothing and the deploy costs no Vercel build minutes. Then it asks
+basaltjs.dev for five paths and fails if any of them is not a 200, because a
+deploy that returns a URL and serves a 404 looks fine from the command line.
+
+It used to be `npx vercel --prod` from this directory, which built on Vercel
+and could only be done from a machine logged in to it. The workflow needs a
+`VERCEL_TOKEN` repository secret; the project and team ids are in
+`.github/workflows/site.yml`, which is where you can see which project a run
+ships.
 
 The GitHub Actions `Docs` workflow still builds the site on every push that
 changes something it renders, so a commit that breaks the build says so on the
-commit. What it does not do is deploy, which is the one thing that now needs
-asking for.
+commit. What it does not do is deploy, which is the one thing that is asked
+for.
 
 `npm run deploy` is Docusaurus's own GitHub Pages command and is not what hosts
 this site; it is left alone rather than removed because it is Docusaurus's, not
