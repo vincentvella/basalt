@@ -1,0 +1,78 @@
+---
+title: APIs
+---
+Components come from `react-native` exactly as they do on iOS and Android.
+`basalt-core` is only the things with no React Native equivalent, because a
+phone has no such thing: a second window, a menu bar, a file dialog, something
+dragged onto the app.
+
+```js
+import {Platform, useWindow, Menu, dialog, resourcePath} from 'basalt-core';
+```
+
+<Callout type="info">
+`basalt-core` does not re-export `react-native`. It used to, and
+`export * from 'react-native'` compiles into a loop that reads every one of
+React Native's exports; most of which are lazy getters that run their
+module's top level when read. That loaded every deprecated component and then
+threw on `DevMenu`, which in an Expo app aborted `App.js` with "App entry not
+found".
+</Callout>
+
+## What is here
+
+| | |
+| --- | --- |
+| [Windows](/docs/reference/windows) | `useWindow`, `windowControl`, `useCloseRequest`, `Window`, `useQuitRequest`, `useDisplays` |
+| [Title bar](/docs/reference/title-bar) | `TitleBar`, `useTitleBar`, `useTitleBarMetrics` |
+| [Menus](/docs/reference/menus) | `Menu`, `useContextMenu`, `contextMenu` |
+| [File dialogs](/docs/reference/dialogs) | `dialog`, `useDialog` |
+| [Drag and drop](/docs/reference/drag-and-drop) | `DragSource`, `DropTarget` |
+| [Keyboard](/docs/reference/keyboard) | `KeyHandler` |
+| [Subprocesses](/docs/reference/subprocess) | `basalt-subprocess` |
+| [Notifications](/docs/reference/notifications) | `basalt-notifications` |
+
+Everything in `basalt-core` is guarded: on a host that has not implemented a
+module, a call is ignored and a reader answers an empty value rather than
+throwing. The same code runs on all three desktops, and the places where a
+desktop genuinely cannot do a thing are answerable at runtime rather than
+documented and hoped for. `Menu.isSupported` and `useWindow().capabilities`
+are the two an app is most likely to ask.
+
+## `Platform`
+
+`Platform.OS` is `'linux'`, `'macos'` or `'windows'`. Metro picks the right
+one for the platform it is bundling for, the same mechanism React Native uses
+for its own.
+
+```js
+Platform.select({macos: 'Cmd', default: 'Ctrl'});
+```
+
+`select` resolves this platform, then `native`, then `default`, the same
+shape as every other platform's, so `Platform.select({native, default})` keeps
+working in shared code.
+
+There is deliberately **no `desktop` key**. It would be useful, and it would
+also mean shared code behaves differently under React Native's own
+`Platform.select` on iOS, which is the kind of divergence a project about
+consistency should not introduce. If you want desktop-vs-mobile branching,
+write an explicit helper.
+
+`Version`, `isTesting` and `constants` come from the host.
+
+## `resourcePath()`
+
+Where the files the build put beside your application are:
+`Foo.app/Contents/Resources` on macOS, beside the executable on Linux and
+Windows, which have no separate resources directory. A development run answers
+the build directory.
+
+```js
+const bundled = `${resourcePath()}/fixtures/sample.mp4`;
+```
+
+This is here rather than worked out by each app because Basalt's packager
+decides the layout, and an app deriving it would be an app that has to know the
+shape of a bundle it did not build. Empty only when the running executable's
+path cannot be determined, which no supported desktop does.

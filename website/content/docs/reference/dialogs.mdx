@@ -1,0 +1,39 @@
+---
+title: File dialogs
+---
+The native open and save dialogs. React Native has no API for these because a
+phone has none.
+
+```js
+import {dialog, useDialog} from 'basalt-core';
+
+const {canceled, paths} = await dialog.openFile({
+  title: 'Choose a clip',
+  multiple: true,
+  filters: [{name: 'Video', extensions: ['mp4', 'mov']}],
+});
+```
+
+| | |
+| --- | --- |
+| `dialog.openFile(options?)` | one or more existing files |
+| `dialog.saveFile(options?)` | a path to write to, which may not exist yet |
+| `dialog.openFolder(options?)` | a directory; `filters` is ignored |
+
+All three resolve to `{canceled: boolean, paths: string[]}`, and all options
+are optional:
+
+| option | |
+| --- | --- |
+| `title` | the dialog's title |
+| `defaultPath` | starting directory, or for `saveFile` the suggested name |
+| `confirmLabel` | the accept button's text |
+| `multiple` | `openFile` only |
+| `filters` | `[{name, extensions}]`, with extensions **bare**: `'png'`, not `'.png'` and not `'image/png'` |
+
+`useDialog()` is the same object from a hook, for code that prefers one.
+
+Whether an existing file may be overwritten is the platform's question and it
+asks for itself: by the time `saveFile` resolves, the answer was yes. On a host
+with no dialog module the calls resolve to `{canceled: true, paths: []}` rather
+than throwing.

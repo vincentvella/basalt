@@ -1,0 +1,16 @@
+{
+  "title": "Reference",
+  "pages": [
+    "cli",
+    "app-json",
+    "api",
+    "windows",
+    "title-bar",
+    "menus",
+    "dialogs",
+    "drag-and-drop",
+    "keyboard",
+    "subprocess",
+    "notifications"
+  ]
+}

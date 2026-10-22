@@ -1,0 +1,178 @@
+---
+title: Menus
+---
+Two shapes, because a desktop has two. A menu bar is state: it is on screen for
+as long as the app wants it there, so it is declared. A context menu is a
+question asked at a moment, so it is called and awaited.
+
+```js
+import {Menu, useContextMenu, contextMenu} from 'basalt-core';
+```
+
+## `<Menu>`, the application menu
+
+```jsx
+<Menu>
+  <Menu.Submenu label="File">
+    <Menu.Item label="Open…" accelerator="CmdOrCtrl+O" onClick={open} />
+    <Menu.Separator />
+    <Menu.Item role="close" />
+  </Menu.Submenu>
+  <Menu.Submenu label="Edit">
+    <Menu.Item role="undo" />
+    <Menu.Item role="copy" />
+    <Menu.Item role="paste" />
+  </Menu.Submenu>
+</Menu>
+```
+
+Declarative because a menu bar is state rather than a command: it is installed
+for as long as the component is mounted, and unmounting restores whatever the
+platform's default was. `<Menu>` renders nothing.
+
+| `<Menu.Item>` | |
+| --- | --- |
+| `label` | optional for a role, where the platform's own word is better |
+| `role` | the platform implements it; see below |
+| `accelerator` | `"CmdOrCtrl+O"`, in Electron's spelling. Ignored for a role |
+| `enabled` | |
+| `onClick` | |
+
+`<Menu.Submenu>` takes `label`, `enabled` and children, and nests.
+`<Menu.Separator>` takes nothing. An entry at the top level with no submenu is
+dropped, because no desktop has a bare command in a menu bar.
+
+### Roles
+
+An item with a `role` is one the platform implements itself, and it needs no
+`onClick` and no label: it gets the platform's own word and the platform's own
+shortcut. The names are Electron's.
+
+```
+about  quit  undo  redo  cut  copy  paste  delete
+selectAll  minimize  zoom  close  togglefullscreen
+```
+
+The list is deliberately short. Each one is a thing every desktop already has a
+standard action and a standard shortcut for, and a role only one platform had
+would be a role apps cannot use. An unknown role is dropped rather than shown,
+because a menu item that does nothing is worse than one that is not there.
+
+Roles are not a convenience. On macOS, AppKit routes every key equivalent
+through the main menu before anything else sees it, so `role="copy"` is what
+makes Cmd-C reach a text field at all. An app that never renders a `<Menu>` gets
+an Edit menu anyway, for exactly that reason.
+
+### Where there is no menu bar
+
+`Menu.isSupported` is false on Linux, and that is not a gap waiting to be
+filled: GNOME's guidelines have said to use a header bar with a menu button
+since GNOME 3, and GTK4 removed the menu bar widget. An app that cares can ask,
+and put its commands in its own header with
+[`<TitleBar>`](/docs/reference/title-bar), or in a context menu. An app that
+does not ask is no worse off, because the menu is simply not shown.
+
+## `useContextMenu()`
+
+```jsx
+const menu = useContextMenu();
+
+<Pressable
+  onLongPress={event =>
+    menu.show(
+      [
+        {label: 'Copy', role: 'copy'},
+        {separator: true},
+        {label: 'Rename', onSelect: rename, shortcut: 'F2'},
+        {label: 'Paste', enabled: false},
+      ],
+      event.nativeEvent,
+    )
+  }
+/>
+```
+
+React Native has no API for this because a phone has no pointer to click the
+other button of. On a desktop it is the second thing an app wants after a menu
+bar, and on Linux it is the first, because GNOME has no menu bar and
+`Menu.isSupported` is false there.
+
+`contextMenu.show(...)` is the same call outside a component.
+
+| field | |
+| --- | --- |
+| `label` | |
+| `onSelect` | |
+| `shortcut` | drawn beside the label. Decoration only: nothing here binds a key |
+| `enabled` | |
+| `separator` | |
+| `role` | a platform role, as above, performed by the platform |
+| `type` | `'checkbox'` or `'radio'` |
+| `checked` | a tick or a radio mark; on its own it means a checkbox |
+| `submenu` | nested items. The parent is not choosable: it opens its children |
+
+The menu bar spells the shortcut field `accelerator`, because there it really
+does bind one. Here nothing does, and the two names are different on purpose.
+
+### What it answers
+
+```js
+const chosen = await menu.show(items);
+```
+
+`show()` resolves with the index chosen, or `null` if the menu was dismissed,
+and calls that item's `onSelect` first, which is what most callers want. A
+promise rather than the device event `<Menu>` uses, because the two are
+different situations: a menu bar is installed once and its items are chosen at
+times nothing is waiting for, while a context menu is opened by an app that is,
+right then, asking a question.
+
+### Where it appears
+
+`show(items, where)` takes anything with an `x` and a `y`, or a `pageX` and a
+`pageY`, in the window's coordinates, which is what a press event's
+`nativeEvent` already is. Pass nothing and the menu opens wherever the pointer
+is, which is what a menu opened from the keyboard wants.
+
+### A right-click
+
+```jsx
+<View
+  onPointerDown={e =>
+    e.nativeEvent.button === 2 && menu.show(items, e.nativeEvent)
+  }
+/>
+```
+
+A secondary click arrives as `onPointerDown` with W3C's `button === 2`, and does
+**not** fire `onPress`, on any of the three. So the same view can be a button
+and have a context menu, which is what a desktop expects. `onLongPress` still
+works and is what a touch-first app should use.
+
+### Roles a desktop lacks
+
+A role this desktop cannot perform is left out of the menu rather than shown
+doing nothing, and it keeps its index: what comes back is an index into the list
+you passed, so including a role one platform lacks does not renumber the items
+after it. A parent whose children are all such roles is left out with them, an
+empty submenu being a dead end rather than an item.
+
+macOS has all thirteen. Linux and Windows have twelve, both missing `about`:
+neither has a platform about panel to ask for, so that window is an app's own to
+show, and an ordinary item with an `onSelect` is how to open it.
+
+### Radio groups
+
+`'radio'` is a drawing hint rather than a capability. Windows draws a bullet and
+Linux a circle; macOS draws a tick, `NSMenu` having no radio item and a tick
+being what Apple's guidance prescribes for a chosen member of a group.
+
+A group is a run of adjacent `'radio'` items, ended by a separator or by any
+other kind of item. There is no group name to pass, and exclusivity is yours:
+the menu is built fresh each time it opens, so it draws the marks you give it
+and keeping one member checked is the caller's business.
+
+<Callout type="info">
+Checkmarks and radio marks are a context menu's. `<Menu.Item>` has no `checked`
+yet, so a menu bar's items are commands.
+</Callout>

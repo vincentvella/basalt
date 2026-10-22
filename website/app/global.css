@@ -1,0 +1,159 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/**
+ * Obsidian and ember: the rock and the lava it cooled from. The ground is a
+ * warm near-black and a warm off-white rather than pure black and pure white,
+ * and the one accent is the orange of the mascot's bill, so the logo's colour
+ * is a member of the palette rather than a visitor to it.
+ *
+ * The accent is deliberately the only one. It marks a link, a button, the done
+ * segment of a support bar, and nothing else; a second accent would make both
+ * of them decoration.
+ *
+ * Each base is chosen for contrast rather than for looks:
+ *
+ *   light  #b8431e on #f7f6f3  5.0:1
+ *   dark   #f0794a on #16181d  6.6:1
+ *
+ * The ember a logo is drawn in, #e2561f, is 3.8:1 on white and so cannot be a
+ * link colour. It is used for fills rather than for text.
+ */
+:root {
+  --color-fd-primary: #b8431e;
+  --color-fd-background: #f7f6f3;
+  --color-fd-card: #ffffff;
+}
+
+.dark {
+  --color-fd-primary: #f0794a;
+  --color-fd-primary-foreground: #16181d;
+  --color-fd-background: #16181d;
+  --color-fd-card: #1c1f26;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+/* The repository docs are read in place and were written for GitHub, where a
+   table is as wide as it needs to be. Several list every platform across the
+   top, which overflows the content column rather than shrinking. */
+.prose table,
+#nd-page table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* The platform support page's breakdown bar.
+ *
+ * One bar per host over every row React Native declares, in the order the
+ * statuses mean something: what the host has written, what it has half
+ * written, what is left, and then the two groups that are nobody's work --
+ * ReactCommon's or Yoga's, and the deliberate skips. Those two are hatched
+ * rather than flat, so the part of the bar that is this platform's progress
+ * reads as one block of solid colour at the left.
+ *
+ * A `title` on each segment carries its count, and the counts are in the
+ * legend table under the bar as well: a tooltip is not a place to keep a
+ * number somebody might want to read. */
+.support-bar {
+  display: flex;
+  width: 100%;
+  min-width: 11rem;
+  height: 0.85rem;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.support-bar > span {
+  height: 100%;
+}
+
+/* The same five colours as a 0.8rem square, for the legend's first column. */
+.support-chip {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 3px;
+  vertical-align: -0.1rem;
+}
+
+.support-yes {
+  background: #2f7d33;
+}
+
+.support-partial {
+  background: #d99521;
+}
+
+/* A plum rather than the terracotta it used to be. Against an ember accent a
+   terracotta read as the brand, which is the opposite of what this segment
+   means. Still warm, because the first three segments are this platform's work
+   and the two hatched ones are not, but far enough around the wheel to be told
+   from the accent and from the amber beside it. */
+.support-no {
+  background: #8d4a5f;
+}
+
+/* Slate, and deliberately not the brand colour: this segment means "not ours",
+   so hatching it in the accent said the opposite. A cool neutral separates it
+   from both the work done and the work left. */
+.support-upstream {
+  background: repeating-linear-gradient(
+    135deg,
+    #4a5a6b,
+    #4a5a6b 3px,
+    #63748a 3px,
+    #63748a 6px
+  );
+}
+
+.support-ignored {
+  background: repeating-linear-gradient(
+    135deg,
+    #8a8a8a,
+    #8a8a8a 3px,
+    #a8a8a8 3px,
+    #a8a8a8 6px
+  );
+}
+
+/* Lifted for a dark background, the way the primary ramp above is. */
+.dark .support-yes {
+  background: #4caf50;
+}
+
+.dark .support-partial {
+  background: #e8ad3c;
+}
+
+.dark .support-no {
+  background: #bd7c90;
+}
+
+/* Lighter than the ignored hatch below as well as bluer: on a dark ground two
+   hatched neutrals of the same lightness are one texture, whatever their hue. */
+.dark .support-upstream {
+  background: repeating-linear-gradient(
+    135deg,
+    #8ea3b8,
+    #8ea3b8 3px,
+    #a8bccf 3px,
+    #a8bccf 6px
+  );
+}
+
+.dark .support-ignored {
+  background: repeating-linear-gradient(
+    135deg,
+    #5c5c5c,
+    #5c5c5c 3px,
+    #767676 3px,
+    #767676 6px
+  );
+}

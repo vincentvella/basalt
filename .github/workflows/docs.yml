@@ -16,7 +16,7 @@ name: Docs
 #
 # ## The paths are what the site renders, which is not all the prose
 #
-# `docusaurus.config.ts` takes `../docs` and *excludes* `BACKLOG.md`,
+# `website/scripts/sync-docs.mjs` takes `../docs` and *skips* `BACKLOG.md`,
 # `backlog/**` and `ci-performance.md`, so a commit touching only those rebuilds
 # an identical site. They were in this filter and they are the commits this
 # repository mostly makes: 18 of 20 one day ran this job for nothing. The

@@ -1,0 +1,11 @@
+{
+  "title": "Docs",
+  "pages": [
+    "intro",
+    "getting-started",
+    "navigation",
+    "libraries",
+    "support",
+    "reference"
+  ]
+}

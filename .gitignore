@@ -41,6 +41,6 @@ packages/*/tsconfig.paths.json
 # The CI jobs that set CCACHE_DIR inside the workspace (macOS, Windows).
 /ccache/
 
-# Docusaurus build output and caches.
-website/build/
-website/.docusaurus/
+# The Vercel CLI's link, written at the repository root by `vercel pull`.
+# Machine-local, and it carries a downloaded OIDC token beside it.
+.vercel

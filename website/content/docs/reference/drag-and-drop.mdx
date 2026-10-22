@@ -1,0 +1,86 @@
+---
+title: Drag and drop
+---
+React Native has no API for this, because a phone has no pointer to drag with.
+What a desktop application is expected to do is accept a file dropped on it from
+the file manager, and let a row be dragged out of it into something else.
+
+```js
+import {DragSource, DropTarget} from 'basalt-core';
+```
+
+## `<DropTarget>`
+
+```jsx
+<DropTarget
+  accepts={['files']}
+  onDragOver={() => setHighlighted(true)}
+  onDragLeave={() => setHighlighted(false)}
+  onDrop={({files}) => open(files)}
+  style={styles.well}
+/>
+```
+
+A `<View>` with four extra props, and it takes every other `<View>` prop.
+
+| prop | |
+| --- | --- |
+| `accepts` | `['files']`, `['text']`, or both. What the app will take |
+| `onDragOver` | `({x, y})`, in the window's coordinates |
+| `onDragLeave` | |
+| `onDrop` | `({files, text}, {x, y})` |
+
+`onDragOver` and `onDragLeave` are for the "you may drop here" state, and carry
+no contents. No desktop reveals what is being dragged until it lands, and one
+that did should not tempt an app into reading it early. `onDrop` carries the
+files and the text.
+
+## `<DragSource>`
+
+```jsx
+<DragSource file={clip.path}>
+  <Row clip={clip} />
+</DragSource>
+```
+
+The other direction, and the half people forget: a file manager needs it, and so
+does anything that lets you drag a row into another application.
+
+| prop | |
+| --- | --- |
+| `file` | a path. Offered as a file URL, so another app receives a file rather than its name |
+| `text` | a line of text |
+
+A file path or a line of text are the two things every desktop understands.
+
+### Why the payload is a prop rather than a callback
+
+Every toolkit owns the gesture. `GtkDragSource`,
+`beginDraggingSessionWithItems:` and `DoDragDrop` all start the drag themselves
+and ask what is being dragged **synchronously**, on the UI thread. An app asked
+at that moment would have to answer from JavaScript on another thread, which is
+the same problem `useCloseRequest` has, solved the same way: say it beforehand.
+
+So this is declarative. A view says what it represents, and the drag carries
+that. Changing the prop changes what the next drag carries, and there is no
+moment at which the app is consulted.
+
+## One limit, worth knowing before you hit it
+
+Both components say what they are by their `nativeID`, which is the one prop a
+plain `<View>` carries to the host on every platform. There is no registration
+call, no ref, and no lifetime to get wrong, and
+[`<TitleBar.DragRegion>`](/docs/reference/title-bar) marks views the same way.
+
+It follows that a `<DropTarget>` or a `<DragSource>` cannot also carry an app's
+own `nativeID`. That is a real limit and the honest one to take: the alternative
+was a registration protocol whose failure mode is a target that silently stops
+accepting after a re-render.
+
+If you need the marks without the components, `dropTargetId(accepts)` and
+`dragSourceId({file, text})` are the two functions that write them, and they are
+exported for exactly that.
+
+[`<KeyHandler>`](/docs/reference/keyboard) does not work this way, and that page
+says why: a list of shortcuts is long and it changes, and a timeline that accepts
+dropped media and also has shortcuts is an ordinary thing to want.
