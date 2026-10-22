@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="website/static/img/logo-inverse.svg">
-  <img src="website/static/img/logo.svg" alt="" width="104" align="right">
+  <source media="(prefers-color-scheme: dark)" srcset="website/public/img/logo-inverse.svg">
+  <img src="website/public/img/logo.svg" alt="" width="104" align="right">
 </picture>
 
 # Basalt
