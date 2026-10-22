@@ -10,14 +10,14 @@
   attempts did not: a puffin's bill is flattened side to side, so head on it is
   narrow and the bird reads as a penguin.
 
-  This is the large mark, for the README and the site's header. The navbar and
-  the favicon use logo-light.svg and logo-dark.svg, which are a stouter bird:
-  this one is slender and its feet sit clear of the body, and at sixteen pixels
-  that collapses into a dark diagonal with an orange smudge under it. Measured
-  rather than assumed: rendered at 16 and compared, which is also how the two
-  earlier drawings were rejected. A mark and an icon being different drawings is
-  ordinary; they share the profile, the palette and the bill, which is what
-  makes them the same bird.
+  This is the large mark, for the README and the site's header, with a little
+  air around the bird. logo-light.svg and logo-dark.svg are the same drawing
+  cropped closer, for the navbar and the favicon, where the air would be pixels
+  not spent on the bird.
+
+  One drawing at every size. A stouter bird held the small sizes for a while
+  and read better at sixteen pixels, and it was a second drawing to keep in
+  step; this one is what the project looks like.
 
   Four colours and no others: ink #16181D, bone #F7F6F3, ember #E2561F for the
   bill's tip and the feet, amber #F0B429 for the band behind it. Flat fills,
