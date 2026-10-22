@@ -142,12 +142,21 @@ compare-hosts: ## Run one app through every host and diff the trees
 
 # -- The website -------------------------------------------------------------
 
+# `docs-dev` is the one to use while writing. The other two are the production
+# build and a server for it, which is what CI runs and what you want when a
+# page renders differently built than it does in dev -- a generated page, or
+# anything that reads ../docs through scripts/sync-docs.mjs.
+
+.PHONY: docs-dev
+docs-dev: ## Serve the documentation site with hot reload, for writing
+	cd website && npm run dev
+
 .PHONY: docs
-docs: ## Build the documentation site
+docs: ## Build the documentation site, the way CI does
 	cd website && npm run build
 
 .PHONY: docs-serve
-docs-serve: ## Serve the documentation site with reload
+docs-serve: docs ## Serve that build, with no reload
 	cd website && npm start
 
 # No `doctor` target. `basalt doctor` reports what an *application* needs in
