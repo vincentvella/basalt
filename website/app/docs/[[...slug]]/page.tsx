@@ -3,11 +3,14 @@ import {
   DocsDescription,
   DocsPage,
   DocsTitle,
+  MarkdownCopyButton,
+  ViewOptionsPopover,
 } from "fumadocs-ui/layouts/docs/page";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
+import { pageMarkdownUrl, sourceUrl } from "@/lib/shared";
 import { source } from "@/lib/source";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
@@ -16,6 +19,7 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   if (!page) notFound();
 
   const MDX = page.data.body;
+  const markdownUrl = pageMarkdownUrl("docs", page.slugs).url;
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
@@ -23,6 +27,14 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
       {page.data.description ? (
         <DocsDescription>{page.data.description}</DocsDescription>
       ) : null}
+      {/* The page as markdown, and where it is written. Authored here, in content/docs. */}
+      <div className="flex flex-row items-center gap-2 border-b pb-6">
+        <MarkdownCopyButton markdownUrl={markdownUrl} />
+        <ViewOptionsPopover
+          markdownUrl={markdownUrl}
+          githubUrl={sourceUrl(page.path, false)}
+        />
+      </div>
       <DocsBody>
         <MDX
           components={getMDXComponents({ a: createRelativeLink(source, page) })}

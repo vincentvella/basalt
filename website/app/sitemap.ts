@@ -1,5 +1,5 @@
-import type { MetadataRoute } from 'next';
-import { contributingSource, source } from '@/lib/source';
+import type { MetadataRoute } from "next";
+import { contributingSource, source } from "@/lib/source";
 
 /**
  * Every page, for the crawlers.
@@ -11,7 +11,7 @@ import { contributingSource, source } from '@/lib/source';
 export default function sitemap(): MetadataRoute.Sitemap {
   const pages = [...source.getPages(), ...contributingSource.getPages()];
   return [
-    { url: 'https://basaltjs.dev', priority: 1 },
+    { url: "https://basaltjs.dev", priority: 1 },
     ...pages.map((page) => ({ url: `https://basaltjs.dev${page.url}` })),
   ];
 }

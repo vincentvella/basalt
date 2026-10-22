@@ -22,3 +22,15 @@ export function sourceUrl(path: string, inRepoDocs: boolean): string {
   const prefix = inRepoDocs ? "docs" : "website/content/docs";
   return `https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/${prefix}/${path}`;
 }
+
+/**
+ * Where a page is served as markdown, and the segments the route is built
+ * from. One per tree, because the two have different roots.
+ */
+export function pageMarkdownUrl(
+  tree: "docs" | "contributing",
+  slugs: string[],
+) {
+  const segments = [...slugs, "content.md"];
+  return { segments, url: `/llms.mdx/${tree}/${segments.join("/")}` };
+}
