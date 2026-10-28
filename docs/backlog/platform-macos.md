@@ -20,7 +20,8 @@ If an entry here is about to be picked up, run the thing it describes first.
    was already handled
 9. ~~Only the first `dropShadow()` in a filter list is drawn~~, though a
    later one is cast from the box rather than the alpha
-10. The AppKit canvas's frame scheduler has not been run on a Mac
+10. The AppKit canvas's frame scheduler stops when idle; presentation is
+    still unwatched
 
 - ~~**Hit testing ignores `transform`.**~~ Fixed, the way Windows already did
   it: `RnAppKitView` gains `rnLocalToParent`, the frame's translation with the
@@ -393,7 +394,8 @@ If an entry here is about to be picked up, run the thing it describes first.
 
   backlog/correctness.md has the rest of the function.
 
-- **The AppKit canvas's frame scheduler has not been run on a Mac.** The
+- **The AppKit canvas's frame scheduler stops when idle; presentation is still
+  unwatched.** The
   `<Canvas>` here registered its `RNSkView` with no frame scheduler, under a
   comment saying that falling through to `redraw()` was upstream's own macOS
   answer. It is not: SkiaView.mm installs `presentFrame` under `#else`, and
@@ -409,3 +411,19 @@ If an entry here is about to be picked up, run the thing it describes first.
   readback -- that a canvas still animates, and that `setCanPresent`'s
   "cannot present yet" path still recovers, now that a failed present no
   longer has a redraw loop behind it to try again.
+
+  **Half of that is now measured on a Mac**, on 2026-10-28, with kino's
+  editor on react-native-skia 3.4.0 and basalt 0.2.2. Paused and untouched,
+  the host sits at 0.0% CPU over ten seconds, so the idle canvas stops the
+  way the Windows fix said it would. Playing, it holds about 34 fps (0 slow
+  frames, 0 skipped) at roughly one core, and pausing again drops it back to
+  0.4%. kino's editor e2e suite, 25 tests, passes against this host: captures,
+  drags, writes, undo, video frames and project switches all included.
+
+  What is still not proven is the half this entry was written for. Every
+  number above comes from the JavaScript side and from offscreen captures,
+  and a screenshot of the window itself was not available in that session,
+  so nobody has yet *watched* a frame reach the CAMetalLayer and the
+  compositor. The `setCanPresent` recovery path was not specifically
+  exercised either. Both want a person looking at the window, or a check
+  that can read what the compositor shows.

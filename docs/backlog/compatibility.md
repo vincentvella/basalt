@@ -6,7 +6,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 1. React Native 0.82 and older cannot reach a native module
 2. React Native 0.83 through 0.86 are refused rather than untested-but-allowed
-3. Supporting React Native 0.81, which is what kino pins
+3. Supporting React Native 0.81, which is what kino pinned (it has since
+   moved to 0.86.3, so no app here needs this)
 4. CI checks one React Native per run
 5. Expo starts but no Expo module works
 6. ~~No @shopify/react-native-skia, which stops one real app dead~~, done on
@@ -278,11 +279,40 @@ Found by bundling and running a real application.
     read back off a swapchain texture that has been presented, so that one is
     `e2e/skia.tsx` against a real app.
 
-    Which Windows has now done and this host has not, so the two have swapped
-    places: kino runs on Win32 and paints its composition (below), while on
-    macOS nobody has yet watched a 3.x frame reach the screen. The remaining
-    question here is this platform's alone -- a presented CAMetalLayer -- and
-    not something the shared half is missing.
+    Windows got there first, so for a while the two had swapped places: kino
+    ran on Win32 and painted its composition (below) before it ran here.
+
+    **kino now runs here too**, measured 2026-10-28 against basalt 0.2.2 and
+    react-native-skia 3.4.0. The host prints `RNSkiaModule: Skia installed,
+    over Graphite`, registers its canvas (`SkiaView tag 206 registered as
+    Skia view 1000`), plays at about 34 fps with no slow or skipped frames,
+    and idles at 0.0% CPU. kino's editor e2e suite passes in full, 25 of 25,
+    which covers offscreen captures, canvas hit testing and drags, source
+    writes, undo, video frames and project switches.
+
+    The remaining question is still this platform's alone, and it has not
+    moved: nobody has watched a presented CAMetalLayer frame reach the
+    compositor, because every one of those checks reads from JavaScript or
+    from an offscreen capture. platform-macos.md entry 10 has the detail.
+
+    **That run also found a crash, and it is upstream's.**
+    `JsiSkDataFactory::fromURI` passes its completion a stream and calls
+    `stream->getLength()` without checking it. Every platform context
+    completes with a null stream when a fetch fails, so any image or font URI
+    that 404s takes the process down with a SIGSEGV on a background thread.
+    kino hits it every time it switches projects, because every load still in
+    flight for the old project 404s against the new one. That is the first
+    thing its e2e suite does, so the suite killed the host before a single
+    test could pass.
+
+    The crash is upstream's, but this repository makes it harder to find.
+    `BasaltSkPlatformContext::performStreamOperation` calls the completion
+    with nothing on failure and says why: "Skia's callers check for a null
+    stream." `fromURI` does not, and that comment sends the reader looking
+    everywhere except there. kino carries the guard in its own
+    react-native-skia patch, which rejects the promise instead. The fix
+    belongs upstream, and the comment here should name the gap rather than
+    the check that does not exist.
 
     **basalt-skia ships.** It is no longer `private: true`, so an app can
     install it. `0.2.1` was older than the canvas, so kino's `skia-v3` branch
@@ -382,9 +412,10 @@ Found by bundling and running a real application.
     The comment that stood in place of the scheduler claimed falling through
     to `redraw()` *was* upstream's macOS answer. It is not, and the same
     wrong line was in the AppKit host, where it was written first and copied
-    from. Both are fixed. The AppKit half is reasoned from upstream's code and
-    the Windows measurements rather than measured -- nobody has run it on a
-    Mac since.
+    from. Both are fixed. The AppKit half was reasoned from upstream's code
+    and the Windows measurements at first, and has since been measured on a
+    Mac: kino's editor, paused and untouched, at 0.0% CPU over ten seconds.
+    See the macOS paragraph below and platform-macos.md entry 10.
 
     One thing a canvas on this host still does not answer is
     `RNSkPlatformContext::takeScreenshotFromViewTag`. It takes a React tag and
