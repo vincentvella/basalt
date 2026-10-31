@@ -1,6 +1,6 @@
 {
   "name": "basalt-subprocess",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Running a command and watching its output, for basalt-core. Arbitrary code execution, so it ships separately from the core platform.",
   "license": "MIT",
   "repository": {
@@ -32,6 +32,6 @@
     "react-native": "*"
   },
   "dependencies": {
-    "basalt-core": "0.2.2"
+    "basalt-core": "0.2.3"
   }
 }
