@@ -17,6 +17,7 @@
 #include <ReactCommon/TurboModule.h>
 
 #include <memory>
+#include <mutex>
 
 namespace basalt {
 
@@ -57,6 +58,20 @@ class DesktopMenuModule : public facebook::react::TurboModule {
                                    facebook::react::TurboModule &module,
                                    const facebook::jsi::Value *args,
                                    size_t count);
+
+ public:
+  // What an installed menu's handler holds instead of the module. Hermes
+  // 260318099 (React Native 0.88) frees host objects on a finalizer thread of
+  // its own, so this module can be destroyed on any thread while its handler is
+  // called on the UI thread. The pointer is cleared under the lock; the menu
+  // itself is only ever touched on the UI thread.
+  struct Owner {
+    std::mutex mutex;
+    DesktopMenuModule *module = nullptr;
+  };
+
+ private:
+  std::shared_ptr<Owner> owner_;
 };
 
 // The device event an item's id arrives on. Named here so the two sides cannot

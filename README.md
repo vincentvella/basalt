@@ -88,10 +88,10 @@ Basalt is at `0.2.x` and published on npm. Semver promises nothing below 1.0
 and that is meant literally: the API can change in any release. Being specific
 about the limits is more useful than a maturity label.
 
-- **React Native 0.86 and 0.87 are supported**, and 0.87 is what CI pins. On
-  0.86, which Expo SDK 57 installs, there is no Fast Refresh: a teardown leaves
-  the host without a mounting manager. That was root-caused and fixed upstream
-  in 0.87.
+- **React Native 0.86, 0.87 and 0.88 are supported**, and 0.87 is what CI
+  pins. 0.88 is what Expo SDK 58 installs. On 0.86, which Expo SDK 57 installs,
+  there is no Fast Refresh: a teardown leaves the host without a mounting
+  manager. That was root-caused and fixed upstream in 0.87.
 - **The first build compiles Hermes and React Native's C++ from source** and
   takes tens of minutes. Later builds do not. `npx basalt-core doctor` checks
   your toolchain in seconds before you spend that.
