@@ -52,8 +52,8 @@ build. Bootstrap reads it before downloading or compiling anything and refuses
 an unsupported version in seconds, with a message saying what is supported and
 where to look.
 
-Today that is React Native 0.87.x, verified against 0.87.1, and `main` for
-development.
+Today that is React Native 0.86.x, 0.87.x and 0.88.x, verified against 0.86.3,
+0.87.1 and 0.88.1, and `main` for development.
 
 A pinned triple rather than following the app, because following the app meant
 every combination was its own experiment. Adding a version is now a deliberate
@@ -161,6 +161,26 @@ coming on a Mac.
 
 Running the Linux host under macOS does not help here; it is the same build with
 the same flags this machine uses. Only CI, or a Linux box, applies the other set.
+
+## A host object is destroyed on Hermes's thread, not yours
+
+From Hermes 260318099, which React Native 0.88 pins, a `jsi::HostObject`, a
+host function or a `jsi::NativeState` is not destroyed where the runtime let go
+of it. `JsiProxy::~JsiProxy` hands the last reference to a `SerialExecutor`, a
+finalizer thread Hermes starts for the purpose, and `~HermesRuntime` joins that
+thread. A TurboModule is a host object, so its destructor runs there too.
+
+So a module's destructor may not touch the UI, and may not wait for the UI
+thread. The first one that did was `~DesktopMenuModule`, which rebuilt the
+default menu inline: NSMenu waits on the main thread, the main thread was in
+`applicationWillTerminate` joining the finalizer thread, and the host never
+quit. On 0.87 the same destructor ran on the thread that destroyed the runtime,
+which at quit was the main thread, so nothing showed.
+
+What a destructor can do instead is clear what other threads reach it through
+under a lock, and post anything that touches a window with `postToUiThread`,
+which never waits. `core/MenuModule.cpp` does both. This applies to a
+capability package's modules as much as to this repository's.
 
 ## Upstream portability bugs this build works around
 

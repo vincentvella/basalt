@@ -10,6 +10,7 @@
 #include <folly/dynamic.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -139,8 +140,20 @@ std::vector<MenuItemModel> itemsFrom(Runtime &runtime, const Array &array) {
 
 } // namespace
 
+namespace {
+
+// Whose menu the bar is showing. Read and written on the UI thread only.
+std::shared_ptr<DesktopMenuModule::Owner> &installedOwner() {
+  static std::shared_ptr<DesktopMenuModule::Owner> value;
+  return value;
+}
+
+} // namespace
+
 DesktopMenuModule::DesktopMenuModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
-    : TurboModule(kModuleName, std::move(jsInvoker)) {
+    : TurboModule(kModuleName, std::move(jsInvoker)),
+      owner_(std::make_shared<Owner>()) {
+  owner_->module = this;
   methodMap_["setApplicationMenu"] = MethodMetadata{1, setMenu};
   methodMap_["isSupported"] = MethodMetadata{0, isSupported};
   methodMap_["showContextMenu"] = MethodMetadata{3, showContextMenu};
@@ -151,9 +164,24 @@ DesktopMenuModule::DesktopMenuModule(std::shared_ptr<facebook::react::CallInvoke
 }
 
 DesktopMenuModule::~DesktopMenuModule() {
-  // The handler holds a pointer to this module's emitter. Cleared on the way
-  // out, for the same reason the title bar clears its metrics listener.
-  setApplicationMenu(MenuModel{}, nullptr);
+  // The handler reaches this module through owner_, so a click after this
+  // finds nothing to call rather than a destroyed module.
+  {
+    const std::lock_guard<std::mutex> lock(owner_->mutex);
+    owner_->module = nullptr;
+  }
+  // The default menu goes back on the UI thread, never here. This used to run
+  // setApplicationMenu inline, and on React Native 0.88 "here" is Hermes's
+  // finalizer thread: NSMenu waits on the main thread, which is joining that
+  // thread from ~HermesRuntime, and quitting hung. Only if the bar is still
+  // this module's menu -- after a reload the new module may have put its own
+  // up first.
+  postToUiThread([owner = owner_] {
+    if (installedOwner() == owner) {
+      installedOwner().reset();
+      setApplicationMenu(MenuModel{}, nullptr);
+    }
+  });
 }
 
 Value DesktopMenuModule::setMenu(Runtime &runtime,
@@ -169,12 +197,17 @@ Value DesktopMenuModule::setMenu(Runtime &runtime,
   // Installed on the UI thread, like everything else that touches a window:
   // this arrives on the JavaScript thread and an NSMenu or an HMENU may not be
   // built there.
-  postToUiThread([self, model = std::move(model)] {
-    setApplicationMenu(model, [self](int id) {
-      self->emitDeviceEvent(kMenuChosenEvent,
-                            [id](Runtime & /*runtime*/, std::vector<Value> &args) {
-                              args.emplace_back(Value(id));
-                            });
+  postToUiThread([owner = self->owner_, model = std::move(model)] {
+    installedOwner() = owner;
+    setApplicationMenu(model, [owner](int id) {
+      const std::lock_guard<std::mutex> lock(owner->mutex);
+      if (owner->module == nullptr) {
+        return;
+      }
+      owner->module->emitDeviceEvent(kMenuChosenEvent,
+                                     [id](Runtime & /*runtime*/, std::vector<Value> &args) {
+                                       args.emplace_back(Value(id));
+                                     });
     });
   });
   return Value::undefined();

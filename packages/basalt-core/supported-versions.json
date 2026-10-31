@@ -39,6 +39,14 @@
       "notes": "What CI builds and tests every change against.",
       "hermesTarget": "hermesvm",
       "fastRefresh": true
+    },
+    {
+      "reactNative": "0.88",
+      "hermes": "hermes-v260318099.0.5",
+      "hermesTarget": "hermesvm",
+      "verified": "0.88.1",
+      "notes": "What Expo SDK 58 installs.",
+      "fastRefresh": true
     }
   ],
   "development": {
@@ -48,10 +56,6 @@
     "hermesTarget": "hermesvm"
   },
   "known-unsupported": [
-    {
-      "reactNative": "0.88",
-      "why": "Never built or tested. 0.88.0-rc is what Expo SDK 58 installs, and nothing here has been pointed at it."
-    },
     {
       "reactNative": "0.83 - 0.85",
       "why": "Never built or tested. Nothing suggests they would not work; nothing has checked."
