@@ -4,31 +4,36 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
 
 **Open (3):**
 
-1. Nobody else can use this yet
+1. Nobody has been told
 2. Porting a first third-party native module end to end
 3. Packaging: Arch PKGBUILD, Flatpak
 
-- **Nobody else can use this yet**, and the reason has moved twice. It was
-  that installing did not work; then that nothing was published; it is now
-  that what *is* published is a release candidate nobody has been told about.
+- **Nobody has been told**, and that is now the whole of it. The reason has
+  moved three times: installing did not work; then nothing was published;
+  then what was published was a release candidate nobody had been pointed at.
 
-  **Six packages went to npm on 2026-10-01 at 0.0.0-rc5** -- core, the three
-  hosts, notifications and subprocess -- and `npm install basalt-core`
-  resolves to them today. The entry said "nothing is published" for ten days
-  after that, which is the failure BACKLOG.md's own preamble warns about, and
-  it was found by going to the registry rather than by reading this file.
+  **Eight packages are on npm at 0.2.3**, published 2026-10-31, `latest`, each
+  carrying a SLSA provenance attestation because the publish went through
+  `publish.yml` over trusted publishing rather than from a local CLI. The
+  release run that produced them was green, including the job that installs
+  the packed tarballs into a fresh `create-expo-app` and builds it.
 
-  Two things about that publish are worth keeping. It went out **from a local
-  CLI**, so those versions carry no provenance attestation, where anything
-  published through `publish.yml` does. And the repository was renamed
+  Earlier versions are worth remembering for what they cost. The first six
+  went out at `0.0.0-rc5` **from a local CLI**, so they carry no provenance;
+  this entry then said "nothing is published" for ten days after it was, which
+  is the failure BACKLOG.md's own preamble warns about, and was found by going
+  to the registry rather than by reading this file. The repository was renamed
   `vincentvella/react-native-basalt` to `vincentvella/basalt` the same day,
-  which both fixed a `repository.url` that pointed at a repository that never
+  which both fixed a `repository.url` pointing at a repository that never
   existed and invalidated the trusted publishers configured against the old
-  name. The six are registered again and answer 201; `publish.yml` with
-  `check-only` is what asks, and it asks from inside the workflow because an
-  OIDC token names the workflow that minted it.
+  name.
 
-  What is left is a version and an announcement rather than a mechanism. A fresh `create-expo-app` (SDK 57,
+  And 0.2.1 and 0.2.2 both reported failure while publishing correctly: the
+  check that waits for a version to appear on the registry allowed five
+  minutes, and `basalt-gtk` took longer. Fifteen minutes against one deadline
+  for the whole set is what fixed it, first proven by 0.2.3.
+
+  What is left is the announcement. A fresh `create-expo-app` (SDK 57,
   React Native 0.86.3) with the core packages installed from their tarballs
   runs `react-native run-linux --build` and renders the template's text, with
   nothing from this repository on the path. `.github/workflows/release.yml`
@@ -57,17 +62,17 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   Microsoft's standard library does not pull in for it. Both are worth
   reporting to Expo.
 
-  What is left before a release anybody is pointed at: a version that is not
-  `0.0.0-rc5`, and the decision about which capabilities ship separately,
-  which the first publish has already half made -- the six names on the
-  registry are the split, and moving one now is a breaking change rather than
-  a commit. `basalt-navigation` is the one package still unpublished and is
-  marked `private` for it; `scripts/check_packages.js` is what makes that
-  mean something, since both pack loops walk `packages/*/` and would otherwise
-  upload a directory the moment it appeared.
-  See `openspec/changes/split-optional-capabilities-into-packages`, whose first
-  move (notifications) is done. And a first `--build` that compiles Hermes
-  and React Native's C++ from source, which is the part a user will notice.
+  Which capabilities ship separately is settled, and the first publish settled
+  it: the names on the registry are the split, and moving one now is a breaking
+  change rather than a commit. All eight are published, `basalt-navigation`
+  included; `scripts/check_packages.js` is what holds that list against the
+  directories, since both pack loops walk `packages/*/` and would otherwise
+  upload one the moment it appeared. See
+  `openspec/changes/split-optional-capabilities-into-packages`, which is done.
+
+  What a first-time user still meets is a `--build` that compiles Hermes and
+  React Native's C++ from source, which takes tens of minutes and is the part
+  they will notice.
 - ~~**Adding a desktop to an Expo app is manual.**~~ Done:
   `npx basalt-core init` adds this package and the two dev dependencies
   an app needs: `@react-native/metro-config`, which React Native's `start`
