@@ -323,7 +323,7 @@ if [ ! -d "$TP/hermes" ]; then
   echo "$HERMES_VERSION" > "$HERMES_STAMP"
 fi
 
-# --- the one patch this project applies to anything it downloads -------------
+# --- the patches this project applies to anything it downloads ---------------
 #
 # Static Hermes asserts that its C++ `Environment` and its C `SHEnvironment`
 # have identical field offsets. `Environment` multiply-inherits from
@@ -359,6 +359,26 @@ if [ "$HOST_OS" = windows ]; then
     grep -q "HERMES_EMPTY_BASES Environment" "$HERMES_CALLABLE" || die \
       "could not apply the HERMES_EMPTY_BASES patch to $HERMES_CALLABLE.
   Hermes $HERMES_VERSION may have changed that declaration. See
+  docs/PORTING.md for what the patch is and why."
+  fi
+
+  # The second, from Hermes 260318099 (React Native 0.88). Its
+  # `hermes_enable_werror_undef` turns -Wundef into an error for every
+  # GCC_COMPATIBLE compiler, and Hermes counts clang-cl as one. But clang-cl
+  # does not define __GNUC__, and Hermes's own llvh tests it bare -- `#if
+  # __GNUC__ && ...` in Support/Compiler.h and four more in MathExtras.h -- so
+  # the first file that includes them stops the build. clang and GCC define it
+  # and never see this. Skipped for clang-cl rather than fixed header by header,
+  # because the headers are upstream's and the flag is only a lint.
+  HERMES_CMAKE="$TP/hermes/cmake/modules/Hermes.cmake"
+  if [ -f "$HERMES_CMAKE" ] && grep -q '^macro(hermes_enable_werror_undef)' "$HERMES_CMAKE" &&
+     ! grep -q 'if (GCC_COMPATIBLE AND NOT CLANG_CL)' "$HERMES_CMAKE"; then
+    log "patching Hermes: no -Werror=undef under clang-cl (see docs/PORTING.md)"
+    sed -i '/^macro(hermes_enable_werror_undef)/,/^endmacro/ s/^  if (GCC_COMPATIBLE)$/  if (GCC_COMPATIBLE AND NOT CLANG_CL)/' \
+      "$HERMES_CMAKE"
+    grep -q 'if (GCC_COMPATIBLE AND NOT CLANG_CL)' "$HERMES_CMAKE" || die \
+      "could not apply the -Werror=undef patch to $HERMES_CMAKE.
+  Hermes $HERMES_VERSION may have changed hermes_enable_werror_undef. See
   docs/PORTING.md for what the patch is and why."
   fi
 fi
