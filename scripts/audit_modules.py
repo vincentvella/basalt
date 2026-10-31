@@ -48,9 +48,10 @@ answers with nothing written about what an app sees.
 
 The file is about the React Native in `scripts/react-native.pin`, which is the
 release CI builds against -- so the list of modules an app can reach is that
-release's list. A local checkout is normally `main`, which has already added
-one (`NativeResizeObserverCxx`), dropped one (`ModalManager`) and changed how it
-asks for another (`NativePerformanceCxx`, now `getEnforcing`).
+release's list. A local checkout is normally `main`, which runs ahead of it: the
+three changes 0.88 brought -- `NativeResizeObserverCxx` added, `ModalManager`
+dropped, `NativePerformanceCxx` asked for with `getEnforcing` -- were all on
+`main` first.
 
 So a difference in *React Native's own list* read from an unpinned checkout is
 reported as drift and exits zero: that is what the scheduled drift job is for,
