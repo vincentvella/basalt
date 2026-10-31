@@ -224,20 +224,19 @@ find_package(CURL REQUIRED)
 # builds `libhermes`; the one 0.87 and main use builds `libhermesvm`. Which one
 # is present follows from the version in supported-versions.json, so this looks
 # for either rather than being told.
-find_library(HERMES_VM_LIBRARY NAMES hermesvm hermes
-  HINTS ${HERMES_BUILD_DIR}/API/hermes ${HERMES_BUILD_DIR}/lib
-  REQUIRED)
-
+#
 # Two things about Hermes on Windows that follow from static archives not
 # behaving like shared libraries, and neither of which is visible elsewhere.
 #
-# First, the name found above is wrong here. Hermes' `hermesvm` target builds a
-# DLL, and a Windows DLL exports nothing without __declspec(dllexport), which
-# Hermes does not annotate -- so `hermesvm.lib` is a one-kilobyte import library
-# for a DLL with nothing in it, next to a thirty-megabyte `hermesvm_a.lib` that
-# has the engine. On Linux the shared object works because ELF exports
-# everything by default; that default is the only reason the name is right
-# there.
+# First, that name is wrong here, so Windows does not look for it. Hermes'
+# `hermesvm` target builds a DLL, and a Windows DLL exports nothing without
+# __declspec(dllexport), which Hermes does not annotate -- so `hermesvm.lib` is
+# a one-kilobyte import library for a DLL with nothing in it, next to a
+# thirty-megabyte `hermesvm_a.lib` that has the engine. On Linux the shared
+# object works because ELF exports everything by default; that default is the
+# only reason the name is right there. Bootstrap does not build the DLL on
+# Windows at all: from Hermes 260318099 its link names `/WHOLEARCHIVE:hermesvm_a`
+# with no path or extension, and lld-link cannot find it.
 #
 # Second, jsi has to be named separately. `-DJSI_DIR` makes the Hermes build
 # compile React Native's jsi, and on Linux libhermesvm.so absorbs it the way a
@@ -259,6 +258,9 @@ if(WIN32)
   set(HERMES_LINK_LIBRARIES
     ${HERMES_VM_STATIC_LIBRARY} ${HERMES_JSI_LIBRARY} icu)
 else()
+  find_library(HERMES_VM_LIBRARY NAMES hermesvm hermes
+    HINTS ${HERMES_BUILD_DIR}/API/hermes ${HERMES_BUILD_DIR}/lib
+    REQUIRED)
   set(HERMES_LINK_LIBRARIES ${HERMES_VM_LIBRARY})
 endif()
 # Both names, for the same reason the find_library above takes both: React
