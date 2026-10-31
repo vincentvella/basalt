@@ -14,4 +14,4 @@
 # Bump this after checking the tree still builds and both suites pass against
 # the newer release. That bump is the interesting change and should be
 # reviewable on its own. See docs/PORTING.md.
-v0.87.1
+v0.88.1

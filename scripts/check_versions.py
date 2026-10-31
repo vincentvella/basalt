@@ -2,7 +2,7 @@
 """Type-check this repository against a React Native it is not built with.
 
 `supported-versions.json` lists the React Natives this platform claims. Every
-build here uses one of them -- CI pins 0.87, and so does every local build --
+build here uses one of them -- CI pins 0.88, and so does every local build --
 so a claim about any other version is checked by nothing until a release, when
 the Expo job builds the host inside a real app against whatever Expo installs.
 That job is forty minutes into a gauntlet and it is the only thing standing

@@ -36,7 +36,7 @@
       "reactNative": "0.87",
       "hermes": "250829098.0.0-stable",
       "verified": "0.87.1",
-      "notes": "What CI builds and tests every change against.",
+      "notes": "What CI built and tested every change against until 0.88.",
       "hermesTarget": "hermesvm",
       "fastRefresh": true
     },
@@ -45,7 +45,7 @@
       "hermes": "hermes-v260318099.0.5",
       "hermesTarget": "hermesvm",
       "verified": "0.88.1",
-      "notes": "What Expo SDK 58 installs.",
+      "notes": "What Expo SDK 58 installs, and what CI builds and tests every change against.",
       "fastRefresh": true
     }
   ],
