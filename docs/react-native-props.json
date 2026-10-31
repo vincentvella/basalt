@@ -6,7 +6,7 @@
     "fails when a prop here has no status or a status names a prop that is",
     "no longer declared."
   ],
-  "reactNative": "0.87.1",
+  "reactNative": "0.88.1",
   "readFrom": "the pin",
   "structs": [
     {
@@ -350,6 +350,10 @@
         },
         {
           "name": "fontVariant",
+          "kind": "style"
+        },
+        {
+          "name": "fontVariationSettings",
           "kind": "style"
         },
         {
@@ -1295,6 +1299,9 @@
     "backfaceVisibility",
     "backgroundColor",
     "backgroundImage",
+    "backgroundPosition",
+    "backgroundRepeat",
+    "backgroundSize",
     "borderBlockColor",
     "borderBlockEndColor",
     "borderBlockStartColor",
@@ -1352,6 +1359,7 @@
     "fontSize",
     "fontStyle",
     "fontVariant",
+    "fontVariationSettings",
     "fontWeight",
     "gap",
     "height",

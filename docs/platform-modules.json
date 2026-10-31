@@ -134,11 +134,6 @@
       "asked": "get",
       "answeredBy": "react-native"
     },
-    "ModalManager": {
-      "asked": "get",
-      "answeredBy": "nobody",
-      "effect": "Nothing: `Modal.js` only reaches it on iOS, where it is the dismissal hook. A <Modal> here is a real window; see core/ControlMetrics.h."
-    },
     "NativeAnimatedModule": {
       "asked": "get",
       "answeredBy": "react-native"
@@ -179,10 +174,14 @@
       "answeredBy": "react-native"
     },
     "NativePerformanceCxx": {
-      "asked": "get",
+      "asked": "getEnforcing",
       "answeredBy": "react-native"
     },
     "NativeReactNativeFeatureFlagsCxx": {
+      "asked": "get",
+      "answeredBy": "react-native"
+    },
+    "NativeResizeObserverCxx": {
       "asked": "get",
       "answeredBy": "react-native"
     },
