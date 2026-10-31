@@ -12,7 +12,7 @@ each. One row per attribute, with anything short of done linking to the entry
 that says what is missing and which call would do it.
 
 The attributes are React Native's own, read out of its declarations rather than
-listed here: `scripts/scrape_props.py` scrapes React Native 0.87.1
+listed here: `scripts/scrape_props.py` scrapes React Native 0.88.1
 and this renders what it found, so a prop added upstream turns up as a row
 with no status and fails the check until somebody fills it in.
 
@@ -45,11 +45,11 @@ is the one in the row and ReactCommon's is under it; where several names land
 in one field, as thirteen corner radii land in `borderRadii`, they are listed
 under the row that implements them.
 
-| Host | Toolkit | Written itself | All 280 rows |
+| Host | Toolkit | Written itself | All 281 rows |
 | --- | --- | --- | --- |
-| Linux | GTK4 | 126 of 136, 93% | <span className="support-bar"><span className="support-yes" style={{width: '45.00%'}} title="126 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '25.00%'}} title="70 deliberately not done" /></span> |
-| macOS | AppKit | 130 of 140, 93% | <span className="support-bar"><span className="support-yes" style={{width: '46.43%'}} title="130 done" /><span className="support-partial" style={{width: '3.57%'}} title="10 partly done" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.57%'}} title="66 deliberately not done" /></span> |
-| Windows | Win32 | 124 of 136, 91% | <span className="support-bar"><span className="support-yes" style={{width: '44.29%'}} title="124 done" /><span className="support-partial" style={{width: '4.29%'}} title="12 partly done" /><span className="support-upstream" style={{width: '26.43%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '24.99%'}} title="70 deliberately not done" /></span> |
+| Linux | GTK4 | 126 of 137, 92% | <span className="support-bar"><span className="support-yes" style={{width: '44.84%'}} title="126 done" /><span className="support-partial" style={{width: '3.56%'}} title="10 partly done" /><span className="support-no" style={{width: '0.36%'}} title="1 not yet" /><span className="support-upstream" style={{width: '26.33%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '24.91%'}} title="70 deliberately not done" /></span> |
+| macOS | AppKit | 130 of 141, 92% | <span className="support-bar"><span className="support-yes" style={{width: '46.26%'}} title="130 done" /><span className="support-partial" style={{width: '3.56%'}} title="10 partly done" /><span className="support-no" style={{width: '0.36%'}} title="1 not yet" /><span className="support-upstream" style={{width: '26.33%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '23.49%'}} title="66 deliberately not done" /></span> |
+| Windows | Win32 | 124 of 137, 91% | <span className="support-bar"><span className="support-yes" style={{width: '44.13%'}} title="124 done" /><span className="support-partial" style={{width: '4.27%'}} title="12 partly done" /><span className="support-no" style={{width: '0.36%'}} title="1 not yet" /><span className="support-upstream" style={{width: '26.33%'}} title="74 ReactCommon's or Yoga's" /><span className="support-ignored" style={{width: '24.91%'}} title="70 deliberately not done" /></span> |
 
 **Written itself** is out of the rows that host writes: what it has written,
 what it has half written, and what is still missing. The hatched part of the
@@ -59,7 +59,7 @@ bar is the rest, and it is nobody's work left.
 | --- | --- | --- | --- |
 | <span className="support-chip support-yes" /> ✅ done | 126 | 130 | 124 |
 | <span className="support-chip support-partial" /> ◐ partly done | 10 | 10 | 12 |
-| <span className="support-chip support-no" /> ✖ not yet | 0 | 0 | 0 |
+| <span className="support-chip support-no" /> ✖ not yet | 1 | 1 | 1 |
 | <span className="support-chip support-upstream" /> △ ReactCommon's or Yoga's | 74 | 74 | 74 |
 | <span className="support-chip support-ignored" /> – deliberately not done | 70 | 66 | 70 |
 
@@ -200,6 +200,7 @@ Written inside `style={{...}}`. Read from `____ViewStyle_InternalBase`, `____Tex
 | `fontWeight` | ✅ | ✅ | ✅ |  |
 | `fontStyle` | ✅ | ✅ | ✅ |  |
 | `fontVariant` | ✅ | ✅ | ✅ |  |
+| `fontVariationSettings` | ✖ | ✖ | ✖ | [variable-font axes reach ReactCommon and no host applies them yet, though Core Text, Pango and DirectWrite all could](https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md) |
 | `letterSpacing` | ✅ | ✅ | ✅ |  |
 | `textTransform` | ✅ | ✅ | ✅ |  |
 | `lineHeight` | ✅ | ✅ | ✅ |  |

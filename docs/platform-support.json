@@ -238,11 +238,15 @@
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "ti-drop": {
-      "text": "the field becomes a drop target that refuses what it did not name, and the payload arrives as this platform\u2019s own drop event rather than being inserted for it",
+      "text": "the field becomes a drop target that refuses what it did not name, and the payload arrives as this platform’s own drop event rather than being inserted for it",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/textinput.md"
     },
     "text-fragment-role": {
       "text": "a paragraph every run of which asks for the same role is that role; a role on part of the text needs an accessible child per run, which is a component and not a prop",
+      "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
+    },
+    "font-variation-settings": {
+      "text": "variable-font axes reach ReactCommon and no host applies them yet, though Core Text, Pango and DirectWrite all could",
       "link": "https://github.com/vincentvella/basalt/blob/main/docs/backlog/text.md"
     }
   },
@@ -711,6 +715,12 @@
         "fontFeatureSettings(",
         "fontVariants("
       ]
+    },
+    "TextAttributes.fontVariationSettings": {
+      "linux": "no",
+      "macos": "no",
+      "windows": "no",
+      "why": "font-variation-settings"
     },
     "TextAttributes.allowFontScaling": {
       "linux": "yes",
