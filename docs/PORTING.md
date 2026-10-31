@@ -70,7 +70,7 @@ supported, and the fetch keeps the C++ and the JavaScript exact *within* one.
 
 Windows is listed among the platforms Meta publishes a prebuilt Hermes for, and
 the prebuilt does not exist. So Windows builds Hermes from source, which needs
-three things, one of them an upstream bug.
+four things, two of them upstream bugs.
 
 **`HERMES_ALLOW_BOOST_CONTEXT=0`.** Hermes' vendored `boost::context` throws
 `std::bad_alloc` from its *Windows* stack allocator, and Hermes compiles with
@@ -123,6 +123,16 @@ One trap, recorded because it cost a full rebuild: `-DCMAKE_CXX_FLAGS=...`
 defaults are where `/DWIN32 /D_WINDOWS` come from. Hermes' `OSCompat.h` keys its
 `<unistd.h>` include on `_WINDOWS`, so overriding the variable makes a Windows
 build start looking for POSIX headers. Pass the defaults back with it.
+
+**No `-Werror=undef` under clang-cl**, from Hermes 260318099 (React Native
+0.88). `hermes_enable_werror_undef` in `cmake/modules/Hermes.cmake` makes
+`-Wundef` an error for every `GCC_COMPATIBLE` compiler, and Hermes counts
+clang-cl as one. clang-cl does not define `__GNUC__`, and Hermes's vendored
+llvh tests it bare -- `#if __GNUC__ && ...` in `Support/Compiler.h`, four more
+in `MathExtras.h` -- so the first file that includes them stops the build.
+clang and GCC define the macro and never see it. Bootstrap adds `AND NOT
+CLANG_CL` to the macro's condition: the flag is a lint, and the headers are
+upstream's to fix.
 
 ## clang-cl rather than cl
 
