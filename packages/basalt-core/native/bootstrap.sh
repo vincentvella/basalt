@@ -462,9 +462,18 @@ if ! hermes_is_built; then
   else
     cmake --log-level=ERROR -G Ninja -S "$TP/hermes" -B "$TP/hermes-build" "${HERMES_ARGS[@]}"
   fi
+  # Windows builds what it links, the static archive and jsi, and not the DLL
+  # beside them: see cmake/ThirdParty.cmake for why the DLL is useless there,
+  # and from Hermes 260318099 it does not link either, naming
+  # `/WHOLEARCHIVE:hermesvm_a` with no path or extension.
+  if [ "$HOST_OS" = windows ]; then
+    HERMES_BUILD_TARGETS=("${HERMES_TARGET#lib}_a" jsi)
+  else
+    HERMES_BUILD_TARGETS=("$HERMES_TARGET")
+  fi
   # -j is capped deliberately: a full-width build makes laptops unusable and
   # pins the fans for minutes afterwards.
-  run_nice cmake --build "$TP/hermes-build" --target "$HERMES_TARGET" -j "${BUILD_JOBS:-12}"
+  run_nice cmake --build "$TP/hermes-build" --target "${HERMES_BUILD_TARGETS[@]}" -j "${BUILD_JOBS:-12}"
 fi
 
 # --- yarn -------------------------------------------------------------------
