@@ -44,9 +44,9 @@ and `init` writes the Metro config on `expo/metro-config` when it finds one.
 
 | | Toolkit | Props implemented |
 | --- | --- | --- |
-| Linux | GTK4 | 126 of 136 |
-| macOS | AppKit | 130 of 140 |
-| Windows | Win32, Direct2D, DirectWrite | 124 of 136 |
+| Linux | GTK4 | 126 of 137 |
+| macOS | AppKit | 130 of 141 |
+| Windows | Win32, Direct2D, DirectWrite | 124 of 137 |
 
 Counted by a script rather than claimed: every field React Native's C++ parses,
 with a row per attribute, a column per desktop and a reason wherever a host
