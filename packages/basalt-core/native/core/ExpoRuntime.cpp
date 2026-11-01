@@ -253,6 +253,13 @@ Object makeFontLoader(Runtime &runtime) {
 // than defineProperty for that reason -- a non-configurable property here would
 // make their `Object.defineProperties` throw.
 //
+// **Not enough on its own from Expo SDK 58.** babel-preset-expo inlines
+// `process.env.EXPO_PUBLIC_*` when it transforms a module, and SDK 58's
+// runtime reads this one in a module it transforms, so the bundle carries the
+// value from build time and never looks here. basalt-core's metro-config sets
+// it before Metro's workers start, which is the half that decides now; this
+// one stays for a bundle that reads the variable at runtime.
+//
 // What is lost is what `expo/fetch` adds: a streamed response body. React
 // Native's fetch buffers, and an app importing `expo/fetch` directly still gets
 // the error naming the module, which is the honest answer until someone ports

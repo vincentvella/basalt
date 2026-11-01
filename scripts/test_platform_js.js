@@ -466,3 +466,28 @@ test('decelerationRate resolves its two words to numbers', () => {
   // And a number passes through, which is the third thing the prop takes.
   assert.equal(processDecelerationRate(0.95), 0.95);
 });
+
+// Expo 58 replaced the global fetch with one that needs a native module no
+// desktop host has; this switch keeps React Native's. Verified by bundling a
+// real Expo 58 app: with it, Expo's fetch path is compiled out.
+test("Expo's fetch switch is on unless the app set it", () => {
+  const {withDesktopPlatforms} = require(
+    path.join(__dirname, '..', 'packages/basalt-core/dist/metro-config.js'),
+  );
+  const saved = process.env.EXPO_PUBLIC_USE_RN_FETCH;
+  try {
+    delete process.env.EXPO_PUBLIC_USE_RN_FETCH;
+    withDesktopPlatforms({});
+    assert.equal(process.env.EXPO_PUBLIC_USE_RN_FETCH, '1');
+
+    process.env.EXPO_PUBLIC_USE_RN_FETCH = '0';
+    withDesktopPlatforms({});
+    assert.equal(process.env.EXPO_PUBLIC_USE_RN_FETCH, '0', "an app's own answer wins");
+  } finally {
+    if (saved === undefined) {
+      delete process.env.EXPO_PUBLIC_USE_RN_FETCH;
+    } else {
+      process.env.EXPO_PUBLIC_USE_RN_FETCH = saved;
+    }
+  }
+});

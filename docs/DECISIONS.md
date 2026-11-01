@@ -641,6 +641,17 @@ is a plain assignment and not a `defineProperty`. What is given up is a streamed
 response body, and an app importing `expo/fetch` directly still gets the error
 naming the module, which is the honest answer until someone ports it.
 
+Expo SDK 58 took the runtime half away. babel-preset-expo inlines
+`process.env.EXPO_PUBLIC_*` at transform time, SDK 58's runtime reads this one
+in a module it transforms, and so the bundle carries whatever the variable was
+when it was built: unset, so expo's fetch, so kino's first daemon call was
+"undefined is not a function" again. `withDesktopPlatforms` now sets it too,
+before Metro starts its workers, with the same precedence (an app's own value
+wins). Checked by bundling kino both ways: without it the bundle keeps expo's
+fetch path, with it the path is compiled out. The release check builds an SDK 58
+app and reads `typeof fetch` from its rendered tree, because the template never
+calls fetch and the swap is lazy, so an app that does not ask renders fine.
+
 **A TurboModule is not a singleton, and a listener must not assume it is.**
 ReactCxxPlatform builds a new module for every lookup rather than caching one: an
 app's start-up makes several, and they come and go while it runs. So a native

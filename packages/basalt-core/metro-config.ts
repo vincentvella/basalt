@@ -529,6 +529,15 @@ export function withDesktopPlatforms(
   config: MetroConfig = {},
   options: DesktopPlatformOptions = {},
 ): MetroConfig {
+  // Expo 58 replaces the global `fetch` with `expo/fetch`, whose native half
+  // is an ExpoFetchModule no desktop host has. The require fails quietly and
+  // `fetch` is left undefined, so the first network call in an Expo 58 app is
+  // "undefined is not a function". EXPO_PUBLIC_USE_RN_FETCH is Expo's own
+  // switch back to React Native's fetch, which every host here implements.
+  // It is inlined when a module is transformed, so it is set here, before
+  // Metro starts its workers -- and only if the app has not said otherwise.
+  process.env.EXPO_PUBLIC_USE_RN_FETCH ??= '1';
+
   const enabled = options.platforms ?? DESKTOP_PLATFORMS;
   const devServerPlatform = options.devServerPlatform ?? enabled[0];
   const fallbacks = options.platformFallbacks ?? PLATFORM_FALLBACKS;
