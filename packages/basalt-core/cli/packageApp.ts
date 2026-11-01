@@ -35,6 +35,7 @@
 
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -55,6 +56,12 @@ export type AppConfig = {
   /** Custom URL schemes the app registers. */
   schemes: string[];
   version: string;
+  /** The app's icon, a square PNG (1024px is best), relative to the project. */
+  icon?: string;
+  /** app.json `basalt.resources`: `{"<path in Resources>": "<path in the project>"}`. */
+  resources: Record<string, string>;
+  /** app.json `basalt.entitlements`: a plist signed into every executable on release. */
+  entitlements?: string;
 };
 
 export type PackageRequest = {
@@ -63,6 +70,11 @@ export type PackageRequest = {
   outputDir: string;
   projectRoot: string;
   bundlePath?: string;
+  /**
+   * The AppRegistry name, recorded in app.identity.json for a launch that has
+   * no command line to carry it -- a packaged app opened from Finder.
+   */
+  module?: string;
 };
 
 /**
@@ -97,7 +109,13 @@ type Manifest = {
   version?: string;
   scheme?: string | string[];
   /** This platform's own escape hatch in app.json, for an app that names neither. */
-  basalt?: {identifier?: string; scheme?: string | string[]};
+  basalt?: {
+    identifier?: string;
+    scheme?: string | string[];
+    icon?: string;
+    resources?: Record<string, string>;
+    entitlements?: string;
+  };
   expo?: Record<string, unknown>;
   [key: string]: unknown;
 };
@@ -108,8 +126,10 @@ type ExpoConfig = {
   slug?: string;
   version?: string;
   scheme?: string | string[];
+  macos?: {bundleIdentifier?: string};
   ios?: {bundleIdentifier?: string};
   android?: {package?: string};
+  icon?: string;
   [key: string]: unknown;
 };
 
@@ -159,6 +179,9 @@ export function readAppConfig(projectRoot: string): AppConfig {
   // to tell that nobody chose it.
   const identifier =
     appJson.basalt?.identifier ??
+    // An Expo app that targets the Mac says so here, and it is the closer
+    // answer for a desktop than the phone's.
+    exp?.macos?.bundleIdentifier ??
     exp?.ios?.bundleIdentifier ??
     exp?.android?.package ??
     `com.basalt.${String(slug).replace(/[^A-Za-z0-9-]/g, '-').toLowerCase()}`;
@@ -174,12 +197,19 @@ export function readAppConfig(projectRoot: string): AppConfig {
   const scheme = appJson.basalt?.scheme ?? exp?.scheme ?? null;
   const schemes = scheme == null ? [] : Array.isArray(scheme) ? scheme : [scheme];
 
+  // `basalt.icon` first, as with the identifier: a desktop icon is often not
+  // the phone one, which a phone OS masks into its own shape.
+  const icon = appJson.basalt?.icon ?? exp?.icon ?? (appJson.expo?.icon as string | undefined);
+
   return {
     name,
     slug,
     identifier,
     schemes,
     version: exp?.version ?? appJson.version ?? packageJson.version ?? '1.0.0',
+    icon: typeof icon === 'string' ? icon : undefined,
+    resources: appJson.basalt?.resources ?? {},
+    entitlements: appJson.basalt?.entitlements,
   };
 }
 
@@ -223,7 +253,13 @@ ${config.schemes.map(s => `				<string>${xml(s)}</string>`).join('\n')}
 	<key>CFBundleName</key>
 	<string>${xml(config.name)}</string>
 	<key>CFBundleDisplayName</key>
-	<string>${xml(config.name)}</string>
+	<string>${xml(config.name)}</string>${
+    config.icon == null
+      ? ''
+      : `
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>`
+  }
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -250,12 +286,66 @@ function isStale(source: string, destination: string): boolean {
   }
 }
 
+/** The iconset a square PNG becomes: Apple's ten sizes, named as iconutil expects. */
+export function iconsetEntries(): Array<{file: string; pixels: number}> {
+  return [16, 32, 128, 256, 512].flatMap(points => [
+    {file: `icon_${points}x${points}.png`, pixels: points},
+    {file: `icon_${points}x${points}@2x.png`, pixels: points * 2},
+  ]);
+}
+
+/**
+ * `Resources/AppIcon.icns` from the app's icon, when the icon is newer than it.
+ * Returns whether it was written, which means the bundle needs signing again.
+ * A missing or unreadable icon is a warning: an app with a generic icon still
+ * runs, and a build that stopped over it would be the worse answer.
+ */
+function makeIcon(projectRoot: string, icon: string, resourcesDir: string): boolean {
+  const source = path.resolve(projectRoot, icon);
+  const destination = path.join(resourcesDir, 'AppIcon.icns');
+  if (!fs.existsSync(source)) {
+    console.warn(`==> the app's icon ${icon} does not exist; the app gets the generic one`);
+    return false;
+  }
+  if (!isStale(source, destination)) {
+    return false;
+  }
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'basalt-icon-'));
+  const iconset = path.join(scratch, 'AppIcon.iconset');
+  fs.mkdirSync(iconset);
+  try {
+    for (const {file, pixels} of iconsetEntries()) {
+      const size = String(pixels);
+      const resized = spawnSync('sips', ['-z', size, size, source, '--out', path.join(iconset, file)], {
+        encoding: 'utf8',
+      });
+      if (resized.status !== 0) {
+        console.warn(`==> could not resize ${icon} for the app icon: ${resized.stderr.trim()}`);
+        return false;
+      }
+    }
+    const made = spawnSync('iconutil', ['-c', 'icns', iconset, '-o', destination], {encoding: 'utf8'});
+    if (made.status !== 0) {
+      console.warn(`==> could not make the app icon: ${made.stderr.trim()}`);
+      return false;
+    }
+    return true;
+  } finally {
+    fs.rmSync(scratch, {recursive: true, force: true});
+  }
+}
+
 /**
  * Builds `<name>.app` around the host binary and returns the executable inside
  * it -- which is what should be launched, because that is what makes
  * `NSBundle.mainBundle` the bundle.
  */
-function packageMacos(hostBinary: string, outputDir: string, config: AppConfig): PackagedPaths {
+function packageMacos(
+  hostBinary: string,
+  outputDir: string,
+  config: AppConfig,
+  projectRoot: string,
+): PackagedPaths {
   const appDir = path.join(outputDir, `${config.name}.app`);
   const macosDir = path.join(appDir, 'Contents', 'MacOS');
   const resourcesDir = path.join(appDir, 'Contents', 'Resources');
@@ -285,6 +375,11 @@ function packageMacos(hostBinary: string, outputDir: string, config: AppConfig):
   // that looks like a bug in the plist.
   fs.utimesSync(appDir, new Date(), new Date());
 
+  // On every run, not only for a release: the Dock icon of a development run
+  // is the same file, and an app that only had an icon once shipped would be
+  // an app nobody saw with one until then.
+  const iconChanged = config.icon != null && makeIcon(projectRoot, config.icon, resourcesDir);
+
   // Signed ad hoc, and this is not optional.
   //
   // An unsigned bundle has an identifier and still cannot notify: macOS
@@ -296,7 +391,7 @@ function packageMacos(hostBinary: string, outputDir: string, config: AppConfig):
   //
   // Only when something changed, because signing walks the whole binary and
   // the host is tens of megabytes.
-  if (signed || plistChanged) {
+  if (signed || plistChanged || iconChanged) {
     const result = spawnSync('codesign', ['--force', '--sign', '-', appDir], {encoding: 'utf8'});
     if (result.status !== 0) {
       // Not fatal. Everything except notifications works unsigned, and a build
@@ -361,6 +456,7 @@ function packageLinux(hostBinary: string, outputDir: string, config: AppConfig):
 export function writeIdentity(
   bundlePath: string | undefined,
   config: AppConfig,
+  module?: string,
 ): string | null {
   if (bundlePath == null) {
     return null;
@@ -375,6 +471,7 @@ export function writeIdentity(
         identifier: config.identifier,
         schemes: config.schemes,
         version: config.version,
+        ...(module == null ? {} : {module}),
       },
       null,
       2,
@@ -389,13 +486,14 @@ export function packageApp({
   outputDir,
   projectRoot,
   bundlePath,
+  module,
 }: PackageRequest): PackageResult {
   const config = readAppConfig(projectRoot);
   fs.mkdirSync(outputDir, {recursive: true});
-  const identityPath = writeIdentity(bundlePath, config);
+  const identityPath = writeIdentity(bundlePath, config, module);
 
   if (platform === 'macos') {
-    return {config, identityPath, ...packageMacos(hostBinary, outputDir, config)};
+    return {config, identityPath, ...packageMacos(hostBinary, outputDir, config, projectRoot)};
   }
   if (platform === 'linux') {
     return {config, identityPath, ...packageLinux(hostBinary, outputDir, config)};

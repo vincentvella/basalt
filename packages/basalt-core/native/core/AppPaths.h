@@ -35,6 +35,12 @@ namespace basalt {
 // to "where are my resources" is "where the binary is".
 std::string applicationResourcePath();
 
+// The release bundle a packaged application carries in its resources
+// (`main.jsbundle.js`, which `package-macos` puts there), or empty when there
+// is none. What a host runs when it was launched with no arguments at all, the
+// way Finder and the Dock launch an application.
+std::string packagedBundlePath();
+
 // `NativeModules.BasaltApp`, which is how JavaScript asks.
 class DesktopAppModule : public facebook::react::TurboModule {
  public:

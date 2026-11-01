@@ -79,10 +79,12 @@ function target(platform) {
   };
 }
 
-test('every platform package contributes exactly one command', () => {
+test('every platform package contributes its run command, and macOS a package command too', () => {
   for (const [platform, configPath] of Object.entries(CONFIGS)) {
     const config = require(configPath);
-    assert.equal(config.commands.length, 1, `${platform} should export one command`);
+    // package-macos exists only where packaging is written; see cli/releaseMacos.ts.
+    const expected = platform === 'macos' ? 2 : 1;
+    assert.equal(config.commands.length, expected, `${platform} should export ${expected} command(s)`);
 
     const command = config.commands[0];
     assert.equal(command.name, EXPECTED[platform].command);
@@ -1518,4 +1520,121 @@ test('doctor refuses a directory that is not an app', () => {
   const result = doctorCli.doctor(dir, VERSIONS);
   assert.equal(result.ok, false);
   assert.match(result.reason, /no package.json/);
+});
+
+// ---------------------------------------------------------------------------
+// package-macos: what a release .app needs that a development one does not.
+// The steps that run otool, install_name_tool and codesign are exercised by
+// packaging a real app; what is checked here is the parsing they act on.
+
+const release = require(path.join(DIST, 'cli/releaseMacos.js'));
+
+test('the icon, resources and entitlements come from app.json basalt.*', () => {
+  const root = projectWith({
+    'app.json': JSON.stringify({
+      name: 'demo',
+      expo: {icon: './assets/phone-icon.png'},
+      basalt: {
+        icon: './assets/desktop-icon.png',
+        resources: {'bin/tool': './vendor/tool'},
+        entitlements: './entitlements.plist',
+      },
+    }),
+  });
+  const config = packageApp.readAppConfig(root);
+  // The desktop icon wins: a phone icon is drawn for a mask the desktop has not got.
+  assert.strictEqual(config.icon, './assets/desktop-icon.png');
+  assert.deepStrictEqual(config.resources, {'bin/tool': './vendor/tool'});
+  assert.strictEqual(config.entitlements, './entitlements.plist');
+});
+
+test('an app with no icon gets no CFBundleIconFile, and one with an icon names AppIcon', () => {
+  const bare = packageApp.readAppConfig(projectWith({'app.json': '{"name":"demo"}'}));
+  assert.ok(!packageApp.infoPlist(bare, 'basalt_appkit').includes('CFBundleIconFile'));
+  const withIcon = {...bare, icon: './icon.png'};
+  assert.match(
+    packageApp.infoPlist(withIcon, 'basalt_appkit'),
+    /<key>CFBundleIconFile<\/key>\s*<string>AppIcon<\/string>/,
+  );
+});
+
+test('the iconset has the ten files iconutil expects', () => {
+  const entries = packageApp.iconsetEntries();
+  assert.strictEqual(entries.length, 10);
+  assert.deepStrictEqual(entries.slice(0, 2), [
+    {file: 'icon_16x16.png', pixels: 16},
+    {file: 'icon_16x16@2x.png', pixels: 32},
+  ]);
+  assert.deepStrictEqual(entries[entries.length - 1], {file: 'icon_512x512@2x.png', pixels: 1024});
+});
+
+test('a packaged launch finds its module in app.identity.json', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'basalt-identity-'));
+  const config = packageApp.readAppConfig(projectWith({'app.json': '{"name":"demo"}'}));
+  const written = packageApp.writeIdentity(path.join(dir, 'main.jsbundle.js'), config, 'main');
+  assert.strictEqual(JSON.parse(fs.readFileSync(written, 'utf8')).module, 'main');
+  // A development run passes the module on the command line and records none.
+  const plain = packageApp.writeIdentity(path.join(dir, 'main.jsbundle.js'), config);
+  assert.ok(!('module' in JSON.parse(fs.readFileSync(plain, 'utf8'))));
+});
+
+test("otool's listing is read as dependencies, not counting a library's own id", () => {
+  const listing = [
+    '/x/lib/libglog.1.dylib:',
+    '\t/opt/homebrew/opt/glog/lib/libglog.1.dylib (compatibility version 1.0.0, current version 0.6.0)',
+    '\t/opt/homebrew/opt/gflags/lib/libgflags.2.2.dylib (compatibility version 2.2.0, current version 2.2.2)',
+    '\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.255.0)',
+    '',
+  ].join('\n');
+  const deps = release.parseLinkedLibraries(listing, '/opt/homebrew/opt/glog/lib/libglog.1.dylib');
+  assert.deepStrictEqual(deps, [
+    '/opt/homebrew/opt/gflags/lib/libgflags.2.2.dylib',
+    '/usr/lib/libc++.1.dylib',
+  ]);
+  assert.deepStrictEqual(deps.filter(d => !release.isSystemLibrary(d)), [
+    '/opt/homebrew/opt/gflags/lib/libgflags.2.2.dylib',
+  ]);
+});
+
+test("the rpaths are read out of otool's load commands", () => {
+  const commands = [
+    'Load command 30',
+    '          cmd LC_RPATH',
+    '      cmdsize 88',
+    '         path /Users/me/app/.basalt/third_party/hermes-build/lib (offset 12)',
+    'Load command 31',
+    '          cmd LC_RPATH',
+    '      cmdsize 48',
+    '         path @executable_path/../Frameworks (offset 12)',
+  ].join('\n');
+  assert.deepStrictEqual(release.parseRpaths(commands), [
+    '/Users/me/app/.basalt/third_party/hermes-build/lib',
+    '@executable_path/../Frameworks',
+  ]);
+});
+
+test('basalt.resources cannot write outside the app', () => {
+  const root = projectWith({'tool': 'x'});
+  const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'basalt-resources-'));
+  assert.throws(() => release.copyResources(root, {'../escape': './tool'}, resourcesDir), /outside/);
+  assert.deepStrictEqual(release.copyResources(root, {'bin/tool': './tool'}, resourcesDir), ['bin/tool']);
+  assert.ok(fs.existsSync(path.join(resourcesDir, 'bin', 'tool')));
+});
+
+test('package-macos is registered beside run-macos', () => {
+  const config = require(path.join(REPO, 'packages/basalt-appkit/react-native.config.js'));
+  assert.deepStrictEqual(config.commands.map(c => c.name), ['run-macos', 'package-macos']);
+});
+
+test("an Expo app's macos.bundleIdentifier is the identifier, ahead of the phone's", () => {
+  // Read only ios.bundleIdentifier until 2026-11-01, so an app that declared
+  // its Mac identity shipped as com.basalt.<slug>.
+  const root = projectWith({
+    ...expoConfig({
+      name: 'Demo',
+      macos: {bundleIdentifier: 'com.example.desktop'},
+      ios: {bundleIdentifier: 'com.example.phone'},
+    }),
+  });
+  assert.strictEqual(packageApp.readAppConfig(root).identifier, 'com.example.desktop');
 });

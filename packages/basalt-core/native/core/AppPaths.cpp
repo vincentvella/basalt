@@ -80,6 +80,16 @@ std::string applicationResourcePath() {
   return directory.string();
 }
 
+std::string packagedBundlePath() {
+  const std::string resources = applicationResourcePath();
+  if (resources.empty()) {
+    return {};
+  }
+  std::error_code ignored;
+  const std::filesystem::path bundle = std::filesystem::path(resources) / "main.jsbundle.js";
+  return std::filesystem::is_regular_file(bundle, ignored) ? bundle.string() : std::string();
+}
+
 DesktopAppModule::DesktopAppModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
     : TurboModule(kModuleName, std::move(jsInvoker)) {
   methodMap_["getResourcePath"] = MethodMetadata{0, getResourcePath};

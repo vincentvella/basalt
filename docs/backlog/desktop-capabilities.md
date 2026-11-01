@@ -42,7 +42,7 @@ is missing", and gains a pointer. Three entries have one today.
 31. No spell checking
 32. No dock, launcher or jump-list menu
 33. No way to do work off the JavaScript thread
-34. An app declares an icon and the bundle does not get one
+34. An app declares an icon and the bundle does not get one, on Linux and Windows (macOS has it)
 
 React Native has no cross-platform API for any of this, because it was built for
 phones. That makes each one a design question before it is an implementation
@@ -457,3 +457,10 @@ that boundary to place.
   which this already writes; Windows wants an `.ico` in the executable's
   resources, which is a link-time thing rather than a packaging one and is the
   reason this is one entry and not three.
+
+  macOS, 2026-11-01: `packageApp.ts` makes `Resources/AppIcon.icns` from
+  `basalt.icon` in app.json, else Expo's `icon`, with `sips` and `iconutil`,
+  names it in `CFBundleIconFile`, and does it on every run rather than only for
+  a release, so a development run shows it in the Dock too. `basalt.icon`
+  comes first because a phone icon is drawn for a mask the desktop does not
+  apply. Linux and Windows are unchanged.
