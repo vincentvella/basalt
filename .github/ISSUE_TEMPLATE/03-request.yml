@@ -1,0 +1,69 @@
+name: Something it should do and does not
+description: A prop, a component, a desktop capability, or a library that will not run
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two lists already hold most of what is missing, with the reason it is
+        still missing: [the support table](https://basaltjs.dev/docs/support)
+        for anything React Native declares, and
+        [`docs/BACKLOG.md`](https://github.com/vincentvella/basalt/blob/main/docs/BACKLOG.md)
+        for everything else, a file per area.
+
+        Finding yours in one of them is not a reason to stay quiet. An entry
+        says somebody wrote it down; it does not say anybody needs it. An issue
+        that says what you are building and what it costs you is the thing that
+        moves one up the list.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of thing
+      options:
+        - A React Native prop or component that is not implemented here
+        - Something the desktop can do that Basalt has no API for
+        - A library or native module that will not run
+        - Something about the CLI, packaging or the build
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want
+      description: Name the prop, the API or the package. If React Native, react-native-macos or react-native-windows already has a shape for it, say so, because matching an existing one beats inventing a new one.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What you are building, and what this costs you now
+      description: The most useful part of the issue. What the workaround is, if there is one, and what it is doing to the app.
+    validations:
+      required: true
+  - type: dropdown
+    id: desktops
+    attributes:
+      label: Which desktops you need it on
+      multiple: true
+      options:
+        - Linux (GTK4)
+        - macOS (AppKit)
+        - Windows (Win32)
+    validations:
+      required: true
+  - type: textarea
+    id: platform
+    attributes:
+      label: What the platform calls it, if you know
+      description: >-
+        The GTK, AppKit or Win32 API underneath. Optional, and it genuinely
+        helps, because knowing a toolkit has no such thing is as useful as
+        knowing which function it is.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you post
+      options:
+        - label: I looked in the support table and the backlog for it
+          required: true

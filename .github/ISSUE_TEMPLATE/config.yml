@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A question, or an idea that is not a request yet
+    url: https://github.com/vincentvella/basalt/discussions
+    about: Discussions, for anything that is not yet an issue. "Does it do X", "is this supposed to work", "I got it running on Y". No template.
+  - name: Which props and components work, desktop by desktop
+    url: https://basaltjs.dev/docs/support
+    about: Generated from the source, a row per attribute React Native parses, with a reason wherever a host does not read one. Worth a look before reporting a prop as broken.
+  - name: What is already known to be missing
+    url: https://github.com/vincentvella/basalt/blob/main/docs/BACKLOG.md
+    about: The open list, one file per area. Plenty of gaps are recorded there with the reason they are still gaps.

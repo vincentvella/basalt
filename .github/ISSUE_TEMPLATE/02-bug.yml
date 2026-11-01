@@ -1,0 +1,92 @@
+name: Something behaves wrong
+description: It builds and runs, and then does the wrong thing
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The useful comparison for most of these is a phone: React Native says
+        what a component and a prop should do, and a desktop host either does
+        it or is written down as not doing it. So the two questions worth
+        answering before anything else are what iOS or Android does with the
+        same code, and what
+        [the support table](https://basaltjs.dev/docs/support) already says
+        about the prop.
+
+        A prop listed there as `no`, `partial` or `ignored` is a known gap with
+        a reason beside it. Saying it should be otherwise is welcome, and the
+        request template is where that goes.
+  - type: dropdown
+    id: desktops
+    attributes:
+      label: Which desktops
+      description: Pick every one you have seen it on. Whether the other two agree is often the whole answer, and nobody expects you to own three machines.
+      multiple: true
+      options:
+        - Linux (GTK4)
+        - macOS (AppKit)
+        - Windows (Win32)
+    validations:
+      required: true
+  - type: input
+    id: basalt
+    attributes:
+      label: Basalt version
+      placeholder: "0.2.4"
+    validations:
+      required: true
+  - type: input
+    id: react-native
+    attributes:
+      label: React Native version
+      placeholder: "0.88.1"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: The machine
+      placeholder: "Fedora 42, GTK 4.22 / macOS 26.1, Apple silicon / Windows 11 24H2"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what you expected instead
+      description: A screenshot earns its place here. Half of what goes wrong on a desktop is something you can see and nothing you can print.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest component that does it
+      description: Something that can be pasted into a fresh app and run. A link to a repository works too.
+      render: javascript
+    validations:
+      required: true
+  - type: dropdown
+    id: phone
+    attributes:
+      label: The same code on iOS or Android
+      options:
+        - Works there, so this is a desktop problem
+        - Does the same there, so it may be React Native's
+        - Have not tried
+        - Cannot try, it is desktop-only code
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Anything the host printed
+      description: The terminal the app ran in, and the browser console if the dev tools were open. Leave it empty if it was silent, which is itself worth knowing.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you post
+      options:
+        - label: I looked for an open issue saying the same thing
+          required: true
+        - label: I checked [the support table](https://basaltjs.dev/docs/support) for the props involved
+          required: true

@@ -1,0 +1,84 @@
+name: A build that fails
+description: The host does not compile, or the toolchain is refused
+labels: ["build"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The first build compiles Hermes and React Native's C++ from source and
+        takes tens of minutes, so a failure costs real time. Two things answer
+        most of these faster than an issue does:
+
+        - `npx basalt doctor` reports what a build needs, changing nothing, in
+          seconds. Run it in the app rather than in a clone of this repository.
+        - A build that was interrupted can leave `.basalt/` half-written.
+          Deleting it and building again is cheap to try and rules a lot out.
+
+        If it builds and then misbehaves, the other template is the one.
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Which desktop
+      options:
+        - Linux (GTK4)
+        - macOS (AppKit)
+        - Windows (Win32)
+    validations:
+      required: true
+  - type: input
+    id: basalt
+    attributes:
+      label: Basalt version
+      description: What `npm ls basalt-core` says.
+      placeholder: "0.2.4"
+    validations:
+      required: true
+  - type: input
+    id: react-native
+    attributes:
+      label: React Native version
+      description: 0.86, 0.87 and 0.88 are supported. Anything else is untested rather than refused, and saying so here saves a round trip.
+      placeholder: "0.88.1"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: The machine
+      description: The OS and its version, plus the distribution on Linux. Apple silicon or Intel on a Mac.
+      placeholder: "Fedora 42, GTK 4.22 / macOS 26.1, Apple silicon / Windows 11 24H2"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`npx basalt doctor`"
+      description: Its whole output, including the lines that passed. The passing ones say which toolchain it found.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: What you ran
+      placeholder: "npm run macos -- --build"
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Where it stopped
+      description: The error and the hundred or so lines before it. A compiler's first error is the useful one and is usually far above the last line.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you post
+      options:
+        - label: I looked for an open issue saying the same thing
+          required: true
+        - label: I ran `npx basalt doctor` and pasted it above
+          required: true
