@@ -1276,8 +1276,10 @@ int main(int argc, const char *argv[]) {
     // And which window a call that names none means.
     basalt::setAppWindowId(kSurfaceId);
 
+    const std::string title =
+        basalt::titleFor(basalt::appIdentity(gHost.bundlePath), "basalt-core — macOS");
     createHostWindow(kSurfaceId,
-                     @"basalt-core — macOS",
+                     [NSString stringWithUTF8String:title.c_str()],
                      kInitialWidth,
                      kInitialHeight,
                      delegate);

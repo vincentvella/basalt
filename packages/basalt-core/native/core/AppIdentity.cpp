@@ -72,6 +72,10 @@ AppIdentity readFrom(const std::string &bundlePath) {
 
 } // namespace
 
+std::string titleFor(const AppIdentity &identity, const std::string &fallback) {
+  return identity.name.empty() ? fallback : identity.name;
+}
+
 AppIdentity readAppIdentity(const std::string &bundlePath) {
   return readFrom(bundlePath);
 }
