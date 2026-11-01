@@ -208,10 +208,28 @@ jobs:
           retention-days: 7
 
       - name: Create an Expo app
-        # SDK 57 installs React Native 0.86, which supported-versions.json lists
+        # SDK 58 installs React Native 0.88, which supported-versions.json lists
         # because it is what a current Expo app gets. Pinned, so this job fails
         # because of this repository and not because Expo released.
-        run: npx --yes create-expo-app@latest app --template blank@sdk-57
+        run: npx --yes create-expo-app@latest app --template blank@sdk-58
+
+      - name: Make it say whether it has fetch
+        # SDK 58 swaps the global fetch for expo/fetch, whose native module no
+        # desktop host has, and the swap is lazy: an app that never calls fetch
+        # starts and renders fine with fetch undefined. So the template's one
+        # line also says what fetch is, and the check below reads it.
+        # (basalt-core's metro-config is what keeps it a function.)
+        working-directory: app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const file = ["App.tsx", "App.js"].find(f => fs.existsSync(f));
+            const text = fs.readFileSync(file, "utf8");
+            const marker = "Open up App";
+            if (!text.includes(marker)) { console.error(`no "${marker}" in ${file}`); process.exit(1); }
+            fs.writeFileSync(file, text.replace(/(<Text>)(Open up App[^<]*)(<\/Text>)/, "$1$2{\" fetch is \" + typeof fetch}$3"));
+          '
+          grep -n "typeof fetch" App.*
 
       - name: Install the packages into it
         # All four in one install, so the platform packages' dependency on
@@ -262,6 +280,7 @@ jobs:
           npx react-native run-linux --build --mode release --module main
           cat ../tree.txt
           grep -F "Open up App" ../tree.txt
+          grep -F "fetch is function" ../tree.txt
 
   ready:
     name: ready to publish
