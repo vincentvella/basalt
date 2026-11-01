@@ -97,6 +97,101 @@ The host binaries are `basalt_gtk`, `basalt_appkit` and `basalt_win32`. That is
 what shows in `ps` and in a crash report, rather than your app's name, which is
 deliberate.
 
+## `react-native package-macos`
+
+A `.app` that runs on a Mac other than the one that built it, and is **not**
+launched. From `basalt-appkit`, so an app that does not target macOS never sees
+the command.
+
+```bash
+npx react-native package-macos --build
+```
+
+A development run already builds a `.app`, because `NSBundle.mainBundle` comes
+from where the executable sits rather than from how it was launched, and
+notifications, the Dock icon and the menu bar name all need a bundle. What that
+one lacks is everything that makes it somebody else's:
+
+- **Its libraries.** The host links Hermes and jsi through rpaths into this
+  machine's `.basalt/build`, and glog, gflags, fmt, double-conversion,
+  boost_regex, OpenSSL and three ICU libraries by absolute Homebrew path.
+  Eleven libraries another Mac has not got, so it dies in dyld before a line of
+  JavaScript runs.
+- **Its bundle.** A development host is pointed at Metro, or at a bundle path
+  relative to the working directory, which is not something Finder sets.
+- **A signature Gatekeeper accepts.** Ad hoc is refused for anything
+  downloaded.
+
+So those are what this does, and it does nothing about running:
+
+| | |
+| --- | --- |
+| the bundle | a release bundle straight into `Contents/Resources`, so its assets, `app.config.json` and `app.identity.json` land beside it |
+| the module | `app.identity.json` records the `AppRegistry` name, and a host launched with no arguments at all, which is how Finder starts one, runs `Resources/main.jsbundle.js` with it |
+| libraries | every non-system dylib the executable reaches, transitively, copied into `Contents/Frameworks` and referenced as `@rpath/<name>`, with the build directory rpaths replaced by `@executable_path/../Frameworks` |
+| resources | whatever [`basalt.resources`](/docs/reference/app-json#basaltresources) names, executable bits kept |
+| the signature | inside out: each Mach-O under `Frameworks` and `Resources`, then the app itself |
+
+The icon is not in that list because it is not a release step:
+[`basalt.icon`](/docs/reference/app-json#basalticon) becomes
+`Resources/AppIcon.icns` on every run, so a development app has it too.
+
+The `.app` is rebuilt from nothing each time. A leftover file from an older run
+inside a signed bundle is the kind of thing nobody finds until after it ships.
+
+| option | default | |
+| --- | --- | --- |
+| `--build` | | build the host first, into `.basalt/build` |
+| `--jobs <number>` | | parallelism for `--build` |
+| `--host-binary <path>` | | the `basalt_appkit` to package, if it is not somewhere obvious |
+| `--module <string>` | | the `AppRegistry` name, if it is not `app.json`'s |
+| `--entry-file <path>` | `index.js` | the app entry point |
+| `--sign <identity>` | | codesigning identity; else `BASALT_SIGN_IDENTITY`, else ad hoc |
+| `--out <path>` | `build/release` | where the app goes |
+
+### Signing, and the step this does not take
+
+Without `--sign` the app is signed ad hoc, which is enough to run it here and
+not enough to give it to anybody.
+
+```bash
+npx react-native package-macos --build \
+  --sign "Developer ID Application: Your Name (TEAMID)"
+```
+
+A Developer ID adds the hardened runtime and a secure timestamp, both of which
+notarization requires, and signs
+[`basalt.entitlements`](/docs/reference/app-json#basaltentitlements) into every
+executable in the bundle.
+
+**Notarization is yours.** With a Developer ID signature Gatekeeper's answer is
+"Unnotarized Developer ID", and `notarytool` plus a DMG or a zip to staple it
+to are the remaining steps. Basalt takes neither.
+
+<Callout type="warn" title="A release host is not optimised yet">
+The macOS host is built with no CMake build type, so the binary `--build`
+produces for a release is the same one a development run gets.
+</Callout>
+
+### Linux and Windows have no `package-` command
+
+`basalt-gtk` and `basalt-win32` register `run-linux` and `run-windows` and
+nothing else, so there is no `package-linux` or `package-windows` to run.
+
+What each one already does on **every** run is the identity half, which is what
+a notification and a switcher entry need: Linux gets a `.desktop` file written
+beside the build, naming the app, its icon, its `StartupWMClass` and its URL
+schemes, and on Windows the host registers its own AppUserModelID and Start
+Menu shortcut in C++, because a shortcut carrying that property means COM.
+
+What neither has is the distribution half: the transitive dependency walk that
+embeds libraries, which is `otool` and `install_name_tool` and has no
+counterpart written for either; a real signature, which is `signtool` on
+Windows; an icon in the delivered app at all; and the container people expect
+to download, an AppImage or a Flatpak on Linux and an installer or MSIX on
+Windows. Tracked in
+[`docs/backlog/ecosystem.md`](https://github.com/vincentvella/basalt/blob/main/docs/backlog/ecosystem.md).
+
 ## `basalt-bundle`
 
 For apps that cannot use React Native's CLI. An Expo app has `expo` as its CLI,

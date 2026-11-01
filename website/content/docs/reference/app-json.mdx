@@ -49,13 +49,16 @@ post a notification, own its Dock icon and appear by name in the switcher.
 Taken from the first of these that exists:
 
 1. `basalt.identifier`
-2. `expo.ios.bundleIdentifier`
-3. `expo.android.package`
-4. `com.basalt.<slug>`
+2. `expo.macos.bundleIdentifier`
+3. `expo.ios.bundleIdentifier`
+4. `expo.android.package`
+5. `com.basalt.<slug>`
 
-So an Expo app that already has an iOS bundle identifier needs nothing here.
-The last resort is deliberately visible in the string: an app shipping as
-`com.basalt.something` can tell that nobody chose it.
+So an Expo app that already has an iOS bundle identifier needs nothing here,
+and one that declares a Mac identity gets that instead, because it is the
+closer answer for a desktop. The last resort is deliberately visible in the
+string: an app shipping as `com.basalt.something` can tell that nobody chose
+it.
 
 ## `basalt.scheme`
 
@@ -72,6 +75,60 @@ Unlike `identifier`, where `basalt.identifier` takes precedence,
 `expo.scheme` is read **first** and `basalt.scheme` is the fallback. If you
 have both, the Expo one is what ships.
 </Callout>
+
+## `basalt.icon`
+
+The app's icon, a square PNG, relative to the project. 1024px is best, because
+every size the desktop wants is made from it.
+
+```json
+{"basalt": {"icon": "assets/icon.png"}}
+```
+
+Read before Expo's `icon`, as with `identifier`: a desktop icon is often not
+the phone one, which a phone OS masks into its own shape.
+
+On macOS it becomes `Resources/AppIcon.icns` on every run, development
+included, so the app has its icon in the Dock while you are building it. An
+icon that does not exist is a **warning** rather than a failure: an app with
+the generic icon still runs.
+
+Linux and Windows do not get one yet. The `.desktop` file names the icon by the
+app's identifier, which means an icon installed on the system, and nothing
+installs it.
+
+## `basalt.resources`
+
+Files to carry inside the app, as a map of path inside the bundle's resources
+to path in your project:
+
+```json
+{"basalt": {"resources": {"bin/helper": "tools/helper", "db/seed.sqlite": "data/seed.sqlite"}}}
+```
+
+Copied by [`package-macos`](/docs/reference/cli#react-native-package-macos)
+with executable bits kept, which is what makes a bundled binary still
+runnable. A directory is copied whole. A destination outside the resources
+directory and a source that does not exist are both errors, because a release
+missing a file it declared is worse than a release that stopped.
+
+This is for things the app reads at runtime and Metro knows nothing about: a
+helper executable, a database to seed from, a model file. Assets you
+`require()` need nothing here, because the bundler already puts them beside the
+bundle.
+
+## `basalt.entitlements`
+
+A path to an entitlements plist, signed into every executable in the app when
+[`package-macos`](/docs/reference/cli#react-native-package-macos) is given a
+`--sign` identity.
+
+```json
+{"basalt": {"entitlements": "macos/App.entitlements"}}
+```
+
+Only macOS has such a thing. What goes in it is Apple's to document, and the
+usual reason to need one is the App Sandbox or a hardened-runtime exception.
 
 ## What else is read, and from where
 
