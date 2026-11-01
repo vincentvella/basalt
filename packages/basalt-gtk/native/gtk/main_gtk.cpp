@@ -1375,7 +1375,8 @@ void onActivate(GtkApplication *app, gpointer data) {
   // what everything not yet per-window means by "the window".
   host->application = app;
   gWindowHost = host;
-  createHostWindow(host, app, kSurfaceId, "basalt-core", kInitialWidth, kInitialHeight);
+  const std::string title = basalt::titleFor(basalt::appIdentity(host->bundlePath), "basalt-core");
+  createHostWindow(host, app, kSurfaceId, title.c_str(), kInitialWidth, kInitialHeight);
 
   // Which language this desktop is in and which way it reads, asked once and
   // on this thread: `gtk_widget_get_default_direction` is GTK's own answer,

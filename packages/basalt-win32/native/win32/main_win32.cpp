@@ -2114,8 +2114,9 @@ HostWindow *createHostWindow(facebook::react::SurfaceId surfaceId,
 }
 
 bool createWindow() {
-  return createHostWindow(kSurfaceId, L"basalt-core \x2014 Windows", kInitialWidth,
-                          kInitialHeight) != nullptr;
+  const std::wstring title = basalt::win32::widen(
+      basalt::titleFor(basalt::appIdentity(gHost.bundlePath), "basalt-core \xE2\x80\x94 Windows"));
+  return createHostWindow(kSurfaceId, title.c_str(), kInitialWidth, kInitialHeight) != nullptr;
 }
 
 } // namespace

@@ -60,4 +60,9 @@ const AppIdentity &appIdentity(const std::string &bundlePath);
 // For the callers that have no bundle path in reach.
 const AppIdentity &appIdentity();
 
+// What the main window is called: the app's own name, or `fallback` when it has
+// none (a host run by hand, the test harness). An app that never sets a title
+// should not ship with this platform's name in its title bar.
+std::string titleFor(const AppIdentity &identity, const std::string &fallback);
+
 } // namespace basalt

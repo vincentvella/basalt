@@ -123,3 +123,13 @@ TEST(identity_carries_the_module_a_packaged_launch_starts) {
   const Beside without(R"({"identifier": "dev.example.demo"})");
   EXPECT(readAppIdentity(without.bundlePath()).module.empty());
 }
+
+// The main window's title: the app's name, else the host's own. An app that
+// set no title shipped with "basalt-core — macOS" in its title bar until this.
+TEST(the_main_window_is_titled_after_the_app) {
+  const Beside named(R"({"name": "Cutloop", "identifier": "com.example.cutloop"})");
+  EXPECT_EQ(basalt::titleFor(readAppIdentity(named.bundlePath()), "basalt-core"), std::string("Cutloop"));
+
+  const Beside none("");
+  EXPECT_EQ(basalt::titleFor(readAppIdentity(none.bundlePath()), "basalt-core"), std::string("basalt-core"));
+}
