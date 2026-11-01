@@ -31,6 +31,10 @@ struct AppIdentity {
   // URL schemes the app claims, without the "://".
   std::vector<std::string> schemes;
   std::string version;
+  // The AppRegistry name to start. A development run passes it on the command
+  // line; a packaged app launched from Finder has no command line, so the
+  // packager records it here. Empty when nothing did.
+  std::string module;
 
   bool empty() const {
     return identifier.empty();

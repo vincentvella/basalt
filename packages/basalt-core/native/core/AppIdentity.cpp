@@ -51,6 +51,9 @@ AppIdentity readFrom(const std::string &bundlePath) {
     if (const auto *version = parsed.get_ptr("version"); version != nullptr && version->isString()) {
       identity.version = version->asString();
     }
+    if (const auto *module = parsed.get_ptr("module"); module != nullptr && module->isString()) {
+      identity.module = module->asString();
+    }
     if (const auto *schemes = parsed.get_ptr("schemes"); schemes != nullptr && schemes->isArray()) {
       for (const auto &scheme : *schemes) {
         if (scheme.isString()) {

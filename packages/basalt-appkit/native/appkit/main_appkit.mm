@@ -1221,7 +1221,11 @@ int main(int argc, const char *argv[]) {
   basalt::installCrashHandler();
 
   @autoreleasepool {
-    gHost.bundlePath = argc > 1 ? argv[1] : "build/main.jsbundle.js";
+    // No arguments at all is how Finder and the Dock launch an application, and
+    // then the bundle is the one `package-macos` put in its resources. Anything
+    // else -- a development run, the test harness -- names its bundle.
+    const std::string packaged = argc > 1 ? std::string() : basalt::packagedBundlePath();
+    gHost.bundlePath = argc > 1 ? argv[1] : !packaged.empty() ? packaged : "build/main.jsbundle.js";
 
   // A URL the desktop launched this with, for `Linking.getInitialURL()`. Any
   // argument after the bundle and the module that carries a scheme: a
@@ -1237,7 +1241,11 @@ int main(int argc, const char *argv[]) {
     }
     // Defaults to the raw-Fabric script, because that is what this host can
     // currently render: a React app needs components macOS cannot mount yet.
-    gHost.moduleName = argc > 2 ? argv[2] : "";
+    // A packaged launch has no command line to name the module, so the packager
+    // wrote it into app.identity.json beside the bundle.
+    gHost.moduleName = argc > 2   ? argv[2]
+                       : !packaged.empty() ? basalt::readAppIdentity(gHost.bundlePath).module
+                                           : "";
     const char *sourcePath = getenv("BASALT_DEV_ENTRY");
     gHost.sourcePath = sourcePath != nullptr ? sourcePath : "index";
 

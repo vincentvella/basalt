@@ -112,3 +112,14 @@ TEST(identity_a_scheme_list_with_rubbish_in_it_keeps_the_strings) {
   EXPECT_EQ((long)identity.schemes.size(), 1L);
   EXPECT_EQ(identity.schemes[0], std::string("demo"));
 }
+
+// A packaged app launched from Finder has no command line, so the module it
+// starts comes from here. An identity written before the field existed has no
+// module, and reads as empty rather than failing.
+TEST(identity_carries_the_module_a_packaged_launch_starts) {
+  const Beside with(R"({"identifier": "dev.example.demo", "module": "main"})");
+  EXPECT_EQ(readAppIdentity(with.bundlePath()).module, std::string("main"));
+
+  const Beside without(R"({"identifier": "dev.example.demo"})");
+  EXPECT(readAppIdentity(without.bundlePath()).module.empty());
+}

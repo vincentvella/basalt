@@ -23,8 +23,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {bundleWithAssets, writeExpoAppConfig} from './bundleWithAssets';
-import {packageApp} from './packageApp';
+import {packageApp, readAppConfig} from './packageApp';
 import type {PackagePlatform} from './packageApp';
+import {copyResources, embedLibraries, signApp} from './releaseMacos';
 import {isPortTaken, startMetro} from './metro';
 
 const DEFAULT_PORT = 8081;
@@ -1293,6 +1294,98 @@ async function runDesktop(
   if (status !== 0) {
     throw new Error(`the app exited with status ${status}`);
   }
+}
+
+export type PackageOptions = RunOptions & {
+  /** `--sign`: a codesigning identity. Falls back to BASALT_SIGN_IDENTITY, then ad hoc. */
+  sign?: string;
+  /** `--out`: the directory the `.app` goes in. */
+  out?: string;
+};
+
+/**
+ * `package-macos`: an `.app` that runs on a Mac other than this one, and is
+ * not launched. The run command's packaging plus the four things a development
+ * `.app` lacks: its bundle inside it, its libraries inside it, the resources
+ * app.json declares, and a real signature. See cli/releaseMacos.ts.
+ *
+ * Rebuilt from nothing every time. A release is the product of this run, and
+ * a leftover file from an older one inside a signed bundle is the kind of
+ * thing nobody finds until it is shipped.
+ */
+export async function packageDesktop(
+  context: CliContext,
+  options: PackageOptions,
+  target: Target,
+): Promise<string> {
+  if (target.platform !== 'macos') {
+    throw new Error(`packaging for ${target.label ?? target.platform} is not written yet; only macOS is`);
+  }
+  const projectRoot = context.root;
+  const hostBinary = options.build
+    ? buildHost(context, options, target)
+    : resolveHost(projectRoot, options, target);
+  const module = resolveModuleName(projectRoot, options);
+  const outputDir = path.resolve(projectRoot, options.out ?? path.join('build', 'release'));
+  const config = readAppConfig(projectRoot);
+  const appDir = path.join(outputDir, `${config.name}.app`);
+  fs.rmSync(appDir, {recursive: true, force: true});
+
+  const bundlePath = path.join(appDir, 'Contents', 'Resources', 'main.jsbundle.js');
+  const packaged = packageApp({
+    platform: target.platform,
+    hostBinary,
+    outputDir,
+    projectRoot,
+    bundlePath,
+    module,
+  });
+  const resourcesDir = path.dirname(bundlePath);
+
+  console.log('==> bundling into the app');
+  await bundleForRelease(context, options, bundlePath, target);
+
+  const resources = copyResources(projectRoot, config.resources, resourcesDir);
+  if (resources.length > 0) {
+    console.log(`==> resources: ${resources.join(', ')}`);
+  }
+
+  const libraries = embedLibraries(appDir, packaged.launchPath);
+  console.log(`==> embedded ${libraries.length} libraries: ${libraries.join(', ')}`);
+
+  const identity = options.sign ?? process.env.BASALT_SIGN_IDENTITY;
+  signApp(appDir, {
+    identity,
+    entitlements: config.entitlements && path.resolve(projectRoot, config.entitlements),
+  });
+  console.log(`==> signed ${identity ? `as ${identity}` : 'ad hoc (pass --sign to distribute)'}`);
+  console.log(`==> ${path.relative(projectRoot, appDir)}`);
+  return appDir;
+}
+
+/** The `package-<platform>` command object, beside `run-<platform>`. */
+export function makePackageCommand(target: Target) {
+  return {
+    name: target.command.replace(/^run-/, 'package-'),
+    description: `builds a self-contained, signed app for ${target.label}, and does not run it`,
+    func: async (_argv: string[], context: CliContext, options: PackageOptions): Promise<void> => {
+      try {
+        await packageDesktop(context, options, target);
+      } catch (error) {
+        console.error(`\nerror: ${(error as Error).message}\n`);
+        process.exitCode = 1;
+      }
+    },
+    options: [
+      {name: '--build', description: 'build the host first, into .basalt/build'},
+      {name: '--jobs <number>', description: 'parallelism for --build'},
+      {name: '--host-binary <path>', description: `the ${target.binary} to package`},
+      {name: '--module <string>', description: "the AppRegistry name, if it is not app.json's"},
+      {name: '--entry-file <path>', description: 'the app entry point', default: 'index.js'},
+      {name: '--sign <identity>', description: 'codesigning identity; else BASALT_SIGN_IDENTITY, else ad hoc'},
+      {name: '--out <path>', description: 'where the app goes', default: path.join('build', 'release')},
+    ],
+  };
 }
 
 /**

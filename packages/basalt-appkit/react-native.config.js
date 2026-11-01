@@ -1,7 +1,7 @@
 /**
  * What React Native's CLI reads out of this package.
  *
- * Just the `run-macos` command. The platform *declarations* -- which make
+ * The `run-macos` and `package-macos` commands. The platform *declarations* -- which make
  * `--platform` accept this one at all -- are in basalt-core, because
  * they are the same on every desktop and an app targeting only one of them
  * still needs them.
@@ -18,5 +18,5 @@
 'use strict';
 
 module.exports = {
-  commands: [require('./cli/runMacos')],
+  commands: [require('./cli/runMacos'), require('./cli/packageMacos')],
 };
