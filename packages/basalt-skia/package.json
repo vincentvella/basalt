@@ -1,6 +1,6 @@
 {
   "name": "basalt-skia",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "React Native Skia on the desktop: the module, the platform context and the canvas, compiled against the Skia the app already installed.",
   "license": "MIT",
   "repository": {
@@ -17,7 +17,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "basalt-core": "0.2.3"
+    "basalt-core": "0.2.4"
   },
   "peerDependencies": {
     "@shopify/react-native-skia": "*",
