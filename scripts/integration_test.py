@@ -8032,6 +8032,53 @@ def test_dimensions(bundle: Path) -> str:
             f"{scale:g}x, and a resize that said so")
 
 
+def test_request_animation_frame(bundle: Path) -> str:
+    """requestAnimationFrame ticks at the display's rate, not as fast as it can.
+
+    React Native installs it as setTimeout(0), so a loop that re-requests from
+    its own callback -- Animated's JS driver, a render or playback loop -- spun
+    as fast as the JavaScript thread allowed: kino's playback loop held a core
+    and a half doing it. core/AnimationFrames.h replaces it with frames from
+    each host's own clock, the same one React Native's animation backend uses.
+
+    A second of a self-requesting loop has to come back with a display's worth
+    of frames: at least 20 (it ticks), at most 250 (it is paced; setTimeout(0)
+    gave thousands). And two callbacks in one frame see one timestamp, and a
+    cancelled one does not run.
+    """
+    app = bundle_app(bundle.parent, "raf")
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "4000"
+    result = run_host_process(
+        [str(HOST), str(app), "BasaltRaf"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    logged = result.stdout + result.stderr
+
+    found = re.search(r"raf: (\d+) frames in (\d+)ms", logged)
+    if found is None:
+        raise Failure("the requestAnimationFrame loop never finished a second.\n" + tail_text(logged))
+    frames, ms = int(found.group(1)), int(found.group(2))
+    if frames > 250:
+        raise Failure(
+            f"{frames} requestAnimationFrame callbacks in {ms}ms: it is not paced. "
+            "React Native's own is setTimeout(0); core/AnimationFrames.h should be "
+            "installed over it.\n" + tail_text(logged)
+        )
+    if frames < 20:
+        raise Failure(
+            f"only {frames} requestAnimationFrame callbacks in {ms}ms: the frame clock "
+            "is not ticking for it.\n" + tail_text(logged)
+        )
+    if "raf: one frame, one timestamp true" not in logged:
+        raise Failure("two callbacks in one frame saw different timestamps.\n" + tail_text(logged))
+    if "raf: cancelled ran false" not in logged:
+        raise Failure("a cancelled requestAnimationFrame callback ran.\n" + tail_text(logged))
+    return f"{frames} frames in {ms}ms, one timestamp per frame, and cancel holds"
+
+
 def test_app_state(bundle: Path) -> str:
     """`AppState` says what the application is doing, which was nothing at all.
 
@@ -8871,6 +8918,8 @@ SCENARIOS = [
     ("a disabled Switch that is on still looks on", test_disabled_switch_colour),
     ("Dimensions and PixelRatio report the real window", test_dimensions),
     ("AppState says what the application is doing", test_app_state),
+    ("requestAnimationFrame ticks at the display's rate, not as fast as it can",
+     test_request_animation_frame),
     ("a right-to-left desktop mirrors the layout", test_right_to_left),
     ("the clipboard round-trips, and the host still exits afterwards",
      test_clipboard),

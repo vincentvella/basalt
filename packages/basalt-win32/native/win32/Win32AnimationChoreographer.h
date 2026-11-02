@@ -28,20 +28,19 @@
 
 #pragma once
 
-#include <react/renderer/animationbackend/AnimationChoreographer.h>
+#include "DisplayChoreographer.h"
 
-#include <atomic>
 #include <cstdint>
+#include <mutex>
 
 namespace basalt {
 
-class Win32AnimationChoreographer final : public facebook::react::AnimationChoreographer {
+// Also what paces requestAnimationFrame here; core/DisplayChoreographer.h
+// decides when the timer runs.
+class Win32AnimationChoreographer final : public DisplayChoreographer {
  public:
   Win32AnimationChoreographer() = default;
   ~Win32AnimationChoreographer() override;
-
-  void resume() override;
-  void pause() override;
 
   // Stops the timer for good. Called on the way out, before the manager this
   // feeds is released.
@@ -50,8 +49,14 @@ class Win32AnimationChoreographer final : public facebook::react::AnimationChore
   // Called from the timer, on the UI thread.
   void onFrame();
 
+ protected:
+  // Starts or stops the timer to match running(). Any thread.
+  void runningChanged() override;
+
  private:
-  std::atomic<bool> running_{false};
+  // runningChanged() can arrive from the JS thread and detach() from the UI
+  // thread; the timer id is the one thing they share.
+  std::mutex timerMutex_;
   // A `basalt::UiTimerId` rather than a `SetTimer` handle, and not for
   // tidiness: WM_TIMER ranks below WM_PAINT, so on this timer an app that
   // repaints continuously -- anything with a `<Canvas>` -- stopped getting

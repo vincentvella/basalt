@@ -57,6 +57,7 @@ set(BASALT_TEST_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/tests
 # asked about, because it differs by machine.
 set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_app_identity.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_animation_frames.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_app_paths.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_animation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_backface.cpp
@@ -247,6 +248,10 @@ if(DEFINED RN_DIR)
     ${basalt_package_core_sources}
     # What the app calls itself, which a generic host binary cannot know.
     core/AppIdentity.cpp
+    # requestAnimationFrame at the display's rate, and the frame clock it
+    # shares with React Native's animation backend.
+    core/AnimationFrames.cpp
+    core/DisplayChoreographer.cpp
     # Where a packaged app's own files are, which the packager decides and an
     # app should not have to work out; see the header.
     core/AppPaths.cpp

@@ -19,6 +19,7 @@
 
 #include "CrashHandler.h"
 #include "GtkAnimationChoreographer.h"
+#include "AnimationFrames.h"
 #include "AppIdentity.h"
 #include "AppPaths.h"
 #include "DevMenu.h"
@@ -1034,12 +1035,30 @@ facebook::react::TurboModuleProviders makeTurboModuleProviders(
 
 // Runs against the JavaScript runtime before the bundle is evaluated, which is
 // the only moment early enough for what goes in here.
+// The host's half of core/WindowHost.h.
+//
+// A single global, because a process has one host and one GtkApplication and
+// the seam takes neither. The alternative -- threading a Host through a
+// TurboModule -- would mean the module knowing what a Host is.
+Host *gWindowHost = nullptr;
+
 void installBindings(facebook::jsi::Runtime &runtime) {
   // Before Expo's, and before anything else that might look a module up: this is
   // what makes TurboModuleRegistry's first question answerable on a bridgeless
   // runtime. See core/TurboModuleProxy.h.
   basalt::installTurboModuleProxy(runtime);
   basalt::installExpoRuntime(runtime);
+  // requestAnimationFrame at the display's rate, over React Native's setTimeout(0).
+  // After TimerManager's globals, which ReactInstance installs just before this.
+  // See core/AnimationFrames.h.
+  if (gWindowHost != nullptr) {
+    basalt::AnimationFrames::install(
+        runtime, gWindowHost->choreographer, [](std::function<void(facebook::jsi::Runtime &)> task) {
+          if (gWindowHost != nullptr && gWindowHost->reactHost != nullptr) {
+            gWindowHost->reactHost->runOnRuntimeScheduler(std::move(task));
+          }
+        });
+  }
 }
 
 std::shared_ptr<const ContextContainer> makeContextContainer() {
@@ -1346,12 +1365,6 @@ HostWindow *createHostWindow(Host *host,
   return made;
 }
 
-// The host's half of core/WindowHost.h.
-//
-// A single global, because a process has one host and one GtkApplication and
-// the seam takes neither. The alternative -- threading a Host through a
-// TurboModule -- would mean the module knowing what a Host is.
-Host *gWindowHost = nullptr;
 
 // The desktop's text scale changed while the app was running.
 //

@@ -12,21 +12,16 @@
 #import <Cocoa/Cocoa.h>
 #endif
 
-#include <react/renderer/animationbackend/AnimationChoreographer.h>
-
-#include <atomic>
+#include "DisplayChoreographer.h"
 
 namespace basalt {
 
-class AppKitAnimationChoreographer final : public facebook::react::AnimationChoreographer {
+// The display link behind both React Native's animation backend and
+// requestAnimationFrame; core/DisplayChoreographer.h decides when it runs.
+class AppKitAnimationChoreographer final : public DisplayChoreographer {
  public:
   AppKitAnimationChoreographer() = default;
   ~AppKitAnimationChoreographer() override;
-
-  // Called from the JS thread. Both marshal to the main thread before touching
-  // the display link.
-  void resume() override;
-  void pause() override;
 
 #ifdef __OBJC__
   // Called on the main thread once the view is in a window: a display link is
@@ -40,15 +35,16 @@ class AppKitAnimationChoreographer final : public facebook::react::AnimationChor
   // has to reach it, and it is not something a caller would ever want.
   void onFrame(double timestampSeconds);
 
+ protected:
+  // Marshals to the main thread before touching the display link.
+  void runningChanged() override;
+
  private:
   void syncRunningState();
 
   // Opaque to C++ callers. Holds the CADisplayLink and its target.
   void *link_{nullptr};
   void *target_{nullptr};
-
-  // Written from the JS thread, read on the main thread.
-  std::atomic<bool> running_{false};
 };
 
 } // namespace basalt

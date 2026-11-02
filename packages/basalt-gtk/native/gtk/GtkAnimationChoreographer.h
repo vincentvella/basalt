@@ -9,26 +9,24 @@
 
 #include <gtk/gtk.h>
 
-#include <react/renderer/animationbackend/AnimationChoreographer.h>
-
-#include <atomic>
+#include "DisplayChoreographer.h"
 
 namespace basalt {
 
-class GtkAnimationChoreographer final : public facebook::react::AnimationChoreographer {
+class GtkAnimationChoreographer final : public DisplayChoreographer {
  public:
   GtkAnimationChoreographer() = default;
   ~GtkAnimationChoreographer() override;
 
-  // Called from the JS thread. Both marshal to the main thread before touching
-  // the frame clock.
-  void resume() override;
-  void pause() override;
 
   // Called on the GTK main thread once the surface root is realised: a widget
   // has no frame clock before realisation.
   void attachToWidget(GtkWidget *widget);
   void detach();
+
+ protected:
+  // Marshals to the main thread before touching the frame clock.
+  void runningChanged() override;
 
  private:
   static void onFrameClockUpdate(GdkFrameClock *clock, gpointer userData);
@@ -42,8 +40,6 @@ class GtkAnimationChoreographer final : public facebook::react::AnimationChoreog
   gulong updateHandler_{0};
   bool updating_{false};
 
-  // Written from the JS thread, read on the main thread.
-  std::atomic<bool> running_{false};
 };
 
 } // namespace basalt

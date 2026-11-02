@@ -37,6 +37,7 @@
 #include <react/io/ImageLoaderModule.h>
 
 #include "CrashHandler.h"
+#include "AnimationFrames.h"
 #include "AppIdentity.h"
 #include "AppPaths.h"
 #include "DevMenu.h"
@@ -528,6 +529,15 @@ void installBindings(facebook::jsi::Runtime &runtime) {
   // runtime. See core/TurboModuleProxy.h.
   basalt::installTurboModuleProxy(runtime);
   basalt::installExpoRuntime(runtime);
+  // requestAnimationFrame at the display's rate, over React Native's setTimeout(0).
+  // After TimerManager's globals, which ReactInstance installs just before this.
+  // See core/AnimationFrames.h.
+  basalt::AnimationFrames::install(
+      runtime, gHost.choreographer, [](std::function<void(facebook::jsi::Runtime &)> task) {
+        if (gHost.reactHost != nullptr) {
+          gHost.reactHost->runOnRuntimeScheduler(std::move(task));
+        }
+      });
 }
 
 std::shared_ptr<const ContextContainer> makeContextContainer() {
