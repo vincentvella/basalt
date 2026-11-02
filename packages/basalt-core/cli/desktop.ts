@@ -138,7 +138,17 @@ export function isExecutable(file: string): boolean {
  * directories up. That is what makes the demo app in examples/ work without
  * configuration.
  */
-export function candidates(projectRoot: string, options: RunOptions, target: Target): string[] {
+/** Where `--build` puts a host: optimized for a release, unoptimized to develop with. */
+export function hostBuildDir(projectRoot: string, target: Target, optimized: boolean): string {
+  return path.join(projectRoot, '.basalt', optimized ? 'build-release' : 'build', target.platform);
+}
+
+export function candidates(
+  projectRoot: string,
+  options: RunOptions,
+  target: Target,
+  {optimized = false}: {optimized?: boolean} = {},
+): string[] {
   const found: string[] = [];
 
   if (options.hostBinary) {
@@ -146,6 +156,10 @@ export function candidates(projectRoot: string, options: RunOptions, target: Tar
   }
   if (process.env.BASALT_HOST) {
     found.push(path.resolve(process.env.BASALT_HOST));
+  }
+  // A release looks for the optimized host first; see buildHost.
+  if (optimized) {
+    found.push(path.join(hostBuildDir(projectRoot, target, true), target.binary));
   }
   // Where `--build` puts one, per target; see buildHost.
   found.push(path.join(projectRoot, '.basalt', 'build', target.platform, target.binary));
@@ -159,8 +173,13 @@ export function candidates(projectRoot: string, options: RunOptions, target: Tar
   return found.map(entry => path.normalize(entry));
 }
 
-export function resolveHost(projectRoot: string, options: RunOptions, target: Target): string {
-  const looked = candidates(projectRoot, options, target);
+export function resolveHost(
+  projectRoot: string,
+  options: RunOptions,
+  target: Target,
+  {optimized = false}: {optimized?: boolean} = {},
+): string {
+  const looked = candidates(projectRoot, options, target, {optimized});
   const found = looked.find(isExecutable);
   if (found) {
     return found;
@@ -919,7 +938,26 @@ export function migrateBuildDirectory(workDir: string, log: (line: string) => vo
   );
 }
 
-export function buildHost(context: CliContext, options: RunOptions, target: Target): string {
+/**
+ * Builds the host into `.basalt/build/<platform>`, or with `optimized` into
+ * `.basalt/build-release/<platform>` with CMAKE_BUILD_TYPE=Release.
+ *
+ * Two directories rather than one reconfigured, because switching a build
+ * type rebuilds every translation unit, both ways, every time: a development
+ * run after a release would pay the whole build again. Hermes is in
+ * third_party and already Release, so the second directory costs React
+ * Native's and this platform's C++ once, and incremental builds after that.
+ *
+ * A development host stays unoptimized (no build type: -O0), which is what a
+ * debugger wants. A release host used to be that same binary, so a shipped
+ * app ran unoptimized C++ for layout, mounting and every TurboModule.
+ */
+export function buildHost(
+  context: CliContext,
+  options: RunOptions,
+  target: Target,
+  {optimized = false}: {optimized?: boolean} = {},
+): string {
   const projectRoot = context.root;
   const workDir = path.join(projectRoot, '.basalt');
   // One per target, because a build directory belongs to the host it was
@@ -927,7 +965,7 @@ export function buildHost(context: CliContext, options: RunOptions, target: Targ
   // changed -- it says the two paths do not match and explains neither -- so a
   // single `.basalt/build` meant that building for a second desktop from one
   // checkout destroyed the first. Found by building a macOS app for Linux.
-  const buildDir = path.join(workDir, 'build', target.platform);
+  const buildDir = hostBuildDir(projectRoot, target, optimized);
   const thirdParty = path.join(workDir, 'third_party');
 
   const sources = reactNativeSources(context.reactNativePath);
@@ -991,6 +1029,8 @@ export function buildHost(context: CliContext, options: RunOptions, target: Targ
       // where the two packages are not siblings on disk at all.
       `-DBASALT_CORE_DIR=${target.coreDir}`,
       ...(target.configureArgs ?? []),
+      // Last, so that it wins over compilerArgs' RelWithDebInfo on Windows.
+      ...(optimized ? ['-DCMAKE_BUILD_TYPE=Release'] : []),
     ],
     {env: buildEnv},
     target.toolchain,
@@ -1323,8 +1363,15 @@ export async function packageDesktop(
   }
   const projectRoot = context.root;
   const hostBinary = options.build
-    ? buildHost(context, options, target)
-    : resolveHost(projectRoot, options, target);
+    ? buildHost(context, options, target, {optimized: true})
+    : resolveHost(projectRoot, options, target, {optimized: true});
+  const optimizedHost = path.join(hostBuildDir(projectRoot, target, true), target.binary);
+  if (path.resolve(hostBinary) !== optimizedHost && !options.hostBinary && !process.env.BASALT_HOST) {
+    console.warn(
+      `==> packaging an unoptimized development host (${path.relative(projectRoot, hostBinary)});\n` +
+        '    pass --build for an optimized one',
+    );
+  }
   const module = resolveModuleName(projectRoot, options);
   const outputDir = path.resolve(projectRoot, options.out ?? path.join('build', 'release'));
   const config = readAppConfig(projectRoot);
@@ -1377,7 +1424,7 @@ export function makePackageCommand(target: Target) {
       }
     },
     options: [
-      {name: '--build', description: 'build the host first, into .basalt/build'},
+      {name: '--build', description: 'build an optimized host first, into .basalt/build-release'},
       {name: '--jobs <number>', description: 'parallelism for --build'},
       {name: '--host-binary <path>', description: `the ${target.binary} to package`},
       {name: '--module <string>', description: "the AppRegistry name, if it is not app.json's"},
