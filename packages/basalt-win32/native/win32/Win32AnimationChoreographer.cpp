@@ -19,33 +19,34 @@ Win32AnimationChoreographer::~Win32AnimationChoreographer() {
   detach();
 }
 
-void Win32AnimationChoreographer::resume() {
-  if (running_.exchange(true)) {
-    return;
+void Win32AnimationChoreographer::runningChanged() {
+  const std::lock_guard<std::mutex> lock(timerMutex_);
+  const bool want = running();
+  if (want && timer_ == 0) {
+    // Not `SetTimer`. A sixty-hertz WM_TIMER is exactly the arrangement that
+    // stops working in an app that repaints continuously, which is to say in
+    // every app with an animation worth running. See win32/Win32UiTimer.h.
+    timer_ = scheduleUiTimer(kFrameIntervalMs, true, [this] { onFrame(); });
+  } else if (!want && timer_ != 0) {
+    // Before this returns, nothing of ours is still in flight: `cancelUiTimer`
+    // waits out a delivery already on a pool thread, which is what makes the
+    // `this` captured above safe to destroy afterwards. It does not take
+    // timerMutex_, so waiting here holding it cannot deadlock.
+    cancelUiTimer(timer_);
+    timer_ = 0;
   }
-  // Not `SetTimer`. A sixty-hertz WM_TIMER is exactly the arrangement that
-  // stops working in an app that repaints continuously, which is to say in
-  // every app with an animation worth running. See win32/Win32UiTimer.h.
-  timer_ = scheduleUiTimer(kFrameIntervalMs, true, [this] { onFrame(); });
-}
-
-void Win32AnimationChoreographer::pause() {
-  if (!running_.exchange(false)) {
-    return;
-  }
-  // Before this returns, nothing of ours is still in flight: `cancelUiTimer`
-  // waits out a delivery already on a pool thread, which is what makes the
-  // `this` captured above safe to destroy afterwards.
-  cancelUiTimer(timer_);
-  timer_ = 0;
 }
 
 void Win32AnimationChoreographer::detach() {
-  pause();
+  const std::lock_guard<std::mutex> lock(timerMutex_);
+  if (timer_ != 0) {
+    cancelUiTimer(timer_);
+    timer_ = 0;
+  }
 }
 
 void Win32AnimationChoreographer::onFrame() {
-  if (!running_.load()) {
+  if (!running()) {
     return;
   }
   // A steady clock rather than the wall clock: an animation must not jump when
@@ -53,7 +54,7 @@ void Win32AnimationChoreographer::onFrame() {
   const auto now = std::chrono::steady_clock::now().time_since_epoch();
   const auto milliseconds =
       std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now);
-  onAnimationFrame(static_cast<facebook::react::AnimationTimestamp>(milliseconds.count()));
+  deliverFrame(static_cast<facebook::react::AnimationTimestamp>(milliseconds.count()));
 }
 
 } // namespace basalt

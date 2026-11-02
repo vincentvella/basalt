@@ -89,15 +89,7 @@ void AppKitAnimationChoreographer::detach() {
   });
 }
 
-void AppKitAnimationChoreographer::resume() {
-  running_ = true;
-  onMainThread(^{
-    syncRunningState();
-  });
-}
-
-void AppKitAnimationChoreographer::pause() {
-  running_ = false;
+void AppKitAnimationChoreographer::runningChanged() {
   onMainThread(^{
     syncRunningState();
   });
@@ -108,7 +100,7 @@ void AppKitAnimationChoreographer::syncRunningState() {
     return;
   }
   CADisplayLink *link = (__bridge CADisplayLink *)link_;
-  link.paused = running_ ? NO : YES;
+  link.paused = running() ? NO : YES;
 }
 
 void AppKitAnimationChoreographer::onFrame(double timestampSeconds) {
@@ -119,7 +111,7 @@ void AppKitAnimationChoreographer::onFrame(double timestampSeconds) {
   using namespace std::chrono;
   const auto timestamp = duration_cast<facebook::react::AnimationTimestamp>(
       duration<double>(timestampSeconds));
-  onAnimationFrame(timestamp);
+  deliverFrame(timestamp);
 }
 
 } // namespace basalt

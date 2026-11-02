@@ -8,12 +8,12 @@ GtkAnimationChoreographer::~GtkAnimationChoreographer() {
 
 void GtkAnimationChoreographer::onFrameClockUpdate(GdkFrameClock * /*clock*/, gpointer userData) {
   auto *self = static_cast<GtkAnimationChoreographer *>(userData);
-  self->onAnimationFrame(self->now());
+  self->deliverFrame(self->now());
 }
 
 gboolean GtkAnimationChoreographer::syncRunningStateOnMainThread(gpointer userData) {
   auto *self = static_cast<GtkAnimationChoreographer *>(userData);
-  self->setUpdating(self->running_.load(std::memory_order_acquire));
+  self->setUpdating(self->running());
   return G_SOURCE_REMOVE;
 }
 
@@ -44,7 +44,7 @@ void GtkAnimationChoreographer::attachToWidget(GtkWidget *widget) {
                                     G_CALLBACK(onFrameClockUpdate), this);
 
   // A resume() may have arrived before the widget was realised.
-  setUpdating(running_.load(std::memory_order_acquire));
+  setUpdating(running());
 }
 
 void GtkAnimationChoreographer::detach() {
@@ -60,13 +60,7 @@ void GtkAnimationChoreographer::detach() {
   frameClock_ = nullptr;
 }
 
-void GtkAnimationChoreographer::resume() {
-  running_.store(true, std::memory_order_release);
-  g_idle_add_full(G_PRIORITY_DEFAULT, syncRunningStateOnMainThread, this, nullptr);
-}
-
-void GtkAnimationChoreographer::pause() {
-  running_.store(false, std::memory_order_release);
+void GtkAnimationChoreographer::runningChanged() {
   g_idle_add_full(G_PRIORITY_DEFAULT, syncRunningStateOnMainThread, this, nullptr);
 }
 
