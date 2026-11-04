@@ -1,7 +1,17 @@
 {
   "name": "basalt-subprocess",
   "version": "0.2.7",
-  "description": "Running a command and watching its output, for basalt-core. Arbitrary code execution, so it ships separately from the core platform.",
+  "description": "Run a command and watch its output, from a React Native app on Linux, macOS or Windows. Arbitrary code execution, so it ships apart from basalt-core.",
+  "keywords": [
+    "react-native",
+    "subprocess",
+    "child-process",
+    "spawn",
+    "exec",
+    "shell",
+    "desktop",
+    "basalt"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -54,5 +54,18 @@ export async function generateMetadata(
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
-  return { title: page.data.title, description: page.data.description };
+  // A card carrying this page's own title, rather than the site-wide one.
+  // See app/og/route.tsx for why it is a route and not a file beside this.
+  const image = `/og?title=${encodeURIComponent(page.data.title)}&eyebrow=Documentation`;
+  return {
+    title: page.data.title,
+    description: page.data.description,
+    openGraph: {
+      title: page.data.title,
+      description: page.data.description,
+      url: `https://basaltjs.dev${page.url}`,
+      images: [image],
+    },
+    twitter: { card: "summary_large_image", images: [image] },
+  };
 }

@@ -2,6 +2,21 @@
   "name": "basalt-core",
   "version": "0.2.7",
   "description": "React Native on the desktop, over React Native's own C++ core rather than a fork. The shared half: the platform module, the Metro configuration that resolves it, the bundler, and the C++ that is not about a toolkit.",
+  "keywords": [
+    "react-native",
+    "desktop",
+    "linux",
+    "macos",
+    "windows",
+    "gtk4",
+    "appkit",
+    "win32",
+    "fabric",
+    "hermes",
+    "expo",
+    "cross-platform",
+    "electron-alternative"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -1,7 +1,17 @@
 {
   "name": "basalt-skia",
   "version": "0.2.7",
-  "description": "React Native Skia on the desktop: the module, the platform context and the canvas, compiled against the Skia the app already installed.",
+  "description": "React Native Skia on Linux, macOS and Windows: the module, the platform context and the canvas, compiled against the Skia your app already installed.",
+  "keywords": [
+    "react-native",
+    "react-native-skia",
+    "skia",
+    "canvas",
+    "graphics",
+    "2d",
+    "desktop",
+    "basalt"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -1,7 +1,17 @@
 {
   "name": "basalt-win32",
   "version": "0.2.7",
-  "description": "The Windows view layer for basalt-core: a Win32 and Direct2D view layer, a Fabric mounting manager, and a host. Everything behind them is in basalt-core.",
+  "description": "React Native on Windows, over Win32 and Direct2D: the view layer, the Fabric mounting manager and the host. The desktop half of Basalt; everything behind it is basalt-core.",
+  "keywords": [
+    "react-native",
+    "desktop",
+    "windows",
+    "win32",
+    "direct2d",
+    "directwrite",
+    "basalt",
+    "cross-platform"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
