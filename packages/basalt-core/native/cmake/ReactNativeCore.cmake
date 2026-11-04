@@ -529,9 +529,13 @@ target_sources(rn_core INTERFACE $<TARGET_OBJECTS:rn_jsidynamic>)
 # websocket client and therefore no packager connection: no Fast Refresh, and no
 # websockets for the app either. Not a gap this build can paper over, so it is
 # reported and the target skipped.
+# What compiles is core/WebSocketClient.cpp, a copy of that file with one fix
+# (a failed read reports the socket closed; upstream drops it, so JS never sees
+# `onclose` when the server goes away). Upstream's file still decides whether
+# the header the copy implements is there.
 set(RN_WEBSOCKET_SRC ${REACT_CXX_PLATFORM_DIR}/react/http/platform/cxx/WebSocketClient.cpp)
 if(EXISTS ${RN_WEBSOCKET_SRC})
-  add_library(rn_websocket OBJECT ${RN_WEBSOCKET_SRC})
+  add_library(rn_websocket OBJECT ${CMAKE_CURRENT_LIST_DIR}/../core/WebSocketClient.cpp)
   target_include_directories(rn_websocket PUBLIC
           ${REACT_CXX_PLATFORM_DIR} ${REACT_COMMON_DIR} ${FOLLY_DIR})
   target_link_libraries(rn_websocket folly_runtime glog boost fmt double-conversion)

@@ -76,6 +76,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_font_variants.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_text_checking.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_drag_and_drop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_websocket_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quit_file.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_menu_entries.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settle.cpp
