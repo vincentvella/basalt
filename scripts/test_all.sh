@@ -180,6 +180,10 @@ if command -v node >/dev/null 2>&1; then
   # a release.
   step "release package tests" node --test scripts/test_check_packages.js
   step "release packages" node scripts/check_packages.js
+  # Reading a publish back off the registry, which is the step that decides
+  # whether a release reports success. It failed three of the first six
+  # while every package had published, so its own behaviour is tested.
+  step "publish read-back tests" node --test scripts/test_await_published.js
   # The platform support page, which is generated: its data file is checked for
   # shape, each host is searched for the props it claims, and the page on disk
   # has to be what the data renders to.

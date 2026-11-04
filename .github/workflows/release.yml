@@ -372,12 +372,17 @@ jobs:
           # have in the other direction -- the tag is good, the registry is
           # good, and the only broken thing is the report.
           #
-          # What made it slow is the Publish step reading each version back off
-          # the registry before moving on. That is worth its minutes: npm's
-          # publish is eventually consistent and a staged publish is
-          # indistinguishable from a slow one without it. Eight packages at up
-          # to five minutes of polling each is forty, so the waiter has to
-          # outlast that and not the other way round.
+          # What made it slow was the Publish step reading each version back
+          # off npm's *cached* packument, which is minutes behind a publish
+          # and was never going to be anything else. That read goes to the
+          # origin now and answers in seconds, so the publish job is no
+          # longer the reason this number is large.
+          #
+          # It stays large anyway, because the thing it is really waiting on
+          # is a job that has to be queued, pick up a runner and install npm
+          # before it publishes anything, and because a waiter that outlasts
+          # the work costs nothing while one that does not fails a release
+          # that worked. See scripts/await_published.js.
           for _ in $(seq 1 270); do
             sleep 10
             id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow=publish.yml \

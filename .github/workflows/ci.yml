@@ -509,6 +509,10 @@ jobs:
         run: |
           node --test scripts/test_check_packages.js
           node scripts/check_packages.js
+          # And how publish.yml decides whether what it uploaded arrived.
+          # Three of the first six releases reported failure here with every
+          # package published, so the read-back has tests of its own now.
+          node --test scripts/test_await_published.js
 
       - name: The platform support page
         # website/docs/support.mdx is generated from docs/platform-support.json,
