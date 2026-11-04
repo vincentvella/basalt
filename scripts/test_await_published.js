@@ -108,6 +108,7 @@ test('a staged publish is a failure, and says which one', async () => {
     timeoutMs: 30_000,
   });
 
+
   assert.deepEqual(result.missing, ['basalt-win32@0.2.5']);
   assert.equal(report(result, (line) => lines.push(line)), 1);
   const said = lines.join('\n');
@@ -226,4 +227,24 @@ test('a cached ?write=true read falls back to the long wait, not a fast failure'
   assert.deepEqual(result.missing, []);
   assert.match(lines.join('\n'), /served from the cache/);
   assert.ok(time.now() > 120_000, 'gave up at the short deadline despite a cached read');
+});
+
+test('the gate outlasts the slowest publish anybody has measured', async () => {
+  // Not a style preference. The default was two minutes for one release, and
+  // 0.2.7 published basalt-win32 at 04:25:13 while the origin packument did
+  // not hold it until 04:27:50, so the check failed a release that had
+  // published all eight packages. Anything under ten minutes here is that
+  // mistake again, and the only way to notice is to assert the number.
+  const seen = [];
+  const fetchJson = async (url) => {
+    seen.push(url);
+    return {document: {name: 'basalt-core', versions: {}}, cached: false};
+  };
+  const time = clock();
+  await awaitPublished(['basalt-core@0.2.7'], {fetchJson, ...time, log: () => {}});
+
+  assert.ok(
+    time.now() >= 600_000,
+    `gave up after ${time.now() / 1000}s, and npm has taken 157s to publish one package`,
+  );
 });

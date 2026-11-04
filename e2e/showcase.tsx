@@ -68,7 +68,7 @@ const ENTRIES: Entry[] = [
     status: 'GTK4',
     blurb: [
       'A view is a GtkWidget, and a paragraph is laid out by Pango over the font the desktop chose. Narrowing the window re-wraps it the way it does on a phone, because the same Yoga tree is asking the same question of a different text engine.',
-      'The host needs GTK 4.10 or later, and CI builds against the 4.14 Ubuntu 24.04 ships. Notifications go over D-Bus, the file dialogs are the portal ones, and the accessibility tree is AT-SPI, so Orca reads an app without it knowing.',
+      'The host needs GTK 4.10 or later. Notifications go over D-Bus, the file dialogs are the portal ones, and the accessibility tree is AT-SPI, so Orca reads an app without it knowing.',
       'Nothing here is an emulator and nothing is a browser. The binary links GTK and the same ReactCommon a phone links, and there is no third thing in between.',
     ],
     facts: ['126 of 137 props', 'Wayland and X11', 'AT-SPI'],

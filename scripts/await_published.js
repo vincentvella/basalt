@@ -91,11 +91,22 @@ async function awaitPublished(specs, options = {}) {
     now = () => Date.now(),
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     log = console.log,
-    // Two minutes, where the old check allowed fifteen. The origin answers a
-    // publish within seconds, so a package still missing after this long is
-    // not slow, it is staged or rejected, and saying so quickly beats saying
-    // it quarter of an hour later.
-    timeoutMs = 120_000,
+    // Ten minutes, measured rather than guessed, and the measurement
+    // corrected a guess this file used to make. It said two minutes, on the
+    // reasoning that the origin answers within seconds. The 0.2.7 release
+    // then showed that it does not always: npm's publish is asynchronous and
+    // says so in its own output -- "Your package is being processed and may
+    // take a few minutes to become available" -- and basalt-win32 took
+    // 2m37s between `npm publish` returning and the origin packument holding
+    // it. Seven of the eight were there inside two minutes; that one was not,
+    // and a release that published correctly reported failure again.
+    //
+    // So the origin read is better than the cached one and is still not
+    // read-after-write. Ten minutes is four times the worst case seen, and
+    // the cost of being generous is only ever paid by a release that is
+    // genuinely broken, while the cost of being tight is paid by one that
+    // worked.
+    timeoutMs = 600_000,
     intervalMs = 5_000,
     // Only reached if an origin read comes back from the cache, which means
     // `?write=true` has stopped bypassing it. The old fifteen minutes, which
@@ -163,10 +174,11 @@ function report(result, log = console.log) {
     log('');
     log(`!! the registry does not hold these:${
       result.missing.map((spec) => ` ${spec}`).join('')}`);
-    log('   npm said it published each of them, and this read goes to the');
-    log('   origin rather than the cache, so it is not propagation. A staged');
-    log('   publish looks exactly like this: check Allowed actions on the');
-    log('   trusted publisher, which needs `npm publish` and not only');
+    log('   npm said it published each of them, and this read asks the');
+    log('   origin rather than the cache, so a slow CDN is not the reason.');
+    log('   Ten minutes is four times the slowest publish measured here. A');
+    log('   staged publish looks exactly like this: check Allowed actions on');
+    log('   the trusted publisher, which needs `npm publish` and not only');
     log('   `npm stage publish`.');
     return 1;
   }
