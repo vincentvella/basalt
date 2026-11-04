@@ -418,10 +418,56 @@ function Expect() {
   );
 }
 
+/**
+ * One app, photographed on two desktops.
+ *
+ * Above the feature cards on purpose: somebody arriving wants to see a window
+ * before they read a claim about one. The two shots are the same app at the
+ * same window size, captured by `e2e/showcase.tsx` setting its own size, so
+ * the differences in them are real differences between the hosts rather than
+ * two people taking two screenshots.
+ *
+ * Windows is missing because photographing it needs a Windows machine, and
+ * the honest version of this section is the one that does not fake the third.
+ */
+function Screenshots() {
+  return (
+    <Section>
+      <SectionTitle>The same app, twice</SectionTitle>
+      <SectionLede>
+        One codebase, no per-desktop branches, and no editing after the fact.
+        The paragraphs wrap differently because Core Text and Pango measure the
+        same Yoga tree with different fonts, and the caption buttons differ
+        because each window belongs to its own desktop.
+      </SectionLede>
+      <div className="mt-8 grid gap-6 md:grid-cols-2">
+        {[
+          { src: "/img/shots/macos.png", label: "macOS, over AppKit" },
+          { src: "/img/shots/linux.png", label: "Linux, over GTK4" },
+        ].map((shot) => (
+          <figure key={shot.src}>
+            <img
+              src={shot.src}
+              alt={`The showcase app running on ${shot.label}`}
+              width={1040}
+              height={560}
+              className="w-full rounded-lg border border-fd-border"
+            />
+            <figcaption className="mt-2 text-center text-sm text-fd-muted-foreground">
+              {shot.label}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col">
       <Hero />
+      <Screenshots />
       <Features />
       <WhatYouWrite />
       <Hosts />
