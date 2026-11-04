@@ -69,3 +69,8 @@ and is worse: it needs React Native's base view config, and requiring that
 pulled this package into a module cycle where react-native-screens came back
 `undefined` and the application died on a property of undefined. A path that
 can break loudly on upgrade beat a cycle that breaks confusingly at runtime.
+
+## Licence
+
+MIT. Part of [Basalt](https://basaltjs.dev);
+[documentation](https://basaltjs.dev/docs/navigation).
