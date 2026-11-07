@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <string>
 
 using Microsoft::WRL::ComPtr;
@@ -43,6 +44,29 @@ std::wstring widen(const std::string &text) {
   return wide;
 }
 
+// How many device pixels to a density-independent one, from
+// BASALT_SNAPSHOT_SCALE.
+//
+// One by default, which is what every test wants: a pixel assertion is
+// written against the frames, and a snapshot that changed size with the
+// machine would compare as a difference against the other two hosts.
+//
+// Two is for a picture somebody is going to look at. macOS and Linux are
+// photographed on retina displays and in a scaled Xvfb, so a Windows shot
+// beside them at 96 dpi is visibly the soft one. Anything outside [1, 4] is
+// ignored rather than argued with.
+float snapshotScale() {
+  const char *requested = std::getenv("BASALT_SNAPSHOT_SCALE");
+  if (requested == nullptr) {
+    return 1.0f;
+  }
+  const float scale = std::strtof(requested, nullptr);
+  if (!(scale >= 1.0f) || scale > 4.0f) {
+    return 1.0f;
+  }
+  return scale;
+}
+
 // Renders the tree into a WIC bitmap. The one place the render is described, so
 // the pixels a test reads and the pixels a PNG carries cannot come out
 // different -- the same reason the text layout is built in one place and shared
@@ -53,8 +77,9 @@ bool renderToBitmap(const RnWin32View &root,
                     UINT &width,
                     UINT &height) {
   const RnRect frame = root.frame();
-  width = static_cast<UINT>(std::lround(frame.width));
-  height = static_cast<UINT>(std::lround(frame.height));
+  const float scale = snapshotScale();
+  width = static_cast<UINT>(std::lround(frame.width * scale));
+  height = static_cast<UINT>(std::lround(frame.height * scale));
   if (width == 0 || height == 0) {
     return false;
   }
@@ -80,16 +105,17 @@ bool renderToBitmap(const RnWin32View &root,
     return false;
   }
 
-  // 96 dpi explicitly, so a render is the size the frames say regardless of
-  // what the machine taking it is set to. Every coordinate in this project is
-  // in React Native's density-independent pixels, and a snapshot that silently
-  // came out at 150% on one developer's laptop would compare as a difference
-  // against every other host.
+  // 96 dpi times the scale, so a render is the size the frames say regardless
+  // of what the machine taking it is set to. Every coordinate in this project
+  // is in React Native's density-independent pixels, and a snapshot that
+  // silently came out at 150% on one developer's laptop would compare as a
+  // difference against every other host. The scale is one unless somebody
+  // asks, so every existing caller gets exactly the pixels it got before.
   const D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties(
       D2D1_RENDER_TARGET_TYPE_DEFAULT,
       D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
-      96.0f,
-      96.0f);
+      96.0f * scale,
+      96.0f * scale);
 
   ComPtr<ID2D1RenderTarget> target;
   if (FAILED(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), properties, target.GetAddressOf()))) {

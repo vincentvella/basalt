@@ -498,6 +498,19 @@ uses -- `gsk_renderer_render_texture` with a NULL surface, and
 `RnAppKitWriteSnapshot` -- so none of the three needs a display server or a
 screenshot permission.
 
+**`BASALT_SNAPSHOT_SCALE=2` doubles the Windows render**, and is for pictures
+rather than for tests. Win32Snapshot pins the render target to 96 dpi so a
+snapshot is the size the frames say whatever the machine is set to, which is
+what every pixel assertion depends on; the scale multiplies both the bitmap
+and the dpi, so the drawing is identical and the output is twice as many
+pixels. Unset, or outside [1, 4], it is 1 and nothing changes. CI uses it for
+the window in the README, because macOS and Linux are photographed at 2x and
+a 96 dpi Windows shot beside them is visibly the soft one.
+
+What that snapshot still cannot show is a `<TextInput>` or a `<Canvas>`: see
+`docs/backlog/platform-windows.md` entry 3, which is about the offscreen pass
+and not about the scale.
+
 It exists because a tree dump says a view *has* a colour, a frame and a
 transform, and cannot say that any of it reached the screen. The two text bugs
 found on 2026-10-10 were both of that kind, and both were found by looking at a

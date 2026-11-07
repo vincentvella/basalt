@@ -1158,6 +1158,53 @@ jobs:
         shell: bash
         run: scripts/bundle.sh react-native-src --prod --platform windows
 
+      # The third window for the README and the website, which otherwise show
+      # two desktops and imply three. This is the one host that can be
+      # photographed without a machine to photograph it on: BASALT_SNAPSHOT
+      # renders the RnWin32View tree offscreen, so it needs no desktop, no
+      # cursor and nobody watching.
+      #
+      # Shard 1 only, because all three shards build the same host and would
+      # upload the same picture. Not a gate on anything: the snapshot is an
+      # artifact to look at and commit, and `continue-on-error` keeps a
+      # picture that failed to render from failing a CI run that otherwise
+      # passed. If it is empty or missing, that is a Windows bug worth its own
+      # change rather than a reason to hold up a merge.
+      #
+      # Known, and the reason this is worth checking by eye rather than
+      # trusting: a `<TextInput>`'s peer is a child window rather than a view,
+      # so the offscreen pass cannot see one. The showcase app has a filter
+      # field, and it will come out as its background with no placeholder in
+      # it. See docs/backlog/platform-windows.md entry 3; `PrintWindow` on the
+      # live window is the fix, and nothing does it yet.
+      - name: The showcase app's window
+        if: matrix.shard == 1
+        continue-on-error: true
+        shell: pwsh
+        env:
+          RN_DIR: react-native-src
+        run: |
+          bash scripts/bundle.sh --platform windows --entry showcase `
+            --out showcase.windows.jsbundle
+          $env:BASALT_SNAPSHOT = "$PWD/showcase-windows.png"
+          # Two device pixels to a point, so this sits beside the macOS and
+          # Linux shots at the same resolution rather than as the soft one.
+          # Only this picture asks; every pixel test still renders at 1.
+          $env:BASALT_SNAPSHOT_SCALE = "2"
+          $env:BASALT_QUIT_AFTER_MS = "8000"
+          ./build/basalt_win32.exe build/showcase.windows.jsbundle.js BasaltShowcase
+          if (-not (Test-Path "$PWD/showcase-windows.png")) {
+            throw "the host wrote no snapshot"
+          }
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.shard == 1
+        continue-on-error: true
+        with:
+          name: showcase-windows
+          path: showcase-windows.png
+          if-no-files-found: warn
+
       - name: End-to-end tests
         # All but Fast Refresh, which needs scripts/metro.sh to stay running
         # and would be skipped here even without the flag.
