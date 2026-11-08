@@ -63,6 +63,9 @@ if(NOT DEFINED BASALT_PACKAGES)
   set(BASALT_PACKAGES
     ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-notifications
     ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-subprocess
+    # Contributes its store and the store's tests here, and the jsi module
+    # only in an app that installed async-storage: see its CMakeLists.
+    ${CMAKE_CURRENT_SOURCE_DIR}/packages/basalt-async-storage
     # Contributes nothing unless the app installed Skia, which this repository
     # has not: see its CMakeLists for how it is found and why absent is not an
     # error.

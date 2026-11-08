@@ -1,6 +1,9 @@
 #include "AppPaths.h"
 
+#include "AppIdentity.h"
+
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -88,6 +91,59 @@ std::string packagedBundlePath() {
   std::error_code ignored;
   const std::filesystem::path bundle = std::filesystem::path(resources) / "main.jsbundle.js";
   return std::filesystem::is_regular_file(bundle, ignored) ? bundle.string() : std::string();
+}
+
+std::string applicationDataPath() {
+  // The identifier the rest of the platform already uses: the Info.plist's
+  // CFBundleIdentifier, the .desktop file's name, the AppUserModelID. An app
+  // that declared none has the invented `com.basalt.<slug>` by the time this
+  // is asked, so there is always something to name a directory after.
+  // `cli/packageApp.ts` invents `com.basalt.<slug>` for an app that declared
+  // none, and writes it into app.identity.json; a development run has no such
+  // file and lands here with nothing.
+  std::string identifier = appIdentity().identifier;
+  if (identifier.empty()) {
+    identifier = "basalt.development";
+  }
+
+  std::filesystem::path base;
+#if defined(_WIN32)
+  // LOCALAPPDATA rather than APPDATA: this is a cache of the app's own making
+  // rather than something to roam between machines, and a roaming profile is
+  // a surprising place to put a database that may grow.
+  if (const char *local = std::getenv("LOCALAPPDATA"); local != nullptr && *local != '\0') {
+    base = local;
+  }
+#elif defined(__APPLE__)
+  if (const char *home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+    base = std::filesystem::path(home) / "Library" / "Application Support";
+  }
+#else
+  // The XDG basedir spec: the variable if it is set to an absolute path, and
+  // the default it documents otherwise. A relative value is to be ignored
+  // rather than resolved, which the spec says in as many words.
+  if (const char *xdg = std::getenv("XDG_DATA_HOME");
+      xdg != nullptr && *xdg == '/') {
+    base = xdg;
+  } else if (const char *home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+    base = std::filesystem::path(home) / ".local" / "share";
+  }
+#endif
+  if (base.empty()) {
+    return {};
+  }
+
+  const std::filesystem::path directory = base / identifier;
+  std::error_code code;
+  std::filesystem::create_directories(directory, code);
+  // Reported as "nowhere to write" rather than thrown: a store that cannot be
+  // created is a feature that does not work, and the module above turns that
+  // into a rejected promise with a reason. Throwing here would take the
+  // application down on a read-only home directory.
+  if (code && !std::filesystem::is_directory(directory, code)) {
+    return {};
+  }
+  return directory.string();
 }
 
 DesktopAppModule::DesktopAppModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)

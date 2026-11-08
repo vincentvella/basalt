@@ -23,6 +23,11 @@ js/node_modules/
 
 # The example app links these in; examples/demo/setup.sh recreates them.
 examples/*/node_modules/
+# The e2e apps resolve react, react-native and metro out of the React Native
+# checkout and have none of their own -- except for a third-party module that
+# has no such home. e2e/storage.tsx imports async-storage, which is installed
+# here by scripts/test_all.sh and by CI. See e2e/package.json.
+e2e/node_modules/
 
 # `run-linux` writes the detached packager log here.
 .basalt/

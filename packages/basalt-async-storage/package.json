@@ -1,0 +1,28 @@
+{
+  "name": "basalt-async-storage",
+  "version": "0.2.7",
+  "private": true,
+  "description": "@react-native-async-storage/async-storage on Linux, macOS and Windows: the native half, over files. No JavaScript of its own, so the app imports async-storage exactly as it does on a phone.",
+  "keywords": [
+    "react-native",
+    "async-storage",
+    "storage",
+    "persistence",
+    "desktop",
+    "basalt"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentvella/basalt.git",
+    "directory": "packages/basalt-async-storage"
+  },
+  "homepage": "https://basaltjs.dev",
+  "basalt": {
+    "native": "native/CMakeLists.txt"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=2",
+    "basalt-core": "*"
+  }
+}

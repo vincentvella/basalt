@@ -8,8 +8,14 @@
 
   "compilerOptions": {
     "strict": true,
-    "module": "node16",
-    "moduleResolution": "node16",
+    // `bundler`, because the bundler is Metro and Node's rules are not the
+    // ones it follows. A third-party module that ships ESM -- async-storage
+    // 3.x is the first one here -- is a type error under node16 ("cannot be
+    // imported with require") and bundles perfectly well, because Babel
+    // strips the import and Metro resolves it. The check should answer the
+    // question the app actually faces.
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "target": "es2022",
     "lib": ["es2022"],
     "jsx": "react-jsx",
