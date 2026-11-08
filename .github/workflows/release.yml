@@ -100,16 +100,42 @@ jobs:
         run: ./build/basalt_win32_tests.exe
 
   expo-install:
-    name: an Expo app, from the packed packages
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    name: an Expo app, from the packed packages (${{ matrix.desktop }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      # Three answers, not one verdict: a release that installs on Linux and
+      # not on Windows is a thing to know in full rather than to find one
+      # desktop at a time.
+      fail-fast: false
+      matrix:
+        include:
+          - desktop: linux
+            runner: ubuntu-24.04
+            command: run-linux
+          - desktop: macos
+            runner: macos-15
+            command: run-macos
+          - desktop: windows
+            runner: ${{ vars.WINDOWS_RUNNER || 'windows-2022' }}
+            command: run-windows
+    defaults:
+      run:
+        # Every shared step below is the same on all three, which is only true
+        # because they all run in bash. The two steps that cannot be are
+        # marked `shell: pwsh`.
+        shell: bash
     # The release question itself: a fresh `create-expo-app`, these packages
     # installed into it from the tarballs `npm publish` would upload, and
     # `react-native run-linux --build` doing what an app developer would do.
     # Nothing from this checkout is on the path except the tarballs.
     #
-    # Linux because Linux is the target; the same test on macOS and Windows is
-    # worth adding once this one passes.
+    # All three desktops since 2026-11-08. It was Linux alone for as long as
+    # this had never passed anywhere; "the same test on macOS and Windows is
+    # worth adding once this one passes" is what this comment used to say, and
+    # it had passed for five releases. Most React Native developers are on a
+    # Mac, which makes macOS the likeliest first contact anybody has with this
+    # project and the worst one to be guessing about.
     #
     # Writing this job found three reasons it could not pass, all in
     # `--build`, and all fixed before it first ran: the command refused an
@@ -123,6 +149,8 @@ jobs:
     # That is the point: this job is green because installing works, not
     # because it was shown how.
     env:
+      # Linux's, and inert on the other two: the GTK host needs a display to
+      # talk to and the AppKit and Win32 hosts make their own windows.
       DISPLAY: ":99"
       GDK_BACKEND: x11
     steps:
@@ -131,6 +159,7 @@ jobs:
           path: basalt
 
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
@@ -143,6 +172,53 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+
+      # What the documentation tells a person to install, and nothing else.
+      # The point of this job is that the written instructions are enough, so
+      # anything installed here that getting-started does not mention is a
+      # hole in the documentation rather than a step in a build.
+      - name: What the docs tell a Mac user to install
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: The MSVC environment, which a Windows developer gets from their shell
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang `
+            -property installationPath
+          if (-not $vs) { throw "no Visual Studio with clang-cl on this runner" }
+
+          $before = @{}
+          Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
+
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul 2>&1 && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+              $name = $matches[1]; $value = $matches[2]
+              if ($before[$name] -ne $value -and $name -ne 'VCPKG_ROOT') {
+                "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              }
+            }
+          }
+
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          if (-not (Test-Path "$vcpkg\scripts\buildsystems\vcpkg.cmake")) {
+            throw "no vcpkg at VCPKG_INSTALLATION_ROOT ($vcpkg)"
+          }
+          "VCPKG_ROOT=$vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The libraries Linux gets from apt above. getting-started says to set
+      # vcpkg up and does not say which packages, which is a gap this job is
+      # the first thing to feel: without them the host build fails deep in
+      # CMake rather than at `doctor`.
+      - name: What vcpkg has to be carrying
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows `
+            glog fmt double-conversion boost-regex boost-beast boost-asio boost-thread openssl curl
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
 
       - name: Read the React Native pin
         id: pin
@@ -201,6 +277,12 @@ jobs:
         # needs a React Native checkout -- core's `prepack` typechecks -- and
         # that job has none; giving it one would be a third copy of the same
         # three steps to keep in step with the other two.
+        #
+        # One leg uploads, because all three pack the same bytes from the same
+        # commit and an artifact name may only be claimed once in a run. Linux
+        # is the one that does it for no better reason than that it was the
+        # one doing it before there were three.
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
           name: tarballs
@@ -264,20 +346,25 @@ jobs:
         run: npx basalt-core doctor
 
       - name: Start a display
+        if: runner.os == 'Linux'
         run: |
           Xvfb :99 -screen 0 1400x1000x24 > /tmp/xvfb.log 2>&1 &
           disown
           for _ in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.5; done
 
-      - name: run-linux --build
+      - name: ${{ matrix.command }} --build
         # Expo apps register "main" whatever app.json says. The template's one
         # line of text is what has to come out the other end.
+        #
+        # Neither macOS nor Windows needs a display arranged: the host makes
+        # its own window, and nothing here reads pixels. The tree dump is what
+        # is asserted on, and it is written whether or not anybody is looking.
         working-directory: app
         env:
           BASALT_QUIT_AFTER_MS: "15000"
           BASALT_DUMP_TREE: ${{ github.workspace }}/tree.txt
         run: |
-          npx react-native run-linux --build --mode release --module main
+          npx react-native ${{ matrix.command }} --build --mode release --module main
           cat ../tree.txt
           grep -F "Open up App" ../tree.txt
           grep -F "fetch is function" ../tree.txt
