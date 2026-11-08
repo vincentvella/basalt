@@ -108,6 +108,24 @@ rule in DECISIONS.md -- `basalt-notifications` and `basalt-skia` are the
 shipped examples -- and a package needs a trusted publisher before it can go
 out. CONTRIBUTING.md has those three steps.
 
+### A module may ask for more than one native module
+
+async-storage is the worked example of this too. Its JavaScript has a
+`.windows` variant, this platform uses React Native's real platform names, so
+Metro resolves it on Windows -- and it asks for a different module,
+`RNCAsyncStorage`, with a callback interface declared in that file by hand
+rather than in the spec. A port that satisfied the generated spec passed on
+Linux and macOS and failed on Windows with `Failed to load TurboModule`.
+
+So: read the module's JavaScript for platform variants before believing the
+spec is the whole interface, and answer every module it asks for on every
+desktop rather than only where it asks. Which one an app gets is the module's
+business, and a native half that is the same everywhere is one less thing
+that can differ.
+
+The second interface is hand-written on both sides, so unlike the generated
+one it *can* drift. There is no compiler to catch that, only a scenario.
+
 ### Two things that will catch you
 
 **`Bridging<std::tuple>` is one-way.** It is `BridgingStatic`, which defines
