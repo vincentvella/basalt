@@ -240,6 +240,24 @@ boost-thread is not on React Native's own list and is needed anyway: folly's
 Windows PThread.cpp shim is written over boost::thread."
   export VCPKG_ROOT
   log "vcpkg at $VCPKG_ROOT"
+elif [ "$HOST_OS" = macos ]; then
+  # GTK is optional here and required on Linux, which is the whole difference
+  # this branch exists for. A Mac can build the GTK host -- Homebrew's gtk4
+  # has a macOS backend and this repository's own CI builds both there -- but
+  # a Mac developer building a Mac app needs none of it, and demanding it was
+  # a bug: `npm run macos -- --build` died with "gtk4 development files not
+  # found" on a machine that had installed exactly what getting-started says
+  # to install. Found by release.yml's install proof, the first time it ran
+  # on a Mac.
+  #
+  # CMake has always been right about this -- "basalt-gtk skipped: no gtk4" --
+  # so this only brings bootstrap into line with it.
+  if pkg-config --exists gtk4 2>/dev/null; then
+    log "gtk4 $(pkg-config --modversion gtk4), so the GTK host builds here too"
+  else
+    log "no gtk4 here, so the AppKit host will build and the GTK one will not"
+    log "  (brew install gtk4 pango if you want both from this machine)"
+  fi
 else
   pkg-config --exists gtk4 || die "gtk4 development files not found (pkg-config gtk4)"
   log "gtk4 $(pkg-config --modversion gtk4), pango $(pkg-config --modversion pango 2>/dev/null || echo '?')"
