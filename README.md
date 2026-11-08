@@ -16,14 +16,16 @@ npm run macos -- --build  # or linux, or windows
 ```
 
 <p align="center">
-  <img src="website/public/img/shots/macos.png" alt="The same app on macOS, over AppKit" width="49%">
-  <img src="website/public/img/shots/linux.png" alt="The same app on Linux, over GTK4" width="49%">
+  <img src="website/public/img/shots/macos.png" alt="The same app on macOS, over AppKit" width="32%">
+  <img src="website/public/img/shots/linux.png" alt="The same app on Linux, over GTK4" width="32%">
+  <img src="website/public/img/shots/windows.png" alt="The same app on Windows, over Win32 and Direct2D" width="32%">
 </p>
 
-One app, `e2e/showcase.tsx`, on AppKit and on GTK4. Same code, same window
-size, no editing afterwards. The paragraphs wrap differently because Core Text
-and Pango are different text engines measuring the same Yoga tree, and the
-caption buttons differ because each window is its own desktop's.
+One app, `e2e/showcase.tsx`, on AppKit, GTK4 and Win32. Same code, same window
+size, nothing edited afterwards. The paragraphs wrap differently because Core
+Text, Pango and DirectWrite are three text engines measuring the same Yoga
+tree, and the caption buttons differ because each window belongs to its own
+desktop.
 
 Your components, props and layout behave the way they already do, because what
 runs underneath is React Native's: Hermes, Yoga, Fabric and the shadow tree are

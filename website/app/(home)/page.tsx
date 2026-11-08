@@ -419,41 +419,63 @@ function Expect() {
 }
 
 /**
- * One app, photographed on two desktops.
+ * One app, photographed on all three desktops.
  *
  * Above the feature cards on purpose: somebody arriving wants to see a window
- * before they read a claim about one. The two shots are the same app at the
+ * before they read a claim about one. The three shots are the same app at the
  * same window size, captured by `e2e/showcase.tsx` setting its own size, so
  * the differences in them are real differences between the hosts rather than
- * two people taking two screenshots.
+ * three people taking three screenshots.
  *
- * Windows is missing because photographing it needs a Windows machine, and
- * the honest version of this section is the one that does not fake the third.
+ * Windows is taken in CI rather than on anybody's machine, through
+ * `BASALT_WINDOW_CAPTURE`, and it is the one at the machine's own resolution
+ * rather than at 2x: a photograph of a real window cannot be supersampled.
+ * Softer and true beat sharper and missing the text field, which is what the
+ * offscreen render gave.
  */
 function Screenshots() {
   return (
     <Section>
-      <SectionTitle>The same app, twice</SectionTitle>
+      <SectionTitle>The same app, three times</SectionTitle>
       <SectionLede>
         One codebase, no per-desktop branches, and no editing after the fact.
-        The paragraphs wrap differently because Core Text and Pango measure the
-        same Yoga tree with different fonts, and the caption buttons differ
-        because each window belongs to its own desktop.
+        The paragraphs wrap differently because Core Text, Pango and DirectWrite
+        are three text engines measuring the same Yoga tree, and the caption
+        buttons differ because each window belongs to its own desktop.
       </SectionLede>
-      <div className="mt-8 grid gap-6 md:grid-cols-2">
+      <div className="mt-8 grid gap-6 md:grid-cols-3">
         {[
-          { src: "/img/shots/macos.png", label: "macOS, over AppKit" },
-          { src: "/img/shots/linux.png", label: "Linux, over GTK4" },
+          {
+            src: "/img/shots/macos.png",
+            label: "macOS, over AppKit",
+            width: 2080,
+            height: 1120,
+          },
+          {
+            src: "/img/shots/linux.png",
+            label: "Linux, over GTK4",
+            width: 2080,
+            height: 1120,
+          },
+          {
+            src: "/img/shots/windows.png",
+            label: "Windows, over Win32 and Direct2D",
+            width: 1044,
+            height: 599,
+          },
         ].map((shot) => (
-          <figure key={shot.src}>
+          // A column, so the captions line up along the bottom: the Windows
+          // shot is a photograph of a real window and carries its frame, so
+          // it is a slightly different shape from the other two.
+          <figure key={shot.src} className="flex flex-col">
             <img
               src={shot.src}
               alt={`The showcase app running on ${shot.label}`}
-              width={1040}
-              height={560}
-              className="w-full rounded-lg border border-fd-border"
+              width={shot.width}
+              height={shot.height}
+              className="h-auto w-full rounded-lg border border-fd-border"
             />
-            <figcaption className="mt-2 text-center text-sm text-fd-muted-foreground">
+            <figcaption className="mt-auto pt-2 text-center text-sm text-fd-muted-foreground">
               {shot.label}
             </figcaption>
           </figure>
