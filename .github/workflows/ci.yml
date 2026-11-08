@@ -188,10 +188,11 @@ jobs:
           path: react-native-src/node_modules
           key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
-      # Here too, and not only in the jobs that bundle: e2e/storage.tsx imports
-      # async-storage, so the type check needs it on disk exactly as the
-      # bundler does. Adding it to the three building jobs and not to this one
-      # is what broke the first run of the port.
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing that is not in the React Native checkout. So
+      # it is installed here, before the first step that reads that file --
+      # `make ts` type-checks it long before anything bundles it, which is
+      # what two runs of this were spent learning.
       - name: async-storage, for the one app that imports one
         run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
@@ -428,6 +429,14 @@ jobs:
           BASALT_GTK_RENDERER: cairo
         run: ./build/basalt_gtk_tests
 
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing that is not in the React Native checkout. So
+      # it is installed here, before the first step that reads that file --
+      # `make ts` type-checks it long before anything bundles it, which is
+      # what two runs of this were spent learning.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
+
       - name: Build the JavaScript packages
         # basalt-core is TypeScript and `main` points into its dist/,
         # so nothing below can require it until this has run. It is also the
@@ -551,12 +560,6 @@ jobs:
         run: |
           python3 scripts/test_audit_modules.py
           python3 scripts/audit_modules.py --check
-
-      # The one app that imports a third-party native module, which has no
-      # home in the React Native checkout the other e2e apps resolve from.
-      # Same command the scenario names when it finds the directory missing.
-      - name: async-storage, for the one app that imports one
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src
@@ -786,6 +789,14 @@ jobs:
         # Needs neither a display nor a window: nothing in it is presented.
         run: ./build/basalt_appkit_tests
 
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing that is not in the React Native checkout. So
+      # it is installed here, before the first step that reads that file --
+      # `make ts` type-checks it long before anything bundles it, which is
+      # what two runs of this were spent learning.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
+
       - name: Build the JavaScript packages
         run: make ts RN_DIR=react-native-src
 
@@ -802,12 +813,6 @@ jobs:
         # installed and no build: the refusal is about a package.json.
         run: node --test scripts/test_skia_cmake.js
 
-
-      # The one app that imports a third-party native module, which has no
-      # home in the React Native checkout the other e2e apps resolve from.
-      # Same command the scenario names when it finds the directory missing.
-      - name: async-storage, for the one app that imports one
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src PLATFORM=macos
@@ -1128,6 +1133,14 @@ jobs:
           ./build/basalt_win32_tests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
 
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing that is not in the React Native checkout. So
+      # it is installed here, before the first step that reads that file --
+      # `make ts` type-checks it long before anything bundles it, which is
+      # what two runs of this were spent learning.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
+
       - name: Build the JavaScript packages
         # As on Linux, and for the same reason: the tests below require the
         # built output. Also the type check -- and worth running on both, since
@@ -1172,13 +1185,6 @@ jobs:
           name: demo-win32
           path: demo-win32.png
           if-no-files-found: error
-
-      # The one app that imports a third-party native module, which has no
-      # home in the React Native checkout the other e2e apps resolve from.
-      # Same command the scenario names when it finds the directory missing.
-      - name: async-storage, for the one app that imports one
-        shell: bash
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Bundle the demo
         shell: bash
