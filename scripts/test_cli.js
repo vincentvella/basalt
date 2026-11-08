@@ -1540,7 +1540,9 @@ test('doctor takes a header as proof where pkg-config has no answer', () => {
   const steps = doctorCli.checkCxxLibraries('linux', () => false, file => file === header, {});
   assert.equal(stateOf(steps, 'boost'), 'done');
   const [, boost] = steps.find(([name]) => name === 'boost');
-  assert.match(boost.message, /boost\/version\.hpp/, 'and says where it found it');
+  // The message is the path it found, compared as a path rather than matched
+  // against a pattern with separators in it -- the same trap one line up.
+  assert.equal(boost.message, header, 'and says where it found it');
   assert.equal(stateOf(steps, 'fmt'), 'blocked', 'the others are still missing');
 });
 
