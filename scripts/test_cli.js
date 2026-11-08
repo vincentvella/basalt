@@ -1531,12 +1531,13 @@ test('doctor takes a header as proof where pkg-config has no answer', () => {
   // Boost ships no .pc file anywhere, and Homebrew's double-conversion ships
   // none either, so a header on disk has to be enough or those two would
   // report missing on a machine that can build.
-  const steps = doctorCli.checkCxxLibraries(
-    'linux',
-    () => false,
-    file => file === '/usr/include/boost/version.hpp',
-    {},
-  );
+  //
+  // The path is built with path.join rather than written out, because this
+  // test passes 'linux' from whatever machine is running it and the check
+  // joins paths with the host's separator. A literal '/usr/include/...' here
+  // passed on Linux and macOS and failed the Windows shard.
+  const header = path.join('/usr/include', 'boost', 'version.hpp');
+  const steps = doctorCli.checkCxxLibraries('linux', () => false, file => file === header, {});
   assert.equal(stateOf(steps, 'boost'), 'done');
   const [, boost] = steps.find(([name]) => name === 'boost');
   assert.match(boost.message, /boost\/version\.hpp/, 'and says where it found it');
