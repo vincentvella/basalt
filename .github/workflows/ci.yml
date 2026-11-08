@@ -188,6 +188,13 @@ jobs:
           path: react-native-src/node_modules
           key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
+      # Here too, and not only in the jobs that bundle: e2e/storage.tsx imports
+      # async-storage, so the type check needs it on disk exactly as the
+      # bundler does. Adding it to the three building jobs and not to this one
+      # is what broke the first run of the port.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
+
       - name: Type-check every package and the demo apps
         # Which React Native type declarations this resolves against depends on
         # the checkout, and a source checkout at a release tag is the case the
