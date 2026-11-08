@@ -89,12 +89,33 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   running it against a fresh `create-expo-app`, the way `release.yml`'s install
   job installs the packed packages, and building the result. The unit tests
   cover what it writes; nothing yet covers that what it writes is sufficient.
-- **Porting a first third-party native module end to end**, to learn what the
-  porting story actually costs. This is the largest unknown in the project: the
-  TurboModule seam is proven, by `src/LinuxPlatformConstants.cpp`, but no
-  third-party module has been through it, and there is no codegen configuration
-  for one. Until a module has been ported, the cost of porting any module is a
-  guess.
+- ~~**Porting a first third-party native module end to end**~~, to learn what
+  the porting story actually costs. Done on 2026-11-08, with
+  `@react-native-async-storage/async-storage`: see `packages/basalt-async-storage`,
+  the recipe in `docs/PORTING.md`, and the `async-storage` scenario, which
+  asserts the round trip on every desktop.
+
+  **What it cost, since that was the question.** Most of it was one missing
+  command: React Native's codegen takes the *app* as its project and finds
+  every dependency that ships a `codegenConfig`, and nothing here had ever
+  run it that way. `appCodegen` in `cli/desktop.ts` does now, so the path is
+  open to any module with a spec, not to this one.
+
+  After that, three things, and only the first is per module:
+
+  - an implementation of the generated spec, which for async-storage is a
+    key-value store over files;
+  - one hand-written bridging specialisation, because the spec uses inline
+    object types and codegen writes structs only for named ones;
+  - nothing per desktop at all. The store is portable C++, so one
+    implementation covered three hosts. That will not hold for a module whose
+    native half is a platform API -- a camera, a keychain -- and it is the
+    shape of the answer for anything that is really about data.
+
+  Two things learned by hitting them, both written down where the next person
+  meets them: `Bridging<std::tuple>` can answer a pair and cannot receive one,
+  and `AppPaths` had nowhere for an app to *write*, which is now
+  `applicationDataPath()`.
 - Packaging: Arch PKGBUILD, Flatpak.
 
 - ~~**The package ships no types, and an Expo app is TypeScript by default.**~~

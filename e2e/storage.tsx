@@ -52,6 +52,12 @@ function App() {
       } catch (error) {
         said.push(`error: ${String(error)}`);
       }
+      // Logged as well as rendered, because the scenario reads these: a tree
+      // dump says what was on screen and the lines say in which order it
+      // happened, which is what a round trip is.
+      for (const line of said) {
+        console.log(`storage: ${line}`);
+      }
       setLines(said);
     })();
   }, []);

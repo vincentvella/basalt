@@ -226,6 +226,19 @@ else
   # repository or inside it as react-native-src, or takes RN_DIR. Naming
   # ../react-native here made this step fail on every machine where React
   # Native lives anywhere else -- a Linux checkout from wsl_setup.sh among them.
+  # The one app that imports a third-party native module. e2e/ has no
+  # node_modules of its own for react, react-native or metro -- they come out
+  # of the React Native checkout -- and async-storage has no such home, so it
+  # is installed here. `--no-save` because e2e/package.json is not where this
+  # app's dependency list lives; the scenario says the same command when it
+  # finds the directory missing.
+  if command -v npm >/dev/null 2>&1 &&
+     [ ! -d "$root/e2e/node_modules/@react-native-async-storage/async-storage" ]; then
+    step "async-storage, for the one app that imports one" \
+      npm install --prefix "$root/e2e" --no-save --no-audit --no-fund \
+        @react-native-async-storage/async-storage@3.1.1
+  fi
+
   step "bundle the demo" scripts/bundle.sh --prod --platform "$platform"
   step "end-to-end" python3 scripts/integration_test.py --platform "$platform"
 

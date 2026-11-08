@@ -45,6 +45,69 @@ package, and the failure reads as a missing `NativeCPUTimeCxxSpec` template,
 like a codegen bug rather than a packaging one. Nothing links that target, so
 this platform does not build it.
 
+## Porting a third-party native module
+
+A module that works on a phone and not here is almost always a module whose
+native half nobody has written for a desktop. The JavaScript is already
+portable; what is missing is the thing behind
+`TurboModuleRegistry.getEnforcing`.
+
+`packages/basalt-async-storage` is the worked example, and this is the recipe
+it produced.
+
+**1. Check that the module ships a spec.** Its `package.json` says so:
+
+```json
+"codegenConfig": {"name": "AsyncStorageSpec", "type": "modules", "jsSrcsDir": "src"}
+```
+
+A module without one is hand-written on every platform and has no interface to
+generate; a module with one has the same interface everywhere, and that is what
+you implement.
+
+**2. Let the build generate it.** Nothing to do: `buildHost` runs React
+Native's codegen over the app's own dependencies whenever any of them declares
+a spec, and puts the result on the include path. You get a header-only CRTP
+base class:
+
+```cpp
+#include <react/renderer/components/AsyncStorageSpec/AsyncStorageSpecJSI.h>
+
+class AsyncStorageModule
+    : public facebook::react::NativeAsyncStorageCxxSpec<AsyncStorageModule> { ... };
+```
+
+Its `kModuleName` is already the name the JavaScript asks for, and if the
+module changes a signature in a later release this stops compiling, which is
+the point of deriving from it rather than matching it by hand.
+
+**3. Write the implementation, and keep it portable if it can be.** Method
+signatures come from the spec: a `Promise<T>` is a method returning
+`jsi::Value`, and `core/JsiPromise.h` builds a settled one, which is honest
+whenever the work underneath is synchronous. Anything that is really about
+*data* rather than about a platform API wants no per-desktop code at all.
+
+**4. Ship it as a capability package.** A `package.json` with
+`"basalt": {"native": "native/CMakeLists.txt"}`, and a CMakeLists that appends
+its sources to `BASALT_PACKAGE_CORE_SOURCES` and its factory to
+`BASALT_PACKAGE_TURBO_MODULES`. See `core/PackageModules.h` for why that
+registration is generated rather than done at static initialisation.
+
+The package ships **no JavaScript**: the app imports the module it already
+imports, and this is the half that was missing.
+
+### Two things that will catch you
+
+**`Bridging<std::tuple>` is one-way.** It is `BridgingStatic`, which defines
+`toJs` and no `fromJs`, so a `[key, value]` pair can be answered and cannot be
+received. Take `std::vector<std::vector<std::string>>` going in and a tuple
+coming out.
+
+**Codegen writes structs only for named types.** A spec with an inline object
+literal -- `{key: string, value: string | null}[]` -- generates none, and you
+write the `Bridging<>` specialisation yourself. It is about twenty lines and
+it is the only interface code in the package that is not generated.
+
 ## Which React Natives are supported
 
 `supported-versions.json` names, for each supported React Native, the Hermes to

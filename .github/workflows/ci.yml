@@ -545,6 +545,12 @@ jobs:
           python3 scripts/test_audit_modules.py
           python3 scripts/audit_modules.py --check
 
+      # The one app that imports a third-party native module, which has no
+      # home in the React Native checkout the other e2e apps resolve from.
+      # Same command the scenario names when it finds the directory missing.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
+
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src
 
@@ -789,6 +795,12 @@ jobs:
         # installed and no build: the refusal is about a package.json.
         run: node --test scripts/test_skia_cmake.js
 
+
+      # The one app that imports a third-party native module, which has no
+      # home in the React Native checkout the other e2e apps resolve from.
+      # Same command the scenario names when it finds the directory missing.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Bundle the demo
         run: make bundle RN_DIR=react-native-src PLATFORM=macos
@@ -1153,6 +1165,13 @@ jobs:
           name: demo-win32
           path: demo-win32.png
           if-no-files-found: error
+
+      # The one app that imports a third-party native module, which has no
+      # home in the React Native checkout the other e2e apps resolve from.
+      # Same command the scenario names when it finds the directory missing.
+      - name: async-storage, for the one app that imports one
+        shell: bash
+        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Bundle the demo
         shell: bash

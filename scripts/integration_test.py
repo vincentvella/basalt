@@ -2727,6 +2727,81 @@ def test_subprocess(bundle: Path) -> None:
         raise Failure("a process that had exited was still reported as running")
 
 
+def test_storage(bundle: Path) -> None:
+    """A third-party native module, ported, and reached the way an app reaches it.
+
+    The first one. async-storage ships a TypeScript spec and a codegenConfig,
+    nothing here had ever generated the C++ for one, and
+    docs/backlog/ecosystem.md called that the largest unknown in the project.
+    What this asserts is the part no unit test can: that the generated spec,
+    the package's implementation and the provider chain meet, and that an app
+    importing `@react-native-async-storage/async-storage` gets its own data
+    back.
+
+    The store's rules -- escaping a database name, merging, a corrupt file --
+    are asserted by the unit tests in the package, which run in all three host
+    suites. This is the round trip, which is the thing that cannot be faked by
+    a module that loaded and did nothing.
+
+    Needs async-storage installed into e2e/node_modules; scripts/test_all.sh
+    and CI do it, and the scenario says so rather than failing at the bundler.
+    """
+    module = REPO / "e2e" / "node_modules" / "@react-native-async-storage" / "async-storage"
+    if not module.is_dir():
+        raise Failure(
+            "async-storage is not installed, so the one app that proves a "
+            "ported third-party module cannot be bundled. Install it with:\n"
+            "  npm install --prefix e2e --no-save "
+            "@react-native-async-storage/async-storage@3.1.1"
+        )
+
+    app = bundle_app(bundle.parent, "storage")
+    host = packaged_host(bundle.parent)
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "9000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                 "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
+        env.pop(name, None)
+
+    result = run_host_process(
+        [str(host), str(app), "BasaltStorage"],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
+    )
+    _remember_output(result.stderr)
+    check_output(result.stderr, result.returncode)
+    both = result.stdout + result.stderr
+
+    said = [
+        line.split("storage: ", 1)[1].strip()
+        for line in both.splitlines()
+        if "storage: " in line
+    ]
+    if not said:
+        raise Failure(
+            "async-storage said nothing, so either the module was not reachable "
+            "from JavaScript -- the generated provider chain did not offer "
+            f"RNAsyncStorage -- or the app never ran.\n{tail_text(both, 30)}"
+        )
+    for line in said:
+        if line.startswith("error:"):
+            raise Failure(f"async-storage rejected: {line}\n{tail_text(both, 30)}")
+
+    expected = [
+        "read back: abc123",
+        "object: name=Ada theme=dark",
+        "removed: true",
+        "keys: token",
+        "missing is null: true",
+    ]
+    for want in expected:
+        if want not in said:
+            raise Failure(
+                f"async-storage did not answer {want!r}; it said {said!r}\n"
+                f"{tail_text(both, 30)}"
+            )
+
+
 def test_expo_fetch(bundle: Path) -> None:
     """An Expo app calls `fetch` and gets one that works.
 
@@ -8842,6 +8917,8 @@ SCENARIOS = [
     ("expo-notifications imports and answers on every desktop", test_notifications),
     ("react-native-macos's keyboard props work on a plain View", test_macos_key_props),
     ("a command runs, and its output and exit reach JavaScript", test_subprocess),
+    ("async-storage stores and reads back, through its own generated spec",
+     test_storage),
     ("an Expo app's fetch works rather than naming a module it has not got", test_expo_fetch),
     ("ActivityIndicator, Switch, Modal and RefreshControl mount and answer",
      test_controls),
