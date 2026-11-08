@@ -77,8 +77,61 @@ class AsyncStorageModule : public facebook::react::NativeAsyncStorageCxxSpec<Asy
   std::unique_ptr<AsyncStorageStore> store_;
 };
 
+// async-storage's *other* native module, which Windows asks for.
+//
+// Found by CI, and it is the kind of thing only a third desktop finds. This
+// platform uses React Native's real platform names, so Metro resolves
+// `createAsyncStorage.windows.ts` on Windows -- and that file says Room KMP
+// has no Windows target, falls back to async-storage's legacy v2
+// implementation, and asks for a module called `RNCAsyncStorage` with a
+// callback interface that is declared in the file by hand rather than in the
+// spec codegen reads.
+//
+// So: a second module, over the same store, written out rather than
+// generated because there is nothing to generate it from. Six methods, each
+// taking a callback as its last argument and answering `(error, result)` the
+// way React Native's old bridge did, where a success passes undefined for
+// the error.
+//
+// It costs about as much as the generated one and is the honest shape of the
+// answer: a module that behaves differently per platform gets a different
+// native half per platform, and the port is not done until the platform
+// somebody actually runs is the one that works.
+class LegacyAsyncStorageModule : public facebook::react::TurboModule {
+ public:
+  static constexpr auto kModuleName = "RNCAsyncStorage";
+
+  explicit LegacyAsyncStorageModule(std::shared_ptr<facebook::react::CallInvoker> jsInvoker);
+
+ private:
+  static facebook::jsi::Value multiGet(facebook::jsi::Runtime &runtime,
+                                       facebook::react::TurboModule &module,
+                                       const facebook::jsi::Value *args,
+                                       size_t count);
+  static facebook::jsi::Value multiSet(facebook::jsi::Runtime &runtime,
+                                       facebook::react::TurboModule &module,
+                                       const facebook::jsi::Value *args,
+                                       size_t count);
+  static facebook::jsi::Value multiRemove(facebook::jsi::Runtime &runtime,
+                                          facebook::react::TurboModule &module,
+                                          const facebook::jsi::Value *args,
+                                          size_t count);
+  static facebook::jsi::Value multiMerge(facebook::jsi::Runtime &runtime,
+                                         facebook::react::TurboModule &module,
+                                         const facebook::jsi::Value *args,
+                                         size_t count);
+  static facebook::jsi::Value getAllKeys(facebook::jsi::Runtime &runtime,
+                                         facebook::react::TurboModule &module,
+                                         const facebook::jsi::Value *args,
+                                         size_t count);
+  static facebook::jsi::Value clear(facebook::jsi::Runtime &runtime,
+                                    facebook::react::TurboModule &module,
+                                    const facebook::jsi::Value *args,
+                                    size_t count);
+};
+
 // What core/PackageModules.h's generated chain calls. Answers nullptr for
-// every name but this module's.
+// every name but these two modules'.
 std::shared_ptr<facebook::react::TurboModule> makeAsyncStorageTurboModule(
     const std::string &name,
     const std::shared_ptr<facebook::react::CallInvoker> &jsInvoker);

@@ -2795,6 +2795,8 @@ def test_storage(bundle: Path) -> None:
         "removed: true",
         "keys: token",
         "missing is null: true",
+        # async-storage's other module, which is the one it uses on Windows.
+        "legacy: legacy-key=legacy-value",
     ]
     for want in expected:
         if want not in said:

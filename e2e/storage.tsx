@@ -16,7 +16,8 @@
 'use strict';
 
 import * as React from 'react';
-import {AppRegistry, StyleSheet, Text, View} from 'react-native';
+import {AppRegistry, StyleSheet, Text, TurboModuleRegistry, View} from 'react-native';
+import type {TurboModule} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const styles = StyleSheet.create({
@@ -49,6 +50,35 @@ function App() {
         said.push(`keys: ${keys.join(',')}`);
 
         said.push(`missing is null: ${(await AsyncStorage.getItem('nope')) === null}`);
+
+        // And the other module async-storage has. On Windows this *is* the
+        // one AsyncStorage uses -- createAsyncStorage.windows.ts falls back
+        // to the legacy implementation and asks for RNCAsyncStorage, with
+        // callbacks rather than promises -- so exercising it here means the
+        // other two desktops catch a break in it as well.
+        interface LegacySpec extends TurboModule {
+          multiSet: (pairs: string[][], callback: (error?: unknown) => void) => void;
+          multiGet: (
+            keys: string[],
+            callback: (error: unknown, result?: [string, string][]) => void,
+          ) => void;
+        }
+        const legacy = TurboModuleRegistry.get<LegacySpec>('RNCAsyncStorage');
+        if (legacy == null) {
+          said.push('legacy: module missing');
+        } else {
+          await new Promise<void>((resolve, reject) => {
+            legacy.multiSet([['legacy-key', 'legacy-value']], error =>
+              error ? reject(new Error(String(error))) : resolve(),
+            );
+          });
+          const read = await new Promise<[string, string][] | undefined>((resolve, reject) => {
+            legacy.multiGet(['legacy-key'], (error, result) =>
+              error ? reject(new Error(String(error))) : resolve(result),
+            );
+          });
+          said.push(`legacy: ${read?.[0]?.[0]}=${read?.[0]?.[1]}`);
+        }
       } catch (error) {
         said.push(`error: ${String(error)}`);
       }
