@@ -356,7 +356,24 @@ fi
 if [ ! -d "$TP/hermes" ]; then
   log "fetching Hermes $HERMES_VERSION (~200MB)"
   mkdir -p "$TP/hermes"
-  fetch "https://github.com/facebook/hermes/tarball/${HERMES_VERSION}" \
+  # api.github.com rather than github.com/.../tarball/<ref>: the same archive,
+  # by the same generator, through a host that answers.
+  #
+  # On 2026-11-08 the github.com endpoint returned 504 for this ref for over
+  # half an hour, from GitHub's own runners and from a laptop, while GitHub
+  # reported all systems operational. What it was breaking is every build
+  # with no third_party cache -- which is every *first* build anybody does.
+  # CI never saw it because CI restores a cache; release.yml's install proof
+  # builds from nothing, which is what it is for.
+  #
+  # codeload's `tar.gz/refs/tags/<tag>` was the obvious swap and is wrong:
+  # it resolves tags only, and 0.86, 0.87 and main pin a Hermes whose ref is
+  # not one -- `250829098.0.0-stable` is a 404 there and a 200 here. This
+  # endpoint resolves a ref as loosely as the one it replaces, so every
+  # version in supported-versions.json still fetches. Both were checked, and
+  # the archive it returns has the same file list as the old endpoint's for
+  # the same ref.
+  fetch "https://api.github.com/repos/facebook/hermes/tarball/${HERMES_VERSION}" \
     | tar xz -C "$TP/hermes" --strip-components=1
   echo "$HERMES_VERSION" > "$HERMES_STAMP"
 fi
