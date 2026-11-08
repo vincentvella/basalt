@@ -196,6 +196,15 @@ if(DEFINED RN_DIR)
   # that lets core call them without naming them. Generated either way: with no
   # packages it defines an empty function, so core has one thing to call rather
   # than a conditional. See core/PackageModules.h.
+  # Codegen run over the app's own dependencies, if the command-line tool ran
+  # any: see `appCodegen` in cli/desktop.ts. A system include, because these
+  # are generated files held to React Native's warnings rather than this
+  # project's, like every other dependency's headers here.
+  if(DEFINED BASALT_APP_CODEGEN AND EXISTS ${BASALT_APP_CODEGEN})
+    message(STATUS "basalt: app codegen from ${BASALT_APP_CODEGEN}")
+    set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES ${BASALT_APP_CODEGEN})
+  endif()
+
   get_property(basalt_package_installers GLOBAL PROPERTY BASALT_PACKAGE_EXPO_INSTALLERS)
   get_property(basalt_package_core_sources GLOBAL PROPERTY BASALT_PACKAGE_CORE_SOURCES)
   get_property(basalt_package_includes GLOBAL PROPERTY BASALT_PACKAGE_INCLUDES)

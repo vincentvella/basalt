@@ -922,6 +922,63 @@ function appWith(dependencies, packages) {
   return root;
 }
 
+// Codegen for the app's own modules. A third-party native module ships a
+// spec and a `codegenConfig`, and until this existed nothing generated the
+// C++ interface for one, which docs/backlog/ecosystem.md called the largest
+// unknown in the project. The scan below only decides whether running codegen
+// is worth the seconds; React Native's script finds the modules itself.
+test('a dependency shipping a codegen spec is found, and one without is not', () => {
+  const root = appWith(
+    {'@react-native-async-storage/async-storage': '*', 'left-pad': '*'},
+    {
+      '@react-native-async-storage/async-storage': {
+        name: '@react-native-async-storage/async-storage',
+        codegenConfig: {name: 'AsyncStorageSpec', type: 'modules', jsSrcsDir: 'src'},
+      },
+      'left-pad': {name: 'left-pad'},
+    },
+  );
+  assert.deepEqual(desktop.packagesWithSpecs(root), [
+    '@react-native-async-storage/async-storage',
+  ]);
+});
+
+test('an app whose dependencies ship no spec runs no codegen', () => {
+  // The common case, and it has to cost nothing: codegen is seconds, and most
+  // apps have no module with a spec at all.
+  const root = appWith({'left-pad': '*'}, {'left-pad': {name: 'left-pad'}});
+  assert.deepEqual(desktop.packagesWithSpecs(root), []);
+  assert.equal(
+    desktop.appCodegen(root, path.join(root, 'nowhere'), root, process.env),
+    null,
+    'and no script is looked for either',
+  );
+});
+
+test('a codegen spec that generated nothing fails loudly', () => {
+  // Judged by what it produced rather than by its exit status, the way
+  // bootstrap.sh judges the same script. A silent failure here would be a
+  // host built without a module the app asked for, failing at the first call
+  // with "TurboModuleRegistry.getEnforcing" and no clue why.
+  const root = appWith(
+    {'thing-with-a-spec': '*'},
+    {
+      'thing-with-a-spec': {
+        name: 'thing-with-a-spec',
+        codegenConfig: {name: 'ThingSpec', type: 'modules', jsSrcsDir: 'src'},
+      },
+    },
+  );
+  const rn = path.join(root, 'react-native');
+  fs.mkdirSync(path.join(rn, 'scripts'), {recursive: true});
+  // A script that does nothing and says it succeeded.
+  fs.writeFileSync(path.join(rn, 'scripts', 'generate-codegen-artifacts.js'), 'process.exit(0);\n');
+  assert.throws(
+    () => desktop.appCodegen(root, rn, root, process.env),
+    /codegen produced nothing/,
+  );
+});
+
 test('a package declaring native code is discovered by its manifest', () => {
   const root = appWith(
     {'basalt-notifications': '*', 'left-pad': '*'},

@@ -353,6 +353,115 @@ export function capabilityPackages(projectRoot: string): string[] {
 }
 
 /**
+ * React Native's codegen, run over the app's own dependencies.
+ *
+ * A third-party native module ships a TypeScript spec and a `codegenConfig`
+ * in its manifest, and every platform generates its native interface from
+ * that rather than hand-writing one. Bootstrap already runs codegen for React
+ * Native's own specs, because 24 targets need `react_codegen_rncore`; nothing
+ * ran it for the app, so a module in `node_modules` had a spec nobody
+ * generated and a desktop implementation had nothing to derive from. That was
+ * the whole of what stood between this platform and any module with a
+ * `codegenConfig`, and `docs/backlog/ecosystem.md` called it the largest
+ * unknown in the project.
+ *
+ * It is one command. React Native's own script takes the app as its project
+ * and finds every dependency that declares a spec:
+ *
+ *     Searching for codegen-enabled libraries in the project dependencies.
+ *     Found @react-native-async-storage/async-storage
+ *     Processing AsyncStorageSpec
+ *
+ * `-t android` because the generated C++ is the same for every platform that
+ * is not Apple: the per-platform part is the Java or Objective-C glue beside
+ * it, and the file this build wants is `<Spec>JSI.h`, a header-only CRTP base
+ * class over `ReactCommon/TurboModule.h` and `react/bridging/Bridging.h`.
+ * Nothing in the generated tree is compiled: `<Spec>-generated.cpp` is JNI
+ * glue and would not compile here, which is why this returns an include
+ * directory and not a source list.
+ *
+ * Returns the directory to put on the include path, or null when the app has
+ * no module with a spec, which is most apps and costs them nothing.
+ */
+export function appCodegen(
+  projectRoot: string,
+  rnDir: string,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+): string | null {
+  const script = path.join(rnDir, 'scripts', 'generate-codegen-artifacts.js');
+  if (!fs.existsSync(script)) {
+    return null;
+  }
+  if (!packagesWithSpecs(projectRoot).length) {
+    return null;
+  }
+
+  const out = path.join(workDir, 'codegen-app');
+  fs.mkdirSync(out, {recursive: true});
+  const result = spawnSync(
+    process.execPath,
+    [script, '-p', projectRoot, '-t', 'android', '-o', out],
+    {cwd: projectRoot, env, encoding: 'utf8'},
+  );
+
+  // Judged by what it produced rather than by its exit status, the way
+  // bootstrap.sh judges the same script: it has been known to write every
+  // artifact, print Done, and exit non-zero over an output directory it never
+  // used.
+  const generated = path.join(out, 'android', 'app', 'build', 'generated', 'source', 'codegen', 'jni');
+  if (!fs.existsSync(path.join(generated, 'react'))) {
+    const said = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+    throw new Error(
+      `codegen produced nothing for the app's modules, in ${out}.\n` +
+        (said === '' ? '' : `${said}\n`),
+    );
+  }
+  return generated;
+}
+
+/**
+ * The app's dependencies that ship a codegen spec.
+ *
+ * Only to decide whether running codegen is worth the seconds: the script
+ * finds them itself, and this does not have to agree with it about anything
+ * except emptiness.
+ */
+export function packagesWithSpecs(projectRoot: string): string[] {
+  const manifestPath = path.join(projectRoot, 'package.json');
+  if (!fs.existsSync(manifestPath)) {
+    return [];
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch {
+    return [];
+  }
+  const names = [
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+  ];
+  const found = [];
+  for (const name of names) {
+    const dir = findPackage(name, projectRoot);
+    if (dir == null) {
+      continue;
+    }
+    try {
+      const declared = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      if (declared?.codegenConfig?.name != null) {
+        found.push(name);
+      }
+    } catch {
+      // A dependency with an unreadable manifest is not this function's
+      // problem: the build will fail on it somewhere that can say why.
+    }
+  }
+  return found;
+}
+
+/**
  * The app's own native modules: `<projectRoot>/modules/*` with a
  * `native/CMakeLists.txt` in it.
  *
@@ -972,6 +1081,16 @@ export function buildHost(context: CliContext, options: RunOptions, target: Targ
     target.toolchain,
   );
 
+  // Codegen for whatever the app installed that ships a spec. After
+  // bootstrap, which is what put React Native's own codegen in place, and
+  // before configure, which is what has to know where it landed.
+  const appSpecs = packagesWithSpecs(projectRoot);
+  let appCodegenDir: string | null = null;
+  if (appSpecs.length > 0) {
+    console.log(`==> codegen for ${appSpecs.join(', ')}`);
+    appCodegenDir = appCodegen(projectRoot, sources.rnDir, workDir, buildEnv);
+  }
+
   console.log('==> configuring');
   run(
     'cmake',
@@ -983,6 +1102,9 @@ export function buildHost(context: CliContext, options: RunOptions, target: Targ
       '-G',
       target.generator ?? 'Ninja',
       `-DRN_DIR=${sources.rnDir}`,
+      ...(appCodegenDir == null
+        ? []
+        : [`-DBASALT_APP_CODEGEN=${appCodegenDir.split(path.sep).join('/')}`]),
       ...nativeModules.args,
       ...compilerArgs(target.platform),
       `-DBASALT_THIRD_PARTY=${thirdParty}`,
