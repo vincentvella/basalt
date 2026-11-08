@@ -67,6 +67,54 @@ float snapshotScale() {
   return scale;
 }
 
+// One PNG writer for both the render and the photograph, so the two cannot
+// drift into writing different files. `format` is what the frame is told to
+// hold: premultiplied BGRA for a render, which carries transparency, and BGR
+// for a window capture, where GDI leaves the alpha byte at zero and reading
+// it as alpha produces a picture of nothing.
+bool encodePng(IWICImagingFactory *wic,
+               IWICBitmapSource *source,
+               UINT width,
+               UINT height,
+               const std::string &path,
+               WICPixelFormatGUID format) {
+  const std::wstring widePath = widen(path);
+  if (widePath.empty()) {
+    return false;
+  }
+
+  ComPtr<IWICStream> stream;
+  if (FAILED(wic->CreateStream(stream.GetAddressOf())) ||
+      FAILED(stream->InitializeFromFilename(widePath.c_str(), GENERIC_WRITE))) {
+    return false;
+  }
+
+  ComPtr<IWICBitmapEncoder> encoder;
+  if (FAILED(wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) ||
+      FAILED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache))) {
+    return false;
+  }
+
+  ComPtr<IWICBitmapFrameEncode> frameEncode;
+  if (FAILED(encoder->CreateNewFrame(frameEncode.GetAddressOf(), nullptr)) ||
+      FAILED(frameEncode->Initialize(nullptr)) || FAILED(frameEncode->SetSize(width, height))) {
+    return false;
+  }
+
+  // The encoder is allowed to answer with a format it prefers; PNG takes
+  // these, and asking is the documented way rather than an optimisation.
+  if (FAILED(frameEncode->SetPixelFormat(&format))) {
+    return false;
+  }
+
+  if (FAILED(frameEncode->WriteSource(source, nullptr)) || FAILED(frameEncode->Commit()) ||
+      FAILED(encoder->Commit())) {
+    return false;
+  }
+
+  return true;
+}
+
 // Renders the tree into a WIC bitmap. The one place the render is described, so
 // the pixels a test reads and the pixels a PNG carries cannot come out
 // different -- the same reason the text layout is built in one place and shared
@@ -185,43 +233,93 @@ bool writeSnapshot(const RnWin32View &root, const std::string &path) {
   if (!renderToBitmap(root, wic, bitmap, width, height)) {
     return false;
   }
+  return encodePng(wic.Get(), bitmap.Get(), width, height, path, GUID_WICPixelFormat32bppPBGRA);
+}
 
-  const std::wstring widePath = widen(path);
-  if (widePath.empty()) {
+bool captureWindow(void *windowHandle, const std::string &path) {
+  HWND window = static_cast<HWND>(windowHandle);
+  if (window == nullptr || IsWindow(window) == FALSE) {
     return false;
   }
 
-  ComPtr<IWICStream> stream;
-  if (FAILED(wic->CreateStream(stream.GetAddressOf())) ||
-      FAILED(stream->InitializeFromFilename(widePath.c_str(), GENERIC_WRITE))) {
+  RECT rect{};
+  if (GetWindowRect(window, &rect) == FALSE) {
+    return false;
+  }
+  const LONG width = rect.right - rect.left;
+  const LONG height = rect.bottom - rect.top;
+  if (width <= 0 || height <= 0) {
     return false;
   }
 
-  ComPtr<IWICBitmapEncoder> encoder;
-  if (FAILED(wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) ||
-      FAILED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache))) {
+  HDC screen = GetDC(nullptr);
+  if (screen == nullptr) {
+    return false;
+  }
+  HDC memory = CreateCompatibleDC(screen);
+  if (memory == nullptr) {
+    ReleaseDC(nullptr, screen);
     return false;
   }
 
-  ComPtr<IWICBitmapFrameEncode> frameEncode;
-  if (FAILED(encoder->CreateNewFrame(frameEncode.GetAddressOf(), nullptr)) ||
-      FAILED(frameEncode->Initialize(nullptr)) || FAILED(frameEncode->SetSize(width, height))) {
-    return false;
+  // Top-down, 32 bits, so the rows come out in the order the encoder wants
+  // and there is no flip to get wrong. A negative height is how a DIB says
+  // top-down.
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = width;
+  info.bmiHeader.biHeight = -height;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+
+  void *bits = nullptr;
+  HBITMAP dib = CreateDIBSection(memory, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+  bool wrote = false;
+  if (dib != nullptr && bits != nullptr) {
+    HGDIOBJ previous = SelectObject(memory, dib);
+    // PW_RENDERFULLCONTENT (2) is the flag that asks DWM for the composited
+    // window rather than asking the app to paint itself, which is what gets
+    // Direct2D content, child windows and the caption buttons.
+    const BOOL printed = PrintWindow(window, memory, 2);
+    SelectObject(memory, previous);
+
+    if (printed != FALSE) {
+      ComPtr<IWICImagingFactory> wic;
+      if (ensureCom() &&
+          SUCCEEDED(CoCreateInstance(
+              CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)))) {
+        const UINT stride = static_cast<UINT>(width) * 4;
+        const UINT size = stride * static_cast<UINT>(height);
+        ComPtr<IWICBitmap> bitmap;
+        // 32bppBGR rather than BGRA: GDI leaves the alpha byte at zero, and
+        // read as alpha that is a fully transparent picture of nothing.
+        if (SUCCEEDED(wic->CreateBitmapFromMemory(
+                static_cast<UINT>(width),
+                static_cast<UINT>(height),
+                GUID_WICPixelFormat32bppBGR,
+                stride,
+                size,
+                static_cast<BYTE *>(bits),
+                bitmap.GetAddressOf()))) {
+          wrote = encodePng(
+              wic.Get(),
+              bitmap.Get(),
+              static_cast<UINT>(width),
+              static_cast<UINT>(height),
+              path,
+              GUID_WICPixelFormat32bppBGR);
+        }
+      }
+    }
   }
 
-  // The encoder is allowed to answer with a format it prefers; PNG takes this
-  // one, and asking is the documented way rather than an optimisation.
-  WICPixelFormatGUID format = GUID_WICPixelFormat32bppPBGRA;
-  if (FAILED(frameEncode->SetPixelFormat(&format))) {
-    return false;
+  if (dib != nullptr) {
+    DeleteObject(dib);
   }
-
-  if (FAILED(frameEncode->WriteSource(bitmap.Get(), nullptr)) || FAILED(frameEncode->Commit()) ||
-      FAILED(encoder->Commit())) {
-    return false;
-  }
-
-  return true;
+  DeleteDC(memory);
+  ReleaseDC(nullptr, screen);
+  return wrote;
 }
 
 } // namespace basalt::win32

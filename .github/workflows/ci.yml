@@ -1186,15 +1186,22 @@ jobs:
         run: |
           bash scripts/bundle.sh --platform windows --entry showcase `
             --out showcase.windows.jsbundle
-          $env:BASALT_SNAPSHOT = "$PWD/showcase-windows.png"
-          # Two device pixels to a point, so this sits beside the macOS and
-          # Linux shots at the same resolution rather than as the soft one.
-          # Only this picture asks; every pixel test still renders at 1.
+          # Both pictures, because they fail differently and the first run
+          # showed it. BASALT_WINDOW_CAPTURE is PrintWindow on the live
+          # window: the filter field, the caption buttons and anything a
+          # canvas drew, at the machine's own resolution. BASALT_SNAPSHOT is
+          # the offscreen render of the view tree, which has none of those and
+          # does scale.
+          $env:BASALT_WINDOW_CAPTURE = "$PWD/showcase-windows.png"
+          $env:BASALT_SNAPSHOT = "$PWD/showcase-windows-tree.png"
           $env:BASALT_SNAPSHOT_SCALE = "2"
           $env:BASALT_QUIT_AFTER_MS = "8000"
           ./build/basalt_win32.exe build/showcase.windows.jsbundle.js BasaltShowcase
-          if (-not (Test-Path "$PWD/showcase-windows.png")) {
+          if (-not (Test-Path "$PWD/showcase-windows-tree.png")) {
             throw "the host wrote no snapshot"
+          }
+          if (-not (Test-Path "$PWD/showcase-windows.png")) {
+            Write-Host "PrintWindow wrote nothing; the tree render is still here"
           }
 
       - uses: actions/upload-artifact@v7
@@ -1202,7 +1209,7 @@ jobs:
         continue-on-error: true
         with:
           name: showcase-windows
-          path: showcase-windows.png
+          path: showcase-windows*.png
           if-no-files-found: warn
 
       - name: End-to-end tests

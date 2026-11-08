@@ -63,4 +63,28 @@ RnPixels renderToPixels(const RnWin32View &root);
 // not be rendered or the file could not be written.
 bool writeSnapshot(const RnWin32View &root, const std::string &path);
 
+// A photograph of the live window instead of a render of the tree, through
+// `PrintWindow` with PW_RENDERFULLCONTENT, which asks DWM for what it
+// composited.
+//
+// Everything above renders `RnWin32View`s and is the right answer for a test:
+// no window has to exist, nothing has to be visible, and the result is the
+// size the frames say. Two things are not in that tree, and backlog entry 3
+// in docs/backlog/platform-windows.md has named both since 2026-10-13. A
+// `<TextInput>`'s peer is a child window, so a field renders as its
+// background with no text, no placeholder and no caret. A `<Canvas>` shows
+// the last frame delivered to the live window, which an offscreen pass never
+// had. The caption buttons are a third: DWM draws them over the app's header
+// and no view knows about them.
+//
+// So this is for a picture of the application as a person sees it, and the
+// render above stays what the tests read. It needs a real window, and the
+// pixels are the window's own, which means the machine's DPI rather than
+// BASALT_SNAPSHOT_SCALE.
+//
+// `window` is an HWND, as `void *` so this header stays free of windows.h.
+// Returns false if there is no window, if PrintWindow refused, or if the
+// file could not be written.
+bool captureWindow(void *window, const std::string &path);
+
 } // namespace basalt::win32

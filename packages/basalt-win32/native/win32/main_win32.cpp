@@ -865,6 +865,35 @@ void writeSnapshotOf(RnWin32View *root, const std::string &path) {
   }
 }
 
+// BASALT_WINDOW_CAPTURE: photograph the live window on the way out.
+//
+// The snapshot below renders the view tree, which is what a test should read
+// and is not what a person sees: a <TextInput>'s peer is a child window, a
+// <Canvas> holds the last frame delivered to the real window, and the caption
+// buttons belong to DWM. None of those are in the tree. This asks DWM for the
+// window it composited instead, so a picture for a README has the field, the
+// canvas and the buttons in it.
+//
+// Taken before teardown, like everything else here, because it needs a window
+// that still exists. A failure is reported and otherwise ignored: a picture
+// nobody took is not a reason for an application to exit non-zero.
+void captureWindowIfRequested() {
+  const char *path = std::getenv("BASALT_WINDOW_CAPTURE");
+  if (path == nullptr) {
+    return;
+  }
+  HWND window = gHost.windows.empty() ? nullptr : gHost.main().window;
+  if (window == nullptr) {
+    std::fprintf(stderr, "no window to capture\n");
+    return;
+  }
+  if (basalt::win32::captureWindow(window, path)) {
+    std::fprintf(stderr, "captured the window to %s\n", path);
+  } else {
+    std::fprintf(stderr, "could not capture the window to %s\n", path);
+  }
+}
+
 void snapshotIfRequested() {
   const char *path = std::getenv("BASALT_SNAPSHOT");
   if (path == nullptr) {
@@ -1295,6 +1324,7 @@ void captureBeforeTeardown() {
   gQuitting = true;
   dumpTreeIfRequested();
   dumpMenuIfRequested();
+  captureWindowIfRequested();
   snapshotIfRequested();
 }
 

@@ -507,9 +507,18 @@ pixels. Unset, or outside [1, 4], it is 1 and nothing changes. CI uses it for
 the window in the README, because macOS and Linux are photographed at 2x and
 a 96 dpi Windows shot beside them is visibly the soft one.
 
-What that snapshot still cannot show is a `<TextInput>` or a `<Canvas>`: see
-`docs/backlog/platform-windows.md` entry 3, which is about the offscreen pass
-and not about the scale.
+**`BASALT_WINDOW_CAPTURE=<path>` photographs the live window on Windows**,
+through `PrintWindow` with `PW_RENDERFULLCONTENT`, which asks DWM for what it
+composited. That is the picture with the things the offscreen pass cannot
+see in it: a `<TextInput>`, whose peer is a child window; a `<Canvas>`, which
+holds the last frame delivered to the real window; and the caption buttons,
+which DWM draws over the app's own header.
+
+Use the render for a test and the photograph for a picture somebody will
+look at. The render needs no window, is the size the frames say and scales;
+the photograph needs a real window and is the size that window actually is,
+so `BASALT_SNAPSHOT_SCALE` does not apply to it. Both can be asked for in one
+run, which is what CI does.
 
 It exists because a tree dump says a view *has* a colour, a frame and a
 transform, and cannot say that any of it reached the screen. The two text bugs

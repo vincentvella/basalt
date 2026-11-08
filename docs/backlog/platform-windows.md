@@ -170,8 +170,19 @@ and none of it is a missing half.
   Neither is a bug in the snapshot, and together they mean the one host that
   can assert on pixels cannot assert on the component whose appearance is
   hardest to get right, nor on the one whose whole job is pixels.
-  `PrintWindow` on the live window is the answer to both and nothing in the
-  repository does it yet. Until then: a field is checked through
+
+  A third thing is missing for the same reason, found on 2026-11-07 by
+  photographing the showcase app in CI for the README: the caption buttons.
+  DWM draws them over the app's own header, so no view knows about them and
+  the picture came out looking like a crop rather than a window.
+
+  `PrintWindow` on the live window is the answer to all three, and
+  `BASALT_WINDOW_CAPTURE` now does it -- see `Win32Snapshot.cpp`'s
+  `captureWindow` and `docs/TESTING.md`. **What is still open is the testing
+  half**: the capture writes a PNG and nothing reads it back as pixels, so a
+  scenario still cannot assert on a field's text or a canvas's frame. That
+  wants `RnPixels` from a capture rather than from a render, and a scenario
+  that asks for one. Until then: a field is checked through
   `GetWindowRgn` on its peer, and a canvas by counting delivered frames in
   the host -- which is how the frame-scheduler loop in
   backlog/compatibility.md entry 8 was found and confirmed, since no picture
