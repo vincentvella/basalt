@@ -93,6 +93,7 @@ set(BASALT_CORE_TESTS
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_visible_position.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_indicator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scroll_snap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_async_storage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_bounds_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_close.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_window_limits.cpp
@@ -200,9 +201,38 @@ if(DEFINED RN_DIR)
   # any: see `appCodegen` in cli/desktop.ts. A system include, because these
   # are generated files held to React Native's warnings rather than this
   # project's, like every other dependency's headers here.
+  # An in-repository build has no CLI to pass this, so bootstrap leaves it in
+  # third_party and this picks it up: the host built here then has the same
+  # modules a host built for an app would, which is what the e2e scenario
+  # needs and what makes developing one the same as using one.
+  if(NOT DEFINED BASALT_APP_CODEGEN AND EXISTS ${BASALT_THIRD_PARTY}/app-codegen)
+    set(BASALT_APP_CODEGEN ${BASALT_THIRD_PARTY}/app-codegen)
+  endif()
+
   if(DEFINED BASALT_APP_CODEGEN AND EXISTS ${BASALT_APP_CODEGEN})
     message(STATUS "basalt: app codegen from ${BASALT_APP_CODEGEN}")
     set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_SYSTEM_INCLUDES ${BASALT_APP_CODEGEN})
+
+    # async-storage, when the app installed it.
+    #
+    # The desktop half of somebody else's module, which is a different thing
+    # from a capability of this platform's own and goes in a different place:
+    # see DECISIONS.md. The whole point is that an app runs
+    # `npm install @react-native-async-storage/async-storage` and it works,
+    # with no second package to find out about.
+    #
+    # Guarded on the generated header rather than on the flag, because an app
+    # may have run codegen for some other module entirely. An app that has
+    # not installed async-storage compiles none of this.
+    if(EXISTS ${BASALT_APP_CODEGEN}/react/renderer/components/AsyncStorageSpec/AsyncStorageSpecJSI.h)
+      message(STATUS "basalt: async-storage is installed, building its desktop half")
+      set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/AsyncStorageModule.cpp)
+      # The same generated provider chain a capability package uses, which is
+      # what makes this reachable from JavaScript without all three hosts
+      # naming it. See core/PackageModules.h.
+      set_property(GLOBAL APPEND PROPERTY BASALT_PACKAGE_TURBO_MODULES makeAsyncStorageTurboModule)
+    endif()
   endif()
 
   get_property(basalt_package_installers GLOBAL PROPERTY BASALT_PACKAGE_EXPO_INSTALLERS)
@@ -265,6 +295,11 @@ if(DEFINED RN_DIR)
     # Where a packaged app's own files are, which the packager decides and an
     # app should not have to work out; see the header.
     core/AppPaths.cpp
+    # The store under async-storage. Portable, and compiled whether or not the
+    # app installed async-storage: it is a key-value store over files, every
+    # rule in it is testable without a runtime, and the tests run in all three
+    # host suites. The jsi half beside it is conditional; see above.
+    core/AsyncStorageStore.cpp
     # An animated scrollTo, which is a curve rather than a jump.
     core/ScrollAnimation.cpp
     # Where a paged or snapping scroll comes to rest.

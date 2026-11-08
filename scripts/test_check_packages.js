@@ -55,10 +55,11 @@ test('a loop the check cannot find is a problem rather than an empty list', () =
 test('the trust script offers npm exactly the publishable packages', () => {
   const offered = trust.publishablePackages();
   assert.ok(offered.includes('basalt-core'), 'the published ones are offered');
-  assert.ok(
-    !offered.includes('basalt-async-storage'),
-    'and a private package is not, until it is public',
-  );
+  // Nothing private, and nothing that does not exist: the desktop half of a
+  // third-party module lives in core now, so there is no package to offer npm
+  // for async-storage at all. See DECISIONS.md.
+  assert.ok(!offered.includes('basalt-async-storage'));
+  assert.equal(offered.length, 8, 'the eight published packages, and no more');
   // The workflow npm matches is publish.yml rather than release.yml, because
   // release.yml hands off with `gh workflow run publish.yml`. Getting this
   // wrong is a 404 at the credential exchange, half way through a release.

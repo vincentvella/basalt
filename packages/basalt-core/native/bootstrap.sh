@@ -601,6 +601,52 @@ fi
 # package still gets the current one.
 cp "$HERE/cmake/codegen/CMakeLists.txt" "$TP/codegen/CMakeLists.txt"
 
+# --- Codegen for an app in this repository -----------------------------------
+# The e2e apps are an app, and one of them imports a third-party native module.
+# `cli/desktop.ts` runs codegen over a real app's dependencies before it
+# configures; an in-repository build never goes through the CLI, so without
+# this the host it builds has async-storage's JavaScript and not its native
+# half, and the scenario fails with "Native module is null".
+#
+# The same reasoning as the root CMakeLists listing this repository's own
+# capability packages: developing one should be the same as using one.
+#
+# Only when there is something to generate. A checkout that has not installed
+# e2e's dependencies gets no app codegen and a host without the module, which
+# is correct: nothing in it imports one.
+E2E_APP="$REPO_ROOT/e2e"
+if [ -d "$E2E_APP/node_modules" ] &&
+   ${NODE_RUN[@]+"${NODE_RUN[@]}"} node -e '
+     const fs = require("node:fs");
+     const path = require("node:path");
+     const root = process.argv[1];
+     const walk = (dir) => fs.readdirSync(dir, {withFileTypes: true}).flatMap((entry) => {
+       if (!entry.isDirectory()) return [];
+       const here = path.join(dir, entry.name);
+       if (entry.name.startsWith("@")) return walk(here);
+       const manifest = path.join(here, "package.json");
+       try {
+         return JSON.parse(fs.readFileSync(manifest, "utf8")).codegenConfig?.name ? [here] : [];
+       } catch { return []; }
+     });
+     process.exit(walk(path.join(root, "node_modules")).length > 0 ? 0 : 1);
+   ' "$E2E_APP" 2>/dev/null; then
+  log "generating codegen artifacts for the apps in e2e/"
+  APP_TMP="$(mktemp -d)"
+  (cd "$RN_PKG" && ${NODE_RUN[@]+"${NODE_RUN[@]}"} node scripts/generate-codegen-artifacts.js \
+      -p "$E2E_APP" -t android -o "$APP_TMP") || true
+  APP_JNI="$APP_TMP/android/app/build/generated/source/codegen/jni"
+  if [ -d "$APP_JNI/react" ]; then
+    rm -rf "$TP/app-codegen"
+    mkdir -p "$TP/app-codegen"
+    cp -R "$APP_JNI/." "$TP/app-codegen/"
+    log "app codegen into $TP/app-codegen"
+  else
+    log "codegen produced nothing for e2e/, so the host will have no app modules"
+  fi
+  rm -rf "$APP_TMP"
+fi
+
 log "bootstrap complete, into $TP. Configure with:"
 if [ "$HOST_OS" = windows ]; then
   # CMake here is a native Windows program and this shell is not, so the paths

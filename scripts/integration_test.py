@@ -2750,9 +2750,11 @@ def test_storage(bundle: Path) -> None:
     if not module.is_dir():
         raise Failure(
             "async-storage is not installed, so the one app that proves a "
-            "ported third-party module cannot be bundled. Install it with:\n"
-            "  npm install --prefix e2e --no-save "
-            "@react-native-async-storage/async-storage@3.1.1"
+            "ported third-party module cannot be bundled:\n"
+            "  npm install --prefix e2e\n"
+            "and then rebuild the host. bootstrap generates the module's "
+            "codegen out of e2e/node_modules, so a host built before the "
+            "install has its JavaScript and not its native half."
         )
 
     app = bundle_app(bundle.parent, "storage")

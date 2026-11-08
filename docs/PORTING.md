@@ -87,19 +87,26 @@ signatures come from the spec: a `Promise<T>` is a method returning
 whenever the work underneath is synchronous. Anything that is really about
 *data* rather than about a platform API wants no per-desktop code at all.
 
-**4. Ship it as a capability package.** A `package.json` with
-`"basalt": {"native": "native/CMakeLists.txt"}`, and a CMakeLists that appends
-its sources to `BASALT_PACKAGE_CORE_SOURCES` and its factory to
-`BASALT_PACKAGE_TURBO_MODULES`. See `core/PackageModules.h` for why that
-registration is generated rather than done at static initialisation.
+**4. Put it in core, guarded by the generated header.** Not in a package of
+its own: see DECISIONS.md, where applying this project's own rule to a wrapper
+says core. The whole point is that an app runs `npm install <the module>` and
+it works, and a companion package it has to find out about is the opposite of
+that.
 
-The package ships **no JavaScript**: the app imports the module it already
-imports, and this is the half that was missing.
+`packages/basalt-core/native/CMakeLists.txt` compiles the implementation only
+when the spec header exists, which happens only when the app installed the
+module, and appends the factory to `BASALT_PACKAGE_TURBO_MODULES` -- the same
+generated chain a capability package uses, which is what makes it reachable
+without all three hosts naming it. See `core/PackageModules.h`.
 
-**5. Before it ships**, add it to `publish.yml`'s probe list and register its
-trusted publisher with `node scripts/trust_packages.js --write`. See
-CONTRIBUTING.md; `check_packages.js` fails until the first is done, and npm
-refuses the publish until the second is.
+Nothing new ships: the app imports the module it already imports, and this is
+the half that was missing.
+
+**Where this does not apply.** A module whose native half needs a permission,
+or hardware, or three separate implementations, is a capability package by the
+rule in DECISIONS.md -- `basalt-notifications` and `basalt-skia` are the
+shipped examples -- and a package needs a trusted publisher before it can go
+out. CONTRIBUTING.md has those three steps.
 
 ### Two things that will catch you
 

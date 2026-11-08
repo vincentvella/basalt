@@ -91,9 +91,10 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   cover what it writes; nothing yet covers that what it writes is sufficient.
 - ~~**Porting a first third-party native module end to end**~~, to learn what
   the porting story actually costs. Done on 2026-11-08, with
-  `@react-native-async-storage/async-storage`: see `packages/basalt-async-storage`,
-  the recipe in `docs/PORTING.md`, and the `async-storage` scenario, which
-  asserts the round trip on every desktop.
+  `@react-native-async-storage/async-storage`: see
+  `packages/basalt-core/native/core/AsyncStorageModule.cpp`, the recipe in
+  `docs/PORTING.md`, and the `async-storage` scenario, which asserts the round
+  trip on every desktop. An app installs async-storage and nothing else.
 
   **What it cost, since that was the question.** Most of it was one missing
   command: React Native's codegen takes the *app* as its project and finds

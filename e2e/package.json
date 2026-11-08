@@ -2,6 +2,9 @@
   "name": "basalt-core-demo",
   "version": "0.0.0",
   "private": true,
-  "description": "The demo app this host renders. react, react-native and metro resolve out of the React Native checkout that scripts/bootstrap.sh already set up, so there is nothing here for them. A third-party native module has no such home: storage.tsx imports @react-native-async-storage/async-storage, which is installed into e2e/node_modules by scripts/test_all.sh and by CI, and is gitignored. See metro.config.js.",
-  "main": "index.js"
+  "description": "The demo app this host renders. react, react-native and metro resolve out of the React Native checkout that scripts/bootstrap.sh already set up, so there is nothing here for them. A third-party native module has no such home: storage.tsx imports async-storage, which is declared below and installed into a gitignored e2e/node_modules by scripts/test_all.sh and by CI. Declared rather than installed loose, because React Native's codegen reads an app's dependencies to decide which specs to generate: with nothing declared it finds no libraries and the host is built without the native half. See metro.config.js.",
+  "main": "index.js",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "3.1.1"
+  }
 }

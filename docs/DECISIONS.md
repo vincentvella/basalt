@@ -594,6 +594,38 @@ where a developer will see it.
 versions, and independent versions of packages sharing a C++ ABI with the host
 is a support problem nobody here wants yet.
 
+**The desktop half of somebody else's module is core, not a package**
+(2026-11-08). The rule above decides where a *capability of this platform's
+own* goes. It says nothing about the other thing a package can be: the native
+half of a third-party module whose JavaScript is already portable.
+
+Apply the three tests to async-storage and it fails none of them. No consent
+prompt, no hardware and no other application, nothing outside the app's own
+windows. By the rule, it is core -- and it shipped as `basalt-async-storage`
+for a day because the capability packages were the nearest shape to hand.
+
+What that cost was the thing worth avoiding: a second package to discover, a
+second install line, an npm name and a trusted publisher, for a module the
+app has already installed. The goal is that
+`npm install @react-native-async-storage/async-storage` works, and a
+companion package is the opposite of that.
+
+So a wrapper goes in core, compiled only when the app installed the module it
+wraps -- the generated spec header is the guard, the same way basalt-skia
+contributes nothing without Skia. An app that does not use it compiles none
+of it.
+
+Two wrappers stay packages, and for reasons the rule already gives.
+`basalt-notifications` fails the consent test. `basalt-skia` brings an
+enormous build dependency and a per-host implementation, which is a different
+kind of cost from a file.
+
+**What this does not mean.** Not every third-party module can be done this
+way. async-storage needs a file, and files are not a toolkit, so one portable
+implementation covered three desktops. A module whose native half is a camera
+or a keychain is three implementations and a permission, and that is a
+package.
+
 **A package declares itself** with a `basalt` key naming a CMake entry point,
 and the CLI scans the app's dependencies for it. Expo, worklets and Reanimated
 keep their hardcoded special cases because they are third-party packages that

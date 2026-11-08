@@ -189,12 +189,13 @@ jobs:
           key: rn-node-modules-${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.pin.outputs.ref }}
 
       # e2e/storage.tsx imports a third-party native module, and the other
-      # e2e apps import nothing that is not in the React Native checkout. So
-      # it is installed here, before the first step that reads that file --
-      # `make ts` type-checks it long before anything bundles it, which is
-      # what two runs of this were spent learning.
+      # e2e apps import nothing outside the React Native checkout. Installed
+      # before Bootstrap, which is what generates that module's codegen out of
+      # e2e/node_modules: after it, the host is built without the native half
+      # and the scenario fails with "Native module is null". Before `make ts`
+      # too, which type-checks the file.
       - name: async-storage, for the one app that imports one
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
+        run: npm install --prefix e2e --no-audit --no-fund
 
       - name: Type-check every package and the demo apps
         # Which React Native type declarations this resolves against depends on
@@ -319,6 +320,15 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: ccache-${{ runner.os }}-
 
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing outside the React Native checkout. Installed
+      # before Bootstrap, which is what generates that module's codegen out of
+      # e2e/node_modules: after it, the host is built without the native half
+      # and the scenario fails with "Native module is null". Before `make ts`
+      # too, which type-checks the file.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-audit --no-fund
+
       - name: Bootstrap
         id: bootstrap
         run: |
@@ -428,14 +438,6 @@ jobs:
         env:
           BASALT_GTK_RENDERER: cairo
         run: ./build/basalt_gtk_tests
-
-      # e2e/storage.tsx imports a third-party native module, and the other
-      # e2e apps import nothing that is not in the React Native checkout. So
-      # it is installed here, before the first step that reads that file --
-      # `make ts` type-checks it long before anything bundles it, which is
-      # what two runs of this were spent learning.
-      - name: async-storage, for the one app that imports one
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Build the JavaScript packages
         # basalt-core is TypeScript and `main` points into its dist/,
@@ -746,6 +748,15 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: ccache-${{ runner.os }}-
 
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing outside the React Native checkout. Installed
+      # before Bootstrap, which is what generates that module's codegen out of
+      # e2e/node_modules: after it, the host is built without the native half
+      # and the scenario fails with "Native module is null". Before `make ts`
+      # too, which type-checks the file.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-audit --no-fund
+
       - name: Bootstrap
         id: bootstrap
         run: BUILD_JOBS=$(sysctl -n hw.ncpu) make bootstrap RN_DIR=react-native-src
@@ -788,14 +799,6 @@ jobs:
       - name: Unit tests
         # Needs neither a display nor a window: nothing in it is presented.
         run: ./build/basalt_appkit_tests
-
-      # e2e/storage.tsx imports a third-party native module, and the other
-      # e2e apps import nothing that is not in the React Native checkout. So
-      # it is installed here, before the first step that reads that file --
-      # `make ts` type-checks it long before anything bundles it, which is
-      # what two runs of this were spent learning.
-      - name: async-storage, for the one app that imports one
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Build the JavaScript packages
         run: make ts RN_DIR=react-native-src
@@ -1057,6 +1060,15 @@ jobs:
           key: ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: ccache-${{ runner.os }}-
 
+      # e2e/storage.tsx imports a third-party native module, and the other
+      # e2e apps import nothing outside the React Native checkout. Installed
+      # before Bootstrap, which is what generates that module's codegen out of
+      # e2e/node_modules: after it, the host is built without the native half
+      # and the scenario fails with "Native module is null". Before `make ts`
+      # too, which type-checks the file.
+      - name: async-storage, for the one app that imports one
+        run: npm install --prefix e2e --no-audit --no-fund
+
       - name: Bootstrap
         id: bootstrap
         # From Git Bash, which is what bootstrap.sh detects and expects, and
@@ -1132,14 +1144,6 @@ jobs:
         run: |
           ./build/basalt_win32_tests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
-
-      # e2e/storage.tsx imports a third-party native module, and the other
-      # e2e apps import nothing that is not in the React Native checkout. So
-      # it is installed here, before the first step that reads that file --
-      # `make ts` type-checks it long before anything bundles it, which is
-      # what two runs of this were spent learning.
-      - name: async-storage, for the one app that imports one
-        run: npm install --prefix e2e --no-save --no-audit --no-fund @react-native-async-storage/async-storage@3.1.1
 
       - name: Build the JavaScript packages
         # As on Linux, and for the same reason: the tests below require the
