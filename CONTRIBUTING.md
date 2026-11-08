@@ -44,6 +44,34 @@ the Win32 half.
 Every host produces a byte-identical view tree from the same script;
 `scripts/compare_hosts.sh` is what says so, for whichever of them are built.
 
+### Adding a package
+
+Three things, and two of them are checked for you.
+
+1. Write it, with `"basalt": {"native": "native/CMakeLists.txt"}` in its
+   manifest if it has C++. `packages/basalt-subprocess` is the small example
+   and `packages/basalt-async-storage` is the one that wraps somebody else's
+   module.
+2. Add its name to `publish.yml`'s trusted-publisher probe.
+   `scripts/check_packages.js` fails until you do, because a published package
+   with no registration fails its credential exchange half way through a
+   release, after the packages before it have gone out.
+3. Register the trusted publisher itself, which npm holds per package:
+
+   ```bash
+   npm login
+   node scripts/trust_packages.js            # say which are missing one
+   node scripts/trust_packages.js --write    # register them
+   ```
+
+   This cannot be done by the release workflow, and not for want of trying: a
+   trusted publisher is what lets that workflow publish without a token, so
+   the credential it would need is the one it is asking for. It needs a
+   person, once per package.
+
+A package that is not ready says `"private": true`, and both checks leave it
+alone until it is not.
+
 Inside the shared package, under `native/`:
 
     core/MountingWalk.h         Fabric's mutation semantics, once. Every platform

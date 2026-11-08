@@ -96,6 +96,11 @@ registration is generated rather than done at static initialisation.
 The package ships **no JavaScript**: the app imports the module it already
 imports, and this is the half that was missing.
 
+**5. Before it ships**, add it to `publish.yml`'s probe list and register its
+trusted publisher with `node scripts/trust_packages.js --write`. See
+CONTRIBUTING.md; `check_packages.js` fails until the first is done, and npm
+refuses the publish until the second is.
+
 ### Two things that will catch you
 
 **`Bridging<std::tuple>` is one-way.** It is `BridgingStatic`, which defines

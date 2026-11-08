@@ -12,6 +12,7 @@ const assert = require('node:assert');
 const {test} = require('node:test');
 
 const {check, probedPackages} = require('./check_packages.js');
+const trust = require('./trust_packages.js');
 
 test('the repository as it stands is ready to publish', () => {
   // Not a tautology: this is the check running against the real packages and
@@ -44,4 +45,23 @@ test('a loop the check cannot find is a problem rather than an empty list', () =
   // shape this cannot read would report every package as unprobed, or none,
   // depending on which way the mistake fell.
   assert.equal(probedPackages('run: npm publish everything'), null);
+});
+
+// The trusted-publisher script walks the same packages the probe list is held
+// against, so the two cannot disagree about which packages exist. What it must
+// not do is offer npm a package that is not meant to go out: npm has nothing
+// to trust until there is something to publish, and a private package is how
+// this repository says "not yet".
+test('the trust script offers npm exactly the publishable packages', () => {
+  const offered = trust.publishablePackages();
+  assert.ok(offered.includes('basalt-core'), 'the published ones are offered');
+  assert.ok(
+    !offered.includes('basalt-async-storage'),
+    'and a private package is not, until it is public',
+  );
+  // The workflow npm matches is publish.yml rather than release.yml, because
+  // release.yml hands off with `gh workflow run publish.yml`. Getting this
+  // wrong is a 404 at the credential exchange, half way through a release.
+  assert.equal(trust.WORKFLOW, 'publish.yml');
+  assert.equal(trust.REPOSITORY, 'vincentvella/basalt');
 });
