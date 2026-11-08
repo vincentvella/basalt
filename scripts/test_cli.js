@@ -1695,3 +1695,13 @@ test("an Expo app's macos.bundleIdentifier is the identifier, ahead of the phone
   });
   assert.strictEqual(packageApp.readAppConfig(root).identifier, 'com.example.desktop');
 });
+
+test('a release looks for the optimized host before a development one', () => {
+  const project = scratch();
+  const looked = desktop.candidates(project, {}, target('macos'), {optimized: true});
+  assert.equal(looked[0], path.join(project, '.basalt', 'build-release', 'macos', 'basalt_appkit'));
+  assert.ok(looked.includes(path.join(project, '.basalt', 'build', 'macos', 'basalt_appkit')));
+  // A development run never picks the release build.
+  assert.ok(!desktop.candidates(project, {}, target('macos')).some(entry => entry.includes('build-release')));
+  fs.rmSync(project, {recursive: true, force: true});
+});
