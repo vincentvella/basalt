@@ -285,23 +285,43 @@ fi
 
 mkdir -p "$TP"
 
+# Downloads, with the retries a release needs.
+#
+# `curl -fsSL` and nothing else is what these were, and a release died on
+# 2026-11-08 with all three install legs reporting
+#
+#     curl: (56) The requested URL returned error: 504
+#
+# at the same minute: codeload answered a gateway error, nothing was wrong
+# with the build, and a release that had been fine reported failure. That is
+# the same shape of problem as a publish check timing out, and it has the
+# same answer -- be patient about somebody else's infrastructure, and loud
+# only about this project's.
+#
+# Five tries over a minute or so, and `--retry-all-errors` because the
+# default retries connection failures and not an HTTP 504, which is the one
+# that actually happened.
+fetch() {
+  curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --connect-timeout 30 "$@"
+}
+
 # --- vendored headers -------------------------------------------------------
 if [ ! -d "$TP/folly" ]; then
   log "fetching folly $FOLLY_VERSION"
-  curl -fsSL "https://github.com/facebook/folly/archive/v${FOLLY_VERSION}.tar.gz" \
+  fetch "https://github.com/facebook/folly/archive/v${FOLLY_VERSION}.tar.gz" \
     | tar xz -C "$TP" && mv "$TP/folly-${FOLLY_VERSION}" "$TP/folly"
 fi
 
 if [ ! -d "$TP/fast_float" ]; then
   log "fetching fast_float $FAST_FLOAT_VERSION"
-  curl -fsSL "https://github.com/fastfloat/fast_float/archive/v${FAST_FLOAT_VERSION}.tar.gz" \
+  fetch "https://github.com/fastfloat/fast_float/archive/v${FAST_FLOAT_VERSION}.tar.gz" \
     | tar xz -C "$TP" && mv "$TP/fast_float-${FAST_FLOAT_VERSION}" "$TP/fast_float"
 fi
 
 if [ ! -f "$TP/nlohmann_json/include/nlohmann/json.hpp" ]; then
   log "fetching nlohmann_json $NLOHMANN_VERSION"
   mkdir -p "$TP/nlohmann_json/include/nlohmann"
-  curl -fsSL -o "$TP/nlohmann_json/include/nlohmann/json.hpp" \
+  fetch -o "$TP/nlohmann_json/include/nlohmann/json.hpp" \
     "https://github.com/nlohmann/json/releases/download/v${NLOHMANN_VERSION}/json.hpp"
 fi
 
@@ -336,7 +356,7 @@ fi
 if [ ! -d "$TP/hermes" ]; then
   log "fetching Hermes $HERMES_VERSION (~200MB)"
   mkdir -p "$TP/hermes"
-  curl -fsSL "https://github.com/facebook/hermes/tarball/${HERMES_VERSION}" \
+  fetch "https://github.com/facebook/hermes/tarball/${HERMES_VERSION}" \
     | tar xz -C "$TP/hermes" --strip-components=1
   echo "$HERMES_VERSION" > "$HERMES_STAMP"
 fi
