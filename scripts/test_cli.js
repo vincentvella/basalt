@@ -1500,6 +1500,59 @@ test('doctor checks GTK on Linux and says how to get it', () => {
   assert.equal(stateOf(steps, 'clang'), 'blocked');
 });
 
+test('doctor blocks on a missing C++ library and says how to get it', () => {
+  // Nothing on the path, nothing on disk: every library is missing, which is
+  // the state a fresh Mac with only cmake and ninja was actually in.
+  const steps = doctorCli.checkCxxLibraries('macos', () => false, () => false, {});
+  assert.equal(stateOf(steps, 'glog'), 'blocked');
+  const [, glog] = steps.find(([name]) => name === 'glog');
+  assert.match(glog.message, /brew install glog/, 'says how to install it');
+  assert.match(glog.message, /CMake stops/, 'and why it matters');
+  // The release run that prompted this died on exactly this library.
+  for (const name of ['boost', 'fmt', 'double-conversion', 'openssl']) {
+    assert.equal(stateOf(steps, name), 'blocked', name);
+  }
+});
+
+test('doctor does not ask a Mac for curl, which macOS ships', () => {
+  const mac = doctorCli.checkCxxLibraries('macos', () => false, () => false, {});
+  assert.equal(
+    mac.find(([name]) => name === 'curl'),
+    undefined,
+    'not even as a blocked step',
+  );
+  const linux = doctorCli.checkCxxLibraries('linux', () => false, () => false, {});
+  assert.equal(stateOf(linux, 'curl'), 'blocked');
+  const [, curl] = linux.find(([name]) => name === 'curl');
+  assert.match(curl.message, /libcurl4-openssl-dev/);
+});
+
+test('doctor takes a header as proof where pkg-config has no answer', () => {
+  // Boost ships no .pc file anywhere, and Homebrew's double-conversion ships
+  // none either, so a header on disk has to be enough or those two would
+  // report missing on a machine that can build.
+  const steps = doctorCli.checkCxxLibraries(
+    'linux',
+    () => false,
+    file => file === '/usr/include/boost/version.hpp',
+    {},
+  );
+  assert.equal(stateOf(steps, 'boost'), 'done');
+  const [, boost] = steps.find(([name]) => name === 'boost');
+  assert.match(boost.message, /boost\/version\.hpp/, 'and says where it found it');
+  assert.equal(stateOf(steps, 'fmt'), 'blocked', 'the others are still missing');
+});
+
+test('doctor looks for Windows libraries where vcpkg puts them', () => {
+  const header = path.join('C:', 'vcpkg', 'installed', 'x64-windows', 'include', 'glog', 'logging.h');
+  const steps = doctorCli.checkCxxLibraries('windows', () => false, file => file === header, {
+    VCPKG_INSTALLATION_ROOT: path.join('C:', 'vcpkg'),
+  });
+  assert.equal(stateOf(steps, 'glog'), 'done');
+  const [, fmt] = steps.find(([name]) => name === 'fmt');
+  assert.match(fmt.message, /vcpkg install/, 'and tells a Windows user to use vcpkg');
+});
+
 test('doctor reports an unsupported React Native with what is supported', () => {
   const dir = scratchApp({'package.json': JSON.stringify({name: 'x'})});
   fs.mkdirSync(path.join(dir, 'node_modules', 'react-native'), {recursive: true});

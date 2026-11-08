@@ -35,33 +35,57 @@ Install the toolchain for the desktop you are building on. You only need the
 one you are building for; the build configures the host for the platform it is
 running on and ignores the others.
 
+React Native's C++ does not vendor its dependencies, so the build links
+against your system's glog, Boost, fmt, double-conversion and OpenSSL. They are
+the bulk of each list below, and they are the same libraries on all three
+desktops.
+
 <Tabs groupId="os" persist items={['Linux', 'macOS', 'Windows']}>
 <Tab value="Linux">
 
 ```bash
-sudo apt install cmake ninja-build libgtk-4-dev
+sudo apt install build-essential clang cmake ninja-build pkg-config \
+  libgtk-4-dev libpango1.0-dev libglib2.0-dev \
+  libgoogle-glog-dev libboost-dev libboost-regex-dev libfmt-dev \
+  libdouble-conversion-dev libgflags-dev libssl-dev libcurl4-openssl-dev
 ```
 
-A C++20 compiler, and GTK 4's development headers. `pkg-config --exists gtk4`
-is the check `doctor` runs.
+GTK 4's development headers draw the window; `pkg-config --exists gtk4` is the
+check `doctor` runs. `clang` rather than gcc because React Native builds
+`-Werror` and is a clang codebase -- docs/DECISIONS.md has the detail.
 
 </Tab>
 <Tab value="macOS">
 
 ```bash
 xcode-select --install
-brew install cmake ninja
+brew install cmake ninja pkg-config \
+  glog boost fmt double-conversion gflags openssl
 ```
 
 The macOS SDK comes from the Command Line Tools; `doctor` asks
-`xcrun --show-sdk-version` for it.
+`xcrun --show-sdk-version` for it. curl is not in the list because macOS ships
+it.
+
+`brew install gtk4 pango glib` as well if you want to build the **GTK** host
+from a Mac -- for testing the Linux app without a Linux machine. The AppKit
+host does not need it, and the build says which of the two it is configuring.
 
 </Tab>
 <Tab value="Windows">
 
-Install CMake and Ninja, set up [vcpkg](https://vcpkg.io), and point
-`VCPKG_INSTALLATION_ROOT` at it. You also need **`clang-cl`**, not just `cl`:
-Hermes uses `__builtin_expect`, which MSVC's compiler does not have.
+Install CMake and Ninja, set up [vcpkg](https://vcpkg.io), point
+`VCPKG_INSTALLATION_ROOT` at it, and install the libraries into it:
+
+```powershell
+vcpkg install --triplet x64-windows `
+  glog fmt double-conversion boost-regex boost-beast boost-asio boost-thread `
+  openssl curl
+```
+
+You also need **`clang-cl`**, not just `cl`: Hermes uses `__builtin_expect`,
+which MSVC's compiler does not have. It comes with the "C++ Clang tools for
+Windows" component in the Visual Studio installer.
 
 </Tab>
 </Tabs>

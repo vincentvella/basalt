@@ -327,6 +327,9 @@ System packages.
     Ubuntu  libboost-dev libboost-regex-dev libfmt-dev libgflags-dev
             libdouble-conversion-dev libssl-dev libcurl4-openssl-dev
             build-essential clang cmake ninja-build pkg-config
+    macOS   cmake ninja pkg-config glog boost fmt double-conversion
+            gflags openssl                      (brew; curl comes with macOS)
+            gtk4 pango glib                     (only for the GTK host)
 
 Ubuntu 24.04 ships Node 18, which React Native rejects; install 24 from
 NodeSource. See `docs/TESTING.md` for the whole recipe, including running the

@@ -257,9 +257,19 @@ jobs:
         with:
           node-version: 24
 
-      # The GTK host's build dependencies, for the one leg that builds a GTK
-      # host. getting-started names the same packages.
-      - name: Install system dependencies
+      # Each of the three steps below installs what getting-started's tab for
+      # that platform tells a reader to install, and nothing else. That is the
+      # point of them: this job is the only place where the documented list is
+      # the list that gets used, so a package missing from the docs fails here
+      # rather than in somebody's first build.
+      #
+      # It has caught the docs out twice. The Windows tab said to set vcpkg up
+      # and never said which packages; the macOS tab asked for cmake and ninja
+      # and left out glog, Boost, fmt, double-conversion and OpenSSL, which
+      # surfaced as `Could not find GLOG_LIBRARY` after a 20-minute Hermes
+      # build. The three X11 packages on the Linux leg are the only additions,
+      # because they are for running headlessly here and not for building.
+      - name: What the docs tell a Linux user to install
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
@@ -270,9 +280,15 @@ jobs:
             libdouble-conversion-dev libgflags-dev libssl-dev libcurl4-openssl-dev \
             libgl1-mesa-dri xvfb x11-utils
 
+      # Without gtk4, pango and glib, which the macOS tab lists separately as
+      # what to add if you want the GTK host from a Mac. This leg builds the
+      # AppKit one, so leaving them out is also a check that it does not
+      # quietly need them.
       - name: What the docs tell a Mac user to install
         if: runner.os == 'macOS'
-        run: brew install cmake ninja
+        run: |
+          brew install cmake ninja pkg-config \
+            glog boost fmt double-conversion gflags openssl
 
       - name: The MSVC environment, which a Windows developer gets from their shell
         if: runner.os == 'Windows'
@@ -301,11 +317,9 @@ jobs:
           }
           "VCPKG_ROOT=$vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      # The libraries Linux gets from apt above. getting-started says to set
-      # vcpkg up and does not say which packages, which is a gap this job is
-      # the first thing to feel: without them the host build fails deep in
-      # CMake rather than at `doctor`.
-      - name: What vcpkg has to be carrying
+      # The libraries Linux gets from apt above, and the list the Windows tab
+      # now carries.
+      - name: What the docs tell a Windows user to put in vcpkg
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
