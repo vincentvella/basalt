@@ -285,44 +285,66 @@ fi
 
 mkdir -p "$TP"
 
-# Downloads, with the retries a release needs.
+# The one remaining download, with the retries a release needs.
 #
-# `curl -fsSL` and nothing else is what these were, and a release died on
-# 2026-11-08 with all three install legs reporting
+# `curl -fsSL` and nothing else is what these were, and three release runs on
+# 2026-11-08 died with every install leg reporting
 #
 #     curl: (56) The requested URL returned error: 504
 #
-# at the same minute: codeload answered a gateway error, nothing was wrong
-# with the build, and a release that had been fine reported failure. That is
-# the same shape of problem as a publish check timing out, and it has the
-# same answer -- be patient about somebody else's infrastructure, and loud
-# only about this project's.
+# in the same minute. Nothing was wrong with the build; GitHub was answering a
+# gateway error and a release that had been fine reported failure. That is the
+# same shape of problem as a publish check timing out, and it has the same
+# answer -- be patient about somebody else's infrastructure, and loud only
+# about this project's.
 #
-# Five tries over a minute or so, and `--retry-all-errors` because the
-# default retries connection failures and not an HTTP 504, which is the one
-# that actually happened.
+# `--retry-all-errors` because curl's default retries a connection failure and
+# not an HTTP 504, which is the one that actually happened. No `--retry-delay`,
+# so the backoff doubles: eight tries is a bit over four minutes of patience.
+#
+# Four minutes is deliberate. What happened was not a lost packet -- the 503s
+# and 504s ran for over half an hour while the status page read "All Systems
+# Operational" -- and nothing here can ride that out. But a build that has
+# already spent twenty minutes compiling Hermes should not be thrown away for
+# a blip, and the fetches that survive one are the fetches that waited.
 fetch() {
-  curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --connect-timeout 30 "$@"
+  curl -fsSL --retry 8 --retry-all-errors --retry-max-time 600 \
+    --connect-timeout 30 "$@"
 }
 
 # --- vendored headers -------------------------------------------------------
+#
+# Cloned at a tag rather than downloaded as a source archive, for the reason
+# the Hermes block below sets out at length: the archive service is the half of
+# GitHub that falls over, and the git transport is the half that does not. A
+# shallow clone of each costs seconds (folly 31MB, fast_float 1MB) and the tree
+# it checks out is byte-identical to the archive's -- diffed, not assumed.
+vendor() {
+  log "fetching $1 $3"
+  git clone --depth 1 --branch "v$3" --quiet -c advice.detachedHead=false \
+    "$2" "$TP/$1"
+  rm -rf "$TP/$1/.git"
+}
+
 if [ ! -d "$TP/folly" ]; then
-  log "fetching folly $FOLLY_VERSION"
-  fetch "https://github.com/facebook/folly/archive/v${FOLLY_VERSION}.tar.gz" \
-    | tar xz -C "$TP" && mv "$TP/folly-${FOLLY_VERSION}" "$TP/folly"
+  vendor folly https://github.com/facebook/folly "$FOLLY_VERSION"
 fi
 
 if [ ! -d "$TP/fast_float" ]; then
-  log "fetching fast_float $FAST_FLOAT_VERSION"
-  fetch "https://github.com/fastfloat/fast_float/archive/v${FAST_FLOAT_VERSION}.tar.gz" \
-    | tar xz -C "$TP" && mv "$TP/fast_float-${FAST_FLOAT_VERSION}" "$TP/fast_float"
+  vendor fast_float https://github.com/fastfloat/fast_float "$FAST_FLOAT_VERSION"
 fi
 
 if [ ! -f "$TP/nlohmann_json/include/nlohmann/json.hpp" ]; then
   log "fetching nlohmann_json $NLOHMANN_VERSION"
   mkdir -p "$TP/nlohmann_json/include/nlohmann"
+  # raw rather than the release asset. `releases/download` is served by the
+  # same machinery as the source archives, which is the machinery that falls
+  # over; raw.githubusercontent.com kept answering in under a second through
+  # the whole of the 2026-11-08 outage. The release asset and the repo's
+  # `single_include` header are both the amalgamated one -- byte-identical at
+  # v3.11.3, checked rather than assumed.
   fetch -o "$TP/nlohmann_json/include/nlohmann/json.hpp" \
-    "https://github.com/nlohmann/json/releases/download/v${NLOHMANN_VERSION}/json.hpp"
+    "https://raw.githubusercontent.com/nlohmann/json/v${NLOHMANN_VERSION}/single_include/nlohmann/json.hpp"
 fi
 
 # --- Hermes -----------------------------------------------------------------
@@ -355,26 +377,36 @@ fi
 
 if [ ! -d "$TP/hermes" ]; then
   log "fetching Hermes $HERMES_VERSION (~200MB)"
-  mkdir -p "$TP/hermes"
-  # api.github.com rather than github.com/.../tarball/<ref>: the same archive,
-  # by the same generator, through a host that answers.
+  # A shallow clone, not a source archive, because the archive is the part of
+  # GitHub that goes down.
   #
-  # On 2026-11-08 the github.com endpoint returned 504 for this ref for over
-  # half an hour, from GitHub's own runners and from a laptop, while GitHub
-  # reported all systems operational. What it was breaking is every build
-  # with no third_party cache -- which is every *first* build anybody does.
-  # CI never saw it because CI restores a cache; release.yml's install proof
-  # builds from nothing, which is what it is for.
+  # On 2026-11-08 every endpoint that generates an archive on demand answered
+  # 504 for this ref for over half an hour -- `github.com/.../tarball/<ref>`
+  # first, then `api.github.com/repos/.../tarball/<ref>` after it was swapped
+  # in, and `releases/download` alongside them -- from GitHub's own runners and
+  # from a laptop, while the status page read "All Systems Operational". Two
+  # release runs died on the first and the third on the second, which is the
+  # lesson: those two are one service wearing two hostnames, so trading either
+  # for the other is not a fix. What it breaks is every build with no
+  # third_party cache, which is every *first* build anybody does. CI never
+  # notices because CI restores a cache; release.yml's install proof builds
+  # from nothing, which is exactly what it is for.
   #
-  # codeload's `tar.gz/refs/tags/<tag>` was the obvious swap and is wrong:
-  # it resolves tags only, and 0.86, 0.87 and main pin a Hermes whose ref is
-  # not one -- `250829098.0.0-stable` is a 404 there and a 200 here. This
-  # endpoint resolves a ref as loosely as the one it replaces, so every
-  # version in supported-versions.json still fetches. Both were checked, and
-  # the archive it returns has the same file list as the old endpoint's for
-  # the same ref.
-  fetch "https://api.github.com/repos/facebook/hermes/tarball/${HERMES_VERSION}" \
-    | tar xz -C "$TP/hermes" --strip-components=1
+  # Through all of it the git transport was fine: `git clone --depth 1` of this
+  # ref took under four seconds while the archive beside it timed out, and the
+  # ReactCxxPlatform clone forty lines up succeeded in all three legs of the
+  # run whose Hermes fetch failed. Different service, and the one that stayed
+  # up. `--branch` resolves a tag or a branch, so every Hermes in
+  # supported-versions.json still fetches -- `250829098.0.0-stable` is a branch,
+  # which is also why codeload's tags-only path was never an option. The tree
+  # it checks out has the same file list as the archive's, bar two tests the
+  # archive omits, and `.version` is written below rather than shipped.
+  #
+  # The history is dropped because nothing here reads it and it is 27MB.
+  git clone --depth 1 --branch "$HERMES_VERSION" --quiet \
+    -c advice.detachedHead=false \
+    https://github.com/facebook/hermes "$TP/hermes"
+  rm -rf "$TP/hermes/.git"
   echo "$HERMES_VERSION" > "$HERMES_STAMP"
 fi
 
