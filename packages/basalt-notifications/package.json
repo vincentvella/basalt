@@ -1,6 +1,6 @@
 {
   "name": "basalt-notifications",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Desktop notifications for React Native apps on Linux, macOS and Windows, through expo-notifications' own API. Permission-gated, so it ships apart from basalt-core.",
   "keywords": [
     "react-native",

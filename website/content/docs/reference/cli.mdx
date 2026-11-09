@@ -168,9 +168,13 @@ executable in the bundle.
 "Unnotarized Developer ID", and `notarytool` plus a DMG or a zip to staple it
 to are the remaining steps. Basalt takes neither.
 
-<Callout type="warn" title="A release host is not optimised yet">
-The macOS host is built with no CMake build type, so the binary `--build`
-produces for a release is the same one a development run gets.
+<Callout type="idea" title="A release host is built twice over">
+`--build` configures this one with `CMAKE_BUILD_TYPE=Release` into
+`.basalt/build-release/macos`, beside the unoptimised `.basalt/build/macos` a
+development run uses, and `package-macos` looks for the optimised one first.
+Two directories rather than one, because reconfiguring a single tree would
+make the next `run-macos` pay for a full rebuild. Hermes is not rebuilt either
+way: it is in `third_party` and already Release.
 </Callout>
 
 ### Linux and Windows have no `package-` command
