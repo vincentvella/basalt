@@ -1,9 +1,9 @@
 # What the site deploy uploads, which is not what this repository contains.
 #
 # The Vercel project's Root Directory is `website`, but the CLI uploads the
-# directory it is run from, and `vercel` has to run from here for that setting
-# to resolve. So the upload is the whole repository unless this file says
-# otherwise, and the whole repository is mostly C++ build trees: a deploy
+# directory it runs from and has to run from the repository root for that
+# setting to resolve. So the upload is the whole repository unless this file
+# says otherwise, and the whole repository is mostly C++ build trees: a deploy
 # refused with
 #
 #     `files` should NOT have more than 15000 items, received 21211
@@ -11,13 +11,24 @@
 # once a local `third_party` existed, which is 15,726 files on its own. The
 # build directories beside it are another 2.9GB.
 #
-# So this ignores everything and names the two things the build reads back.
-# `npm run build` is `node scripts/sync-docs.mjs && next build`, and
-# sync-docs reads `../docs/*.md` to generate the contributing section; nothing
-# else in the site resolves a path outside `website`. Adding a third such
-# source means adding it here, and the symptom if you forget is a build that
-# cannot find a file it has locally.
+# So this ignores everything and names back what the build reads.
+# `npm run build` is `node scripts/sync-docs.mjs && next build`, and sync-docs
+# reads two things outside the site: `docs/*.md` for the contributing section,
+# and `packages/basalt-core/supported-versions.json` for the version matrix.
+#
+# `packages` is allowed whole rather than down to that one file. It is 817
+# files against a 15,000 limit, so the saving would be nothing, and the site is
+# *about* those packages -- a page that starts rendering a README or a
+# package.json should not also need a deploy fixed. The first attempt at this
+# allowed only `website` and `docs` and failed in the remote build with
+#
+#     ENOENT: no such file or directory, copyfile
+#       '/vercel/path0/packages/basalt-core/supported-versions.json'
+#
+# which is the symptom to expect if a *fourth* source ever appears: a build
+# that cannot find a file the repository plainly has.
 /*
 
 !/website
 !/docs
+!/packages
