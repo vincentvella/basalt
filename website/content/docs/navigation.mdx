@@ -154,23 +154,27 @@ search for "topmost opaque" walks past one.
 ## Versions
 
 expo-router needs the React Native its Expo SDK targets, which for SDK 57 is
-**0.86.3**. That combination is the one tested here.
+**0.86.3** and for SDK 58 is **0.88.1**. Both are supported.
 
-**On 0.88 it does not build, and the reason is Reanimated rather than
-expo-router.** Checked on 2026-11-10 with SDK 58, React Native 0.88.1,
-expo-router 58.0.30 and basalt-core 0.2.8:
+**On 0.88, routing itself works.** Checked on 2026-11-10 with SDK 58,
+expo-router 58.0.30 and basalt-core from npm: routes are discovered, a `Stack`
+renders, and Reanimated -- which expo-router depends on directly -- runs. The
+two obstacles this page used to describe are gone. Expo's SDK 58 Metro config
+no longer looks for the `react-native/rn-get-polyfills` that 0.87 dropped, and
+`@react-native/assets-registry` no longer has to be hoisted because React
+Native 0.88 does not ship it as a separate package at all.
 
-- The bundle succeeds. Expo's SDK 58 Metro config no longer looks for the
-  `react-native/rn-get-polyfills` that 0.87 dropped, which is what used to
-  fail, and `@react-native/assets-registry` no longer has to be hoisted
-  because React Native 0.88 does not ship it as a separate package at all.
-  Assets copy. Both of the old obstacles are gone.
-- The host does not compile. `expo-router@58.0.30` depends on
-  `react-native-reanimated@4.7.1` directly, so an expo-router app has
-  Reanimated whether or not it animates anything, `--build` wires Reanimated in
-  whenever the app has it, and Basalt's glue is written against Reanimated 3's
-  interfaces. See
-  [Reanimated](/docs/libraries#reanimated-and-react-native-gesture-handler).
+Three things in the **default template** still need a hand, and none of them is
+the router:
 
-So the limit on 0.88 is a version of Reanimated, not a router. Nothing about
-expo-router itself is known to be broken there.
+- **`NativeTabs`** is what `create-expo-app` now generates, and expo-router
+  implements it for iOS and Android only -- it throws "You are using NativeTabs
+  on an unsupported platform" anywhere else. A `Stack` works. This is
+  expo-router's own platform gate, upstream of Basalt.
+- **`@/*` path aliases** come from `tsconfig.json`, and Expo installs
+  tsconfig-path resolution in `@expo/cli` rather than in `expo/metro-config`.
+  A config built on `getDefaultConfig` alone -- which is what `basalt init`
+  writes -- does not get them, so the aliases have to be spelled out in
+  `metro.config.js` as Metro `resolveRequest` entries.
+- **`expo-device`**, which the template's own index route imports, has no
+  native module here. See [Expo](#expo) for how that list works.
