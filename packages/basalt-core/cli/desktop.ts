@@ -139,6 +139,61 @@ export function isExecutable(file: string): boolean {
  * configuration.
  */
 /** Where `--build` puts a host: optimized for a release, unoptimized to develop with. */
+/**
+ * The app's JavaScript entry point, from its own `package.json`.
+ *
+ * `index.js` was assumed, which is right for an app from React Native's
+ * template and wrong for every expo-router app: those set
+ * `"main": "expo-router/entry"`, and assuming index.js failed the release
+ * bundle with "The resource .../index.js was not found" *after* building the
+ * whole host. React Native's own CLI reads `main`, so this does too.
+ *
+ * `main` is a module specifier rather than a path -- `expo-router/entry`
+ * resolves into node_modules -- so it is resolved and then made relative to
+ * the project, which is the form Metro and the dev-server URL both want.
+ * Anything unresolvable falls back to index.js, because a wrong guess here
+ * should produce Metro's error about a missing entry file and not one of ours
+ * about package.json.
+ */
+export function appEntryFile(projectRoot: string): string {
+  let main: unknown;
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'),
+    );
+    main = manifest.main;
+  } catch {
+    return 'index.js';
+  }
+  if (typeof main !== 'string' || main === '') {
+    return 'index.js';
+  }
+
+  // A path, relative or absolute, is already the answer.
+  if (main.startsWith('.') || path.isAbsolute(main)) {
+    return path.normalize(main);
+  }
+
+  try {
+    const resolved = fs.realpathSync(require.resolve(main, {paths: [projectRoot]}));
+    // Both sides realpath'd before they are compared. require.resolve answers
+    // with the real path, and a project root is often not one: /var and /tmp
+    // are symlinks on macOS, and pnpm symlinks node_modules everywhere. Taking
+    // one relative to the other without this produces `../../../../private/...`
+    // rather than `node_modules/expo-router/entry.js`.
+    const root = fs.realpathSync(projectRoot);
+    const relative = path.relative(root, resolved);
+    // An entry outside the project -- a hoisted node_modules in a monorepo --
+    // has no relative form worth passing on, so it goes absolute.
+    return relative.startsWith('..') ? resolved : relative;
+  } catch {
+    // A specifier that does not resolve. `main: "index.js"` lands here on an
+    // app whose index.js is not a module Node can resolve by that name, and it
+    // is also the literal default, so it is returned as written.
+    return main;
+  }
+}
+
 export function hostBuildDir(projectRoot: string, target: Target, optimized: boolean): string {
   return path.join(projectRoot, '.basalt', optimized ? 'build-release' : 'build', target.platform);
 }
@@ -1259,7 +1314,7 @@ async function bundleForRelease(
 ): Promise<void> {
   const result = await bundleWithAssets({
     projectRoot: context.root,
-    entryFile: options.entryFile ?? 'index.js',
+    entryFile: options.entryFile ?? appEntryFile(context.root),
     bundleOutput: outputPath,
     platform: target.platform,
     dev: false,
@@ -1450,7 +1505,7 @@ async function runDesktop(
     moduleName,
     dev,
     port,
-    entry: (options.entryFile ?? 'index.js').replace(/\.[^.]+$/, ''),
+    entry: (options.entryFile ?? appEntryFile(projectRoot)).replace(/\.[^.]+$/, ''),
     cwd: projectRoot,
   });
   if (status !== 0) {
@@ -1550,7 +1605,7 @@ export function makePackageCommand(target: Target) {
       {name: '--jobs <number>', description: 'parallelism for --build'},
       {name: '--host-binary <path>', description: `the ${target.binary} to package`},
       {name: '--module <string>', description: "the AppRegistry name, if it is not app.json's"},
-      {name: '--entry-file <path>', description: 'the app entry point', default: 'index.js'},
+      {name: '--entry-file <path>', description: "the app entry point; else package.json's main"},
       {name: '--sign <identity>', description: 'codesigning identity; else BASALT_SIGN_IDENTITY, else ad hoc'},
       {name: '--out <path>', description: 'where the app goes', default: path.join('build', 'release')},
     ],
@@ -1614,9 +1669,12 @@ export function makeRunCommand(target: Target) {
         description: 'where the release bundle is written and read',
       },
       {
+        // No default. A default here is not a fallback -- the CLI fills the
+        // option in, so `options.entryFile ?? appEntryFile(root)` would never
+        // reach the right-hand side and every expo-router app would look for
+        // an index.js it does not have.
         name: '--entry-file <path>',
-        description: 'the app entry point',
-        default: 'index.js',
+        description: "the app entry point; else package.json's main",
       },
     ],
   };

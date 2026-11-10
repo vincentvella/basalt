@@ -1500,6 +1500,40 @@ test('doctor checks GTK on Linux and says how to get it', () => {
   assert.equal(stateOf(steps, 'clang'), 'blocked');
 });
 
+test('the entry file comes from package.json main, not from index.js', () => {
+  // An expo-router app. Assuming index.js failed the release bundle after the
+  // whole host had been built, which is the worst place to learn it.
+  const dir = scratchApp({'package.json': JSON.stringify({main: 'expo-router/entry'})});
+  const entry = path.join(dir, 'node_modules', 'expo-router');
+  fs.mkdirSync(entry, {recursive: true});
+  fs.writeFileSync(path.join(entry, 'package.json'), JSON.stringify({name: 'expo-router'}));
+  fs.writeFileSync(path.join(entry, 'entry.js'), '');
+
+  assert.equal(
+    desktop.appEntryFile(dir),
+    path.join('node_modules', 'expo-router', 'entry.js'),
+    'resolved into node_modules and made relative to the app',
+  );
+});
+
+test('the entry file falls back to index.js, and takes a path as written', () => {
+  // React Native's own template declares no main at all.
+  assert.equal(desktop.appEntryFile(scratchApp({'package.json': '{}'})), 'index.js');
+  // Not an app. Metro should be the one to complain, not this.
+  assert.equal(desktop.appEntryFile(scratchApp({})), 'index.js');
+  // A relative path is already an answer and is not resolved.
+  assert.equal(
+    desktop.appEntryFile(scratchApp({'package.json': JSON.stringify({main: './src/main.js'})})),
+    path.join('src', 'main.js'),
+  );
+  // A specifier that resolves to nothing is returned as written, so the error
+  // a reader gets names their entry rather than our resolution.
+  assert.equal(
+    desktop.appEntryFile(scratchApp({'package.json': JSON.stringify({main: 'index.js'})})),
+    'index.js',
+  );
+});
+
 test('doctor blocks on a missing C++ library and says how to get it', () => {
   // Nothing on the path, nothing on disk: every library is missing, which is
   // the state a fresh Mac with only cmake and ninja was actually in.
