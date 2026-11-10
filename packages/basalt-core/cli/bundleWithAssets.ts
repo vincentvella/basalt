@@ -193,6 +193,52 @@ export async function writeExpoAppConfig(
 }
 
 /**
+ * Where an expo-router app keeps its routes, or null if it is not one.
+ *
+ * expo-router finds its routes with `require.context(...)` over a directory,
+ * and the directory is not in the bundle's JavaScript -- `_ctx.js` reads
+ * `process.env.EXPO_ROUTER_APP_ROOT`, which Expo's Metro transformer replaces
+ * at build time from a **transform option** called `routerRoot`, defaulting to
+ * `app`. Nothing passes it here, so a template that keeps routes in `src/app`
+ * built cleanly, launched, and then threw expo-router's own "No routes found".
+ *
+ * Expo's CLI decides it in `getRouterDirectoryModuleIdWithManifest`; this is
+ * the same rule. `app.json`'s `expo.extra.router.root` wins when set, and
+ * otherwise the more specific `src/app` is preferred over `app`.
+ *
+ * A path outside the project is refused rather than passed on, the way Expo
+ * refuses it, because the transformer would resolve it against the project and
+ * produce a context over somewhere unrelated.
+ */
+export function expoRouterRoot(projectRoot: string): string | null {
+  const installed = path.join(projectRoot, 'node_modules', 'expo-router', 'package.json');
+  if (!fs.existsSync(installed)) {
+    return null;
+  }
+
+  let configured: unknown;
+  try {
+    const appJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'app.json'), 'utf8'));
+    configured = appJson?.expo?.extra?.router?.root;
+  } catch {
+    // No app.json, or not JSON. The default still applies.
+  }
+
+  if (typeof configured === 'string' && configured !== '') {
+    const absolute = path.resolve(projectRoot, configured);
+    const inside = path.relative(projectRoot, absolute);
+    if (inside.startsWith('..') || path.isAbsolute(inside)) {
+      throw new Error(
+        `app.json's expo.extra.router.root (${configured}) is outside the project`,
+      );
+    }
+    return inside.split(path.sep).join('/');
+  }
+
+  return fs.existsSync(path.join(projectRoot, 'src', 'app')) ? 'src/app' : 'app';
+}
+
+/**
  * Builds `entryFile` to `bundleOutput`, and writes its assets beside it.
  *
  * Beside it by default, and that default is not arbitrary: React Native
@@ -214,6 +260,13 @@ export async function bundleWithAssets({
   const config = await metro.loadConfig({cwd: projectRoot, config: configPath});
   const destination = assetsDest ?? path.dirname(bundleOutput);
 
+  // Expo's transformer reads `routerRoot` from here. Absent on an app without
+  // expo-router, and both calls below have to agree: the build and the asset
+  // pass are two Metro runs over one app, and a transform option that differs
+  // between them is two different graphs.
+  const routerRoot = expoRouterRoot(projectRoot);
+  const customTransformOptions = routerRoot == null ? undefined : {routerRoot};
+
   await fs.promises.mkdir(path.dirname(bundleOutput), {recursive: true});
   await metro.runBuild(config, {
     entry: entryFile,
@@ -221,6 +274,7 @@ export async function bundleWithAssets({
     platform,
     dev,
     minify,
+    ...(customTransformOptions == null ? {} : {customTransformOptions}),
   });
 
   // A second Metro over the same config. Wasteful-looking and not: the build
@@ -235,6 +289,9 @@ export async function bundleWithAssets({
       dev,
       minify,
       bundleType: 'todo',
+      // Replaces rather than merges with DEFAULT_BUNDLE_OPTIONS' own, which is
+      // empty; Metro's default is a bare object with nothing in it.
+      ...(customTransformOptions == null ? {} : {customTransformOptions}),
     });
     const copied = await copyAssets(assets, destination);
     const expoConfig = await writeExpoAppConfig(projectRoot, bundleOutput);
