@@ -154,10 +154,23 @@ search for "topmost opaque" walks past one.
 ## Versions
 
 expo-router needs the React Native its Expo SDK targets, which for SDK 57 is
-**0.86.3**. Against 0.87 the bundle fails inside Expo's own Metro config
-looking for a `react-native/rn-get-polyfills` that 0.87 no longer ships. That
-is upstream of Basalt.
+**0.86.3**. That combination is the one tested here.
 
-`@react-native/assets-registry` also has to resolve at the top level of
-`node_modules`, at the version your React Native wants. expo-router ships PNGs
-and cannot reach the copy nested inside `react-native`.
+**On 0.88 it does not build, and the reason is Reanimated rather than
+expo-router.** Checked on 2026-11-10 with SDK 58, React Native 0.88.1,
+expo-router 58.0.30 and basalt-core 0.2.8:
+
+- The bundle succeeds. Expo's SDK 58 Metro config no longer looks for the
+  `react-native/rn-get-polyfills` that 0.87 dropped, which is what used to
+  fail, and `@react-native/assets-registry` no longer has to be hoisted
+  because React Native 0.88 does not ship it as a separate package at all.
+  Assets copy. Both of the old obstacles are gone.
+- The host does not compile. `expo-router@58.0.30` depends on
+  `react-native-reanimated@4.7.1` directly, so an expo-router app has
+  Reanimated whether or not it animates anything, `--build` wires Reanimated in
+  whenever the app has it, and Basalt's glue is written against Reanimated 3's
+  interfaces. See
+  [Reanimated](/docs/libraries#reanimated-and-react-native-gesture-handler).
+
+So the limit on 0.88 is a version of Reanimated, not a router. Nothing about
+expo-router itself is known to be broken there.

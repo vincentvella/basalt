@@ -53,8 +53,27 @@ suites were last run by hand on 2026-10-11, against 2.14.0 and 3.4.0.
 
 ## Reanimated and `react-native-gesture-handler`
 
-Both run. There is nothing to install beyond the libraries themselves, and
-`--build` wires in worklets and Reanimated when the app has them.
+Both run on **Reanimated 3**. There is nothing to install beyond the libraries
+themselves, and `--build` wires in worklets and Reanimated when the app has
+them.
+
+<Callout type="warn" title="Reanimated 4 does not compile yet">
+Checked on 2026-11-10 against `react-native-reanimated` 4.7.1 and
+`react-native-worklets` 0.13.0, which is what Expo SDK 58 installs. Two
+interfaces moved under Basalt's glue:
+
+- `worklets::UIScheduler` gained a pure virtual `queryIsOnUIThread()`, so
+  `DesktopUIScheduler` is still abstract and declared `final`.
+- `PlatformDepMethodsHolder` dropped `cssCanRouteProperty` and
+  `cssRemoveTransition` for a `CSSPlatformTransitionBackend` and a
+  `CSSPlatformAnimationFactory`, which are objects to implement rather than
+  functions to assign.
+
+This is why an **expo-router** app does not build on React Native 0.88:
+expo-router depends on Reanimated 4 directly. Nothing in CI builds against
+Reanimated, which is how the gap went unnoticed -- the support is opt-in, it is
+compiled only when an app has the library, and no job here has such an app.
+</Callout>
 
 They are also the answer to a fair question about this project, which is whether
 the TurboModule and Fabric seam actually takes third-party code. These two are
