@@ -7,6 +7,7 @@
 
 #ifdef BASALT_HAS_WORKLETS
 #include <worklets/NativeModules/WorkletsModuleProxy.h>
+#include <worklets/Tools/JSScheduler.h>
 #include <worklets/Tools/PlatformLogger.h>
 #include <worklets/Tools/RNRuntimeStatus.h>
 #include <worklets/Tools/UIScheduler.h>
@@ -46,6 +47,15 @@ std::thread::id &javaScriptThread() {
 class DesktopUIScheduler final : public worklets::UIScheduler,
                                  public std::enable_shared_from_this<DesktopUIScheduler> {
  public:
+  // The one thing the base class cannot answer for itself, and the reason it
+  // is pure virtual: worklets 0.13 moved `isOnUIThread()` to a non-virtual
+  // wrapper over this. Before that, a platform inherited an implementation and
+  // a platform that never overrode it compiled anyway -- which is how this
+  // class came to be `final` and abstract at the same time.
+  bool queryIsOnUIThread() const override {
+    return isUiThread();
+  }
+
   void scheduleOnUI(std::function<void()> job) override {
     // Already on the UI thread: run it now rather than a frame later, which is
     // what makes a gesture handler's worklet feel immediate.
@@ -131,14 +141,37 @@ Value DesktopWorkletsModule::installTurboModule(Runtime &runtime,
       .nativeLoggingHook = {},
   });
 
-  auto proxy = std::make_shared<worklets::WorkletsModuleProxy>(
+  // The runtime, the call invoker and "am I on the JavaScript queue" used to be
+  // three of the proxy's own arguments. Worklets 0.13 groups them into a
+  // JSScheduler, which is the same three values and nothing else, so this is a
+  // rename rather than a new dependency.
+  auto jsScheduler = std::make_shared<worklets::JSScheduler>(
       runtime,
       self.jsInvoker_,
-      uiScheduler,
-      []() -> bool { return std::this_thread::get_id() == javaScriptThread(); },
-      runtimeBindings,
-      worklets::BundleModeConfig{.enabled = false, .script = nullptr, .sourceURL = ""},
-      runtimeStatus());
+      []() -> bool { return std::this_thread::get_id() == javaScriptThread(); });
+
+  // BundleModeConfig is gone from the constructor too. It only ever said
+  // "bundle mode off", which is still what this is: worklets decides it for
+  // itself now, and `isDevBundle()` is where it reports the answer.
+  auto proxy = std::make_shared<worklets::WorkletsModuleProxy>(
+      jsScheduler, uiScheduler, runtimeBindings, runtimeStatus());
+
+  // And then attach it to the runtime the bundle is running on, which is the
+  // step that installs `globalThis.__workletsModuleProxy`.
+  //
+  // Worklets 0.12 did this from the constructor, which is why it took a
+  // Runtime. 0.13 split it out, and the lifecycle comment in
+  // WorkletsModuleProxy.h spells out the order a platform owes: construct,
+  // attach on `installTurboModule`, then `start` when JavaScript asks. Without
+  // the attach everything compiles, the module installs, and the first worklet
+  // call dies with "Cannot read property 'loadUnpackersWithCode' of
+  // undefined" -- the JavaScript reaching for a global nothing had installed.
+  //
+  // The config says bundle mode off, which is what this platform is; the
+  // comment there calls it "a disabled Bundle Mode config".
+  proxy->attachToRNRuntime(
+      runtime,
+      worklets::BundleModeConfig{.enabled = false, .script = nullptr, .sourceURL = ""});
 
   heldProxy() = proxy;
   installedProxy() = proxy;

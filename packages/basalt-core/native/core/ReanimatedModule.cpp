@@ -65,7 +65,20 @@ reanimated::PlatformDepMethodsHolder makePlatformDepMethodsHolder() {
   // iOS takes a snapshot of a view before a shared-element transition. Nothing
   // here does shared-element transitions, and the field exists on Apple builds
   // whether or not it is used.
-  holder.forceScreenSnapshotFunction = [](facebook::react::Tag) {};
+  //
+  // It answers whether the screen was switched to a snapshot. False, because
+  // it was not. Reanimated 4.7.1 made this return `bool` where it returned
+  // void, and LayoutAnimationsProxy calls it without a null check, so it has
+  // to stay set rather than be dropped like the two below. A lambda returning
+  // bool also satisfies the older `std::function<void(Tag)>`, which is what
+  // lets one definition cover 4.5 through 4.7.
+  holder.forceScreenSnapshotFunction = [](facebook::react::Tag) { return false; };
+
+  // `readMountedViewPropsFunction` is deliberately left unset. It reads the
+  // props of a mounted view so that a re-inserted one keeps what was written
+  // straight to it, and this platform never writes straight to a view -- see
+  // `synchronouslyUpdateUIPropsFunction` below. Reanimated guards the call
+  // with `if (readMountedViewProps_)`, so unset is a supported answer.
 #endif
 
   // The direct-to-view path, which skips the shadow tree for props that can be
@@ -97,12 +110,16 @@ reanimated::PlatformDepMethodsHolder makePlatformDepMethodsHolder() {
 
   holder.maybeFlushUIUpdatesQueueFunction = []() {};
 
-  // CSS transitions driven by the platform rather than by Reanimated's own
-  // clock -- an optimisation Apple has and this does not. Declining every
-  // property means Reanimated animates them itself.
-  holder.cssCanRouteProperty = [](const std::string &,
-                                  const reanimated::css::EasingConfig &) { return false; };
-  holder.cssRemoveTransition = [](facebook::react::Tag, const std::string &) {};
+  // CSS transitions and animations driven by the platform rather than by
+  // Reanimated's own clock -- an optimisation Apple has and this does not.
+  //
+  // This used to decline every property through `cssCanRouteProperty`, which
+  // 4.7 replaced with two optional objects, `platformTransitionBackend` and
+  // `platformAnimationFactory`. Both are left null, which Reanimated's own
+  // header calls the supported answer: "a platform without them just omits
+  // them; null keeps CSS transitions and animations on the C++ loop." That is
+  // the same behaviour declining every property bought, asked for in one
+  // fewer place.
 
   // Hover and press pseudo-selectors, which need the view layer to report
   // pointer state per view. Not wired yet.
