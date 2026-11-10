@@ -44,8 +44,8 @@ no DOM, no CSS and no bundled browser.
 it out. Basalt gives you the React Native component model over native widgets.
 
 **react-native-windows and react-native-macos** are separate forks with
-separate cadences, on React Native 0.84 and 0.83 today. Basalt is one project
-covering three desktops, tracks 0.87, and deliberately uses their platform
+separate cadences, on React Native 0.85 and 0.83 today. Basalt is one project
+covering three desktops, tracks 0.88, and deliberately uses their platform
 names, so a library shipping `Button.macos.js` resolves here without knowing
 Basalt exists.
 

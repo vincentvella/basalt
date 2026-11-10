@@ -15,19 +15,20 @@ is a platform you add, not a way to start a project.
 This is decided when the app is created rather than when Basalt is added, and
 it is the one choice worth making deliberately.
 
-**0.87 is the one to be on.** It is what CI pins, it is what every host is
-built and tested against, and it is the only supported version with Fast
-Refresh. `react-native@latest` is 0.87.1 today, so an app created from React
-Native's own template is already there.
+**0.88 is the one to be on.** It is what CI pins, it is what every host is
+built and tested against, and it has Fast Refresh. `react-native@latest` is
+0.88.1 today, so an app created from React Native's own template is already
+there.
 
-**An Expo app does not get to choose.** SDK 57 installs React Native 0.86.3,
-which Basalt supports and which has no Fast Refresh: a reload collapses the
-host, from a bug in React Native's own teardown that upstream fixed in 0.87 by
-deleting three lines. Everything else works; you restart to see a change. SDK
-58 installs 0.88.0-rc, which Basalt has never been built against and does not
-claim.
+**An Expo app gets it from its SDK.** SDK 58 installs React Native 0.88.1,
+which is the version every release builds an Expo app against end to end. SDK
+57 installs 0.86.3, which Basalt also supports and which has no Fast Refresh:
+a reload collapses the host, from a bug in React Native's own teardown that
+upstream fixed in 0.87 by deleting three lines. Everything else works; you
+restart to see a change.
 
-So: on 0.86, expect to restart the app after an edit. On 0.87, do not.
+So: on 0.86, expect to restart the app after an edit. On 0.87 or 0.88, do
+not.
 
 ## Before you start
 

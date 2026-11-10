@@ -64,13 +64,13 @@ Basalt is at `0.2.x`, which under semver promises nothing about stability and
 is meant literally: the API can change in any release. Being specific about
 the limits is more useful than a maturity label:
 
-- **React Native 0.86 and 0.87 are supported**, and 0.87 is what CI pins.
+- **React Native 0.86, 0.87 and 0.88 are supported**, and 0.88 is what CI pins.
   0.83–0.85 have never been built or tested; 0.82 and older were attempted and
   deliberately stopped. See
   [Supported versions](/docs/getting-started#supported-react-native-versions).
 - **On 0.86 there is no Fast Refresh.** A teardown leaves the host without a
   mounting manager, so a reload collapses it. Root-caused and fixed upstream in
-  0.87, so use 0.87 if you want it.
+  0.87, so use 0.87 or newer if you want it.
 - **The first build compiles Hermes and React Native's C++ from source** and
   takes tens of minutes. Later builds do not.
 - **Windows registers one fewer component than the other two**, because nothing
