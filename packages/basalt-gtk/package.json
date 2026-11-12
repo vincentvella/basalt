@@ -1,6 +1,6 @@
 {
   "name": "basalt-gtk",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "React Native on Linux, over GTK4: the view layer, the Fabric mounting manager and the host. The desktop half of Basalt; everything behind it is basalt-core.",
   "keywords": [
     "react-native",
@@ -33,6 +33,6 @@
     "react-native": "*"
   },
   "dependencies": {
-    "basalt-core": "0.2.8"
+    "basalt-core": "0.2.9"
   }
 }
