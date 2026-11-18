@@ -56,7 +56,8 @@ ifneq ($(CCACHE),)
 LAUNCHERS := -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 endif
 
-# Reanimated and worklets, when the demo app has them.
+# Reanimated and worklets, when the demo app has them and this platform can
+# build them.
 #
 # Both are opt-in in CMake -- Worklets.cmake and Reanimated.cmake return
 # immediately unless told where the package is -- and e2e/ declares them, so
@@ -69,11 +70,34 @@ endif
 # Reanimated here before, so its interfaces drifted two minor versions and an
 # app found out rather than CI. Reanimated needs worklets, and asking for one
 # without the other is a CMake error, so they are one condition.
+#
+# **macOS only, for now.** react-native-worklets does not compile on Linux
+# here, and the first CI run to try it failed all three shards with eleven
+# errors in worklets' own C++ -- not Reanimated's:
+#
+#   * `pthread_setname_np`, which takes two arguments on glibc and one on
+#     Apple, called the Apple way
+#   * `std::remove_if` and `std::upper_bound` used without <algorithm>, which
+#     libc++ happens to pull in and libstdc++ does not
+#   * a lambda in RunLoop/EventLoop.cpp called with arguments it does not take
+#
+# That is the same class of problem `core/ReanimatedCompat.h` exists to patch
+# for Reanimated, so the fix is a compat header for worklets rather than
+# anything structural -- but it is a port, it needs a Linux build to verify,
+# and shipping it untested is how this went wrong the first time. The scenario
+# skips where the host was built without Reanimated, so Linux reports a skip
+# and not a failure, and website/content/docs/libraries.mdx says which
+# platforms are actually watched.
+# Overridable so the condition can be tested from either side without a second
+# machine: `make -n configure HOST_OS=Linux` shows what a Linux runner gets.
+HOST_OS ?= $(shell uname -s)
 WORKLETS_DIR := $(wildcard e2e/node_modules/react-native-worklets)
 REANIMATED_DIR := $(wildcard e2e/node_modules/react-native-reanimated)
+ifeq ($(HOST_OS),Darwin)
 ifneq ($(and $(WORKLETS_DIR),$(REANIMATED_DIR)),)
 ANIMATION := -DBASALT_WORKLETS=$(abspath $(WORKLETS_DIR)) \
              -DBASALT_REANIMATED=$(abspath $(REANIMATED_DIR))
+endif
 endif
 
 .PHONY: help

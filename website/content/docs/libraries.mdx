@@ -61,18 +61,27 @@ Both run. There is nothing to install beyond the libraries themselves, and
 interfaces this uses. Pinned at 4.7.1 with `react-native-worklets` 0.13.0 --
 what Expo SDK 58 installs -- in `e2e/package.json`.
 
-CI holds that. The Linux and macOS suites build Reanimated on every push and
-run a scenario that drives a `useSharedValue` to a known width through
-`withTiming` and reads the value back out of the mounted view, so a worklet
-that stops reaching the UI runtime fails a build rather than somebody's app.
-It was written by removing the fix it was meant to catch and watching it fail.
+**macOS is where this is true, and the only place CI holds it.** That suite
+builds Reanimated on every push and runs a scenario driving a `useSharedValue`
+to a known width through `withTiming`, reading the value back out of the
+mounted view -- so a worklet that stops reaching the UI runtime fails a build
+rather than somebody's app. It was written by removing the fix it was meant to
+catch and watching it fail.
 
-Reanimated moves these interfaces between minors, and this used to be a part
-of the project CI did not build at all -- which is how the glue drifted two
-minors before an expo-router app found out. **Windows is still not watched**:
-that job configures CMake directly and does not ask for Reanimated, and
-Reanimated branches on `ANDROID` and `__APPLE__` in about ninety places, so it
-is the platform most likely to break next.
+**On Linux it does not compile at all.** Not Reanimated's C++ but
+`react-native-worklets`': `pthread_setname_np` called the Apple way where
+glibc takes a second argument, `std::remove_if` and `std::upper_bound` without
+`<algorithm>`, and a lambda called with arguments it does not take. Eleven
+errors, all the same class of thing `ReanimatedCompat.h` already patches for
+Reanimated, so what it needs is the same treatment for worklets. Until then
+the Linux suite skips the scenario rather than failing it.
+
+**Windows is not watched either**: that job configures CMake directly and does
+not ask for Reanimated.
+
+Reanimated moves these interfaces between minors, and until recently nothing
+here built it on any platform -- which is how the glue drifted two minors
+before an expo-router app found out.
 </Callout>
 
 They are also the answer to a fair question about this project, which is whether
