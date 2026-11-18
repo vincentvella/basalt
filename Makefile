@@ -56,6 +56,26 @@ ifneq ($(CCACHE),)
 LAUNCHERS := -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 endif
 
+# Reanimated and worklets, when the demo app has them.
+#
+# Both are opt-in in CMake -- Worklets.cmake and Reanimated.cmake return
+# immediately unless told where the package is -- and e2e/ declares them, so
+# `npm install --prefix e2e` is what turns this on. Detected rather than always
+# passed, because a checkout that has never installed the demo app's
+# dependencies should still build; `BASALT_REANIMATED` naming a directory that
+# does not exist is a fatal error by design.
+#
+# This is the whole reason the e2e Reanimated scenario can exist. Nothing built
+# Reanimated here before, so its interfaces drifted two minor versions and an
+# app found out rather than CI. Reanimated needs worklets, and asking for one
+# without the other is a CMake error, so they are one condition.
+WORKLETS_DIR := $(wildcard e2e/node_modules/react-native-worklets)
+REANIMATED_DIR := $(wildcard e2e/node_modules/react-native-reanimated)
+ifneq ($(and $(WORKLETS_DIR),$(REANIMATED_DIR)),)
+ANIMATION := -DBASALT_WORKLETS=$(abspath $(WORKLETS_DIR)) \
+             -DBASALT_REANIMATED=$(abspath $(REANIMATED_DIR))
+endif
+
 .PHONY: help
 help: ## Print this list
 	@echo "basalt. Targets:"
@@ -82,7 +102,7 @@ bootstrap: ## Fetch and prepare React Native and Hermes (slow, once)
 configure: ## Run cmake into the build tree
 	cmake -B $(BUILD) -G Ninja \
 	  -DCMAKE_C_COMPILER=$(CC_NAME) -DCMAKE_CXX_COMPILER=$(CXX_NAME) \
-	  $(LAUNCHERS) \
+	  $(LAUNCHERS) $(ANIMATION) \
 	  -DRN_DIR=$(abspath $(RN_DIR))/packages/react-native
 
 # Configure if it has not been done. The stamp is cmake's own cache, so this

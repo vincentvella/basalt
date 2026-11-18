@@ -2806,6 +2806,134 @@ def test_storage(bundle: Path) -> None:
             )
 
 
+def test_reanimated(bundle: Path) -> None:
+    """A worklet runs on the UI runtime, and what it computes reaches the view.
+
+    The gap this closes is not a bug but a blind spot. Reanimated support is
+    opt-in -- compiled only when an app has the library -- and until this app
+    existed no job here had one, so nothing in CI ever built it. Its interfaces
+    then drifted from the 4.5-4.6 they were written against to a 4.7 that had
+    moved three of them, and what found that was an expo-router app rather than
+    this suite.
+
+    Two claims, because either can pass while the other is broken:
+
+      worklet     `runOnUI` executes a body on the worklet runtime and
+                  `runOnJS` brings an answer back, with Reanimated's own
+                  `_WORKLET` marker confirming which runtime it ran on. A
+                  module that installed and did nothing fails here.
+      committed   `useAnimatedStyle` drives a width to 321 and the dumped tree
+                  is read for it. This is the claim that catches the subtle
+                  failure: when `attachToRNRuntime` went unwired the build was
+                  clean, the module installed, and only the first worklet
+                  found out.
+
+    321 rather than a round number, and animated from 100 rather than set: a
+    run where nothing started reports 100, a half-finished frame reports
+    something between, and a static style would pass without Reanimated at all.
+
+    Needs reanimated and worklets installed into e2e/node_modules, and a host
+    *built* after that -- `make configure` reads them out of there, and
+    CMake compiles Reanimated only when told where it is.
+    """
+    for name in ("react-native-reanimated", "react-native-worklets"):
+        if not (REPO / "e2e" / "node_modules" / name).is_dir():
+            raise Failure(
+                f"{name} is not installed, so the app that proves Reanimated "
+                "runs cannot be bundled:\n"
+                "  npm install --prefix e2e\n"
+                "and then reconfigure and rebuild the host. `make configure` "
+                "passes BASALT_REANIMATED and BASALT_WORKLETS only when it "
+                "finds them there, so a host configured before the install has "
+                "the JavaScript and no Reanimated at all."
+            )
+
+    # Whether the host under test has Reanimated compiled in, asked of the
+    # build rather than of the host: CMake records every -D it was given, and a
+    # host without it would fail this scenario for a reason that is not a
+    # regression.
+    #
+    # Which jobs opt in is a deliberate line. `make configure` finds the
+    # packages in e2e/node_modules on its own, so the Linux and macOS suites --
+    # the two that run on every push -- build Reanimated and assert it. The
+    # Windows job and the React Native main drift job configure CMake directly
+    # and do not pass the flags, so they skip. Windows is the gap worth
+    # naming: Reanimated branches on ANDROID and __APPLE__ in about ninety
+    # places and ReanimatedCompat.h fills the rest, so it is the platform most
+    # likely to break and the one not watched here yet.
+    cache = (bundle.parent / "CMakeCache.txt")
+    configured = cache.read_text(encoding="utf-8", errors="replace") if cache.exists() else ""
+    if "BASALT_REANIMATED" not in configured:
+        raise Skipped("this host was built without Reanimated")
+
+    app = bundle_app(bundle.parent, "reanimated")
+    host = packaged_host(bundle.parent)
+
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "tree.txt"
+        env = dict(os.environ)
+        env["BASALT_DUMP_TREE"] = str(dump)
+        # Long enough for a 400ms animation and the 1200ms settle the app
+        # waits out before it says so.
+        env["BASALT_QUIT_AFTER_MS"] = "6000"
+        for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_TEST_HOVER",
+                     "BASALT_TEST_FOCUS", "BASALT_TEST_DIALOG"):
+            env.pop(name, None)
+
+        result = run_host_process(
+            [str(host), str(app), "BasaltReanimated"],
+            cwd=REPO, env=env, capture_output=True, text=True, timeout=180,
+        )
+        _remember_output(result.stderr)
+        check_output(result.stderr, result.returncode)
+        both = result.stdout + result.stderr
+        tree = dump.read_text(encoding="utf-8") if dump.exists() else ""
+
+    said = [
+        line.split("reanimated: ", 1)[1].strip()
+        for line in both.splitlines()
+        if "reanimated: " in line
+    ]
+
+    # --- the worklet ran -----------------------------------------------------
+    if not any(line.startswith("worklet ran:") for line in said):
+        raise Failure(
+            "no worklet ran. Either the worklets module was not reachable from "
+            "JavaScript, or it installed and its runtime never started -- the "
+            "shape `attachToRNRuntime` going uncalled takes, which compiles "
+            f"cleanly.\nIt said {said!r}\n{tail_text(both, 30)}"
+        )
+    if "worklet ran: onUi=true answer=321" not in said:
+        raise Failure(
+            "the worklet ran somewhere unexpected or computed the wrong thing; "
+            "onUi=false means it executed on the JavaScript thread rather than "
+            f"a worklet runtime.\nIt said {said!r}\n{tail_text(both, 30)}"
+        )
+
+    # --- and Reanimated committed what it computed ---------------------------
+    if "animation settled" not in said:
+        raise Failure(
+            f"the app never reached the end of its animation.\nIt said {said!r}\n"
+            f"{tail_text(both, 30)}"
+        )
+
+    bars = re.findall(r"frame=\(([-0-9.]+),([-0-9.]+) ([0-9.]+)x([0-9.]+)\).*bg=#ff00aa",
+                      tree)
+    if not bars:
+        raise Failure(
+            "the animated view is not in the tree at all, so Reanimated never "
+            f"reached the view layer.\n{tree}"
+        )
+    widths = {float(bar[2]) for bar in bars}
+    if 321.0 not in widths:
+        raise Failure(
+            f"the animated width settled at {sorted(widths)} rather than 321. "
+            "100 means the animation never started; anything between means "
+            "Reanimated committed a frame and stopped.\n"
+            f"It said {said!r}\n{tree}"
+        )
+
+
 def test_expo_fetch(bundle: Path) -> None:
     """An Expo app calls `fetch` and gets one that works.
 
@@ -8923,6 +9051,8 @@ SCENARIOS = [
     ("a command runs, and its output and exit reach JavaScript", test_subprocess),
     ("async-storage stores and reads back, through its own generated spec",
      test_storage),
+    ("a worklet runs on the UI runtime and Reanimated commits what it computes",
+     test_reanimated),
     ("an Expo app's fetch works rather than naming a module it has not got", test_expo_fetch),
     ("ActivityIndicator, Switch, Modal and RefreshControl mount and answer",
      test_controls),

@@ -58,15 +58,21 @@ Both run. There is nothing to install beyond the libraries themselves, and
 
 <Callout type="info" title="Which Reanimated">
 **4.5 to 4.7**, which is one definition covering every 4.x that ships the
-interfaces this uses. Checked on 2026-11-10 against 4.7.1 and
-`react-native-worklets` 0.13.0, which is what Expo SDK 58 installs, by driving
-a `useSharedValue` to a known width through `withTiming` and reading the value
-back out of the mounted view.
+interfaces this uses. Pinned at 4.7.1 with `react-native-worklets` 0.13.0 --
+what Expo SDK 58 installs -- in `e2e/package.json`.
 
-Reanimated moves its platform interfaces between minors, and this is the one
-part of the project CI does not build -- the support is opt-in and compiled
-only when an app has the library, and no job here has such an app. So the
-version above is a date and a measurement rather than a promise.
+CI holds that. The Linux and macOS suites build Reanimated on every push and
+run a scenario that drives a `useSharedValue` to a known width through
+`withTiming` and reads the value back out of the mounted view, so a worklet
+that stops reaching the UI runtime fails a build rather than somebody's app.
+It was written by removing the fix it was meant to catch and watching it fail.
+
+Reanimated moves these interfaces between minors, and this used to be a part
+of the project CI did not build at all -- which is how the glue drifted two
+minors before an expo-router app found out. **Windows is still not watched**:
+that job configures CMake directly and does not ask for Reanimated, and
+Reanimated branches on `ANDROID` and `__APPLE__` in about ninety places, so it
+is the platform most likely to break next.
 </Callout>
 
 They are also the answer to a fair question about this project, which is whether

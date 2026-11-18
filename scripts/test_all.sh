@@ -226,17 +226,20 @@ else
   # repository or inside it as react-native-src, or takes RN_DIR. Naming
   # ../react-native here made this step fail on every machine where React
   # Native lives anywhere else -- a Linux checkout from wsl_setup.sh among them.
-  # The one app that imports a third-party native module. e2e/ has none of its
-  # own for react, react-native or metro, which come out of the React Native
-  # checkout; async-storage has no such home.
+  # The apps that import third-party packages. e2e/ has none of its own for
+  # react, react-native or metro, which come out of the React Native checkout;
+  # async-storage and Reanimated have no such home.
   #
-  # This suite builds nothing, so installing it here is enough to *bundle* the
-  # app and not enough to put the module in a host that was built before it:
-  # bootstrap generates the codegen out of e2e/node_modules. The scenario says
-  # so when it finds the module missing.
+  # This suite builds nothing, so installing them here is enough to *bundle*
+  # the apps and not enough to put either into a host that was built before:
+  # bootstrap generates async-storage's codegen out of e2e/node_modules, and
+  # `make configure` reads Reanimated out of there too. Both scenarios say so
+  # when they find what they need missing, and the Reanimated one skips rather
+  # than fails when the host was built without it.
   if command -v npm >/dev/null 2>&1 &&
-     [ ! -d "$root/e2e/node_modules/@react-native-async-storage/async-storage" ]; then
-    step "async-storage, for the one app that imports one" \
+     { [ ! -d "$root/e2e/node_modules/@react-native-async-storage/async-storage" ] ||
+       [ ! -d "$root/e2e/node_modules/react-native-reanimated" ]; }; then
+    step "async-storage and Reanimated, for the apps that import them" \
       npm install --prefix "$root/e2e" --no-audit --no-fund
   fi
 
