@@ -61,23 +61,24 @@ Both run. There is nothing to install beyond the libraries themselves, and
 interfaces this uses. Pinned at 4.7.1 with `react-native-worklets` 0.13.0 --
 what Expo SDK 58 installs -- in `e2e/package.json`.
 
-**macOS is where this is true, and the only place CI holds it.** That suite
-builds Reanimated on every push and runs a scenario driving a `useSharedValue`
-to a known width through `withTiming`, reading the value back out of the
-mounted view -- so a worklet that stops reaching the UI runtime fails a build
-rather than somebody's app. It was written by removing the fix it was meant to
-catch and watching it fail.
+CI holds that on **Linux and macOS**. Both suites build Reanimated on every
+push and run a scenario driving a `useSharedValue` to a known width through
+`withTiming`, reading the value back out of the mounted view -- so a worklet
+that stops reaching the UI runtime fails a build rather than somebody's app.
+It was written by removing the fix it was meant to catch and watching it fail.
 
-**On Linux it does not compile at all.** Not Reanimated's C++ but
-`react-native-worklets`': `pthread_setname_np` called the Apple way where
-glibc takes a second argument, `std::remove_if` and `std::upper_bound` without
-`<algorithm>`, and a lambda called with arguments it does not take. Eleven
-errors, all the same class of thing `ReanimatedCompat.h` already patches for
-Reanimated, so what it needs is the same treatment for worklets. Until then
-the Linux suite skips the scenario rather than failing it.
+Linux took a port to get there, and not of Reanimated: `react-native-worklets`
+is built on Android and Apple and assumed both. It called
+`pthread_setname_np` the Apple way where glibc takes the thread as well, and
+used `std::remove_if`, `std::upper_bound`, `std::logic_error` and
+`std::istream_iterator` without including the headers that declare them --
+which libc++ leaks and libstdc++ does not, so the files compiled on macOS and
+not on Linux. `core/WorkletsCompat.h` fills both in, the same way
+`core/ReanimatedCompat.h` already did for Reanimated, and neither package is
+patched or vendored.
 
-**Windows is not watched either**: that job configures CMake directly and does
-not ask for Reanimated.
+**Windows is not watched**: that job configures CMake directly and does not
+ask for either package, so it skips the scenario.
 
 Reanimated moves these interfaces between minors, and until recently nothing
 here built it on any platform -- which is how the glue drifted two minors

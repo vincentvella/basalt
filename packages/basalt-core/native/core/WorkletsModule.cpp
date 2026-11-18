@@ -139,6 +139,13 @@ Value DesktopWorkletsModule::installTurboModule(Runtime &runtime,
           },
       // Only used in bundle mode, which this is not.
       .nativeLoggingHook = {},
+      // `fetch` inside a worklet, which worklets 0.13 added and this does not
+      // offer: a worklet runtime here has no networking of its own, and the
+      // JavaScript thread's fetch is what an app uses. Null rather than
+      // omitted because basalt_core builds -Werror, and clang on Linux counts
+      // a missing designated initializer where AppleClang does not -- so
+      // leaving it out compiles on macOS and fails on Linux.
+      .networkingBackend = nullptr,
   });
 
   // The runtime, the call invoker and "am I on the JavaScript queue" used to be

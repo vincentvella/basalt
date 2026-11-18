@@ -46,7 +46,19 @@ target_include_directories(worklets_core SYSTEM PUBLIC
         ${RN_DIR}/ReactCommon/jsiexecutor
         ${RN_DIR}/ReactCommon/runtimeexecutor
         ${FOLLY_DIR})
+# -w because this is somebody else's code and its warnings are not ours to
+# fix. The compat header goes ahead of every file, and PUBLIC for the same
+# reason Reanimated's is: core/WorkletsModule.cpp includes worklets' headers
+# from inside basalt_core. See core/WorkletsCompat.h for what a platform that
+# is neither Android nor Apple is missing.
 target_compile_options(worklets_core PRIVATE -w)
+# `SHELL:` keeps the flag and its path together. Without it CMake de-duplicates
+# the repeated `-include` token once a target has two of these -- reanimated_core
+# links worklets_core, so it gets both -- and the compile line collapses to
+# `-include A B`, where B becomes a second input file and clang answers "cannot
+# specify -o when generating multiple output files".
+target_compile_options(worklets_core PUBLIC
+        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/core/WorkletsCompat.h")
 target_compile_definitions(worklets_core PUBLIC
         WORKLETS_VERSION=${WORKLETS_VERSION}
         WORKLETS_FEATURE_FLAGS=\"\")

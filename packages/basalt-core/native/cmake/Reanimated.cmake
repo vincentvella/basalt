@@ -100,8 +100,21 @@ target_include_directories(reanimated_core SYSTEM PUBLIC
         ${FOLLY_DIR})
 target_link_libraries(reanimated_core worklets_core folly_runtime glog hermes-engine::hermesvm)
 # Somebody else's sources, held to somebody else's warning set.
-target_compile_options(reanimated_core PRIVATE -w
-        -include ${CMAKE_CURRENT_SOURCE_DIR}/core/ReanimatedCompat.h)
+# -w is private: Reanimated's warnings are not ours to fix, and silencing
+# basalt's own would be. The force-include is PUBLIC, because the header fixes
+# Reanimated's *headers* and `core/ReanimatedModule.cpp` includes those from
+# inside basalt_core -- which is a different target and was getting
+# `unknown type name 'SynchronouslyUpdateUIPropsFunction'` on Linux while
+# reanimated_core itself compiled. macOS never noticed: there the type is
+# declared by Reanimated's own `#elif __APPLE__`.
+target_compile_options(reanimated_core PRIVATE -w)
+# `SHELL:` keeps the flag and its path together. Without it CMake de-duplicates
+# the repeated `-include` token once a target has two of these -- reanimated_core
+# links worklets_core, so it gets both -- and the compile line collapses to
+# `-include A B`, where B becomes a second input file and clang answers "cannot
+# specify -o when generating multiple output files".
+target_compile_options(reanimated_core PUBLIC
+        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/core/ReanimatedCompat.h")
 target_compile_definitions(reanimated_core PUBLIC
         REANIMATED_VERSION=${REANIMATED_VERSION})
 
