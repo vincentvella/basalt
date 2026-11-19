@@ -446,6 +446,62 @@ test('the image view config declares the placeholder props', () => {
   }
 });
 
+// `onAccessibilityTap`, which AppKit reads and which never arrived: Android's
+// base view config, the one this platform builds on, neither declares the prop
+// nor registers its event, so VoiceOver could not activate a <Pressable>. The
+// support table said it worked, because it counts what the host reads. This is
+// the half of the path below the host that nothing else checks.
+test('the base view config declares onAccessibilityTap and registers its event', () => {
+  const overridePath = path.join(
+    __dirname,
+    '..',
+    'packages/basalt-core/dist/src/overrides/BaseViewConfig.js',
+  );
+
+  // Shaped like Android's: the action event and prop are there, the tap is not.
+  const upstreamPath = require.resolve(overridePath)
+    .replace(/[^/]+$/, 'upstream-base-view-config-stub.js');
+  const config = {
+    directEventTypes: {topAccessibilityAction: {registrationName: 'onAccessibilityAction'}},
+    validAttributes: {accessibilityActions: true, accessibilityLabel: true},
+  };
+  fs.writeFileSync(upstreamPath, `module.exports = {default: ${JSON.stringify(config)}};\n`);
+
+  const Module = require('node:module');
+  const specifier = 'basalt-core/upstream/Libraries/NativeComponent/BaseViewConfig.android';
+  const original = Module._resolveFilename;
+  Module._resolveFilename = function (request, ...rest) {
+    if (request === specifier) {
+      return upstreamPath;
+    }
+    return original.call(this, request, ...rest);
+  };
+  try {
+    delete require.cache[require.resolve(overridePath)];
+    delete require.cache[upstreamPath];
+    const patched = require(overridePath).default;
+    assert.equal(patched.validAttributes.onAccessibilityTap, true, 'the prop should be declared');
+    assert.deepEqual(
+      patched.directEventTypes.topAccessibilityTap,
+      {registrationName: 'onAccessibilityTap'},
+      'the event should be registered under the name React dispatches to',
+    );
+    // Additions, not replacements: what Android declared survives.
+    assert.equal(patched.validAttributes.accessibilityActions, true);
+    assert.equal(patched.validAttributes.accessibilityLabel, true);
+    assert.deepEqual(
+      patched.directEventTypes.topAccessibilityAction,
+      {registrationName: 'onAccessibilityAction'},
+    );
+    // And the earlier gaps in the same file are still closed.
+    assert.equal(patched.validAttributes.accessibilityViewIsModal, true);
+    assert.equal(patched.validAttributes.onPointerDown, true);
+  } finally {
+    Module._resolveFilename = original;
+    fs.rmSync(upstreamPath, {force: true});
+  }
+});
+
 // `decelerationRate`, whose two documented spellings React Native resolves
 // through `Platform.select({ios, android})` -- so on a desktop both became
 // `undefined` and `BaseScrollViewProps` kept its own default. A fast scroll

@@ -23,7 +23,7 @@ here, at the top, rather than only in the area file where each was found.
 that is not being offered, by choice. What that choice costs is carrying the
 workaround and the comment explaining it, which is already written.
 
-**Open (23):**
+**Open (24):**
 
 1. `http::Body::blob` is typed `std::optional<std::string>`
 2. The cxx `NetworkingModule` does not mention blobs at all
@@ -54,6 +54,28 @@ workaround and the comment explaining it, which is already written.
     seam to wire
 23. `AppStateModule` is empty in every method, and `AppState.currentState` is
     therefore the empty string
+24. `onAccessibilityTap` is parsed for every platform and declared only by iOS
+
+- **`onAccessibilityTap` is parsed for every platform and declared only by
+  iOS.** Entry 20 again, with an event attached. `AccessibilityProps.cpp` reads
+  the raw prop with no condition on the platform, and
+  `BaseViewEventEmitter::onAccessibilityTap` dispatches `accessibilityTap` on
+  every platform, but only `BaseViewConfig.ios.js` declares the prop and
+  registers `topAccessibilityTap`. Android's does neither.
+
+  On a platform built from Android's config that is a screen reader that cannot
+  press anything. AppKit attaches its `accessibilityPerformPress` handler only
+  when the prop is set, so VoiceOver's VO-Space (and any client's AXPress) on a
+  <Pressable> did nothing, while the support table -- which counts what a host
+  reads, not whether React sends it -- marked the prop as working on macOS.
+  Found 2026-11-18 by an app whose buttons could not be driven through
+  accessibility.
+
+  Worked around in `src/overrides/BaseViewConfig.ts` with the prop and the event
+  registration, and covered by `scripts/test_platform_js.js`. Worth sending with
+  entry 20 as one change to Android's config: TalkBack has no use for the prop,
+  but declaring it costs Android nothing and every out-of-tree platform built on
+  Android's config inherits the fix.
 
 - **`AppStateModule` is empty in every method.** The other half of the same
   afternoon as the `DeviceInfo` entry above, and the same shape:
