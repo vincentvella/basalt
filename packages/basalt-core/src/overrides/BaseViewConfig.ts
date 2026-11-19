@@ -25,8 +25,13 @@
  * fixes that, and it is the line that lets a <Modal> tell a screen reader to
  * stay inside it. `accessibilityLanguage` is the same gap again.
  *
+ * `onAccessibilityTap` is that gap with an event attached: iOS declares the
+ * prop and registers `topAccessibilityTap`, Android does neither, so a screen
+ * reader's activation never reached a <Pressable>.
+ *
  * Reported rather than forked: the whole file is React Native's, this adds
- * nine keys, and each goes away when upstream adds it. See docs/BACKLOG.md.
+ * ten keys and one event, and each goes away when upstream adds it. See
+ * docs/BACKLOG.md.
  *
  * @format
  */
@@ -64,6 +69,14 @@ const BaseViewConfig = upstream.default ?? upstream;
 
 export default {
   ...BaseViewConfig,
+  directEventTypes: {
+    ...BaseViewConfig.directEventTypes,
+    // `BaseViewEventEmitter::onAccessibilityTap` dispatches `accessibilityTap`
+    // on every platform, and only `BaseViewConfig.ios.js` tells React what to
+    // call it. Without this the event arrives with no handler name and is
+    // dropped; see `onAccessibilityTap` below for the prop half.
+    topAccessibilityTap: {registrationName: 'onAccessibilityTap'},
+  },
   validAttributes: {
     ...BaseViewConfig.validAttributes,
     // The three registered events upstream does not declare, with their capture
@@ -101,5 +114,13 @@ export default {
     // Tab order, and core/KeyboardFocusable.h is where all three hosts read
     // it. Also iOS-only in the view config, which is why no host could.
     accessibilityRespondsToUserInteraction: true,
+    // `onAccessibilityTap`, the same kind again, and the one a user meets
+    // first. `AccessibilityProps.cpp` parses it unconditionally and AppKit
+    // reads it to decide whether `accessibilityPerformPress` -- VoiceOver's
+    // VO-Space, and any client's AXPress -- reaches the app. Android's config
+    // never declares it, so React never sent it, the host never attached a
+    // handler, and activating a <Pressable> with VoiceOver did nothing while
+    // the support table, which counts what the host reads, said it worked.
+    onAccessibilityTap: true,
   },
 };
