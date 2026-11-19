@@ -12,6 +12,11 @@ third_party/hermes-build/
 third_party/nlohmann_json/
 third_party/node/
 third_party/codegen/
+# Codegen for the *app's* modules, which bootstrap generates out of
+# e2e/node_modules. Generated like third_party/codegen above it, and left out
+# of this list for as long as it existed: `git add -A` in a worktree that had
+# built once committed twenty of them.
+third_party/app-codegen/
 
 # CI clones React Native inside the workspace, because actions/cache will not
 # save a path that escapes it.
