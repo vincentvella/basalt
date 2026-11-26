@@ -54,6 +54,23 @@ RnAppKitView *box(NSInteger tag, CGFloat x, CGFloat y, CGFloat w, CGFloat h) {
   return view;
 }
 
+// What AppKit's own hit testing picks, as a tag (0 for nothing, -1 for a view
+// that is not an RnAppKitView). `hitTest:` takes the point in the receiver's
+// superview's coordinates; a root with none would have it converted from
+// window coordinates, flipping y, so it is given a flipped parent at the origin.
+NSInteger appkitHit(RnAppKitView *root, CGFloat x, CGFloat y) {
+  if (root.superview == nil) {
+    RnAppKitView *parent = [RnAppKitView viewWithTag:0];
+    [parent setRnFrameX:0 y:0 width:root.frame.size.width height:root.frame.size.height];
+    [parent addSubview:root];
+  }
+  NSView *view = [root hitTest:NSMakePoint(x, y)];
+  if (view == nil) {
+    return 0;
+  }
+  return [view isKindOfClass:[RnAppKitView class]] ? ((RnAppKitView *)view).rnTag : -1;
+}
+
 NSInteger hit(RnAppKitView *root, CGFloat x, CGFloat y) {
   RnAppKitView *view = RnAppKitHitTest(root, x, y);
   return view == nil ? 0 : view.rnTag;
@@ -683,6 +700,39 @@ TEST(pointer_events_box_none_is_transparent_and_its_children_are_not) {
     // covers -- and returning the parent here would look right until something
     // was underneath.
     EXPECT_EQ(hit(root, 200, 200), 10L);
+  }
+}
+
+// The same modes, for AppKit's own hit testing rather than React Native's. The
+// tests above are the press a JavaScript handler receives; these are which
+// *native* view a real click lands on, and that decides whether an NSTextField
+// peer gets the mouseDown that makes it first responder. In a development
+// build React Native mounts DebuggingOverlay over the whole app inside a
+// `pointerEvents="none"` View, and while AppKit ignored the prop that overlay
+// took every click: buttons still worked, being hit-tested React Native's way,
+// and no text field could be focused by clicking it.
+TEST(appkit_hit_testing_honours_pointer_events) {
+  @autoreleasepool {
+    RnAppKitView *root = box(1, 0, 0, 400, 300);
+    RnAppKitView *behind = box(10, 0, 0, 300, 300);
+    RnAppKitView *overlay = box(11, 0, 0, 300, 300);
+    RnAppKitView *button = box(12, 0, 0, 100, 100);
+    [overlay insertRnChild:button atIndex:0];
+    [root insertRnChild:behind atIndex:0];
+    [root insertRnChild:overlay atIndex:1];
+
+    EXPECT_EQ(appkitHit(root, 200, 200), overlay.rnTag);
+    EXPECT_EQ(appkitHit(root, 50, 50), button.rnTag);
+
+    // `none`: the overlay and everything in it step aside.
+    overlay.rnPointerEvents = RnAppKitPointerEventsNone;
+    EXPECT_EQ(appkitHit(root, 200, 200), behind.rnTag);
+    EXPECT_EQ(appkitHit(root, 50, 50), behind.rnTag);
+
+    // `box-none`: the overlay steps aside, its children do not.
+    overlay.rnPointerEvents = RnAppKitPointerEventsBoxNone;
+    EXPECT_EQ(appkitHit(root, 200, 200), behind.rnTag);
+    EXPECT_EQ(appkitHit(root, 50, 50), button.rnTag);
   }
 }
 

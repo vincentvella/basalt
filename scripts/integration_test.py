@@ -4897,6 +4897,53 @@ def test_accessibility_press(bundle: Path) -> None:
         )
 
 
+def test_text_input_click_in_a_dev_build(bundle: Path) -> None:
+    """A real click focuses a <TextInput> in a development build, and typing reaches it.
+
+    Runs e2e/typing.tsx as a *dev* bundle. In one, React Native mounts
+    DebuggingOverlay over the app inside a `pointerEvents="none"` View, and the
+    click a text field needs is the one AppKit delivers to its peer -- so if
+    AppKit's hit testing ignores the prop, the overlay takes the click, nothing
+    is focused, and the keystrokes go nowhere. Buttons are unaffected (they are
+    hit-tested React Native's way), which is how this hid: every app being
+    developed against Metro had text fields that could not be clicked into.
+    """
+    if PLATFORM != "macos":
+        raise Skipped(f"the overlay hit-testing bug was AppKit's; not checked on {PLATFORM}")
+    app = bundle_app(bundle.parent, "typing", dev=True)
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "12000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_DUMP_TREE"):
+        env.pop(name, None)
+    process = subprocess.Popen(
+        [str(HOST), str(app), "Typing"], cwd=REPO, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        time.sleep(5)
+        answer = subprocess.run(
+            ["swift", str(REPO / "scripts" / "ax_click_type.swift"), str(process.pid), "type here", "abc"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if answer.returncode == 2:
+            raise Skipped("the run has no accessibility permission")
+    finally:
+        stdout, stderr = process.communicate(timeout=90)
+    log = stdout + stderr
+    _remember_output(stderr)
+    check_output(stderr, process.returncode)
+
+    if "focused AXTextField" not in answer.stdout:
+        raise Failure(
+            "a real click on the field did not focus it in a development build "
+            f"({answer.stdout.strip()}). The usual cause is a pointerEvents=\"none\" view on top -- "
+            f"React Native's DebuggingOverlay -- that AppKit's hit testing does not skip.\n{answer.stderr}"
+        )
+    if "TYPED abc" not in log:
+        raise Failure(f"the field was focused but the keystrokes did not reach onChangeText.\n{log[-1500:]}")
+
+
 def test_test_id(bundle: Path) -> None:
     """`testID` reaches the view, and the platform's identifier for it.
 
@@ -9156,6 +9203,7 @@ SCENARIOS = [
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
     ("VoiceOver can press every role and toggle a <Switch>", test_accessibility_press),
+    ("a click focuses a TextInput in a dev build", test_text_input_click_in_a_dev_build),
     ("a testID reaches the view and the platform", test_test_id),
     ("a role on a nested <Text> reaches the paragraph", test_nested_text_role),
     ("accessibilityViewIsModal reaches the view", test_modal_view),
