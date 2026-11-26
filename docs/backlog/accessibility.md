@@ -2,7 +2,7 @@
 
 Part of the [backlog](../BACKLOG.md). Not scheduled.
 
-**Open (5):**
+**Open (6):**
 
 1. Not tested against a real screen reader
 2. Accessible actions are unimplemented: IMountingManager declares accessibleClic
@@ -11,6 +11,8 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
    ~~accessibilityLiveRegion~~ are done on all three hosts)
 5. Eleven more AccessibilityProps fields that no host reads, counted rather
    than guessed
+6. A screen reader's press on a <Switch>, and its on/off state, are unverified
+   on GTK and Windows (fixed on macOS)
 
 - Not tested against a real screen reader. GTK's assertions say the properties
   are set; Orca on the Linux box is the check that matters.
@@ -297,3 +299,21 @@ Part of the [backlog](../BACKLOG.md). Not scheduled.
   One consequence worth naming: a value alone now makes a view an accessibility
   element on that host, where before it needed a role, a label or a hint. A
   `<View>` that says where it is in a range means to be heard.
+- A screen reader's press on a `<Switch>`, and the on/off state it reads, are
+  **unverified on GTK and Windows**.
+
+  On macOS both were missing until 2026-11-25. React Native sends a `<Switch>`
+  neither `onAccessibilityTap` nor a checked state -- on Android the platform
+  widget answers both -- and the element VoiceOver lands on is the RnAppKitView
+  announcing a switch, not the NSSwitch drawn inside it (which refuses hits so a
+  click reaches React Native's touch path). So it had no value, and VO-Space did
+  nothing. Now the view reads its value from the NSSwitch unless the app set one,
+  and a press goes through `pressedView`, the toggle a click uses, disabled
+  included (`RnAppKitView.rnControlPress`). Unit-tested, and asserted end to end
+  by `test_accessibility_press`, which presses every pressable role and toggles
+  a real `<Switch>` with an AXPress from outside the process.
+
+  GTK and Win32 draw the switch the same way -- the native control out of hit
+  testing, the press landing on the view behind -- so the same gap is likely.
+  Orca's activate action and UIA's Toggle pattern are where to look.
+

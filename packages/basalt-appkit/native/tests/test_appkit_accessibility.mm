@@ -539,6 +539,58 @@ TEST(accessibility_tap_is_reported_only_when_a_handler_is_attached) {
   }
 }
 
+// A <Switch> is an RnAppKitView announcing a switch, with the NSSwitch drawn
+// inside it -- and the outer view is the element VoiceOver talks to. React
+// Native's Switch sends neither a checked state nor onAccessibilityTap (on
+// Android the platform widget answers both), so the view has to: its value is
+// the switch's, and a press toggles it the way a click does.
+TEST(accessibility_switch_reports_its_state_and_can_be_pressed) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    [view setRnAccessibleRole:@"switch"];
+    NSSwitch *control = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    [view addSubview:control];
+    view.rnControl = control;
+    view.rnControlKind = RnAppKitControlSwitch;
+
+    control.state = NSControlStateValueOff;
+    EXPECT([view.accessibilityValue isEqual:@NO]);
+    control.state = NSControlStateValueOn;
+    EXPECT([view.accessibilityValue isEqual:@YES]);
+
+    // Without a press handler nothing is claimed; with one, a press goes there.
+    EXPECT(![view accessibilityPerformPress]);
+    __block int presses = 0;
+    view.rnControlPress = ^{
+      presses++;
+    };
+    EXPECT([view accessibilityPerformPress]);
+    EXPECT_EQ(presses, 1);
+
+    // An app's own handler still wins, as it does on any other view.
+    __block int taps = 0;
+    [view setRnAccessibleTapHandler:^{
+      taps++;
+    }];
+    EXPECT([view accessibilityPerformPress]);
+    EXPECT_EQ(taps, 1);
+    EXPECT_EQ(presses, 1);
+  }
+}
+
+TEST(accessibility_switch_value_yields_to_an_explicit_one) {
+  @autoreleasepool {
+    RnAppKitView *view = [RnAppKitView viewWithTag:1];
+    NSSwitch *control = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    [view addSubview:control];
+    view.rnControl = control;
+    view.rnControlKind = RnAppKitControlSwitch;
+    control.state = NSControlStateValueOn;
+    view.accessibilityValue = @"custom";
+    EXPECT([view.accessibilityValue isEqual:@"custom"]);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // `accessibilityLanguage`, as the language of the text a screen reader reads.
 //

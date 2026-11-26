@@ -32,7 +32,7 @@ upstream.md moved sixteen entries and broke two references that nothing checks.
 | [Native modules](backlog/modules.md) | 1 | What happens when an app reaches for one, per module, checked against a running host. `Settings` and `ActionSheetIOS` were answered on 2026-10-10; two modules are left and nothing but an app importing a spec by path reaches either. |
 | [ScrollView](backlog/scrollview.md) | 4 | Trackpad scrolling unverified, zoom, `contentBoundingRect`, view culling. |
 | [Components](backlog/components.md) | 5 | What is not implemented at all, and `<Modal>` as a real window. |
-| [Accessibility](backlog/accessibility.md) | 5 | Nothing has been tested against a real screen reader. |
+| [Accessibility](backlog/accessibility.md) | 6 | Nothing has been tested against a real screen reader. |
 | [Correctness](backlog/correctness.md) | 2 | Things that work but not quite right. |
 
 ## Platforms and plumbing

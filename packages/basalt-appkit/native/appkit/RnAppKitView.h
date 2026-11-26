@@ -896,6 +896,14 @@ typedef NS_ENUM(NSInteger, RnAppKitControlKind) {
 @property(nonatomic, weak, nullable) NSView *rnControl;
 @property(nonatomic) RnAppKitControlKind rnControlKind;
 
+// What VoiceOver's press does to the control when the app attached no
+// `onAccessibilityTap`: for a <Switch>, the same toggle a click asks for. Set
+// by the mounting manager, which is where a click's toggle lives. React Native
+// sends a switch neither a checked state nor a tap handler -- on Android the
+// platform widget answers both -- so without this the element VoiceOver lands
+// on has no value and nothing to press. See accessibilityPerformPress.
+@property(nonatomic, copy, nullable) void (^rnControlPress)(void);
+
 // What `describeTree` prints for this control, written by
 // core/DesktopControls.h so that three hosts cannot describe the same switch
 // differently.

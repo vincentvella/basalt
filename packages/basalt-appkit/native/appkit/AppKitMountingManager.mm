@@ -808,6 +808,11 @@ void AppKitMountingManager::applyControlPeer(RnAppKitView *view, const basalt::C
   if (control == nil) {
     if (kind == RnAppKitControlSwitch) {
       control = [[RnAppKitSwitch alloc] initWithFrame:NSZeroRect];
+      // VoiceOver's press toggles the way a click does, disabled included.
+      // `this` outlives the view: the manager owns every view it mounts.
+      view.rnControlPress = ^{
+        this->pressedView(tag);
+      };
     } else {
       NSProgressIndicator *spinner = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
       spinner.style = NSProgressIndicatorStyleSpinning;

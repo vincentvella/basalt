@@ -1215,7 +1215,25 @@ static void RnAppKitCollectText(RnAppKitView *view, NSMutableString *out) {
     _rnAccessibleTap();
     return YES;
   }
+  // A <Switch> toggles, through the same path as a click; see rnControlPress.
+  if (self.rnControlKind == RnAppKitControlSwitch && self.rnControlPress != nil) {
+    self.rnControlPress();
+    return YES;
+  }
   return [super accessibilityPerformPress];
+}
+
+// A <Switch>'s on or off, unless the app set a value of its own. The NSSwitch
+// inside holds the state React Native last gave it, which is the state a
+// sighted user sees; reading it here rather than copying it on every update
+// means the two cannot disagree. An explicit accessibilityValue or checked
+// state still wins, as it does on every other view.
+- (id)accessibilityValue {
+  id value = [super accessibilityValue];
+  if (value == nil && self.rnControlKind == RnAppKitControlSwitch && [self.rnControl isKindOfClass:[NSSwitch class]]) {
+    return @(((NSSwitch *)self.rnControl).state == NSControlStateValueOn);
+  }
+  return value;
 }
 
 - (void)setRnScrollOffsetX:(CGFloat)x y:(CGFloat)y {
