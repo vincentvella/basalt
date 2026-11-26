@@ -4838,6 +4838,65 @@ def test_accessibility_labelled_by(bundle: Path) -> None:
         )
 
 
+def test_accessibility_press(bundle: Path) -> None:
+    """VoiceOver's press reaches every pressable role, and toggles a <Switch>.
+
+    Runs e2e/axpress.tsx and presses each control the way VoiceOver's VO-Space
+    does -- an AXPress from outside the process -- then reads what the app
+    logged. A unit test calling `accessibilityPerformPress` directly passes for
+    any role; whether AppKit routes an outside press to the view is the part
+    only this can see.
+
+    The <Switch> is the case that was broken: React Native sends it neither
+    `onAccessibilityTap` nor a checked state, so the element VoiceOver lands on
+    had no value and nothing happened when pressed. Pressed twice here, so a
+    press that only ever sets it on cannot pass.
+    """
+    if PLATFORM != "macos":
+        raise Skipped(f"AXPress is AppKit's; no accessibility press on {PLATFORM} yet")
+    app = bundle_app(bundle.parent, "axpress")
+    labels = [f"press {role}" for role in
+              ("button", "radio", "checkbox", "switch", "togglebutton", "tab", "link", "menuitem")]
+    labels += ["grouped two", "real switch", "real switch"]
+
+    env = dict(os.environ)
+    env["BASALT_QUIT_AFTER_MS"] = "15000"
+    for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_DUMP_TREE"):
+        env.pop(name, None)
+    process = subprocess.Popen(
+        [str(HOST), str(app), "AxPress"], cwd=REPO, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        time.sleep(5)
+        # scripts/ax_press.swift presses by pid; System Events would find
+        # whichever basalt_appkit answered first.
+        answer = subprocess.run(
+            ["swift", str(REPO / "scripts" / "ax_press.swift"), str(process.pid), *labels],
+            capture_output=True, text=True, timeout=120,
+        )
+        if answer.returncode == 2:
+            raise Skipped("the run has no accessibility permission")
+        not_found = [line for line in answer.stdout.splitlines() if line.startswith("missing ")]
+        if answer.returncode != 0 or not_found:
+            raise Failure(f"could not press everything:\n{answer.stdout}{answer.stderr}")
+    finally:
+        stdout, stderr = process.communicate(timeout=90)
+    log = stdout + stderr
+    _remember_output(stderr)
+    check_output(stderr, process.returncode)
+
+    missing = [label for label in labels[:-2] if f"AXPRESS {label.removeprefix('press ')}" not in log]
+    if missing:
+        raise Failure(f"an accessibility press did not reach onAccessibilityTap for: {missing}\n{log[-1500:]}")
+    if "AXPRESS real switch true" not in log or "AXPRESS real switch false" not in log:
+        raise Failure(
+            "pressing the <Switch> through accessibility did not toggle it on and back off. The "
+            "host has to route the press to the same toggle a click uses; see "
+            f"RnAppKitView.rnControlPress.\n{log[-1500:]}"
+        )
+
+
 def test_test_id(bundle: Path) -> None:
     """`testID` reaches the view, and the platform's identifier for it.
 
@@ -9096,6 +9155,7 @@ SCENARIOS = [
     ("a desktop text scale, and the props that refuse it", test_font_scaling),
     ("textTransform changes what the engine lays out", test_text_transform),
     ("accessibilityLabelledBy resolves a nativeID", test_accessibility_labelled_by),
+    ("VoiceOver can press every role and toggle a <Switch>", test_accessibility_press),
     ("a testID reaches the view and the platform", test_test_id),
     ("a role on a nested <Text> reaches the paragraph", test_nested_text_role),
     ("accessibilityViewIsModal reaches the view", test_modal_view),
