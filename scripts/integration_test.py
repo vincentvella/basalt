@@ -4920,7 +4920,11 @@ def test_text_input_click_in_a_dev_build(bundle: Path) -> None:
     app = bundle_app(bundle.parent, "typing", dev=True)
 
     env = dict(os.environ)
-    env["BASALT_QUIT_AFTER_MS"] = "12000"
+    # A safety net; the host is stopped through the quit file once the typing is
+    # done (see test_accessibility_press for why not a fixed timer).
+    env["BASALT_QUIT_AFTER_MS"] = "120000"
+    quit_file = Path(tempfile.mkdtemp()) / "quit"
+    env["BASALT_TEST_QUIT_FILE"] = str(quit_file)
     for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_DUMP_TREE"):
         env.pop(name, None)
     process = subprocess.Popen(
@@ -4936,6 +4940,7 @@ def test_text_input_click_in_a_dev_build(bundle: Path) -> None:
         if answer.returncode == 2:
             raise Skipped("the run has no accessibility permission")
     finally:
+        stop_host(process, quit_file)
         stdout, stderr = process.communicate(timeout=90)
     log = stdout + stderr
     _remember_output(stderr)

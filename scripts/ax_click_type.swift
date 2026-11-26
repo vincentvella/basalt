@@ -46,17 +46,31 @@ AXValueGetValue(attribute(field, kAXPositionAttribute) as! AXValue, .cgPoint, &o
 AXValueGetValue(attribute(field, kAXSizeAttribute) as! AXValue, .cgSize, &size)
 let centre = CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
 
-// The click goes to whatever window is topmost at that point, so the host is
-// brought forward first.
-_ = NSRunningApplication(processIdentifier: pid)?.activate()
-usleep(400_000)
-for type in [CGEventType.leftMouseDown, .leftMouseUp] {
-  CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: centre, mouseButton: .left)?.post(tap: .cghidEventTap)
-  usleep(80_000)
+func focusedRole() -> String {
+  attribute(app, kAXFocusedUIElementAttribute).map { attribute($0 as! AXUIElement, kAXRoleAttribute) as? String ?? "?" } ?? "none"
 }
-usleep(300_000)
 
-let focused = attribute(app, kAXFocusedUIElementAttribute).map { attribute($0 as! AXUIElement, kAXRoleAttribute) as? String ?? "?" } ?? "none"
+// The click goes to whatever window is topmost at that point, so the host has
+// to *be* frontmost first -- asked for and then waited on, because activation
+// is asynchronous and a click sent before it lands goes to the previous app.
+// Up to three attempts: a host whose hit testing is wrong fails all three,
+// while one that was simply not in front yet passes on the next.
+var focused = "none"
+for _ in 1...3 {
+  let host = NSRunningApplication(processIdentifier: pid)
+  _ = host?.activate()
+  for _ in 0..<40 where NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
+    usleep(50_000)
+  }
+  usleep(200_000)
+  for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+    CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: centre, mouseButton: .left)?.post(tap: .cghidEventTap)
+    usleep(80_000)
+  }
+  usleep(300_000)
+  focused = focusedRole()
+  if focused == "AXTextField" { break }
+}
 print("focused \(focused)")
 
 for scalar in args[3].utf16 {
