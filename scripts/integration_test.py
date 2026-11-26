@@ -4860,7 +4860,13 @@ def test_accessibility_press(bundle: Path) -> None:
     labels += ["grouped two", "real switch", "real switch"]
 
     env = dict(os.environ)
-    env["BASALT_QUIT_AFTER_MS"] = "15000"
+    # A safety net, not the plan: the host is stopped through the quit file once
+    # the presses are done. A fixed timer raced the presses on CI, where
+    # compiling scripts/ax_press.swift alone can take longer than the timer --
+    # three presses landed and the host had already gone for the rest.
+    env["BASALT_QUIT_AFTER_MS"] = "120000"
+    quit_file = Path(tempfile.mkdtemp()) / "quit"
+    env["BASALT_TEST_QUIT_FILE"] = str(quit_file)
     for name in ("BASALT_TEST_TAP", "BASALT_TEST_TYPE", "BASALT_DUMP_TREE"):
         env.pop(name, None)
     process = subprocess.Popen(
@@ -4881,6 +4887,7 @@ def test_accessibility_press(bundle: Path) -> None:
         if answer.returncode != 0 or not_found:
             raise Failure(f"could not press everything:\n{answer.stdout}{answer.stderr}")
     finally:
+        stop_host(process, quit_file)
         stdout, stderr = process.communicate(timeout=90)
     log = stdout + stderr
     _remember_output(stderr)
