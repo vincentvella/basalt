@@ -36,7 +36,15 @@ func find(_ element: AXUIElement, _ label: String) -> AXUIElement? {
   return nil
 }
 
-guard let field = find(app, args[2]) else {
+// Waited for rather than assumed: a cold development bundle can take a while
+// to evaluate and lay out, and on CI every run is cold.
+var found: AXUIElement?
+for _ in 0..<80 {
+  found = find(app, args[2])
+  if found != nil { break }
+  usleep(250_000)
+}
+guard let field = found else {
   print("missing \(args[2])")
   exit(1)
 }
@@ -53,10 +61,11 @@ func focusedRole() -> String {
 // The click goes to whatever window is topmost at that point, so the host has
 // to *be* frontmost first -- asked for and then waited on, because activation
 // is asynchronous and a click sent before it lands goes to the previous app.
-// Up to three attempts: a host whose hit testing is wrong fails all three,
-// while one that was simply not in front yet passes on the next.
+// Up to five attempts: a host whose hit testing is wrong fails every one,
+// while one that was simply not in front yet passes on a later one.
 var focused = "none"
-for _ in 1...3 {
+for attempt in 1...5 {
+  if attempt > 1 { usleep(500_000) }
   let host = NSRunningApplication(processIdentifier: pid)
   _ = host?.activate()
   for _ in 0..<40 where NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
