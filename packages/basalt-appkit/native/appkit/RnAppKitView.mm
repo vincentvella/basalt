@@ -3716,6 +3716,26 @@ static NSString *RnAppKitBlendFilterNamed(NSString *keyword) {
 // would also swallow the cursor rectangles, tooltips and tracking areas any
 // later component needs, and AppKit's own hit testing is doing no harm here.
 
+// Except for `pointerEvents`, which AppKit's hit testing has to honour too. The
+// press a JavaScript handler receives is hit-tested React Native's way (see
+// hitTestView above), but which *native* view a click lands on is AppKit's
+// call -- and an NSTextField peer only becomes first responder from the
+// mouseDown it receives itself. A development build mounts DebuggingOverlay
+// over the whole app inside a `pointerEvents="none"` View; with the prop
+// ignored here that overlay took every click, so buttons still worked and no
+// text field could be focused by clicking it. Returning nil hands the point to
+// the next view down, which is exactly what `none` and `box-none` mean.
+- (NSView *)hitTest:(NSPoint)point {
+  if (self.rnPointerEvents == RnAppKitPointerEventsNone) {
+    return nil;
+  }
+  NSView *hit = [super hitTest:point];
+  if (hit == self && self.rnPointerEvents == RnAppKitPointerEventsBoxNone) {
+    return nil;
+  }
+  return hit;
+}
+
 // Keyboard focus.
 //
 // AppKit's key-view loop is the chain: a view that accepts first responder
